@@ -36,6 +36,23 @@ Pesos oficiales y composición: ver [`RECETAS.md`](RECETAS.md). Regla FIJA para 
 - **Cremosa (5):** M&M, Oreo, Caramelo salado, Nutella, Milo.
 - **Línea de autor: PAUSADA** — no entra como línea activa de producción hasta que las pruebas salgan estables.
 
+## 3b. Portafolio — estado oficial (2026-07-11)
+
+**✅ Activo (lanzamiento):** Figuras MOMOS rellenas · Momo Cake · Cheesecake · Pavé MOMOS ·
+Cuchareables/parfaits · Sundae MOMOS · Malteadas · Frappés/Crazy Rush · Yogurt bites.
+
+**⏸️ En espera (`EN_ESPERA` / desarrollo futuro):** Crepas · Sándwiches calientes · Paletas —
+no disponibles para venta, sin producción activa, sin reserva ni descuento de inventario, fuera
+del lanzamiento inicial; **conservados en el roadmap para reactivarlos** más adelante.
+
+**⛔ Descartados por ahora:** Tiramisú · Bowl MOMOS · Tartaletas.
+
+> **Cómo lo modela el sistema HOY:** los productos en espera que ya existían en el catálogo van a
+> `products.activo = false` (aplicado 2026-07-11: PR09/PR10 crepas — soft-delete reversible, el
+> historial de pedidos queda intacto); los que no existen aún NO se crean hasta activarse. El campo
+> fino de estado de portafolio (`EN_ESPERA`/`DESARROLLO_FUTURO`) llega con la ficha de producto (§11).
+> Pavé MOMOS y Sundae MOMOS entran al portafolio activo SIN ficha todavía (§12).
+
 ## 4. Recetas maestras y cálculos que debe hacer el sistema
 
 Todas las recetas se cargan **por 1000 g** (ver RECETAS.md). El sistema calcula:
@@ -203,8 +220,10 @@ entrega inmediata. Sin moldeado, sin congelación 8-12 h, sin desmolde.
 | Momo Cake                      | 🟡 Proporción lista, falta proceso oficial   |
 | Cheesecake frío                | 🟡 Proporción lista, falta proceso oficial   |
 | Parfait / cuchareable          | 🟡 Proporción lista, falta proceso oficial   |
-| Tiramisú Momo                  | ❌ Falta receta final                         |
-| Sándwich sellado               | ❌ Falta receta estable                       |
+| Pavé MOMOS                     | ❌ Falta ficha (nuevo en portafolio activo)  |
+| Sundae MOMOS                   | ❌ Falta ficha (nuevo en portafolio activo)  |
+| Tiramisú Momo                  | ⛔ DESCARTADO por ahora (§3b, 2026-07-11)    |
+| Sándwich sellado               | ⏸️ EN ESPERA (§3b, 2026-07-11)               |
 
 ## 13. Mapeo al roadmap del sistema (arquitectura → slices)
 
