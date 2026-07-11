@@ -158,15 +158,45 @@ Pasos: planificar → verificar bases → molde → capa de mousse → 20 g chee
 cerrar con mousse → congelar 8-12 h → desmoldar → revisar acabado/peso → decorar/bañar → empacar →
 inventario disponible. Genera unidad terminada almacenable en congelación.
 
-### Ruta: Momo Cake (`POSTRE_ENSAMBLADO_CONGELADO`)
-No es figura: es **ensamblado por capas** (base crocante compactada → capas → cobertura → topping →
-figurita decorativa YA CONGELADA → empaque → congelado). Estados propios (componentes listos, base
-armada, capas ensambladas, figurita instalada…). El "desmolde" del cake, si existe, es OTRA
-operación distinta al desmolde de figura.
+### Ruta: Momo Cake (`POSTRE_ENSAMBLADO_CONGELADO`) — SÍ congela (2026-07-11)
+Su estructura principal es la mousse MOMOS → congela para: estabilizar la mousse, mantener las
+capas, permitir el desmolde, instalar cobertura y figurita sin deformarlo, y conservarse.
+Pasos: base crocante → primera capa de mousse → cheesecake y ganache → cerrar con mousse →
+nivelar → **congelar 8-12 h** (según tamaño y congelador) → desmoldar completamente congelado →
+cobertura y toppings → figurita CONGELADA → empacar → mantener congelado.
+Estados: `ENSAMBLADO → CONGELANDO → LISTO_PARA_DESMOLDAR → DESMOLDADO → DECORADO → EMPACADO →
+DISPONIBLE_CONGELADO`.
 
-### Ruta: cheesecake frío (`POSTRE_ENSAMBLADO_REFRIGERADO/CONGELADO`)
-Dominante: crema cheesecake, no mousse. **El sistema debe permitir definir conservación:
-refrigerado (suave) o congelado (helado Momo)** — no aplica el "congelando 10 h" de figuras.
+### Ruta: cheesecake — depende de la PRESENTACIÓN (2026-07-11)
+**Regla clave para el sistema: la congelación como PROCESO (técnica, para desmoldar) y la
+conservación como ESTADO FINAL son dos campos DISTINTOS de la ficha** —
+`CONGELACION_TECNICA_PARA_DESMOLDE` ≠ `CONSERVACION_FINAL_REFRIGERADA`.
+
+1. **En vaso/recipiente (LANZAMIENTO):** se estabiliza en su envase, NO congela, no hay desmolde.
+   Pasos: base de galleta → crema cheesecake → Oreo/salsa/sabor → refrigerar hasta estabilizar →
+   decorar → figurita cuando esté firme o cerca del despacho → refrigerado.
+   Estados: `ENSAMBLADO → REFRIGERANDO/ESTABILIZANDO → DECORADO → EMPACADO → DISPONIBLE_REFRIGERADO`.
+2. **Desmoldable:** congelación técnica CORTA solo para facilitar el desmolde; vive refrigerado.
+   Pasos: base compactada → cheesecake → refrigerar → congelar hasta firme → desmoldar → decorar →
+   **conservación final refrigerada**.
+3. **Cheesecake helado estilo MOMOS (híbrido, futuro):** con capa de mousse importante (ej.
+   base galleta + cheesecake + mousse Oreo + figurita) → ruta cercana al Momo Cake, congelado.
+
+### Diferencia operativa de congelación (tabla oficial)
+
+| Producto                | ¿Congela?         | Razón                                   | Conservación final |
+| ----------------------- | ----------------- | --------------------------------------- | ------------------ |
+| Figura MOMOS            | Sí                | Molde, mousse y desmolde                | Congelada          |
+| Momo Cake               | Sí                | Mousse principal y desmolde             | Congelada          |
+| Cheesecake en vaso      | No necesariamente | Se estabiliza en su envase              | Refrigerada        |
+| Cheesecake desmoldable  | Congelación corta | Facilitar desmolde                      | Refrigerada        |
+| Cheesecake helado MOMOS | Sí                | Textura congelada e inclusión de mousse | Congelada          |
+
+**Recomendación de LANZAMIENTO (Julián, 2026-07-11):** Momo Cake siempre congelado · Cheesecake
+en envase individual de 270 g, refrigerado · **Figurita decorativa: se produce CONGELADA por
+separado** y se coloca cuando el cheesecake esté estable; si suelta humedad, colocarla poco antes
+del despacho o sobre capa protectora (chocolate, galleta o ganache). Dos rutas distintas — el
+cheesecake NO pasa por el proceso de una figura ni de un Momo Cake.
 
 ### Ruta: malteada (`BEBIDA_PREPARADA_AL_PEDIDO`)
 **Preparada bajo pedido, NO genera stock terminado.** Puede consumir Momo terminado, Momo
@@ -174,6 +204,79 @@ imperfecto apto, porción congelada de mousse, leche (150-180 g), salsas, toppin
 Pasos: pedido → reservar ingredientes → licuar → verificar textura → servir → salsa/topping →
 entrega inmediata. Sin moldeado, sin congelación 8-12 h, sin desmolde.
 **Descuenta materias primas AL PREPARARSE, no al planificar.**
+
+## 9b. Rutas TÉRMICAS del portafolio (clasificación oficial 2026-07-11)
+
+**Regla madre térmica: congelar un COMPONENTE no significa que el producto final se almacene
+congelado.** Cuatro distinciones: congelación esencial del producto · congelación técnica solo
+para manipular/desmoldar · refrigeración como conservación final · componentes congelados con
+producto ensamblado al momento.
+
+| Producto               | Proceso térmico                              | Conservación final      |
+| ---------------------- | -------------------------------------------- | ----------------------- |
+| Figuras MOMOS          | Congelación obligatoria                      | Congelado               |
+| Momo Cake              | Congelación obligatoria                      | Congelado               |
+| Cheesecake en vaso     | Refrigeración                                | Refrigerado             |
+| Cheesecake desmoldable | Congelación técnica opcional                 | Refrigerado             |
+| Pavé MOMOS             | Refrigeración                                | Refrigerado             |
+| Cuchareable/parfait    | Refrigerado o congelado, según fórmula       | Según variante          |
+| Sundae MOMOS           | Componentes congelados; montaje al pedido    | Consumo inmediato       |
+| Malteada               | Base congelada; licuado al pedido            | Consumo inmediato       |
+| Frappé/Crazy Rush      | Hielo y componentes fríos; montaje al pedido | Consumo inmediato       |
+| Yogurt bites           | Congelación obligatoria                      | Congelado               |
+| Figurita decorativa    | Congelación obligatoria                      | Congelada hasta montaje |
+
+### Las cuatro rutas térmicas (+1)
+
+**A. Congelado de producción y conservación** — figuras, Momo Cake, yogurt bites, figuritas:
+`PRODUCIR → CONGELAR → DESMOLDAR → DECORAR → EMPACAR → CONSERVAR_CONGELADO`
+
+**B. Congelación técnica + conservación refrigerada** — cheesecake desmoldable y especiales
+que salen de molde:
+`ENSAMBLAR → CONGELAR_PARA_DESMOLDE → DESMOLDAR → DECORAR → DESCONGELAR_CONTROLADO → REFRIGERAR`
+
+**C. Refrigerado sin congelación principal** — cheesecake en vaso, Pavé, cuchareable refrigerado:
+`ENSAMBLAR → REFRIGERAR → ESTABILIZAR → DECORAR → EMPACAR → CONSERVAR_REFRIGERADO`
+
+**D. Preparado al pedido con componentes congelados** — sundae, malteada:
+`PEDIDO → RETIRAR_COMPONENTES → ENSAMBLAR_O_LICUAR → DECORAR → ENTREGAR`
+
+**D2 (quinta lógica). Crazy Rush** — componentes refrigerados + hielo:
+`PEDIDO → LICUAR_HIELO_Y_BASE → AÑADIR_MACERADO → DECORAR → ENTREGAR`
+
+### Notas por producto
+
+- **Pavé MOMOS** (ruta C): capas con Saltín + crema; refrigera para que la galleta se humedezca
+  e integre — NO congela (no se desmolda y la galleta debe quedar suave).
+  `ENSAMBLADO → REFRIGERANDO → REPOSO_DE_CAPAS → DECORADO → FIGURITA → EMPACADO → DISPONIBLE_REFRIGERADO`
+- **Cuchareable/parfait — DECISIÓN DE LANZAMIENTO:** existen dos versiones que deben ser
+  **dos SKUs distintos** (`CUCHAREABLE_REFRIGERADO` y `CUCHAREABLE_CONGELADO`) — un mismo SKU
+  NO puede seguir cualquiera de las dos rutas. **Para el lanzamiento: refrigerado** (cheesecake/
+  crema/ganache/salsa/galletas + mousse controlada como capa secundaria o trozos de Momo
+  añadidos cerca del despacho).
+- **Yogurt bites** (ruta A):
+  `MEZCLA → PORCIONADO → CONGELACION → DESMOLDE → BAÑO → ESTABILIZACION → EMPAQUE → DISPONIBLE_CONGELADO`
+- **Sundae MOMOS** (ruta D): lo congelado son los COMPONENTES (mousse, trozos de figura,
+  imperfectas aptas, figurita) — **el sistema NO crea stock de sundae armado**.
+- **Malteada** (ruta D): `PEDIDO → RESERVAR_BASE_CONGELADA → LICUAR → DECORAR → ENTREGAR` —
+  no se almacena como producto terminado.
+- **Frappé/Crazy Rush** (D2): hielo, sirope, fruta macerada refrigerada, chamoy, Tajín,
+  concentrado. **La fruta macerada se guarda refrigerada como SUBRECETA por lote.**
+- **Figuritas decorativas** (ruta A, ruta propia): mousse del sabor → dosificar en molde →
+  congelar → desmoldar → decorar → guardar CONGELADAS → colocar sobre el producto terminado.
+  Sobre postres refrigerados: colocar cuando el postre esté firme, cerca del despacho, o sobre
+  barrera de chocolate/galleta/ganache (humedad).
+
+### Campos térmicos que cada ficha debe declarar por separado
+
+| Campo | Ejemplo |
+|---|---|
+| Método de estabilización | Congelación 8-12 h / refrigeración / ninguno |
+| Conservación final | Congelado / refrigerado / consumo inmediato |
+| Temperatura del componente | Mousse congelada, macerado refrigerado |
+| Momento de ensamblaje | En producción / al despacho / al pedido |
+| Necesidad de desmolde | Sí (con o sin congelación técnica) / no |
+| Inventario o bajo pedido | Stock terminado / componentes + montaje |
 
 ## 10. Regla de inventario — tres momentos de descuento
 
