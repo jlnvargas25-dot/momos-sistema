@@ -6047,6 +6047,20 @@ function TareasRedes({ db, update, user }) {
 
 /* ================= APP SHELL ================= */
 
+// Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
+// sus cambios no llegan al servidor y la próxima hidratación los pisa.
+const MODULOS_EN_MIGRACION = ["Productos", "Beneficios", "Crecimiento", "Marketing", "Creativos", "Calendario", "Resultados", "Finanzas", "Configuración"];
+
+function BannerMigracion() {
+  return (
+    <div className="rounded-2xl border px-4 py-3 mb-4 text-sm font-bold" role="alert"
+      style={{ background: "#FFF4E0", borderColor: "#E7C078", color: "#96690F" }}>
+      🚧 Módulo en migración: los cambios hechos acá todavía NO se guardan en el servidor —
+      se pierden al recargar o cuando la app se actualiza desde el server. Usalo para consultar.
+    </div>
+  );
+}
+
 const MODULOS = [
   { id: "Dashboard", icon: "🏠", roles: ["Administrador","Cocina","Empaque","Logística","Marketing/CRM"] },
   { id: "Pedidos", icon: "🧾", roles: ["Administrador","Cocina","Empaque","Logística"] },
@@ -6188,6 +6202,28 @@ export default function MomosOps() {
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
     }, { silencioso: true });
   }
+
+  // Frescura multi-dispositivo: re-leer del servidor al volver a la pestaña/ventana
+  // (throttle 60 s). Via ref para no cerrar sobre una versión vieja de la función.
+  const refetchFocoRef = useRef(null);
+  refetchFocoRef.current = hidratarDesdeServidor;
+  const ultimoRefetchFocoRef = useRef(0);
+  useEffect(() => {
+    function alVolver() {
+      if (document.visibilityState !== "visible") return;
+      if (!hidratadoRef.current) return; // recién tras la hidratación inicial
+      const ahora = Date.now();
+      if (ahora - ultimoRefetchFocoRef.current < 60000) return;
+      ultimoRefetchFocoRef.current = ahora;
+      refetchFocoRef.current?.().catch(() => {}); // silencioso: si falla, sigue la caché
+    }
+    window.addEventListener("focus", alVolver);
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      window.removeEventListener("focus", alVolver);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, []);
 
   useEffect(() => {
     if (!perfil || !db || hidratadoRef.current) return;
@@ -6526,6 +6562,7 @@ export default function MomosOps() {
 
         <main className="flex-1 min-w-0 p-4 pb-28 md:pb-8">
           <h1 className="display text-2xl font-semibold mt-1 mb-4">{activa}</h1>
+          {MODULOS_EN_MIGRACION.includes(activa) && <BannerMigracion />}
           {render()}
         </main>
       </div>
