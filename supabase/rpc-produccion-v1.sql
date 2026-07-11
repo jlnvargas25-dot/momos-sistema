@@ -14,6 +14,10 @@
 -- llamando a _add_movement(...) directo con p_batch_id. Sí reusa _add_movement
 -- y _add_audit tal cual exige la regla dura de "ningún insert directo".
 --
+-- NOTA (Producción v2): set_lote_estado — la rama →Listo fue endurecida en
+-- rpc-produccion-v2.sql (guard de desmolde) — este archivo conserva la
+-- versión v1 histórica; la fuente vigente es v2.
+--
 -- NO EJECUTAR contra ninguna base desde acá — archivo de definición únicamente.
 -- ============================================================================
 

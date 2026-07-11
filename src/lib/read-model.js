@@ -23,7 +23,7 @@ export async function fetchCatalogos() {
     supabase.from("recipes").select("id,product_id,item_id,cantidad").order("id"),
     supabase.from("users").select("id,nombre,email,rol,activo").order("id"),
     supabase.from("toppings").select("nombre,precio,insumo_id,insumo_cant").eq("activo", true).order("orden"),
-    supabase.from("figuras").select("nombre,especie,gramaje_g").eq("activo", true).order("orden"),
+    supabase.from("figuras").select("nombre,especie,gramaje_g,product_id,activo").order("orden"),
     supabase.from("catalog_values").select("categoria,valor").eq("activo", true).order("orden"),
     supabase.from("zonas").select("nombre,tarifa").order("nombre"),
     supabase.from("proveedores_domicilio").select("nombre").eq("activo", true).order("orden"),
@@ -91,7 +91,7 @@ export async function fetchCatalogos() {
     salsas: porCat.salsa || [],
     pagos: porCat.pago || [],
     toppings: tops.map((t) => ({ nombre: t.nombre, precio: Number(t.precio), insumoId: nz(t.insumo_id), insumoCant: Number(t.insumo_cant) })),
-    figuras: figs.map((f) => ({ nombre: f.nombre, especie: f.especie, gramaje: f.gramaje_g != null ? `${f.gramaje_g} g` : "" })),
+    figuras: figs.filter((f) => f.activo).map((f) => ({ nombre: f.nombre, especie: f.especie, gramaje: f.gramaje_g != null ? `${f.gramaje_g} g` : "" })),
     proveedores: provs.map((p) => p.nombre),
     pedidoMinimo: Number(setting.pedido_minimo ?? 25000),
     pautaMensual: Number(setting.pauta_mensual ?? 350000),
@@ -107,7 +107,12 @@ export async function fetchCatalogos() {
     palabrasNo: Array.isArray(brandRes.palabras_no) ? brandRes.palabras_no : [],
   } : null;
 
-  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library };
+  // Producción v2: hidratación completa de la tabla figuras (activas e inactivas,
+  // con product_id/gramaje_g numérico) para el grid de figuras del form de Producción.
+  // settingsCatalogos.figuras arriba sigue igual (solo activas, gramaje en texto) para no romper otros consumidores.
+  const figuras = figs.map((f) => ({ nombre: f.nombre, especie: f.especie, gramajeG: f.gramaje_g ?? null, productId: nz(f.product_id), activo: f.activo }));
+
+  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
@@ -136,7 +141,7 @@ export async function fetchOperativo() {
     supabase.from("users").select("id,rol,nombre"),
     supabase.from("inventory_items").select("id,nombre,unidad"),
     supabase.from("products").select("id,nombre"),
-    supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs").order("id", { ascending: false }),
+    supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras").order("id", { ascending: false }),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
@@ -257,6 +262,7 @@ export async function fetchOperativo() {
     horasCongelacion: b.horas_congelacion,
     inicioCongelacion: b.inicio_congelacion ? tsBogota(b.inicio_congelacion) : "",
     molde: nz(b.molde), ubicacion: nz(b.ubicacion), obs: nz(b.obs),
+    corridaId: b.corrida_id || "", figuras: Array.isArray(b.figuras) ? b.figuras : [],
   }));
 
   return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, production_batches };

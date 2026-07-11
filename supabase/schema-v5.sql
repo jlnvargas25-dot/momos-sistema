@@ -67,6 +67,9 @@ create table figuras (
   especie text not null check (especie in ('gato','perro')),
   gramaje_g integer not null default 150 check (gramaje_g > 0),  -- era text "150 g" (la UI formatea)
   activo  boolean not null default true
+  -- product_id (Producción v2): FK a products, agregada más abajo vía ALTER
+  -- TABLE porque products todavía no existe en este punto del archivo —
+  -- ver sección "Producción" (alter table figuras add column product_id).
 );
 
 create table zonas (
@@ -431,6 +434,35 @@ create table order_item_adiciones (                -- era order_items[].adicione
 );
 
 -- ---------- Producción ----------
+
+-- (Producción v2) figuras.product_id: mapeo figura→producto como DATO. Va
+-- acá (no en el create table figuras de más arriba) porque products recién
+-- existe a partir de este punto del archivo.
+alter table figuras add column if not exists product_id text references products(id);
+
+-- (Producción v2) corridas: el evento de producción visible para el usuario
+-- (sabor+relleno+salsa+figuras con cantidad). El servidor deriva de acá los
+-- lotes hijos reales (production_batches.corrida_id) agrupando por
+-- (producto, gramaje) — ver rpc-produccion-v2.sql sección B.
+-- OJO — sede_id SIN el FK a sedes(id) inline a propósito: la tabla `sedes`
+-- no existe en este archivo (nace en sedes-v1.sql, que se aplica DESPUÉS de
+-- schema-v5.sql en la cadena de dependencias). Cuando se aplica de punta a
+-- punta (schema-v5 → sedes-v1 → rpc-produccion-v2, el orden real), el FK se
+-- agrega ahí mismo con `alter table corridas add constraint ... references
+-- sedes(id)` — este espejo documenta la COLUMNA final, no reordena archivos.
+create table corridas (
+  id              text primary key,               -- CR-001
+  fecha           date not null,
+  sabor           text not null,
+  relleno         text default '',
+  salsa           text default '',
+  resp_user_id    text references users(id),
+  obs             text default '',
+  idempotency_key text unique,
+  sede_id         text not null default 'SEDE-01',  -- FK a sedes(id) se agrega en sedes-v1.sql
+  created_at      timestamptz not null default now()
+);
+
 create table production_batches (
   id           text primary key,                   -- L-018
   fecha        date not null,
@@ -449,7 +481,9 @@ create table production_batches (
   inicio_congelacion  timestamptz,
   molde        text references moldes(nombre),          -- gancho Fase 2: "molde X genera más imperfectos"
   ubicacion    text references ubicaciones_frio(nombre),-- gancho Fase 2: congelador/ubicación del lote
-  obs          text default ''
+  obs          text default '',
+  corrida_id   text references corridas(id),        -- (Producción v2) qué corrida generó este lote hijo
+  figuras      jsonb                                -- (Producción v2) composición: [{"figura":"Momo","cant":2}]
 );
 alter table inventory_movements add constraint mov_batch_fk foreign key (batch_id) references production_batches(id);
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -2689,15 +2689,28 @@ function Produccion({ db, update, user, refrescar }) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
   const [nuevo, setNuevo] = useState(false);
-  const [pre, setPre] = useState(null); // sugerencia que origina el lote
-  const loteIdemKeyRef = useRef(null); // 1 por apertura del form: tolera retries de red sin duplicar el lote
+  const [pre, setPre] = useState(null); // sugerencia que origina la corrida
+  const corridaIdemKeyRef = useRef(null); // 1 por apertura del form: tolera retries de red sin duplicar la corrida
   const s = db.settings;
   const sabores = [...s.saboresFrutales, ...s.saboresCremosos];
-  const productosMomo = db.products.filter((p) => p.tipo === "momo");
-  const [form, setForm] = useState({ producto: (productosMomo[0] || db.products[0]).nombre, figura: (s.figuras[0] && s.figuras[0].nombre) || "", sabor: sabores[0], relleno: s.rellenos[0], salsa: s.salsas[0], gramaje: "150 g", prod: 10, perfectas: 10, imperfectas: 0, descartadas: 0, resp: "", vence: dISO(14), horasCongelacion: s.horasCongelacion || 10, obs: "" });
+  // Producción v2: solo figuras activas CON product_id se pueden producir (contrato de RPC punto 4).
+  const figurasProducibles = useMemo(() => (db.figuras || []).filter((f) => f.activo && f.productId), [db.figuras]);
+  const productoDeFigura = useMemo(() => {
+    const map = {};
+    figurasProducibles.forEach((f) => { map[f.nombre] = db.products.find((p) => p.id === f.productId); });
+    return map;
+  }, [figurasProducibles, db.products]);
+  const formInicial = () => ({
+    sabor: sabores[0], relleno: s.rellenos[0], salsa: s.salsas[0],
+    figuras: Object.fromEntries(figurasProducibles.map((f) => [f.nombre, 0])), // nombreFigura → cantidad
+    resp: "", vence: dISO(14), horasCongelacion: s.horasCongelacion || 10, obs: "",
+  });
+  const [form, setForm] = useState(formInicial);
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [enviandoBatchId, setEnviandoBatchId] = useState(null); // deshabilita solo la card del lote en vuelo
+  const [desmolde, setDesmolde] = useState(null); // {batchId, prod, perfectas, imperfectas, descartadas} — mini-modal de conteos
+  const [enviandoDesmolde, setEnviandoDesmolde] = useState(false);
 
   // Resuelve el nombre libre del form al id del staff activo (RPC exige FK real,
   // no nombre suelto). Sin match → null (resp_user_id es opcional server-side).
@@ -2723,22 +2736,30 @@ function Produccion({ db, update, user, refrescar }) {
     db.products.filter((p) => p.tipo === "momo").map((p) => [p.nombre, p.stock, p.id]),
   [db.products]);
 
+  // v2: con desmolde diferido, "perfectas" vale 0 mientras el lote está en proceso —
+  // acá lo que importa es lo PRODUCIDO pendiente/en curso (prod). Se agrupa por
+  // producto·sabor·gramaje (sin figura en la key: una corrida puede mezclar figuras
+  // que caen en el mismo producto); la figura mostrada se deriva de la composición
+  // y si el grupo junta figuras distintas se muestra "varias".
   const enProceso = useMemo(() => {
     const map = {};
     db.production_batches.filter((l) => ["En preparación","Congelando","Reservado"].includes(l.estado)).forEach((l) => {
-      const k = `${l.producto} · ${l.sabor} · ${l.figura} · ${l.gramaje}`;
-      if (!map[k]) map[k] = { label: k, producto: l.producto, sabor: l.sabor, figura: l.figura, gramaje: l.gramaje, cant: 0 };
-      map[k].cant += l.perfectas;
+      const k = `${l.producto} · ${l.sabor} · ${l.gramaje}`;
+      const figuraLote = Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => f.figura).join("+") : l.figura;
+      if (!map[k]) map[k] = { label: k, producto: l.producto, sabor: l.sabor, gramaje: l.gramaje, figura: figuraLote, cant: 0 };
+      else if (map[k].figura !== figuraLote) map[k].figura = "varias";
+      map[k].cant += l.prod;
     });
-    return Object.values(map);
+    return Object.values(map).map((e) => ({ ...e, label: `${e.producto} · ${e.sabor} · ${e.figura || "—"} · ${e.gramaje}` }));
   }, [db.production_batches]);
 
   // Foco de las cards → filtra la lista "Lotes" de abajo (panel accionable, no solo informativo).
   const [foco, setFoco] = useState(null); // {producto} (stock) | {combo:true, producto,sabor,figura,gramaje} (en proceso)
   const lotesFiltrados = useMemo(() => {
     if (!foco) return db.production_batches;
+    // foco.combo ya no incluye figura en la key (ver enProceso): agrupa por producto·sabor·gramaje.
     return db.production_batches.filter((l) => foco.combo
-      ? l.producto === foco.producto && l.sabor === foco.sabor && l.figura === foco.figura && l.gramaje === foco.gramaje
+      ? l.producto === foco.producto && l.sabor === foco.sabor && l.gramaje === foco.gramaje
       : l.producto === foco.producto);
   }, [db.production_batches, foco]);
   const focoLabel = foco ? (foco.combo ? `${foco.producto} · ${foco.sabor} · ${foco.figura} · ${foco.gramaje}` : foco.producto) : "";
@@ -2746,68 +2767,95 @@ function Produccion({ db, update, user, refrescar }) {
 
   // Genera una idempotency_key nueva cada vez que el form se abre; los reintentos
   // dentro de la misma apertura reusan la misma key (útil para timeouts de red).
-  function abrirNuevoLote() {
-    loteIdemKeyRef.current = "lote-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+  function abrirNuevaCorrida() {
+    corridaIdemKeyRef.current = "corrida-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+    setForm(formInicial());
     setNuevo(true);
   }
 
   function abrirDesdeSugerencia(sg) {
-    // las sugerencias de Inventario no abren lote (van a Compras sugeridas en Inventario)
+    // las sugerencias de Inventario no abren corrida (van a Compras sugeridas en Inventario)
     if (sg.area === "Inventario") {
       setMsg("Esta es una sugerencia de compra de empaque o insumo. Atiéndela en el módulo Inventario, no en Producción.");
       return;
     }
-    let nombre = sg.producto.replace("Momos para ", "");
-    if (/^Momos para /.test(sg.producto)) {
-      // combo sin momos: usar Momo Gatito 150 g como respaldo
-      const fallback = db.products.find((x) => x.nombre === "Momo Gatito 150 g" && x.tipo === "momo") || db.products.find((x) => x.tipo === "momo");
-      if (!fallback) { setMsg("No hay productos tipo momo configurados para crear el lote."); return; }
-      nombre = fallback.nombre;
-    } else {
-      const p = db.products.find((x) => x.nombre === nombre);
-      if (!p || p.tipo !== "momo") {
-        setMsg(`"${nombre}" no es un producto de producción (tipo momo), así que no se puede crear un lote. Revisa el producto o crea el lote manualmente.`);
-        return;
-      }
-    }
-    setForm({ ...form, producto: nombre, prod: sg.cantidad, perfectas: sg.cantidad });
-    setPre(sg); abrirNuevoLote();
+    // v2: la sugerencia solo referencia un producto/cantidad — el operador elige
+    // sabor y cantidades por figura en el form; no se mapea producto→figura acá.
+    setPre(sg); abrirNuevaCorrida();
   }
 
-  async function registrarLote() {
-    const p = db.products.find((x) => x.nombre === form.producto);
-    if (!p) { setMsg("El producto seleccionado ya no existe. Cerrá y volvé a intentar."); return; }
-    const gramajeG = parseInt(String(form.gramaje), 10) || null;
+  async function registrarCorrida() {
+    const figurasElegidas = Object.entries(form.figuras).filter(([, cant]) => +cant > 0).map(([figura, cant]) => ({ figura, cant: +cant }));
+    if (!figurasElegidas.length) { setMsg("Elegí al menos una figura con cantidad mayor a 0."); return; }
     const payload = {
-      product_id: p.id, figura: form.figura, sabor: form.sabor, relleno: form.relleno, salsa: form.salsa,
-      gramaje_g: gramajeG, prod: +form.prod || 0, perfectas: +form.perfectas || 0,
-      imperfectas: +form.imperfectas || 0, descartadas: +form.descartadas || 0,
+      sabor: form.sabor, relleno: form.relleno, salsa: form.salsa, figuras: figurasElegidas,
       resp_user_id: respUserId(form.resp), vence: form.vence, horas_congelacion: +form.horasCongelacion || 10,
       obs: form.obs, sugerencia_id: pre ? pre.id : undefined,
-      idempotency_key: loteIdemKeyRef.current,
+      idempotency_key: corridaIdemKeyRef.current,
     };
     setEnviando(true);
     let resultado;
     try {
-      resultado = await crearLote(payload);
+      resultado = await crearCorrida(payload);
     } catch (e) {
-      setMsg("No se pudo registrar el lote: " + e.message);
+      setMsg("No se pudo registrar la producción: " + e.message);
       setEnviando(false);
       return;
     }
     setEnviando(false);
     setNuevo(false); setPre(null);
-    loteIdemKeyRef.current = null; // fuerza una key nueva en la próxima apertura (abrirNuevoLote)
-    await refrescarSilencioso(() => setMsg("El lote se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+    corridaIdemKeyRef.current = null; // fuerza una key nueva en la próxima apertura (abrirNuevaCorrida)
+    await refrescarSilencioso(() => setMsg("La producción se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
     const faltantes = resultado && resultado.faltantes;
     if (Array.isArray(faltantes) && faltantes.length) {
-      setMsg(`Lote registrado, pero el inventario de insumos no alcanzó para: ${faltantes.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}. Registra la compra en Inventario.`);
+      setMsg(`Producción registrada, pero el inventario de insumos no alcanzó para: ${faltantes.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}. Registra la compra en Inventario.`);
     }
+  }
+
+  // Desmolde diferido: el paso directo a 'Listo' ahora falla en el server sin conteos.
+  function abrirDesmolde(l) {
+    const cargados = (l.perfectas || 0) + (l.imperfectas || 0) + (l.descartadas || 0);
+    setDesmolde(cargados > 0
+      ? { batchId: l.id, prod: l.prod, perfectas: l.perfectas, imperfectas: l.imperfectas, descartadas: l.descartadas }
+      : { batchId: l.id, prod: l.prod, perfectas: l.prod, imperfectas: 0, descartadas: 0 });
+  }
+
+  // Transición a 'Listo': si perfectas+imperfectas+descartadas ya cuadra con prod
+  // (lotes viejos ya cuadrados, o re-transiciones post-reversa), el server acepta
+  // set_lote_estado directo. Si no cuadra, recién ahí hace falta el modal de desmolde.
+  async function marcarListo(l) {
+    const cuadra = (l.perfectas || 0) + (l.imperfectas || 0) + (l.descartadas || 0) === l.prod;
+    if (!cuadra) { abrirDesmolde(l); return; }
+    setEnviandoBatchId(l.id);
+    try {
+      await setLoteEstado(l.id, "Listo");
+    } catch (e) {
+      setMsg("No se pudo cambiar el estado del lote: " + e.message);
+      setEnviandoBatchId(null);
+      return;
+    }
+    await refrescarSilencioso(() => setMsg("El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+    setEnviandoBatchId(null);
+  }
+
+  async function confirmarDesmolde() {
+    const { batchId, perfectas, imperfectas, descartadas } = desmolde;
+    setEnviandoDesmolde(true);
+    try {
+      await desmoldarLote(batchId, +perfectas || 0, +imperfectas || 0, +descartadas || 0);
+    } catch (e) {
+      setMsg("No se pudo registrar el desmolde: " + e.message);
+      setEnviandoDesmolde(false);
+      return;
+    }
+    setEnviandoDesmolde(false);
+    setDesmolde(null);
+    await refrescarSilencioso(() => setMsg("El lote se desmoldó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
   }
 
   return (
     <div>
-      <div className="mb-4"><Btn onClick={abrirNuevoLote}>＋ Nuevo lote de producción</Btn></div>
+      <div className="mb-4"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn></div>
 
       {sugerencias.length > 0 && (
         <>
@@ -2863,12 +2911,17 @@ function Produccion({ db, update, user, refrescar }) {
             <Card key={l.id} className="p-4">
               <div className="flex justify-between items-start gap-2">
                 <div>
-                  <div className="font-bold">{l.id} · {l.producto}</div>
+                  <div className="font-bold flex items-center gap-1.5 flex-wrap">
+                    <span>{l.id} · {l.producto}</span>
+                    {l.corridaId && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: T.vainilla, color: "#63518A" }}>Corrida {l.corridaId}</span>}
+                  </div>
                   <div className="text-xs" style={{ color: T.choco2 }}>{l.fecha} · Resp: {l.resp || "—"} · Vence {l.vence}</div>
                 </div>
                 <Badge label={l.estado} />
               </div>
-              <div className="text-xs mt-2" style={{ color: T.choco2 }}>{l.figura} · {l.sabor} · Relleno {l.relleno} · Salsa {l.salsa} · {l.gramaje}</div>
+              <div className="text-xs mt-2" style={{ color: T.choco2 }}>
+                {Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => `${f.cant}× ${f.figura}`).join(" · ") : l.figura} · {l.sabor} · Relleno {l.relleno} · Salsa {l.salsa} · {l.gramaje}
+              </div>
               <div className="grid grid-cols-4 gap-2 mt-3 text-center">
                 {[["Producidas", l.prod, T.choco], ["Perfectas", l.perfectas, "#3F6B42"], ["Imperfectas", l.imperfectas, "#96690F"], ["Descartadas", l.descartadas, "#A03B2A"]].map(([lab, v, col]) => (
                   <div key={lab} className="rounded-xl py-2" style={{ background: T.vainilla }}>
@@ -2897,18 +2950,9 @@ function Produccion({ db, update, user, refrescar }) {
                     <div className="flex items-center justify-between mt-1.5">
                       <span className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Objetivo {cong.objetivo} h · inició {l.inicioCongelacion.slice(11, 16)}</span>
                       {cong.listo && (
-                        <button disabled={enviandoBatchId === l.id} onClick={async () => {
-                          setEnviandoBatchId(l.id);
-                          try {
-                            await setLoteEstado(l.id, "Listo");
-                          } catch (e) {
-                            setMsg("No se pudo marcar el lote como listo: " + e.message);
-                            setEnviandoBatchId(null);
-                            return;
-                          }
-                          await refrescarSilencioso(() => setMsg("El lote se marcó como listo, pero no se pudo actualizar la vista. Recargá la página para verlo."));
-                          setEnviandoBatchId(null);
-                        }} className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#3F6B42", color: "#fff", opacity: enviandoBatchId === l.id ? 0.5 : 1 }}>Marcar Listo</button>
+                        // v2: si los conteos ya cuadran con prod, marcarListo pasa directo a 'Listo';
+                        // si no cuadran, abre el modal de desmolde para cargarlos.
+                        <button disabled={enviandoBatchId === l.id} onClick={() => marcarListo(l)} className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#3F6B42", color: "#fff", opacity: enviandoBatchId === l.id ? 0.5 : 1 }}>Marcar Listo</button>
                       )}
                     </div>
                   </div>
@@ -2951,6 +2995,10 @@ function Produccion({ db, update, user, refrescar }) {
                   )}
                   <MiniSelect options={LOTE_ESTADOS} value={l.estado} disabled={enviandoBatchId === l.id} onChange={async (e) => {
                     const nuevoEstado = e.target.value;
+                    // v2: pasar a 'Listo' desde acá reusa marcarListo — si los conteos ya
+                    // cuadran con prod pasa directo (lotes viejos, re-transiciones post-reversa);
+                    // si no cuadran, recién ahí abre el modal de desmolde.
+                    if (nuevoEstado === "Listo") { await marcarListo(l); return; }
                     setEnviandoBatchId(l.id);
                     try {
                       await setLoteEstado(l.id, nuevoEstado);
@@ -2972,31 +3020,80 @@ function Produccion({ db, update, user, refrescar }) {
         {lotesFiltrados.length === 0 && <div className="text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>No hay lotes para este filtro.</div>}
       </div>
 
-      {nuevo && (
-        <Modal title={pre ? `Lote desde sugerencia ${pre.id}` : "Nuevo lote de producción"} onClose={() => { setNuevo(false); setPre(null); }} wide>
-          <div className="grid sm:grid-cols-2 gap-x-4">
-            <Field label="Producto"><Select options={productosMomo.map((p) => p.nombre)} value={form.producto} onChange={(e) => setForm({ ...form, producto: e.target.value })} /></Field>
-            <Field label="Figura"><Select options={s.figuras.map((f) => f.nombre)} value={form.figura} onChange={(e) => setForm({ ...form, figura: e.target.value })} /></Field>
-            <Field label="Sabor"><Select options={sabores} value={form.sabor} onChange={(e) => setForm({ ...form, sabor: e.target.value })} /></Field>
-            <Field label="Relleno"><Select options={s.rellenos} value={form.relleno} onChange={(e) => setForm({ ...form, relleno: e.target.value })} /></Field>
-            <Field label="Salsa"><Select options={s.salsas} value={form.salsa} onChange={(e) => setForm({ ...form, salsa: e.target.value })} /></Field>
-            <Field label="Gramaje"><Select options={["150 g","160 g","190 g","280 g"]} value={form.gramaje} onChange={(e) => setForm({ ...form, gramaje: e.target.value })} /></Field>
-            <Field label="Cantidad producida"><Input type="number" value={form.prod} onChange={(e) => setForm({ ...form, prod: +e.target.value, perfectas: +e.target.value })} /></Field>
-            <Field label="Perfectas"><Input type="number" value={form.perfectas} onChange={(e) => setForm({ ...form, perfectas: +e.target.value })} /></Field>
-            <Field label="Imperfectas"><Input type="number" value={form.imperfectas} onChange={(e) => setForm({ ...form, imperfectas: +e.target.value })} /></Field>
-            <Field label="Descartadas"><Input type="number" value={form.descartadas} onChange={(e) => setForm({ ...form, descartadas: +e.target.value })} /></Field>
-            <Field label="Responsable"><Select options={db.users.filter((u) => u.activo).map((u) => u.nombre)} value={form.resp} onChange={(e) => setForm({ ...form, resp: e.target.value })} placeholder="Sin responsable" /></Field>
-            <Field label="Vencimiento interno"><Input type="date" value={form.vence} onChange={(e) => setForm({ ...form, vence: e.target.value })} /></Field>
-            <Field label="Horas de congelación objetivo"><Input type="number" min="1" step="1" value={form.horasCongelacion} onChange={(e) => setForm({ ...form, horasCongelacion: +e.target.value })} /></Field>
-          </div>
-          <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
-          <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los insumos de la receta (por la cantidad producida). Las piezas perfectas se suman al stock del producto cuando el lote pase a estado "Listo".</div>
-          <div className="flex gap-2">
-            <Btn disabled={enviando} onClick={registrarLote}>Registrar lote</Btn>
-            <Btn kind="ghost" disabled={enviando} onClick={() => { setNuevo(false); setPre(null); }}>Cancelar</Btn>
-          </div>
-        </Modal>
-      )}
+      {nuevo && (() => {
+        const totalUnidades = Object.values(form.figuras).reduce((s, c) => s + (+c || 0), 0);
+        const porProducto = {};
+        Object.entries(form.figuras).forEach(([figura, cant]) => {
+          if (!(+cant > 0)) return;
+          const p = productoDeFigura[figura];
+          const nombre = p ? p.nombre : figura;
+          porProducto[nombre] = (porProducto[nombre] || 0) + (+cant);
+        });
+        return (
+          <Modal title={pre ? `Producción desde sugerencia ${pre.id}` : "Registrar producción"} onClose={() => { setNuevo(false); setPre(null); }} wide>
+            <div className="grid sm:grid-cols-3 gap-x-4">
+              <Field label="Sabor"><Select options={sabores} value={form.sabor} onChange={(e) => setForm({ ...form, sabor: e.target.value })} /></Field>
+              <Field label="Relleno"><Select options={s.rellenos} value={form.relleno} onChange={(e) => setForm({ ...form, relleno: e.target.value })} /></Field>
+              <Field label="Salsa"><Select options={s.salsas} value={form.salsa} onChange={(e) => setForm({ ...form, salsa: e.target.value })} /></Field>
+            </div>
+
+            <div className="text-xs font-bold mb-1.5" style={{ color: T.choco2 }}>Cantidad por figura</div>
+            <div className="grid sm:grid-cols-2 gap-2 mb-3">
+              {figurasProducibles.map((f) => (
+                <div key={f.nombre} className="flex items-center justify-between gap-2 p-2.5 rounded-xl" style={{ background: T.vainilla }}>
+                  <div className="text-xs font-semibold leading-snug">
+                    {f.especie === "perro" ? "🐶" : "🐱"} {f.nombre}
+                    <div className="text-[10px] font-normal" style={{ color: T.choco2 }}>{f.gramajeG != null ? `${f.gramajeG} g` : ""}</div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button type="button" onClick={() => setForm({ ...form, figuras: { ...form.figuras, [f.nombre]: Math.max(0, (+form.figuras[f.nombre] || 0) - 1) } })} className="w-7 h-7 rounded-full font-bold" style={{ background: "#fff", border: "1px solid " + T.border, color: T.choco }}>−</button>
+                    <input type="number" min="0" step="1" value={form.figuras[f.nombre] ?? 0} onChange={(e) => setForm({ ...form, figuras: { ...form.figuras, [f.nombre]: Math.max(0, parseInt(e.target.value, 10) || 0) } })} className="w-12 text-center rounded-lg px-1 py-1 text-sm border" style={inputStyle} />
+                    <button type="button" onClick={() => setForm({ ...form, figuras: { ...form.figuras, [f.nombre]: (+form.figuras[f.nombre] || 0) + 1 } })} className="w-7 h-7 rounded-full font-bold" style={{ background: "#fff", border: "1px solid " + T.border, color: T.choco }}>+</button>
+                  </div>
+                </div>
+              ))}
+              {figurasProducibles.length === 0 && <Empty icon="🧊" text="No hay figuras activas con producto asignado." />}
+            </div>
+
+            <div className="text-xs font-semibold mb-3 p-2.5 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>
+              Total: <b>{totalUnidades}</b> unidades{Object.keys(porProducto).length > 0 && (" · " + Object.entries(porProducto).map(([nombre, cant]) => `${cant}× ${nombre}`).join(" · "))}
+              <div className="mt-0.5 text-[10px]">Solo informativo — el server calcula los lotes reales al registrar.</div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-x-4">
+              <Field label="Responsable"><Select options={db.users.filter((u) => u.activo).map((u) => u.nombre)} value={form.resp} onChange={(e) => setForm({ ...form, resp: e.target.value })} placeholder="Sin responsable" /></Field>
+              <Field label="Vencimiento interno"><Input type="date" value={form.vence} onChange={(e) => setForm({ ...form, vence: e.target.value })} /></Field>
+              <Field label="Horas de congelación objetivo"><Input type="number" min="1" step="1" value={form.horasCongelacion} onChange={(e) => setForm({ ...form, horasCongelacion: +e.target.value })} /></Field>
+            </div>
+            <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
+            <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los insumos de la receta (por la cantidad producida) y se crea un lote por cada figura elegida. Las piezas perfectas se suman al stock cuando cada lote pase a "Listo" (con desmolde).</div>
+            <div className="flex gap-2">
+              <Btn disabled={enviando || totalUnidades === 0} onClick={registrarCorrida}>Registrar producción</Btn>
+              <Btn kind="ghost" disabled={enviando} onClick={() => { setNuevo(false); setPre(null); }}>Cancelar</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {desmolde && (() => {
+        const suma = (+desmolde.perfectas || 0) + (+desmolde.imperfectas || 0) + (+desmolde.descartadas || 0);
+        const cuadra = suma === desmolde.prod;
+        return (
+          <Modal title={`Desmolde ${desmolde.batchId}`} onClose={() => setDesmolde(null)}>
+            <div className="text-sm font-semibold mb-3" style={{ color: T.choco2 }}>Producidas: {desmolde.prod}</div>
+            <div className="grid sm:grid-cols-3 gap-x-3">
+              <Field label="Perfectas"><Input type="number" min="0" value={desmolde.perfectas} onChange={(e) => setDesmolde({ ...desmolde, perfectas: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></Field>
+              <Field label="Imperfectas"><Input type="number" min="0" value={desmolde.imperfectas} onChange={(e) => setDesmolde({ ...desmolde, imperfectas: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></Field>
+              <Field label="Descartadas"><Input type="number" min="0" value={desmolde.descartadas} onChange={(e) => setDesmolde({ ...desmolde, descartadas: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></Field>
+            </div>
+            {!cuadra && <div className="text-xs font-bold mb-3" style={{ color: "#A03B2A" }}>La suma ({suma}) debe ser igual a las producidas ({desmolde.prod}).</div>}
+            <div className="flex gap-2">
+              <Btn disabled={enviandoDesmolde || !cuadra} onClick={confirmarDesmolde}>Confirmar</Btn>
+              <Btn kind="ghost" disabled={enviandoDesmolde} onClick={() => setDesmolde(null)}>Cancelar</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {msg && <Modal title="Aviso de producción" onClose={() => setMsg("")}><p className="text-sm m-0">{msg}</p><div className="mt-4"><Btn onClick={() => setMsg("")}>Listo</Btn></div></Modal>}
     </div>
@@ -6084,6 +6181,7 @@ export default function MomosOps() {
       d.inventory_items = cat.inventory_items;
       d.recipes = cat.recipes;
       d.users = cat.users;
+      d.figuras = cat.figuras || []; // catálogo figuras con product_id/gramaje (Producción v2)
       if (cat.brand_library) d.brand_library = cat.brand_library;
       Object.assign(d.settings, cat.settingsCatalogos);
       Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches

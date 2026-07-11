@@ -77,6 +77,22 @@ export async function crearLote(payload) {
   return data; // {batch_id, faltantes:[{item_id,insumo,faltan,unidad}], idempotente?}
 }
 
+/* ── Producción v2: corrida = un sabor + cantidades por figura (mezcla especies) ──
+   El server deriva figura→producto y crea los lotes hijos; crear_lote de arriba
+   queda vivo para lotes viejos/otros flujos, pero el form de Producción ya usa esto. */
+
+export async function crearCorrida(payload) {
+  const { data, error } = await supabase.rpc("crear_corrida", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {corrida_id, lotes:[{batch_id,product_id,prod,gramaje_g}], faltantes:[{item_id,insumo,faltan,unidad}], idempotente?}
+}
+
+export async function desmoldarLote(batchId, perfectas, imperfectas, descartadas) {
+  const { data, error } = await supabase.rpc("desmoldar_lote", { p_batch_id: batchId, p_perfectas: perfectas, p_imperfectas: imperfectas, p_descartadas: descartadas });
+  if (error) throw new Error(error.message);
+  return data; // {ok, estado:'Listo'}
+}
+
 export async function setLoteEstado(batchId, estado) {
   const { data, error } = await supabase.rpc("set_lote_estado", { p_batch_id: batchId, p_estado: estado });
   if (error) throw new Error(error.message);

@@ -65,15 +65,25 @@ on conflict (clave) do nothing;
 -- settings.figuras (MomosOps.jsx:228-236). DISCREPANCIA: la maqueta trae
 -- gramaje como texto "150 g" / "280 g"; el schema pide gramaje_g integer
 -- (línea 68) — se parsea el número y se descarta la unidad (siempre "g").
+--
+-- (Producción v2) gramaje_g refleja los pesos OFICIALES de la spec aprobada
+-- (ver rpc-produccion-v2.sql sección A.1). product_id NO va en este INSERT
+-- a propósito: figuras se siembra ANTES que products en el orden FK-seguro
+-- de este archivo (ver header, línea 11), así que 'PR01' todavía no existiría
+-- como fila de products en este punto del script — el UPDATE que asigna
+-- product_id va más abajo, inmediatamente después de sembrar products.
+-- OJO: este INSERT usa ON CONFLICT DO NOTHING — en una base YA sembrada no
+-- pisa filas existentes; los UPDATE de rpc-produccion-v2.sql son los que
+-- aplican el cambio de datos ahí. Este seed solo importa para deploys frescos.
 -- ---------------------------------------------------------------------------
 insert into figuras (nombre, especie, gramaje_g, activo) values
   ('Lizi',  'gato',  150, true),
-  ('Momo',  'gato',  150, true),
-  ('Toby',  'gato',  150, true),
-  ('Teo',   'gato',  280, true),
-  ('Max',   'perro', 150, true),
-  ('Rocco', 'perro', 150, true),
-  ('Danna', 'perro', 150, true)
+  ('Momo',  'gato',  180, true),
+  ('Toby',  'gato',  180, true),
+  ('Teo',   'gato',  250, true),
+  ('Max',   'perro', 180, true),
+  ('Rocco', 'perro', 180, true),
+  ('Danna', 'perro', 180, true)
 on conflict (nombre) do nothing;
 
 -- ---------------------------------------------------------------------------
@@ -263,6 +273,21 @@ insert into products (id, nombre, cat, tipo, especie, precio, precio_rappi, cost
   ('PR14', 'Granizado de mango biche',       'Momos Bebidas',   'pedido', null,   9000,  12000, 2600,  null, 6,  true,  false, true, 'Granizado de mango biche con sal y limón opcional.', null, null),
   ('PR15', 'Granizado de durazno',           'Momos Bebidas',   'pedido', null,   9000,  12000, 2600,  null, 6,  true,  false, true, 'Granizado dulce de durazno.', null, null)
 on conflict (id) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- figuras.product_id (Producción v2)
+-- Mapeo figura→producto de la spec aprobada. Va ACÁ (no en el INSERT de
+-- figuras de más arriba) porque products recién existe a partir de este
+-- punto del script — ver nota en el bloque de figuras. UPDATE en vez de
+-- INSERT ... ON CONFLICT porque la columna se rellena sobre filas ya
+-- sembradas, no se crean filas nuevas. Idempotente por naturaleza (un UPDATE
+-- que fija siempre el mismo valor final es re-ejecutable sin efectos extra).
+-- PR03/PR08 quedan SIN figura a propósito (decisión de la spec: no
+-- producibles desde el form de corrida hasta que se les asigne figura).
+-- ---------------------------------------------------------------------------
+update figuras set product_id = 'PR01' where nombre in ('Lizi','Momo','Toby');
+update figuras set product_id = 'PR02' where nombre in ('Max','Rocco','Danna');
+update figuras set product_id = 'PR04' where nombre = 'Teo';
 
 -- ---------------------------------------------------------------------------
 -- combo_components
