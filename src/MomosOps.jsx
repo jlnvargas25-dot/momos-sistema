@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
+import { fetchCatalogos } from "./lib/read-model";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -5881,6 +5882,8 @@ export default function MomosOps() {
   const [session, setSession] = useState(undefined); // undefined = verificando sesión · null = sin sesión
   const [perfil, setPerfil] = useState(null); // fila de public.users del usuario logueado (id, nombre, rol, activo)
   const [perfilError, setPerfilError] = useState(null);
+  const [catalogosDe, setCatalogosDe] = useState(null); // null=sin intentar | "servidor" | "cache"
+  const hidratadoRef = useRef(false);
   const [masAbierto, setMasAbierto] = useState(false);
   const [sync, setSync] = useState("cargando"); // cargando | guardado | guardando | local
   const saveTimer = useRef(null);
@@ -5916,6 +5919,31 @@ export default function MomosOps() {
     })();
     return () => { vivo = false; };
   }, [authUserId]);
+
+  // ── Fase 3 · slice 2: hidratar MAESTROS/CATÁLOGOS desde Supabase (una vez por carga) ──
+  // Lo operativo (pedidos, clientes, lotes…) sigue local hasta que su slice porte las escrituras.
+  useEffect(() => {
+    if (!perfil || !db || hidratadoRef.current) return;
+    hidratadoRef.current = true;
+    (async () => {
+      try {
+        const cat = await fetchCatalogos();
+        update((d) => {
+          d.products = cat.products;
+          d.inventory_items = cat.inventory_items;
+          d.recipes = cat.recipes;
+          d.users = cat.users;
+          if (cat.brand_library) d.brand_library = cat.brand_library;
+          Object.assign(d.settings, cat.settingsCatalogos);
+          normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
+        }, { silencioso: true });
+        setCatalogosDe("servidor");
+      } catch (e) {
+        console.warn("Catálogos: no se pudo hidratar desde Supabase; se usa la caché local.", e);
+        setCatalogosDe("cache");
+      }
+    })();
+  }, [perfil, db]);
 
   // Advertencia al cerrar la página si hay cambios pendientes + intento de guardado síncrono
   useEffect(() => {
@@ -5983,11 +6011,12 @@ export default function MomosOps() {
   // update(fn): fn muta una copia del db y PUEDE devolver un resultado leído de forma SÍNCRONA.
   // Se calcula fuera del updater de setState para no depender del timing eager-state de React 18
   // (esto arregla que cambiar/guardar/registrarLote/domicilio lean su resultado de forma confiable).
-  function update(fn) {
+  function update(fn, opts) {
     const next = cloneDb(dbRef.current);
     const result = fn(next);
     dbRef.current = next; // referencia siempre al día (flush al cerrar + updates encadenados en el mismo tick)
-    setSync("guardando");
+    // silencioso: la hidratación de catálogos no marca "guardando" — perderla al cerrar no es pérdida (se re-hidrata)
+    if (!(opts && opts.silencioso)) setSync("guardando");
     if (saveTimer.current) clearTimeout(saveTimer.current);
     const token = ++saveTokenRef.current;
     saveTimer.current = setTimeout(async () => {
@@ -6008,6 +6037,8 @@ export default function MomosOps() {
     const semilla = seedDb();
     dbRef.current = semilla;
     setDb(semilla);
+    hidratadoRef.current = false; // la semilla pisó los catálogos: re-hidratar del servidor
+    setCatalogosDe(null);
     const ok = await dbPersist(semilla);
     setSync(ok ? "guardado" : "error");
     setVista("Dashboard");
@@ -6033,6 +6064,8 @@ export default function MomosOps() {
     next = normalizeDbShape(next);
     dbRef.current = next;
     setDb(next);
+    hidratadoRef.current = false; // el backup pisó los catálogos: re-hidratar del servidor
+    setCatalogosDe(null);
     const ok = await dbPersist(next);
     setSync(ok ? "guardado" : "error");
     if (!ok) throw new Error("No se pudo guardar el backup restaurado.");
@@ -6203,7 +6236,7 @@ export default function MomosOps() {
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0" style={{ background: `linear-gradient(135deg, ${T.rosa}, ${T.coralSoft})` }} aria-hidden="true">🐱</div>
           <div className="min-w-0">
             <div className="display font-bold leading-none" style={{ fontSize: 18 }}>MOMOS <span style={{ color: T.coral }}>OPS</span></div>
-            <div className="text-[11px] font-semibold truncate" style={{ color: T.choco2 }}>D'Momos Sweet Love · El Caney, Cali · <span style={{ color: syncColor }}>{syncLabel}</span></div>
+            <div className="text-[11px] font-semibold truncate" style={{ color: T.choco2 }}>D'Momos Sweet Love · El Caney, Cali · <span style={{ color: syncColor }}>{syncLabel}</span>{catalogosDe && <span style={{ color: catalogosDe === "servidor" ? "#3F6B42" : "#96690F" }}> · catálogos: {catalogosDe === "servidor" ? "servidor ✓" : "caché"}</span>}</div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <div className="text-right hidden sm:block">
