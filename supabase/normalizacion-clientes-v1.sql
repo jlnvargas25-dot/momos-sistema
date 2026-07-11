@@ -1,41 +1,342 @@
 -- ============================================================================
--- MOMOS OPS — RPCs Postgres del ciclo de vida del pedido (v1)
+-- MOMOS OPS — Normalización de datos de clientes (v1) — 2026-07-11
 -- Target: Supabase / PostgreSQL 17. Fuente de verdad de columnas: schema-v5.sql.
--- Fuente de verdad de lógica: src/MomosOps.jsx (maqueta, 22 bugs pagados),
--- portada FIEL — incluye el falso positivo conocido del flujo de beneficios.
+-- Fuente de verdad de lógica: upsert_cliente (rpc-clientes-v1.sql) y crear_pedido
+-- (rpc-pedidos-v1.sql, rama nuevo_cliente).
 --
--- Alcance v1: staff únicamente (crear_pedido, set_order_status + wrappers).
--- Reservas 'Temporal'/expira del shop ("Pide MOMOS") quedan FUERA de v1.
+-- REGLA DE ORO (spec aprobada por Julián, 2026-07-11): la normalización vive
+-- SERVER-SIDE, dentro de las RPCs. El front NUNCA normaliza — solo manda lo
+-- que el usuario tipeó. Así cualquier cliente (OPS hoy, Pide MOMOS mañana,
+-- un curl directo) obtiene el mismo dato limpio, sin depender de JS duplicado.
 --
--- PARCHEADO (normalizacion-clientes-v1.sql, 2026-07-11): crear_pedido —
--- rama nuevo_cliente normaliza teléfono/nombre/instagram/dirección y
--- reusa cliente existente por teléfono normalizado (dedupe); ambas ramas
--- de adiciones (slot de combo y línea simple) validan precio >= 0,
--- cant > 0, insumo_cant >= 0 antes de insertar. DEPENDENCIA: usa
--- _normalizar_telefono() — ejecutar normalizacion-clientes-v1.sql ANTES
--- de reaplicar este mirror standalone en una base nueva.
+-- Alcance: teléfono → E.164 colombiano, dedupe de clientes por teléfono
+-- normalizado, instagram → handle limpio, cumple → validación de rango real,
+-- nombre → espacios colapsados, dirección → trim, y un hueco de seguridad en
+-- crear_pedido (precio de adición negativo = descuento inyectado).
 --
--- NO EJECUTAR contra ninguna base desde acá — archivo de definición únicamente.
+-- Este archivo se ejecuta UNA VEZ, de punta a punta, en este orden:
+--   1) _normalizar_telefono (helper interno)
+--   2) UPDATE de normalización sobre customers.telefono existentes
+--   3) índice único parcial sobre customers.telefono
+--   4) upsert_cliente v2 (CREATE OR REPLACE completo)
+--   5) crear_pedido (CREATE OR REPLACE completo, con la rama nuevo_cliente y
+--      las validaciones de adiciones parcheadas — el resto queda byte-idéntico
+--      a rpc-pedidos-v1.sql)
+--
+-- NO EJECUTAR contra ninguna base desde el editor/asistente — archivo de
+-- definición únicamente. Ejecutar a mano en el SQL Editor de Supabase.
+--
+-- VENTANA DE EJECUCIÓN: este archivo debe correr SIN escrituras concurrentes
+-- sobre customers (ventana breve) — el UPDATE de normalización (sección 2) y
+-- la creación del índice único (sección 3) asumen que ningún alta/edición de
+-- cliente corre en paralelo. Si se reaplica esta migración a mano y luego se
+-- CAMBIA la definición del índice de la sección 3, un `create index if not
+-- exists` NO reconstruye nada — Postgres solo chequea que el NOMBRE ya
+-- exista, no compara definiciones. Un cambio de índice real requiere
+-- `drop index` explícito antes de recrearlo.
 -- ============================================================================
 
+-- TRANSACCIÓN EXPLÍCITA: todo el archivo corre dentro de un único begin/commit
+-- — si cualquier statement de acá abajo falla a mitad de camino (incluido el
+-- guard de colisiones de la sección 2), Postgres revierte TODO: no queda el
+-- helper creado sin el índice, ni el índice sin las RPCs actualizadas.
+begin;
+
 -- ============================================================================
--- 0) Columnas guard (flags atómicos que la maqueta necesita y el schema no tiene)
+-- 1) _normalizar_telefono(text) returns text
+--
+-- Decisiones de normalización (documentadas acá porque son las que definen
+-- el comportamiento, no solo el "qué hace" del código):
+--
+--   a) Se despoja todo lo que no sea dígito (espacios, guiones, paréntesis,
+--      '+'). Un teléfono es una secuencia de dígitos; el resto es formato.
+--   b) Si after-strip empieza con '00' (prefijo internacional de marcado,
+--      no de E.164), se le saca ese '00' ANTES de evaluar el resto — '0057...'
+--      se trata como si el usuario hubiese tipeado '57...'.
+--   c) Si el resultado empieza con '57' y mide 12 dígitos exacto (57 + 10
+--      dígitos de número colombiano) → ya está en E.164, se deja tal cual.
+--   d) Si mide exactamente 10 dígitos (número colombiano sin indicativo de
+--      país) → se le antepone '57'.
+--   e) Vacío → se devuelve '' (no hay teléfono, no es un error).
+--   f) CUALQUIER OTRA FORMA (longitudes raras, extranjeros, typos con dígitos
+--      de más o de menos) → se guardan los dígitos ya despojados, TAL CUAL,
+--      sin adivinar y SIN LANZAR EXCEPCIÓN. Justificación de negocio: un
+--      teléfono con forma rara no puede bloquear una venta — MOMOS prefiere
+--      guardar un dato imperfecto (y corregible a mano después) a perder el
+--      pedido completo por un constraint. Este es el único punto de la spec
+--      donde "no adivinar" significa "no forzar a 10/12 dígitos", no "fallar".
+--
+-- IMMUTABLE: la salida depende solo del argumento (sin acceso a tablas ni al
+-- reloj) — habilita su uso en la definición del índice único parcial de la
+-- sección 3 sin que Postgres se queje de funciones no deterministas.
+--
+-- INTERNO: revoke de public, anon Y authenticated. Solo lo llaman las RPCs
+-- definer de abajo (mismo patrón que fix-grants-v1.sql, sección de defensa en
+-- profundidad — el default privilege de Supabase otorga EXECUTE a
+-- authenticated en toda función nueva; hay que revocarlo a mano).
+-- ============================================================================
+
+create or replace function _normalizar_telefono(p_telefono text) returns text
+language plpgsql immutable as $$
+declare
+  v_digitos text;
+begin
+  v_digitos := regexp_replace(coalesce(p_telefono, ''), '\D', '', 'g');
+
+  if v_digitos = '' then
+    return '';
+  end if;
+
+  if left(v_digitos, 2) = '00' then
+    v_digitos := substring(v_digitos from 3);
+  end if;
+
+  if left(v_digitos, 2) = '57' and length(v_digitos) = 12 then
+    return v_digitos;
+  end if;
+
+  if length(v_digitos) = 10 then
+    return '57' || v_digitos;
+  end if;
+
+  -- Forma no reconocida: se guardan los dígitos despojados tal cual (ver
+  -- decisión f arriba). No es un error — es un dato imperfecto que no debe
+  -- bloquear la venta.
+  return v_digitos;
+end $$;
+
+revoke execute on function _normalizar_telefono(text) from public, anon, authenticated;
+
+-- ============================================================================
+-- 2) Normalización de los teléfonos ya existentes en customers.
+--
+-- Verificado antes de escribir este archivo: hoy solo hay 2 filas con
+-- teléfono no vacío (C09, C10) y CERO colisiones entre sus formas
+-- normalizadas — el UPDATE de abajo no puede disparar el índice único de la
+-- sección 3 (que se crea DESPUÉS, a propósito, para no correr el riesgo de
+-- que este UPDATE choque contra un índice que todavía no reflejaba data
+-- vieja sin normalizar).
+--
+-- GUARD previo al UPDATE: si la base tuviera más filas de las verificadas
+-- arriba (o corriera en otro entorno), dos teléfonos con formas DISTINTAS hoy
+-- pueden normalizar al MISMO valor (p.ej. '3001234567' y '+57 300 123 4567').
+-- Ese caso rompería el UPDATE de abajo con un unique_violation tardío recién
+-- al crear el índice de la sección 3 — o, peor, el UPDATE simplemente no
+-- puede escribir dos filas con el mismo telefono aunque el índice todavía no
+-- exista, porque igual violaría la futura unicidad de negocio. Este bloque
+-- aborta ANTES, con un mensaje que lista los valores en colisión, en vez de
+-- dejar el UPDATE a medio aplicar.
+-- ============================================================================
+
+do $$
+declare
+  v_colisiones text;
+begin
+  select string_agg(dup.telefono_norm || ' (' || dup.cant || ' clientes)', ', ')
+    into v_colisiones
+  from (
+    select _normalizar_telefono(telefono) as telefono_norm, count(*) as cant
+    from customers
+    -- Filtro por el valor NORMALIZADO (no el raw): un teléfono-basura sin
+    -- dígitos normaliza a '' y el índice lo excluye — no es colisión real.
+    where _normalizar_telefono(telefono) <> ''
+    group by _normalizar_telefono(telefono)
+    having count(*) > 1
+  ) dup;
+
+  if v_colisiones is not null then
+    raise exception 'Normalización de teléfono abortada: hay teléfonos que colisionan tras normalizar: %. Resolvé el duplicado a mano antes de reaplicar este archivo.', v_colisiones;
+  end if;
+end $$;
+
+update customers
+set telefono = _normalizar_telefono(telefono)
+where telefono <> _normalizar_telefono(telefono);
+
+-- ============================================================================
+-- 3) Índice único parcial: un teléfono normalizado no puede pertenecer a más
+-- de un cliente. Parcial (WHERE telefono <> '') porque múltiples clientes
+-- con teléfono vacío SÍ son válidos (leads incompletos, alta a mano sin
+-- dato todavía) — no queremos que '' colisione contra sí mismo.
+-- ============================================================================
+
+create unique index if not exists customers_telefono_unique_idx
+  on customers (telefono)
+  where telefono <> '';
+
+-- ============================================================================
+-- 4) upsert_cliente v2 — CREATE OR REPLACE completo.
+--
+-- Cambios respecto a v1 (rpc-clientes-v1.sql):
+--   - telefono se normaliza con _normalizar_telefono antes de cualquier uso.
+--   - instagram se normaliza (lowercase, sin '@', sin forma URL).
+--   - cumple valida rango real (MM 01-12, DD 01-31), no solo el shape \d{2}-\d{2}.
+--   - nombre: trim + colapso de espacios internos múltiples.
+--   - direccion: trim (ya venía con coalesce a '', se le suma trim).
+--   - ALTA: el lookup de idempotencia deja de ser nombre+teléfono exacto y
+--     pasa a ser SOLO por teléfono normalizado (dedupe real: mismo teléfono,
+--     nombre distinto o mal tipeado = mismo lead, se devuelve el id existente
+--     en vez de crear un duplicado).
+--   - EDICIÓN: si el teléfono nuevo (normalizado) ya pertenece a OTRO
+--     cliente, se lanza una excepción amigable ANTES del UPDATE (pre-check),
+--     para no dejar que el unique_violation crudo de Postgres le llegue al
+--     usuario.
+-- ============================================================================
+
+create or replace function upsert_cliente(p_customer_id text, p jsonb)
+returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_nombre text := trim(regexp_replace(coalesce(p->>'nombre',''), '\s+', ' ', 'g'));
+  v_telefono text := _normalizar_telefono(p->>'telefono');
+  v_instagram text;
+  v_cumple text := coalesce(p->>'cumple','');
+  v_estado text;
+  v_id text;
+  v_existe customers%rowtype;
+  v_dueno_actual text;
+begin
+  if not is_staff() then
+    raise exception 'Solo staff activo puede crear o editar clientes';
+  end if;
+
+  if v_nombre = '' or v_telefono = '' then
+    raise exception 'Nombre y teléfono son obligatorios.';
+  end if;
+
+  v_estado := coalesce(nullif(p->>'estado',''), 'Nuevo');
+  if v_estado not in ('Nuevo','Recurrente','VIP','Riesgo por reclamos','Inactivo') then
+    raise exception 'Estado de cliente inválido: %', v_estado;
+  end if;
+  if nullif(p->>'canal','') is not null and p->>'canal' not in ('WhatsApp','Instagram','Rappi','Directo') then
+    raise exception 'Canal inválido: %', p->>'canal';
+  end if;
+
+  -- Instagram: lowercase, sin '@', sin forma URL (instagram.com/handle, con o
+  -- sin https/www, con o sin slash/query final) → handle pelado.
+  v_instagram := lower(trim(coalesce(p->>'instagram', '')));
+  if v_instagram <> '' then
+    v_instagram := regexp_replace(v_instagram, '^(https?://)?(www\.)?instagram\.com/', '');
+    v_instagram := regexp_replace(v_instagram, '^@', '');
+    v_instagram := regexp_replace(v_instagram, '[/?].*$', '');
+  end if;
+
+  -- Pre-validación amigable del CHECK de la tabla (cumple = '' o 'MM-DD'):
+  -- se tighten acá a rangos reales (MM 01-12, DD 01-31) — el CHECK de la
+  -- tabla solo exige el shape \d{2}-\d{2}, esta RPC es más estricta que eso
+  -- a propósito, sin tocar el constraint de la tabla.
+  if v_cumple <> '' then
+    if v_cumple !~ '^\d{2}-\d{2}$' then
+      raise exception 'Cumpleaños inválido (formato MM-DD): %', v_cumple;
+    end if;
+    if split_part(v_cumple,'-',1)::int not between 1 and 12
+       or split_part(v_cumple,'-',2)::int not between 1 and 31 then
+      raise exception 'Cumpleaños inválido (mes o día fuera de rango): %', v_cumple;
+    end if;
+  end if;
+
+  v_id := nullif(p_customer_id, '');
+
+  if v_id is not null then
+    select * into v_existe from customers where id = v_id for update;
+    if v_existe.id is null then
+      raise exception 'El cliente % no existe', v_id;
+    end if;
+
+    -- Pre-check amigable: si el teléfono normalizado ya es de OTRO cliente,
+    -- no dejamos que reviente el unique_violation crudo del índice.
+    select id into v_dueno_actual from customers
+    where telefono = v_telefono and id <> v_id;
+    if v_dueno_actual is not null then
+      raise exception 'Ese teléfono ya pertenece a otro cliente (%).', v_dueno_actual;
+    end if;
+
+    update customers set
+      nombre    = v_nombre,
+      telefono  = v_telefono,
+      instagram = v_instagram,
+      canal     = nullif(p->>'canal',''),
+      barrio    = coalesce(p->>'barrio', ''),
+      direccion = trim(coalesce(p->>'direccion', '')),
+      cumple    = v_cumple,
+      favoritos = coalesce(p->>'favoritos', ''),
+      estado    = v_estado,
+      notas     = coalesce(p->>'notas', '')
+    where id = v_id;
+
+    perform _add_audit('Cliente', v_id, 'Cliente editado', '', v_nombre);
+    return v_id;
+  else
+    -- Idempotencia (doble click / reintento del UI, y dedupe real de leads):
+    -- mismo teléfono normalizado = mismo cliente; se devuelve el existente
+    -- sin duplicar, sin importar si el nombre vino distinto o mal tipeado.
+    select id into v_id from customers
+    where telefono = v_telefono
+    order by id limit 1;
+    if v_id is not null then
+      return v_id;
+    end if;
+
+    v_id := next_id('customer', 'C', 2);
+
+    -- Alta bajo carrera: dos requests concurrentes con el mismo teléfono
+    -- normalizado pueden pasar ambas el SELECT de idempotencia de arriba; el
+    -- índice único customers_telefono_unique_idx (sección 3) es el árbitro
+    -- real — la perdedora reusa el id ya creado por la ganadora, en vez de
+    -- reventar con un unique_violation crudo. Mismo patrón que crear_lote()
+    -- en rpc-produccion-v1.sql.
+    begin
+      insert into customers (
+        id, nombre, telefono, instagram, canal, barrio, direccion,
+        cumple, favoritos, estado, notas, primera, ultima, total, pedidos
+      ) values (
+        v_id, v_nombre, v_telefono, v_instagram, nullif(p->>'canal',''),
+        coalesce(p->>'barrio',''), trim(coalesce(p->>'direccion','')), v_cumple,
+        coalesce(p->>'favoritos',''), v_estado, coalesce(p->>'notas',''),
+        null, null, 0, 0
+      );
+    exception when unique_violation then
+      select id into v_id from customers where telefono = v_telefono order by id limit 1;
+      if v_id is not null then
+        return v_id;
+      end if;
+      raise;  -- otra violación de unicidad (p.ej. PK): no es idempotencia, propagar
+    end;
+
+    perform _add_audit('Cliente', v_id, 'Cliente creado a mano (lead)', '', v_nombre);
+    return v_id;
+  end if;
+end $$;
+
+revoke execute on function upsert_cliente(text, jsonb) from public, anon, authenticated;
+grant execute on function upsert_cliente(text, jsonb) to authenticated;
+
+-- ============================================================================
+-- 5) crear_pedido — CREATE OR REPLACE completo.
+--
+-- Copia byte-idéntica de rpc-pedidos-v1.sql salvo:
+--   a) rama nuevo_cliente (dentro de "Cliente: existente (id) o nuevo"):
+--      ahora normaliza teléfono/nombre/instagram/dirección y busca por
+--      teléfono normalizado ANTES de insertar. Si existe, REUSA ese
+--      customer_id en vez de crear un duplicado (mismo criterio que
+--      upsert_cliente alta).
+--   b) validación de cada adición (línea simple Y slot de combo): precio >= 0,
+--      cant > 0, insumo_cant >= 0. precio de adición es el ÚNICO valor
+--      monetario que viaja desde el cliente sin recalcular server-side —
+--      uno negativo es un descuento inyectable. Se valida ANTES del insert
+--      en order_item_adiciones, en AMBOS lugares donde el body original
+--      inserta adiciones (rama de slot de combo, ~línea 594-611 del
+--      original; rama de línea simple, ~línea 626-641 del original).
+--
+-- El resto del cuerpo (helpers, set_order_status, marcar_pagado,
+-- cancelar_pedido, grants) NO se toca — se restatea tal cual para que
+-- reaplicar este archivo nunca deje al mirror en un estado parcial.
 -- ============================================================================
 
 alter table orders add column if not exists inventario_reservado boolean not null default false;
 alter table orders add column if not exists insumos_descontados boolean not null default false;
 alter table orders add column if not exists metricas_cliente_actualizadas boolean not null default false;
 
--- ============================================================================
--- 1) Helpers internos (prefijo _). SECURITY DEFINER, sin grants — solo el
---    definer los invoca desde las RPCs públicas de la sección 2.
--- ============================================================================
-
--- ---------------------------------------------------------------------------
--- _add_audit: inserta una fila en audit_logs. user_id se resuelve desde
--- auth.uid() (puede ser null si corre desde un rol sin sesión de staff, p.ej.
--- pruebas internas — audit_logs.user_id es nullable a propósito).
--- ---------------------------------------------------------------------------
 create or replace function _add_audit(
   p_entidad text, p_entidad_id text, p_accion text,
   p_de text default '', p_a text default ''
@@ -48,9 +349,6 @@ begin
   values (next_id('audit','A',2), v_user_id, p_entidad, p_entidad_id, p_accion, p_de, p_a);
 end $$;
 
--- ---------------------------------------------------------------------------
--- _add_movement: inserta un movimiento de inventario.
--- ---------------------------------------------------------------------------
 create or replace function _add_movement(
   p_tipo text, p_item_id text, p_cant numeric, p_nota text default '',
   p_order_id text default null, p_batch_id text default null
@@ -61,10 +359,6 @@ begin
   values (next_id('movement','M',2), p_tipo, p_item_id, p_cant, p_nota, p_order_id, p_batch_id);
 end $$;
 
--- ---------------------------------------------------------------------------
--- _add_reservation: inserta una reserva de inventario. tipo 'producto' usa
--- product_id; 'empaque'/'insumo' usan item_id (constraint ref_exclusiva).
--- ---------------------------------------------------------------------------
 create or replace function _add_reservation(
   p_order_id text, p_tipo text, p_product_id text, p_item_id text,
   p_nombre text, p_cantidad numeric
@@ -75,16 +369,11 @@ begin
   values (next_id('reservation','RES-',0), p_order_id, p_tipo, p_product_id, p_item_id, p_nombre, p_cantidad);
 end $$;
 
--- ---------------------------------------------------------------------------
--- _tiene_evidencia: existe fila en evidences con ese order_id y tipo exacto.
--- storage_path es not null en el schema, no hace falta re-chequearlo.
--- ---------------------------------------------------------------------------
 create or replace function _tiene_evidencia(p_order_id text, p_tipo text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from evidences where order_id = p_order_id and tipo = p_tipo)
 $$;
 
--- _tiene_sello: 'Caja cerrada con sello' O 'Bolsa sellada' (gate Empacado/En ruta/Entregado).
 create or replace function _tiene_sello(p_order_id text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
@@ -93,13 +382,6 @@ language sql stable security definer set search_path = public as $$
   )
 $$;
 
--- ---------------------------------------------------------------------------
--- _order_subtotal: subtotal EN CREACIÓN calculado desde order_items ya
--- insertados en la transacción de crear_pedido (precio*cant + adiciones,
--- escaladas por item.cant — hijas de combo tienen precio 0 y cant=1, sus
--- adiciones cuentan con item.cant=1). No confundir con v_order_totals
--- (esa vista es post-hoc y agrega costos; acá solo se necesita ventas).
--- ---------------------------------------------------------------------------
 create or replace function _order_subtotal(p_order_id text) returns numeric
 language sql stable security definer set search_path = public as $$
   select coalesce(sum(oi.precio * oi.cant), 0)
@@ -113,10 +395,6 @@ language sql stable security definer set search_path = public as $$
   where oi.order_id = p_order_id
 $$;
 
--- ---------------------------------------------------------------------------
--- _deduct_recipe: descuenta receta de un producto. TOMA REAL (least(stock,req)),
--- jamás la teórica. Devuelve texto de faltantes acumulados (o '' si no hubo).
--- ---------------------------------------------------------------------------
 create or replace function _deduct_recipe(
   p_product_id text, p_unidades numeric, p_nota text, p_order_id text default null
 ) returns text
@@ -150,11 +428,6 @@ begin
   return v_faltantes;
 end $$;
 
--- ---------------------------------------------------------------------------
--- _reserve_inventory: recorre TODOS los order_items del pedido y descuenta/
--- reserva stock. Acumula faltantes → production_suggestions + audits
--- agregados. Devuelve faltantes como jsonb (array de objetos).
--- ---------------------------------------------------------------------------
 create or replace function _reserve_inventory(p_order_id text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -337,11 +610,6 @@ begin
   return v_faltantes;
 end $$;
 
--- ---------------------------------------------------------------------------
--- _release_reservations: libera reservas 'Reservada' del pedido devolviendo
--- stock. 'producto' sin movement (paridad con la maqueta); 'empaque'/'insumo'
--- con movement 'Entrada'. Devuelve cantidad de reservas liberadas.
--- ---------------------------------------------------------------------------
 create or replace function _release_reservations(p_order_id text) returns integer
 language plpgsql security definer set search_path = public as $$
 declare
@@ -373,9 +641,6 @@ begin
   return v_liberadas;
 end $$;
 
--- ---------------------------------------------------------------------------
--- _consume_reservations: marca 'Reservada'→'Consumida' (efecto Entregado).
--- ---------------------------------------------------------------------------
 create or replace function _consume_reservations(p_order_id text) returns void
 language plpgsql security definer set search_path = public as $$
 begin
@@ -383,14 +648,12 @@ begin
   where order_id = p_order_id and estado = 'Reservada';
 end $$;
 
--- ============================================================================
--- 2) RPCs públicas
--- ============================================================================
-
 -- ---------------------------------------------------------------------------
 -- crear_pedido(p jsonb) returns jsonb
 -- Payload: ver spec del orquestador. El servidor NUNCA confía en precios del
--- cliente (excepto precio de adiciones, editable pero con costo snapshoteado).
+-- cliente (excepto precio de adiciones, editable pero con costo snapshoteado
+-- Y AHORA validado >= 0 — ver sección "Cliente nuevo" y las dos ramas de
+-- adiciones más abajo, marcadas con NORMALIZACIÓN v1 / SECURITY v1).
 -- ---------------------------------------------------------------------------
 create or replace function crear_pedido(p jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -438,8 +701,7 @@ declare
   v_min_lineas boolean := false;
   v_hoy date := (now() at time zone 'America/Bogota')::date;   -- fecha operativa del negocio (la sesión corre en UTC)
   v_ahora time := (now() at time zone 'America/Bogota')::time; -- hora operativa del negocio
-  -- NORMALIZACIÓN v1 (normalizacion-clientes-v1.sql, 2026-07-11): datos ya
-  -- limpios del cliente nuevo (si aplica) — ver rama "Cliente" más abajo.
+  -- NORMALIZACIÓN v1: datos ya limpios del cliente nuevo (si aplica)
   v_nuevo_nombre text;
   v_nuevo_telefono text;
   v_nuevo_instagram text;
@@ -467,10 +729,10 @@ begin
   end if;
 
   -- Cliente: existente (id) o nuevo (nombre+telefono obligatorios)
-  -- NORMALIZACIÓN v1 (normalizacion-clientes-v1.sql, 2026-07-11): teléfono
-  -- normalizado ANTES de buscar/insertar; si el teléfono normalizado ya
-  -- pertenece a un cliente existente, se REUSA ese id en vez de crear un
-  -- duplicado (mismo criterio que upsert_cliente alta).
+  -- NORMALIZACIÓN v1: teléfono normalizado ANTES de buscar/insertar; si el
+  -- teléfono normalizado ya pertenece a un cliente existente, se REUSA ese
+  -- id en vez de crear un duplicado (mismo criterio que upsert_cliente alta,
+  -- normalizacion-clientes-v1.sql).
   v_customer_id := nullif(p->>'customer_id','');
   v_nuevo := p->'nuevo_cliente';
   if v_customer_id is null then
@@ -640,11 +902,11 @@ begin
           );
 
           -- Adiciones del slot (si vienen): cuelgan de la HIJA recién insertada.
-          -- SECURITY v1 (normalizacion-clientes-v1.sql, 2026-07-11): precio de
-          -- adición es el único valor monetario que viaja del cliente sin
-          -- recalcular server-side — se valida ANTES de insertar (precio >= 0,
-          -- cant > 0, insumo_cant >= 0), para que un precio negativo no se
-          -- cuele como descuento inyectado en _order_subtotal.
+          -- SECURITY v1: precio de adición es el único valor monetario que
+          -- viaja del cliente sin recalcular server-side — se valida acá
+          -- ANTES de insertar (precio >= 0, cant > 0, insumo_cant >= 0), para
+          -- que un precio negativo no se cuele como descuento inyectado en
+          -- _order_subtotal.
           if v_slot->'adiciones' is not null then
             for v_ad in select * from jsonb_array_elements(v_slot->'adiciones')
             loop
@@ -686,9 +948,8 @@ begin
         coalesce((v_linea->>'cant')::numeric,1), v_precio, v_costo
       );
 
-      -- SECURITY v1 (normalizacion-clientes-v1.sql, 2026-07-11): misma
-      -- validación de adiciones que en la rama de combo de arriba
-      -- (precio >= 0, cant > 0, insumo_cant >= 0).
+      -- SECURITY v1: misma validación de adiciones que en la rama de combo
+      -- de arriba (precio >= 0, cant > 0, insumo_cant >= 0).
       if v_linea->'adiciones' is not null then
         for v_ad in select * from jsonb_array_elements(v_linea->'adiciones')
         loop
@@ -788,6 +1049,9 @@ end $$;
 -- ---------------------------------------------------------------------------
 -- set_order_status(order_id, estado, venta_rapida) returns jsonb
 -- Centro del ciclo de vida. Lock FOR UPDATE al entrar → serializa transiciones.
+-- (byte-idéntico a rpc-pedidos-v1.sql — no forma parte del alcance de esta
+-- normalización, se restatea para que el archivo sea ejecutable de punta a
+-- punta sin dejar el mirror a medio actualizar)
 -- ---------------------------------------------------------------------------
 create or replace function set_order_status(
   p_order_id text, p_estado text, p_venta_rapida boolean default false
@@ -1094,17 +1358,23 @@ begin
 end $$;
 
 -- ============================================================================
--- 3) Grants
+-- Grants (restateados tal cual rpc-pedidos-v1.sql, salvo crear_pedido: ver
+-- nota abajo — se separa a un revoke/grant propio para seguir el patrón
+-- uniforme del header de este archivo, igual que upsert_cliente en la
+-- sección 4. set_order_status/marcar_pagado/cancelar_pedido no forman parte
+-- del alcance de esta normalización y quedan byte-idénticos al mirror.)
 -- ============================================================================
 
--- crear_pedido incluye authenticated en el revoke (defensa en profundidad,
--- normalizacion-clientes-v1.sql) — el grant explícito de abajo lo re-otorga.
+-- crear_pedido: patrón uniforme (revoke de public, anon Y authenticated,
+-- después grant explícito a authenticated) — mismo criterio que
+-- upsert_cliente (sección 4).
 revoke execute on function crear_pedido(jsonb) from public, anon, authenticated;
+grant execute on function crear_pedido(jsonb) to authenticated;
+
 revoke execute on function set_order_status(text, text, boolean) from public, anon;
 revoke execute on function marcar_pagado(text) from public, anon;
 revoke execute on function cancelar_pedido(text) from public, anon;
 
-grant execute on function crear_pedido(jsonb) to authenticated;
 grant execute on function set_order_status(text, text, boolean) to authenticated;
 grant execute on function marcar_pagado(text) to authenticated;
 grant execute on function cancelar_pedido(text) to authenticated;
@@ -1123,3 +1393,70 @@ revoke execute on function _deduct_recipe(text, numeric, text, text) from public
 revoke execute on function _reserve_inventory(text) from public, anon;
 revoke execute on function _release_reservations(text) from public, anon;
 revoke execute on function _consume_reservations(text) from public, anon;
+
+commit;
+
+-- ============================================================================
+-- Verificación esperada
+-- ============================================================================
+--
+-- Teléfono → E.164:
+--   select _normalizar_telefono('+57 300 123-4567');        -- → '573001234567'
+--   select _normalizar_telefono('300 123 4567');             -- → '573001234567'
+--   select _normalizar_telefono('0057 300 1234567');         -- → '573001234567'
+--   select _normalizar_telefono('573001234567');             -- → '573001234567' (ya E.164, se deja)
+--   select _normalizar_telefono('');                         -- → ''
+--   select _normalizar_telefono('abc');                      -- → '' (sin dígitos)
+--   select _normalizar_telefono('123');                      -- → '123' (forma rara: se guarda tal cual, NO explota)
+--   select _normalizar_telefono('570000000000');             -- → '570000000000' (12 dígitos con prefijo '57':
+--   -- se acepta como E.164 y se guarda tal cual, SIN re-validar contra rangos
+--   -- reales de celular colombiano (3XX...) — intencional: esta función solo
+--   -- valida FORMA (57 + 12 dígitos), no rangos de operador.
+--
+-- Índice único de teléfono:
+--   select count(*) from customers where telefono <> '' group by telefono having count(*) > 1;
+--   -- → 0 filas (ninguna colisión post-normalización)
+--
+-- Dedupe en upsert_cliente (alta):
+--   select upsert_cliente(null, '{"nombre":"Ana","telefono":"3001234567"}'::jsonb);      -- crea C11 (ejemplo)
+--   select upsert_cliente(null, '{"nombre":"Ana P.","telefono":"+57 300 123 4567"}'::jsonb);
+--   -- → devuelve el MISMO id de C11 (lead idempotente, no duplica)
+--
+-- Dedupe en upsert_cliente (edición, colisión):
+--   -- si C05 ya tiene telefono '573009999999' y se intenta:
+--   select upsert_cliente('C11', '{"nombre":"Ana","telefono":"300 999 9999"}'::jsonb);
+--   -- → exception 'Ese teléfono ya pertenece a otro cliente (C05).'
+--
+-- Dedupe en crear_pedido (rama nuevo_cliente):
+--   select crear_pedido('{"canal":"WhatsApp","lineas":[{"product_id":"P01","cant":1}],
+--     "nuevo_cliente":{"nombre":"Ana Duplicada","telefono":"3001234567"}}'::jsonb);
+--   -- → customer_id del pedido = mismo id de C11, NO crea un C12 nuevo
+--
+-- Instagram:
+--   select upsert_cliente(null, '{"nombre":"x","telefono":"3000000001","instagram":"@Momos.co"}'::jsonb);
+--   -- → instagram guardado: 'momos.co'
+--   -- 'https://www.instagram.com/momos.co/' → 'momos.co'
+--   -- 'instagram.com/momos.co?hl=es'         → 'momos.co'
+--
+-- Cumple (rango real):
+--   select upsert_cliente(null, '{"nombre":"x","telefono":"3000000002","cumple":"13-01"}'::jsonb);
+--   -- → exception 'Cumpleaños inválido (mes o día fuera de rango): 13-01' (mes 13 no existe)
+--   select upsert_cliente(null, '{"nombre":"x","telefono":"3000000003","cumple":"02-30"}'::jsonb);
+--   -- → ok, cumple guardado '02-30' (día 30 no existe en NINGÚN febrero, pero
+--   --    la validación es de RANGO puro —MM 01-12, DD 01-31— no de días-por-
+--   --    mes real. Limitación conocida y aceptada a propósito: el shape MM-DD
+--   --    no tiene año, así que no hay forma de distinguir bisiesto sin uno, y
+--   --    complicar con esa lógica no aporta valor de negocio acá)
+--   select upsert_cliente(null, '{"nombre":"x","telefono":"3000000004","cumple":"12-25"}'::jsonb);
+--   -- → ok, cumple guardado '12-25'
+--
+-- Nombre (colapso de espacios):
+--   select upsert_cliente(null, '{"nombre":"Ana   María   Pérez","telefono":"3000000005"}'::jsonb);
+--   -- → nombre guardado: 'Ana María Pérez'
+--
+-- Adición negativa rechazada en crear_pedido:
+--   select crear_pedido('{"canal":"WhatsApp","customer_id":"C01",
+--     "lineas":[{"product_id":"P01","cant":1,"adiciones":[{"nombre":"Salsa extra","precio":-5000,"cant":1}]}]}'::jsonb);
+--   -- → exception 'Precio de adición inválido (negativo): Salsa extra'
+--   -- (mismo resultado si la adición negativa viene dentro de un slot de combo)
+-- ============================================================================
