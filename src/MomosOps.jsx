@@ -1919,20 +1919,27 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
 
   // Fase 3: la transición vive en el SERVER (set_order_status con todas las gates). Luego re-fetch.
   async function cambiar(orderId, estado, opts) {
+    let res;
     try {
-      const res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
-      await refrescar();
-      const faltantes = (res && res.faltantes) || [];
-      if (faltantes.length) {
-        const prod = faltantes.filter((x) => x.area !== "Inventario");
-        const ins = faltantes.filter((x) => x.area === "Inventario");
-        const partes = [];
-        if (prod.length) partes.push(`falta producir: ${prod.map((x) => x.cant + "× " + x.producto).join(", ")}`);
-        if (ins.length) partes.push(`el inventario no alcanzó para: ${ins.map((x) => x.cant + "× " + x.producto).join(", ")}`);
-        setAviso({ titulo: "Inventario insuficiente", texto: `Se reservó lo disponible, pero ${partes.join(" y ")}. Ya quedó la sugerencia en Producción.` });
-      }
+      res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
     } catch (e) {
       setAviso({ titulo: "Acción no permitida", texto: e.message });
+      return;
+    }
+    const faltantes = (res && res.faltantes) || [];
+    try {
+      await refrescar();
+    } catch (e) {
+      setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El cambio se aplicó correctamente, pero no se pudo actualizar la vista. Recargá la página para ver el estado actual." + (faltantes.length ? " Ojo: había alertas de inventario, revisá Producción." : "") });
+      return;
+    }
+    if (faltantes.length) {
+      const prod = faltantes.filter((x) => x.area !== "Inventario");
+      const ins = faltantes.filter((x) => x.area === "Inventario");
+      const partes = [];
+      if (prod.length) partes.push(`falta producir: ${prod.map((x) => x.cant + "× " + x.producto).join(", ")}`);
+      if (ins.length) partes.push(`el inventario no alcanzó para: ${ins.map((x) => x.cant + "× " + x.producto).join(", ")}`);
+      setAviso({ titulo: "Inventario insuficiente", texto: `Se reservó lo disponible, pero ${partes.join(" y ")}. Ya quedó la sugerencia en Producción.` });
     }
   }
 
@@ -2091,9 +2098,16 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
       const tipo = tipoSubidaRef.current;
       // Fase 3: la foto va al bucket privado + RPC crear_evidencia (id/user/audit server-side)
       await subirEvidencia({ orderId: o.id, tipo, dataUrl: url });
-      await refrescar();
     } catch (err) {
       setAviso({ titulo: "Error al subir", texto: err.message || "No se pudo procesar la imagen. Intenta con otra foto." });
+      setSubiendo(false);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    try {
+      await refrescar();
+    } catch (err) {
+      setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "La evidencia se guardó correctamente, pero no se pudo actualizar la vista. Recargá la página para verla." });
     }
     setSubiendo(false);
     if (fileRef.current) fileRef.current.value = "";
@@ -2414,13 +2428,20 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
         return base;
       }),
     };
+    let res;
     try {
-      const res = await crearPedido(payload);
-      await refrescar();
-      onClose();
-      if (faltaStock.length) setAviso({ titulo: "Pedido creado con alerta", texto: `${res.order_id} creado. Ojo: disponibilidad insuficiente en ${faltaStock.map((l) => l.nombre).join(", ")}. Al marcar pagado se creará la sugerencia de producción.` });
+      res = await crearPedido(payload);
     } catch (e) {
       setError(e.message);
+      enviandoRef.current = false;
+      return;
+    }
+    onClose();
+    try {
+      await refrescar();
+      if (faltaStock.length) setAviso({ titulo: "Pedido creado con alerta", texto: `${res.order_id} creado. Ojo: disponibilidad insuficiente en ${faltaStock.map((l) => l.nombre).join(", ")}. Al marcar pagado se creará la sugerencia de producción.` });
+    } catch (e) {
+      setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: `${res.order_id} se creó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo.` });
     }
     enviandoRef.current = false;
   }
