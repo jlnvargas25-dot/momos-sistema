@@ -2701,7 +2701,7 @@ function Produccion({ db, update, user, refrescar }) {
     return map;
   }, [figurasProducibles, db.products]);
   const formInicial = () => ({
-    sabor: sabores[0], relleno: s.rellenos[0], salsa: s.salsas[0],
+    sabor: sabores[0], relleno: s.rellenos[0], // salsa NO: se aplica al despacho, a gusto del cliente
     figuras: Object.fromEntries(figurasProducibles.map((f) => [f.nombre, 0])), // nombreFigura → cantidad
     resp: "", vence: dISO(14), horasCongelacion: s.horasCongelacion || 10, obs: "",
   });
@@ -2788,7 +2788,7 @@ function Produccion({ db, update, user, refrescar }) {
     const figurasElegidas = Object.entries(form.figuras).filter(([, cant]) => +cant > 0).map(([figura, cant]) => ({ figura, cant: +cant }));
     if (!figurasElegidas.length) { setMsg("Elegí al menos una figura con cantidad mayor a 0."); return; }
     const payload = {
-      sabor: form.sabor, relleno: form.relleno, salsa: form.salsa, figuras: figurasElegidas,
+      sabor: form.sabor, relleno: form.relleno, figuras: figurasElegidas,
       resp_user_id: respUserId(form.resp), vence: form.vence, horas_congelacion: +form.horasCongelacion || 10,
       obs: form.obs, sugerencia_id: pre ? pre.id : undefined,
       idempotency_key: corridaIdemKeyRef.current,
@@ -2920,7 +2920,7 @@ function Produccion({ db, update, user, refrescar }) {
                 <Badge label={l.estado} />
               </div>
               <div className="text-xs mt-2" style={{ color: T.choco2 }}>
-                {Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => `${f.cant}× ${f.figura}`).join(" · ") : l.figura} · {l.sabor} · Relleno {l.relleno} · Salsa {l.salsa} · {l.gramaje}
+                {Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => `${f.cant}× ${f.figura}`).join(" · ") : l.figura} · {l.sabor} · Relleno {l.relleno}{l.salsa ? ` · Salsa ${l.salsa}` : ""} · {l.gramaje}
               </div>
               <div className="grid grid-cols-4 gap-2 mt-3 text-center">
                 {[["Producidas", l.prod, T.choco], ["Perfectas", l.perfectas, "#3F6B42"], ["Imperfectas", l.imperfectas, "#96690F"], ["Descartadas", l.descartadas, "#A03B2A"]].map(([lab, v, col]) => (
@@ -3031,10 +3031,10 @@ function Produccion({ db, update, user, refrescar }) {
         });
         return (
           <Modal title={pre ? `Producción desde sugerencia ${pre.id}` : "Registrar producción"} onClose={() => { setNuevo(false); setPre(null); }} wide>
-            <div className="grid sm:grid-cols-3 gap-x-4">
+            <div className="grid sm:grid-cols-2 gap-x-4">
               <Field label="Sabor"><Select options={sabores} value={form.sabor} onChange={(e) => setForm({ ...form, sabor: e.target.value })} /></Field>
               <Field label="Relleno"><Select options={s.rellenos} value={form.relleno} onChange={(e) => setForm({ ...form, relleno: e.target.value })} /></Field>
-              <Field label="Salsa"><Select options={s.salsas} value={form.salsa} onChange={(e) => setForm({ ...form, salsa: e.target.value })} /></Field>
+              {/* Salsa NO va acá: se aplica al despacho y la elige el cliente (NuevoPedido) */}
             </div>
 
             <div className="text-xs font-bold mb-1.5" style={{ color: T.choco2 }}>Cantidad por figura</div>
