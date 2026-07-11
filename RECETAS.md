@@ -27,13 +27,31 @@
 | **Estándar**     | Momo, Toby, Max, Rocco, Danna | **180 g** |
 | **Grande**       | Teo                           | **250 g** |
 
-**Rendimiento por 1000 g de mezcla:**
+## Composición por figura — mezcla vs relleno (ACTUALIZADO 2026-07-11)
 
-| Peso figura | Unidades aproximadas por 1000 g |
-| ----------: | ------------------------------: |
-|       150 g | 6 unidades completas + sobrante |
-|       180 g | 5 unidades completas + sobrante |
-|       250 g |            4 unidades completas |
+El peso total de cada figura **incluye 35 g de relleno fijo** (20 g cheesecake + 15 g ganache).
+La mezcla Momo/mousse por unidad = peso del molde − 35 g.
+
+| Figura    | Peso final | Cheesecake | Ganache | Relleno total | Mezcla Momo / mousse |
+| --------- | ---------: | ---------: | ------: | ------------: | -------------------: |
+| **Lizi**  |      150 g |       20 g |    15 g |          35 g |            **115 g** |
+| **Momo**  |      180 g |       20 g |    15 g |          35 g |            **145 g** |
+| **Toby**  |      180 g |       20 g |    15 g |          35 g |            **145 g** |
+| **Max**   |      180 g |       20 g |    15 g |          35 g |            **145 g** |
+| **Rocco** |      180 g |       20 g |    15 g |          35 g |            **145 g** |
+| **Danna** |      180 g |       20 g |    15 g |          35 g |            **145 g** |
+| **Teo**   |      250 g |       20 g |    15 g |          35 g |            **215 g** |
+
+Nota técnica aceptada: con relleno fijo de 35 g, Lizi queda proporcionalmente más rellena que Teo —
+se mantiene fijo porque simplifica el proceso (decisión para producción inicial).
+
+**Rendimiento por 1000 g de mezcla Momo** (usando la mezcla por unidad, no el peso final):
+
+| Tamaño                              | Mezcla por unidad | Unidades por 1000 g de mezcla |
+| ----------------------------------- | ----------------: | ----------------------------: |
+| **Lizi 150 g**                      |             115 g |     **8 unidades** + sobrante |
+| **Momo/Toby/Max/Rocco/Danna 180 g** |             145 g |     **6 unidades** + sobrante |
+| **Teo 250 g**                       |             215 g |     **4 unidades** + sobrante |
 
 ---
 
@@ -378,3 +396,75 @@ Galleta: Oreo, Saltín, María, Ducales dulces o mezcla. Con Saltín, sin sal ex
 
 **Recomendación vigente (Julián):** primero dejar oficiales estas bases de **Momos, cheesecake,
 ganache, salsas y crocante** — con eso se produce la mayoría del portafolio sin horno.
+
+---
+
+## 8. Formato oficial cuchareables — 270 g base + figurita 45 g = 315 g
+
+**Regla oficial:** todos los productos cuchareables, cakes, cheesecakes, tiramisú y similares pesan
+**270 g de producto base + figurita decorativa horizontal (45 g) = 315 g total comercial**.
+
+### Momo Cake individual
+
+| Componente                     |  Cantidad |
+| ------------------------------ | --------: |
+| Base crocante de galleta       |      45 g |
+| Mousse Momo                    |     115 g |
+| Relleno cheesecake o ganache   |      55 g |
+| Salsa o cobertura              |      35 g |
+| Topping / decoración           |      20 g |
+| **Subtotal producto base**     | **270 g** |
+| Figurita decorativa horizontal |  **45 g** |
+| **Total final**                | **315 g** |
+
+### Cheesecake frío Momo
+
+| Componente                     |  Cantidad |
+| ------------------------------ | --------: |
+| Base crocante de galleta       |      45 g |
+| Crema cheesecake               |     135 g |
+| Capa de mousse Momo            |      55 g |
+| Salsa                          |      25 g |
+| Topping / decoración           |      10 g |
+| **Subtotal producto base**     | **270 g** |
+| Figurita decorativa horizontal |  **45 g** |
+| **Total final**                | **315 g** |
+
+### Cuchareable / Parfait Momo
+
+| Componente                     |  Cantidad |
+| ------------------------------ | --------: |
+| Mousse Momo                    |     100 g |
+| Relleno cheesecake o ganache   |      50 g |
+| Salsa                          |      35 g |
+| Crocante / galleta / crumble   |      55 g |
+| Topping final                  |      30 g |
+| **Subtotal producto base**     | **270 g** |
+| Figurita decorativa horizontal |  **45 g** |
+| **Total final**                | **315 g** |
+
+### Tiramisú Momo
+
+| Componente                            |  Cantidad |
+| ------------------------------------- | --------: |
+| Crema tipo tiramisú / cheesecake café |     115 g |
+| Galleta, ponqué o soletilla con café  |      65 g |
+| Mousse Momo café, Milo u Oreo         |      50 g |
+| Ganache café/chocolate                |      30 g |
+| Cacao o topping final                 |      10 g |
+| **Subtotal producto base**            | **270 g** |
+| Figurita decorativa horizontal        |  **45 g** |
+| **Total final**                       | **315 g** |
+
+### Tartaleta fría Momo
+
+| Componente                     |  Cantidad |
+| ------------------------------ | --------: |
+| Base/tartaleta fría de galleta |      60 g |
+| Mousse Momo                    |     125 g |
+| Relleno cheesecake o ganache   |      45 g |
+| Salsa                          |      25 g |
+| Topping / decoración           |      15 g |
+| **Subtotal producto base**     | **270 g** |
+| Figurita decorativa horizontal |  **45 g** |
+| **Total final**                | **315 g** |
