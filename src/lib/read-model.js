@@ -110,11 +110,13 @@ export async function fetchCatalogos() {
   return { products, inventory_items, recipes, users, settingsCatalogos, brand_library };
 }
 
-/* ── Fase 3 · slice 3a: lecturas OPERATIVAS desde Supabase ──
+/* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
    El servidor es el dueño del ciclo de pedido: orders, order_items (+adiciones),
    customers, deliveries, evidences (signed URLs), benefits, claims, y el rastro de
    inventario del ciclo (movements, reservations, suggestions) + audit.
-   production_batches NO se hidrata: sigue local hasta el slice de producción.
+   Slice 4 suma production_batches (lotes) — antes de migrar sus escrituras, porque
+   escribir sin leer haría que el primer refetch post-escritura PISARA los lotes
+   locales con un array vacío (misma clase de bug que 3b/3c evitaron).
    Vacío es LEGÍTIMO acá (la operación real arranca en 0). */
 
 export async function fetchOperativo() {
@@ -131,15 +133,16 @@ export async function fetchOperativo() {
     supabase.from("inventory_reservations").select("id,order_id,tipo,product_id,item_id,nombre,cantidad,fecha,estado").order("id"),
     supabase.from("production_suggestions").select("id,fecha,product_id,item_id,cantidad,motivo,order_id,estado,area").order("id"),
     supabase.from("audit_logs").select("id,fecha,user_id,entidad,entidad_id,accion,de,a").order("fecha", { ascending: false }),
-    supabase.from("users").select("id,rol"),
+    supabase.from("users").select("id,rol,nombre"),
     supabase.from("inventory_items").select("id,nombre,unidad"),
     supabase.from("products").select("id,nombre"),
+    supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs").order("id", { ascending: false }),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods] = q.map((r) => r.data);
+  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches] = q.map((r) => r.data);
 
-  const rolDe = {}; usrs.forEach((u) => { rolDe[u.id] = u.rol; });
+  const rolDe = {}; const nombreUserDe = {}; usrs.forEach((u) => { rolDe[u.id] = u.rol; nombreUserDe[u.id] = u.nombre; });
   const insumoDe = {}; invs.forEach((i) => { insumoDe[i.id] = i; });
   const productoDe = {}; prods.forEach((p) => { productoDe[p.id] = p; });
 
@@ -238,5 +241,23 @@ export async function fetchOperativo() {
     entidad: a.entidad, entidadId: nz(a.entidad_id), accion: a.accion, de: nz(a.de), a: nz(a.a),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs };
+  // Shape EXACTO de la maqueta (db.batches / production_batches en MomosOps.jsx):
+  // producto/resp son STRINGS (nombre), no ids — el server normalizó a FK
+  // (product_id, resp_user_id) pero el front sigue leyendo por nombre.
+  // gramaje: la maqueta guarda "150 g" (texto); el server normalizó a integer (gramaje_g).
+  const production_batches = batches.map((b) => ({
+    id: b.id, fecha: b.fecha,
+    producto: productoDe[b.product_id] ? productoDe[b.product_id].nombre : "",
+    figura: nz(b.figura), sabor: nz(b.sabor), relleno: nz(b.relleno), salsa: nz(b.salsa),
+    gramaje: b.gramaje_g != null ? `${b.gramaje_g} g` : "",
+    prod: b.prod, perfectas: b.perfectas, imperfectas: b.imperfectas, descartadas: b.descartadas,
+    destino: nz(b.destino, "—"),
+    resp: nz(nombreUserDe[b.resp_user_id]), vence: nz(b.vence),
+    estado: b.estado, stockContabilizado: b.stock_contabilizado,
+    horasCongelacion: b.horas_congelacion,
+    inicioCongelacion: b.inicio_congelacion ? tsBogota(b.inicio_congelacion) : "",
+    molde: nz(b.molde), ubicacion: nz(b.ubicacion), obs: nz(b.obs),
+  }));
+
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, production_batches };
 }

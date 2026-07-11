@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -2685,16 +2685,36 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
 
 const LOTE_ESTADOS = ["En preparación","Congelando","Listo","Reservado","Vendido","Imperfecto","Descartado"];
 
-function Produccion({ db, update, user }) {
+function Produccion({ db, update, user, refrescar }) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
   const [nuevo, setNuevo] = useState(false);
   const [pre, setPre] = useState(null); // sugerencia que origina el lote
+  const loteIdemKeyRef = useRef(null); // 1 por apertura del form: tolera retries de red sin duplicar el lote
   const s = db.settings;
   const sabores = [...s.saboresFrutales, ...s.saboresCremosos];
   const productosMomo = db.products.filter((p) => p.tipo === "momo");
   const [form, setForm] = useState({ producto: (productosMomo[0] || db.products[0]).nombre, figura: (s.figuras[0] && s.figuras[0].nombre) || "", sabor: sabores[0], relleno: s.rellenos[0], salsa: s.salsas[0], gramaje: "150 g", prod: 10, perfectas: 10, imperfectas: 0, descartadas: 0, resp: "", vence: dISO(14), horasCongelacion: s.horasCongelacion || 10, obs: "" });
   const [msg, setMsg] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [enviandoBatchId, setEnviandoBatchId] = useState(null); // deshabilita solo la card del lote en vuelo
+
+  // Resuelve el nombre libre del form al id del staff activo (RPC exige FK real,
+  // no nombre suelto). Sin match → null (resp_user_id es opcional server-side).
+  function respUserId(nombre) {
+    const n = String(nombre || "").trim().toLowerCase();
+    if (!n) return null;
+    const u = db.users.find((x) => x.activo && String(x.nombre || "").trim().toLowerCase() === n);
+    return u ? u.id : null;
+  }
+
+  async function refrescarSilencioso(onFail) {
+    try {
+      await refrescar();
+    } catch (e) {
+      onFail();
+    }
+  }
 
   const sugerencias = db.production_suggestions.filter((s) => s.estado === "Pendiente" && s.area !== "Inventario");
 
@@ -2724,6 +2744,13 @@ function Produccion({ db, update, user }) {
   const focoLabel = foco ? (foco.combo ? `${foco.producto} · ${foco.sabor} · ${foco.figura} · ${foco.gramaje}` : foco.producto) : "";
   function enfocarLotes(next) { setFoco(next); setTimeout(() => { const el = document.getElementById("lotes-produccion"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }
 
+  // Genera una idempotency_key nueva cada vez que el form se abre; los reintentos
+  // dentro de la misma apertura reusan la misma key (útil para timeouts de red).
+  function abrirNuevoLote() {
+    loteIdemKeyRef.current = "lote-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+    setNuevo(true);
+  }
+
   function abrirDesdeSugerencia(sg) {
     // las sugerencias de Inventario no abren lote (van a Compras sugeridas en Inventario)
     if (sg.area === "Inventario") {
@@ -2744,33 +2771,43 @@ function Produccion({ db, update, user }) {
       }
     }
     setForm({ ...form, producto: nombre, prod: sg.cantidad, perfectas: sg.cantidad });
-    setPre(sg); setNuevo(true);
+    setPre(sg); abrirNuevoLote();
   }
 
-  function registrarLote() {
-    let faltInsumos = [];
-    update((d) => {
-      const id = nextId(d, "batch", "L-", 3);
-      d.production_batches.unshift({ id, fecha: hoyISO(), estado: "En preparación", destino: "—", stockContabilizado: false, inicioCongelacion: "", ...form });
-      addAudit(d, { user, entidad: "Lote", entidadId: id, accion: "Lote creado", a: form.prod + "× " + form.producto });
-      const p = d.products.find((x) => x.nombre === form.producto);
-      if (p) {
-        // descuenta la receta del producto por la cantidad producida
-        faltInsumos = deductRecipe(d, p, +form.prod || 0, "Lote " + id);
-      }
-      // El stock terminado NO se suma aquí: solo cuando el lote pase a "Listo".
-      if (pre) {
-        const sg = d.production_suggestions.find((x) => x.id === pre.id);
-        if (sg) sg.estado = "Atendida";
-      }
-    });
+  async function registrarLote() {
+    const p = db.products.find((x) => x.nombre === form.producto);
+    if (!p) { setMsg("El producto seleccionado ya no existe. Cerrá y volvé a intentar."); return; }
+    const gramajeG = parseInt(String(form.gramaje), 10) || null;
+    const payload = {
+      product_id: p.id, figura: form.figura, sabor: form.sabor, relleno: form.relleno, salsa: form.salsa,
+      gramaje_g: gramajeG, prod: +form.prod || 0, perfectas: +form.perfectas || 0,
+      imperfectas: +form.imperfectas || 0, descartadas: +form.descartadas || 0,
+      resp_user_id: respUserId(form.resp), vence: form.vence, horas_congelacion: +form.horasCongelacion || 10,
+      obs: form.obs, sugerencia_id: pre ? pre.id : undefined,
+      idempotency_key: loteIdemKeyRef.current,
+    };
+    setEnviando(true);
+    let resultado;
+    try {
+      resultado = await crearLote(payload);
+    } catch (e) {
+      setMsg("No se pudo registrar el lote: " + e.message);
+      setEnviando(false);
+      return;
+    }
+    setEnviando(false);
     setNuevo(false); setPre(null);
-    if (faltInsumos.length) setMsg(`Lote registrado, pero el inventario de insumos no alcanzó para: ${faltInsumos.join(", ")}. Registra la compra en Inventario.`);
+    loteIdemKeyRef.current = null; // fuerza una key nueva en la próxima apertura (abrirNuevoLote)
+    await refrescarSilencioso(() => setMsg("El lote se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+    const faltantes = resultado && resultado.faltantes;
+    if (Array.isArray(faltantes) && faltantes.length) {
+      setMsg(`Lote registrado, pero el inventario de insumos no alcanzó para: ${faltantes.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}. Registra la compra en Inventario.`);
+    }
   }
 
   return (
     <div>
-      <div className="mb-4"><Btn onClick={() => setNuevo(true)}>＋ Nuevo lote de producción</Btn></div>
+      <div className="mb-4"><Btn onClick={abrirNuevoLote}>＋ Nuevo lote de producción</Btn></div>
 
       {sugerencias.length > 0 && (
         <>
@@ -2860,13 +2897,18 @@ function Produccion({ db, update, user }) {
                     <div className="flex items-center justify-between mt-1.5">
                       <span className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Objetivo {cong.objetivo} h · inició {l.inicioCongelacion.slice(11, 16)}</span>
                       {cong.listo && (
-                        <button onClick={() => update((d) => {
-                          const x = d.production_batches.find((y) => y.id === l.id);
-                          const p = d.products.find((y) => y.nombre === x.producto);
-                          if (p && p.tipo === "momo" && !x.stockContabilizado) { p.stock += +x.perfectas || 0; x.stockContabilizado = true; }
-                          addAudit(d, { user, entidad: "Lote", entidadId: l.id, accion: "Cambio de estado", de: x.estado, a: "Listo" });
-                          x.estado = "Listo";
-                        })} className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#3F6B42", color: "#fff" }}>Marcar Listo</button>
+                        <button disabled={enviandoBatchId === l.id} onClick={async () => {
+                          setEnviandoBatchId(l.id);
+                          try {
+                            await setLoteEstado(l.id, "Listo");
+                          } catch (e) {
+                            setMsg("No se pudo marcar el lote como listo: " + e.message);
+                            setEnviandoBatchId(null);
+                            return;
+                          }
+                          await refrescarSilencioso(() => setMsg("El lote se marcó como listo, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+                          setEnviandoBatchId(null);
+                        }} className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#3F6B42", color: "#fff", opacity: enviandoBatchId === l.id ? 0.5 : 1 }}>Marcar Listo</button>
                       )}
                     </div>
                   </div>
@@ -2878,42 +2920,48 @@ function Produccion({ db, update, user }) {
                 </div>
                 <div className="flex gap-2">
                   {l.estado === "En preparación" && (
-                    <Btn small onClick={() => update((d) => {
-                      const x = d.production_batches.find((y) => y.id === l.id);
-                      x.inicioCongelacion = ahoraSello();
-                      addAudit(d, { user, entidad: "Lote", entidadId: l.id, accion: "Cambio de estado", de: x.estado, a: "Congelando" });
-                      x.estado = "Congelando";
-                    })}>❄️ Empezar congelamiento</Btn>
+                    <Btn small disabled={enviandoBatchId === l.id} onClick={async () => {
+                      setEnviandoBatchId(l.id);
+                      try {
+                        await empezarCongelamiento(l.id);
+                      } catch (e) {
+                        setMsg("No se pudo empezar el congelamiento: " + e.message);
+                        setEnviandoBatchId(null);
+                        return;
+                      }
+                      await refrescarSilencioso(() => setMsg("El lote empezó a congelar, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+                      setEnviandoBatchId(null);
+                    }}>❄️ Empezar congelamiento</Btn>
                   )}
                   {l.imperfectas > 0 && !String(l.destino).includes("Insumo") && (
-                    <Btn small kind="soft" onClick={() => {
-                      update((d) => {
-                        const x = d.production_batches.find((y) => y.id === l.id);
-                        x.destino = "Insumo para malteadas y crepas";
-                        addAudit(d, { user, entidad: "Lote", entidadId: l.id, accion: "Imperfectas convertidas en insumo", a: l.imperfectas + " piezas" });
-                      });
-                      setMsg(`Las ${l.imperfectas} piezas imperfectas del lote ${l.id} quedaron como insumo para malteadas, crepas o pruebas internas.`);
+                    <Btn small kind="soft" disabled={enviandoBatchId === l.id} onClick={async () => {
+                      setEnviandoBatchId(l.id);
+                      try {
+                        await convertirImperfectas(l.id);
+                      } catch (e) {
+                        setMsg("No se pudieron convertir las imperfectas: " + e.message);
+                        setEnviandoBatchId(null);
+                        return;
+                      }
+                      let refetchOk = true;
+                      await refrescarSilencioso(() => { refetchOk = false; setMsg("Las imperfectas se convirtieron, pero no se pudo actualizar la vista. Recargá la página para verlo."); });
+                      setEnviandoBatchId(null);
+                      if (refetchOk) setMsg(`Las ${l.imperfectas} piezas imperfectas del lote ${l.id} quedaron como insumo para malteadas, crepas o pruebas internas.`);
                     }}>♻️ Convertir imperfectas</Btn>
                   )}
-                  <MiniSelect options={LOTE_ESTADOS} value={l.estado} onChange={(e) => update((d) => {
-                    const x = d.production_batches.find((y) => y.id === l.id);
+                  <MiniSelect options={LOTE_ESTADOS} value={l.estado} disabled={enviandoBatchId === l.id} onChange={async (e) => {
                     const nuevoEstado = e.target.value;
-                    const p = d.products.find((y) => y.nombre === x.producto);
-                    if (p && p.tipo === "momo") {
-                      // suma solo si aún no se contabilizó; resta solo si sí se contabilizó (idempotente)
-                      if (nuevoEstado === "Listo" && !x.stockContabilizado) {
-                        p.stock += +x.perfectas || 0;
-                        x.stockContabilizado = true;
-                      } else if (["En preparación","Congelando"].includes(nuevoEstado) && x.stockContabilizado) {
-                        p.stock = Math.max(0, p.stock - (+x.perfectas || 0));
-                        x.stockContabilizado = false;
-                      }
+                    setEnviandoBatchId(l.id);
+                    try {
+                      await setLoteEstado(l.id, nuevoEstado);
+                    } catch (err) {
+                      setMsg("No se pudo cambiar el estado del lote: " + err.message);
+                      setEnviandoBatchId(null);
+                      return;
                     }
-                    // cronómetro de congelación: inicia al entrar a "Congelando"
-                    if (nuevoEstado === "Congelando" && x.estado !== "Congelando") x.inicioCongelacion = ahoraSello();
-                    addAudit(d, { user, entidad: "Lote", entidadId: l.id, accion: "Cambio de estado", de: x.estado, a: nuevoEstado });
-                    x.estado = nuevoEstado;
-                  })} />
+                    await refrescarSilencioso(() => setMsg("El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+                    setEnviandoBatchId(null);
+                  }} />
                 </div>
               </div>
               {l.destino !== "—" && <div className="text-xs mt-2 font-semibold" style={{ color: "#63518A" }}>Destino de imperfectas: {l.destino}</div>}
@@ -2937,15 +2985,15 @@ function Produccion({ db, update, user }) {
             <Field label="Perfectas"><Input type="number" value={form.perfectas} onChange={(e) => setForm({ ...form, perfectas: +e.target.value })} /></Field>
             <Field label="Imperfectas"><Input type="number" value={form.imperfectas} onChange={(e) => setForm({ ...form, imperfectas: +e.target.value })} /></Field>
             <Field label="Descartadas"><Input type="number" value={form.descartadas} onChange={(e) => setForm({ ...form, descartadas: +e.target.value })} /></Field>
-            <Field label="Responsable"><Input value={form.resp} onChange={(e) => setForm({ ...form, resp: e.target.value })} placeholder="Nombre" /></Field>
+            <Field label="Responsable"><Select options={db.users.filter((u) => u.activo).map((u) => u.nombre)} value={form.resp} onChange={(e) => setForm({ ...form, resp: e.target.value })} placeholder="Sin responsable" /></Field>
             <Field label="Vencimiento interno"><Input type="date" value={form.vence} onChange={(e) => setForm({ ...form, vence: e.target.value })} /></Field>
             <Field label="Horas de congelación objetivo"><Input type="number" min="1" step="1" value={form.horasCongelacion} onChange={(e) => setForm({ ...form, horasCongelacion: +e.target.value })} /></Field>
           </div>
           <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
           <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los insumos de la receta (por la cantidad producida). Las piezas perfectas se suman al stock del producto cuando el lote pase a estado "Listo".</div>
           <div className="flex gap-2">
-            <Btn onClick={registrarLote}>Registrar lote</Btn>
-            <Btn kind="ghost" onClick={() => { setNuevo(false); setPre(null); }}>Cancelar</Btn>
+            <Btn disabled={enviando} onClick={registrarLote}>Registrar lote</Btn>
+            <Btn kind="ghost" disabled={enviando} onClick={() => { setNuevo(false); setPre(null); }}>Cancelar</Btn>
           </div>
         </Modal>
       )}
@@ -2957,13 +3005,16 @@ function Produccion({ db, update, user }) {
 
 /* ================= INVENTARIO ================= */
 
-function Inventario({ db, update, user, focus }) {
+function Inventario({ db, update, user, focus, refrescar }) {
   const [mov, setMov] = useState(false);
   const [nuevoIns, setNuevoIns] = useState(false);
   const [fi, setFi] = useState({ nombre: "", cat: "", unidad: "und", stock: "", min: "", costoTotal: "", proveedor: "", vence: "", ubicacion: "" });
   const [errIns, setErrIns] = useState("");
   const [form, setForm] = useState({ tipo: "Entrada", item: "", cant: "", precio: "", nota: "" });
   const [fCat, setFCat] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [avisoInv, setAvisoInv] = useState(null);
+  const [enviandoSugId, setEnviandoSugId] = useState(null);
   const highlightId = focus && focus.itemId;
   const highlightRef = useRef(null);
   useEffect(() => {
@@ -2972,6 +3023,14 @@ function Inventario({ db, update, user, focus }) {
   const cats = [...new Set(db.inventory_items.map((i) => i.cat))];
   const lista = db.inventory_items.filter((i) => !fCat || i.cat === fCat);
   const selMovIt = db.inventory_items.find((i) => i.nombre === form.item);
+
+  async function refrescarSilencioso(onFail) {
+    try {
+      await refrescar();
+    } catch (e) {
+      onFail();
+    }
+  }
 
   function exportar() {
     downloadCSV("inventario",
@@ -3001,11 +3060,18 @@ function Inventario({ db, update, user, focus }) {
                     <div className="text-sm font-bold">{sg.cantidad}× {sg.producto}</div>
                     <div className="text-xs" style={{ color: T.choco2 }}>Falta para {sg.orderId ? "pedido " + sg.orderId : "reponer stock"} · {sg.fecha}</div>
                   </div>
-                  <Btn small kind="soft" onClick={() => update((d) => {
-                    const x = d.production_suggestions.find((y) => y.id === sg.id);
-                    if (x) x.estado = "Atendida";
-                    addAudit(d, { user, entidad: "Inventario", entidadId: sg.id, accion: "Compra sugerida atendida", a: sg.cantidad + "× " + sg.producto });
-                  })}>Marcar atendida</Btn>
+                  <Btn small kind="soft" disabled={enviandoSugId === sg.id} onClick={async () => {
+                    setEnviandoSugId(sg.id);
+                    try {
+                      await setSugerenciaEstado(sg.id, "Atendida");
+                    } catch (e) {
+                      setAvisoInv({ titulo: "No se pudo marcar la sugerencia", texto: e.message });
+                      setEnviandoSugId(null);
+                      return;
+                    }
+                    setEnviandoSugId(null);
+                    await refrescarSilencioso(() => setAvisoInv({ titulo: "Acción aplicada, vista desactualizada", texto: "La sugerencia se marcó como atendida, pero no se pudo actualizar la vista. Recargá la página para verlo." }));
+                  }}>Marcar atendida</Btn>
                 </Card>
               ))}
             </div>
@@ -3114,23 +3180,29 @@ function Inventario({ db, update, user, focus }) {
           {errIns && <div className="text-sm font-bold p-2.5 rounded-xl mb-3" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errIns}</div>}
           <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>El stock inicial quedará registrado como un movimiento de entrada (fecha de compra: hoy).</div>
           <div className="flex gap-2">
-            <Btn onClick={() => {
+            <Btn disabled={enviando} onClick={async () => {
               if (!fi.nombre.trim()) { setErrIns("Escribe el nombre del insumo."); return; }
-              if (db.inventory_items.some((i) => i.nombre.toLowerCase() === fi.nombre.trim().toLowerCase())) { setErrIns("Ya existe un insumo con ese nombre. Usa \u201cRegistrar movimiento\u201d para sumarle stock."); return; }
+              if (db.inventory_items.some((i) => i.nombre.toLowerCase() === fi.nombre.trim().toLowerCase())) { setErrIns("Ya existe un insumo con ese nombre. Usa “Registrar movimiento” para sumarle stock."); return; }
               if (!fi.cat.trim()) { setErrIns("Indica la categoría."); return; }
-              update((d) => {
-                d.settings.counters.invitem = d.settings.counters.invitem || 14;
-                const id = nextId(d, "invitem", "I");
-                const stock = parseFloat(fi.stock) || 0;
-                const totalCompra = +fi.costoTotal || 0;
-                const costoUnit = stock > 0 ? +(totalCompra / stock).toFixed(4) : 0;
-                d.inventory_items.push({ id, nombre: fi.nombre.trim(), cat: fi.cat.trim(), unidad: fi.unidad, stock, min: parseFloat(fi.min) || 0, costo: costoUnit, proveedor: fi.proveedor.trim(), vence: fi.vence, ubicacion: fi.ubicacion.trim(), compra: hoyISO() });
-                if (stock > 0) addMovement(d, { tipo: "Entrada", item: fi.nombre.trim(), cant: "+" + stock + " " + fi.unidad, nota: totalCompra > 0 ? "Stock inicial · " + fmt(totalCompra) + " total (" + fmt(costoUnit) + "/" + fi.unidad + ")" : "Stock inicial del insumo" });
-                addAudit(d, { user, entidad: "Inventario", entidadId: id, accion: "Insumo creado", a: fi.nombre.trim() });
-              });
+              setErrIns("");
+              setEnviando(true);
+              try {
+                await crearInsumo({
+                  nombre: fi.nombre.trim(), cat: fi.cat.trim(), unidad: fi.unidad,
+                  stock: parseFloat(fi.stock) || 0, minimo: parseFloat(fi.min) || 0,
+                  costo_total: +fi.costoTotal || 0, proveedor: fi.proveedor.trim(),
+                  vence: fi.vence || null, ubicacion: fi.ubicacion.trim(),
+                });
+              } catch (e) {
+                setErrIns(e.message);
+                setEnviando(false);
+                return;
+              }
+              setEnviando(false);
               setNuevoIns(false);
+              await refrescarSilencioso(() => setAvisoInv({ titulo: "Acción aplicada, vista desactualizada", texto: "El insumo se creó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." }));
             }}>Crear insumo</Btn>
-            <Btn kind="ghost" onClick={() => setNuevoIns(false)}>Cancelar</Btn>
+            <Btn kind="ghost" disabled={enviando} onClick={() => setNuevoIns(false)}>Cancelar</Btn>
           </div>
         </Modal>
       )}
@@ -3170,33 +3242,36 @@ function Inventario({ db, update, user, focus }) {
             )
           )}
           <div className="flex gap-2 mt-2">
-            <Btn onClick={() => {
+            <Btn disabled={enviando} onClick={async () => {
               if (!form.item || !form.cant) return;
               if (form.tipo === "Entrada" && (!(+form.cant > 0) || form.precio === "" || +form.precio < 0)) return;
-              update((d) => {
-                const it = d.inventory_items.find((i) => i.nombre === form.item);
+              const it = db.inventory_items.find((i) => i.nombre === form.item);
+              if (!it) return;
+              setEnviando(true);
+              try {
                 if (form.tipo === "Entrada") {
-                  const cant = +form.cant;
-                  const total = +form.precio || 0;
-                  const costoCompra = cant > 0 ? total / cant : 0;
-                  const stockViejo = it ? (it.stock || 0) : 0;
-                  const costoViejo = it ? (it.costo || 0) : 0;
-                  const stockNuevo = stockViejo + cant;
-                  const costoWAC = (total > 0 && stockNuevo > 0) ? (stockViejo * costoViejo + cant * costoCompra) / stockNuevo : costoViejo;
-                  if (it) { it.stock = +(stockNuevo).toFixed(2); it.costo = +(costoWAC).toFixed(4); }
-                  addMovement(d, { tipo: "Entrada", item: form.item, cant: "+" + cant + " " + (it ? it.unidad : ""), nota: (total > 0 ? "Compra " + fmt(total) + " total (" + fmt(costoCompra) + "/" + (it ? it.unidad : "und") + ") · costo prom. → " + fmt(costoWAC) : "Entrada sin costo") + (form.nota ? " · " + form.nota : "") });
-                  addAudit(d, { user, entidad: "Inventario", entidadId: it ? it.id : "", accion: "Entrada", de: fmt(costoViejo), a: "+" + cant + " " + (it ? it.unidad : "") + " · nuevo costo " + fmt(costoWAC) });
+                  await entradaInsumo(it.id, +form.cant, +form.precio || 0, form.nota);
                 } else {
-                  const n = parseFloat(form.cant);
-                  addMovement(d, { tipo: form.tipo, item: form.item, cant: (n > 0 ? "+" : "") + n + " " + (it ? it.unidad : ""), nota: form.nota });
-                  if (it && !isNaN(n)) it.stock = Math.max(0, +(it.stock + n).toFixed(2));
-                  addAudit(d, { user, entidad: "Inventario", entidadId: it ? it.id : "", accion: form.tipo, a: form.cant + " " + form.item });
+                  await movimientoInsumo(it.id, form.tipo, parseFloat(form.cant), form.nota);
                 }
-              });
+              } catch (e) {
+                setAvisoInv({ titulo: "No se pudo registrar el movimiento", texto: e.message });
+                setEnviando(false);
+                return;
+              }
+              setEnviando(false);
               setMov(false); setForm({ tipo: "Entrada", item: "", cant: "", precio: "", nota: "" });
+              await refrescarSilencioso(() => setAvisoInv({ titulo: "Acción aplicada, vista desactualizada", texto: "El movimiento se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." }));
             }}>Guardar</Btn>
-            <Btn kind="ghost" onClick={() => setMov(false)}>Cancelar</Btn>
+            <Btn kind="ghost" disabled={enviando} onClick={() => setMov(false)}>Cancelar</Btn>
           </div>
+        </Modal>
+      )}
+
+      {avisoInv && (
+        <Modal title={avisoInv.titulo} onClose={() => setAvisoInv(null)}>
+          <p className="text-sm m-0">{avisoInv.texto}</p>
+          <div className="mt-4"><Btn onClick={() => setAvisoInv(null)}>Entendido</Btn></div>
         </Modal>
       )}
     </div>
@@ -6001,7 +6076,7 @@ export default function MomosOps() {
   }, [authUserId]);
 
   // ── Fase 3: hidratar desde Supabase (una vez por carga; re-usable tras cada escritura remota) ──
-  // Maestros/catálogos + operativo (ciclo de pedido). production_batches y marketing siguen locales.
+  // Maestros/catálogos + operativo (ciclo de pedido + producción). Marketing sigue local.
   async function hidratarDesdeServidor() {
     const [cat, op] = await Promise.all([fetchCatalogos(), fetchOperativo()]);
     update((d) => {
@@ -6011,7 +6086,7 @@ export default function MomosOps() {
       d.users = cat.users;
       if (cat.brand_library) d.brand_library = cat.brand_library;
       Object.assign(d.settings, cat.settingsCatalogos);
-      Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit
+      Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
     }, { silencioso: true });
   }

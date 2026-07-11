@@ -66,3 +66,54 @@ export async function upsertCliente(customerId, payload) {
   if (error) throw new Error(error.message);
   return data; // customer_id
 }
+
+/* ── Fase 3 · slice 4: producción (lotes) e inventario (WAC) ──
+   crear_lote NO bloquea por faltantes de insumo (paridad-maqueta): faltantes[]
+   es un AVISO post-hecho, nunca motivo para abortar en el front. */
+
+export async function crearLote(payload) {
+  const { data, error } = await supabase.rpc("crear_lote", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {batch_id, faltantes:[{item_id,insumo,faltan,unidad}], idempotente?}
+}
+
+export async function setLoteEstado(batchId, estado) {
+  const { data, error } = await supabase.rpc("set_lote_estado", { p_batch_id: batchId, p_estado: estado });
+  if (error) throw new Error(error.message);
+  return data; // {ok, estado, sin_cambio?}
+}
+
+export async function empezarCongelamiento(batchId) {
+  const { data, error } = await supabase.rpc("empezar_congelamiento", { p_batch_id: batchId });
+  if (error) throw new Error(error.message);
+  return data; // {ok, estado}
+}
+
+export async function convertirImperfectas(batchId) {
+  const { data, error } = await supabase.rpc("convertir_imperfectas", { p_batch_id: batchId });
+  if (error) throw new Error(error.message);
+  return data; // {ok}
+}
+
+export async function crearInsumo(payload) {
+  const { data, error } = await supabase.rpc("crear_insumo", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {item_id, costo}
+}
+
+export async function entradaInsumo(itemId, cant, costoTotal, nota = "") {
+  const { data, error } = await supabase.rpc("entrada_insumo", { p_item_id: itemId, p_cant: cant, p_costo_total: costoTotal, p_nota: nota });
+  if (error) throw new Error(error.message);
+  return data; // {stock, costo}
+}
+
+export async function movimientoInsumo(itemId, tipo, cant, nota = "") {
+  const { data, error } = await supabase.rpc("movimiento_insumo", { p_item_id: itemId, p_tipo: tipo, p_cant: cant, p_nota: nota });
+  if (error) throw new Error(error.message);
+  return data; // {stock, aplicado, truncado?}
+}
+
+export async function setSugerenciaEstado(sugId, estado) {
+  const { error } = await supabase.rpc("set_sugerencia_estado", { p_sug_id: sugId, p_estado: estado });
+  if (error) throw new Error(error.message);
+}

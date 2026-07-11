@@ -337,8 +337,15 @@ end $$;
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
--- crear_insumo(p jsonb) returns jsonb
+-- crear_insumo(p jsonb) returns jsonb  [v2 — ver unidades-insumo-v1.sql]
 -- Payload: {nombre, cat, unidad, stock?, minimo?, costo_total?, proveedor?, vence?, ubicacion?}
+-- v2/unidad: viene de slice 4 (source: unidades-insumo-v1.sql) — la unidad se
+-- valida contra la lista cerrada ANTES del insert, con mensaje amable que
+-- lista las 7 unidades permitidas (idéntico dominio al CHECK de
+-- inventory_items.unidad en schema-v5.sql, solo que acá el error es legible
+-- en vez del mensaje crudo de Postgres). NO reemplazar este cuerpo por una
+-- versión sin esta validación o se pierde el mensaje amable en prod
+-- silenciosamente (misma anti-drift que editar_reclamo).
 -- ---------------------------------------------------------------------------
 create or replace function crear_insumo(p jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -376,10 +383,14 @@ begin
     insert into inventory_cats (nombre) values (v_cat);
   end if;
 
-  -- unidad: el CHECK de inventory_items ya restringe el dominio; un valor
-  -- fuera de la lista revienta en el INSERT de abajo con el error nativo.
   if v_unidad is null or v_unidad = '' then
     raise exception 'La unidad del insumo es obligatoria';
+  end if;
+  -- Lista cerrada (idéntica al CHECK de inventory_items.unidad): excepción
+  -- amable ANTES del insert, en vez de dejar que reviente el CHECK nativo
+  -- con un mensaje ilegible para quien está cargando el insumo.
+  if v_unidad not in ('und','kg','g','L','ml','paquete','docena') then
+    raise exception 'Unidad inválida: "%". Las unidades permitidas son: und, kg, g, L, ml, paquete, docena.', v_unidad;
   end if;
 
   if v_stock < 0 then
