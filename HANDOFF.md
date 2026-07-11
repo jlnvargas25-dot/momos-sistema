@@ -1,0 +1,324 @@
+# HANDOFF — MOMOS OPS (léelo al empezar una sesión nueva)
+
+> Para retomar: abrir sesión nueva en `C:\Users\Windows 11\momo sistema` y decir
+> **"leé HANDOFF.md y seguí"**. Una sesión nueva NO hereda la charla anterior; esto es la fuente de verdad.
+>
+> 📋 **Backlog priorizado de Fase 0:** ver [`BACKLOG.md`](BACKLOG.md) — qué falta, con prioridad y esfuerzo.
+
+## Qué es esto
+App de operación de **D'Momos Sweet Love** (cocina oculta, El Caney, Cali).
+Hoy: **maqueta** React local-first (persiste en `localStorage`, clave `momos-db-v2`).
+Objetivo: **migrar a Supabase** y volverla app oficial de uso operativo.
+
+## Estado actual
+- **Fase 0 (scaffolding) HECHA:** proyecto Vite + React 18 + Tailwind v4 en esta carpeta.
+  Corre con `npm run dev` → http://localhost:5173 (el usuario ya lo levantó y funciona).
+- **Componente principal:** `src/MomosOps.jsx` (copia del archivo ya arreglado;
+  original en `C:\Users\Windows 11\Downloads\momos-ops.jsx`).
+- **15 bugs encontrados y ARREGLADOS** en la lógica de dominio: inventario
+  (insumos que no volvían al cancelar, extras de combo sin descontar, reserva
+  saltada, doble resta de lote), máquina de estados de pedidos, persistencia
+  (`dbLoad`/`migrate`/`beforeunload`), y el patrón React de `update()`
+  (ahora computa síncrono desde `dbRef.current` y devuelve el resultado).
+- **✅ Gate de Fase 0 — smoke-test CORRIDO EN VIVO (2026-07-07).** Los 4 escenarios
+  PASAN (detalle en la sección "Smoke-test de Fase 0" más abajo).
+- **✅ Toppings / adiciones (pendiente #2 — HECHO 2026-07-07, verificado en vivo).**
+  Catálogo global `settings.toppings` de objetos `{nombre, precio, insumoId, insumoCant}`
+  (precio 0=gratis, insumoId opcional para descontar inventario). Editor dedicado en
+  **Configuración → "Toppings / adiciones (catálogo)"** (nombre + precio inline + link a
+  insumo + eliminar). `order_items[].adiciones=[{nombre,precio,cant,insumoId,insumoCant}]`.
+  Picker de chips toggle por línea en Nuevo Pedido (muestra "+$precio" o "· gratis").
+  `orderSubtotal` suma las adiciones. `reserveInventory` descuenta el insumo ligado como
+  reserva `tipo:"insumo"` (liberable → vuelve al cancelar, apoyado en el fix del cimiento).
+  Detalle del pedido muestra los toppings (🍫) para la cocina. Migración: `normalizeDbShape`
+  siembra el catálogo y backfillea `adiciones:[]`. Semilla: Oreo/M&M/Milo/Chips/Maní/Almendras
+  (todos gratis por default). **Verificado:** editor renderiza; picker suma $3.000 al total;
+  round-trip de inventario (Nutella 1.8→1.78 al pagar → 1.8 al cancelar). Cero errores.
+  **Pendiente-futuro (no bloqueante):** COGS no computa costo de adiciones; toppings son
+  globales (no declarados por producto todavía) — para el menú al cliente convendrá
+  `products[].toppingsIds`. CSV de pedidos no incluye adiciones aún.
+- **✅ Fix del cimiento de inventario (2026-07-07, decisión del usuario opción 1).**
+  Los extras de receta descontados al RESERVAR (combo hoy; adiciones/toppings mañana)
+  antes se restaban con `addMovement` suelto y NO volvían al cancelar. Ahora
+  `reserveInventory` los registra con `addReservation(…, "insumo", …)` y
+  `releaseReservations` tiene rama `tipo === "insumo"` que los devuelve. Verificado en
+  vivo: extra 20 → pagar 19 → cancelar **20** (reserva insumo Liberada). Nota del
+  usuario: el "lazo" era utilería de test, no un insumo real; el fix es por el
+  MECANISMO (un topping SÍ es insumo real que debe volver al cancelar).
+
+## 🆕🆕🆕🆕 Sesión 2026-07-09 — LO MÁS NUEVO, LEER PRIMERO
+
+**Foco:** **cerrar el polish no-bloqueante de Fase 0** (decisión del usuario tras confirmar que la lógica ya está impecable y que el portón a Fase 1 quedó abierto). Dos items, ambos **HECHOS Y VERIFICADOS EN NAVEGADOR de punta a punta**, sin bump de `DB_VERSION`, sin migración (fallbacks cubren lo viejo). Solo se tocó `src/MomosOps.jsx`.
+
+1. **✅ Toppings POR SUB-MOMO dentro de una caja.** Cada slot de "🎁 ARMÁ LA CAJA" ahora tiene su propio picker de toppings (antes las hijas iban con `adiciones:[]` y el picker se ocultaba en combos). Cambios: el slot gana `adiciones`; helper `toggleSlotAdicion`; `boxesAdicionesTotal` suma los toppings de los sub-momos al subtotal/total de línea del preview; `guardar()` emite cada hija con `adiciones: snapAdiciones(d, sl.adiciones)`; `DetallePedido` muestra "🍫 …" bajo cada sub-momo en "COMPOSICIÓN … (para la cocina)"; `mismosMomos`/`copiarCaja1ATodas` hacen deep-copy de `adiciones`. **El dominio NO se tocó:** `reserveInventory`/`releaseReservations`/`lineAdicionesCOGS` ya iteran `itemsOf` (incluye hijas con `cant:1`) → el descuento/costeo/devolución por sub-momo salen solos.
+2. **✅ Snapshot del costo de insumo en las adiciones** (adelantado desde Supabase). Helper `snapAdiciones(d, adiciones)` congela `insumoCosto` al crear el pedido (ambas ramas de `guardar()`); `lineAdicionesCOGS` lee `ad.insumoCosto` con **fallback al costo en vivo** para filas viejas. Arregla de paso el **"COGS da 0 si se borra el insumo"** (el snapshot sobrevive a la baja).
+
+**Verificación en vivo (todo PASS, 0 errores de consola):** Caja x3 con Lizi+Momo (gato) + Max (perro), Oreo (topping de prueba $3.000 ligado a Nutella $32.000/kg) en 1 sub-momo → el picker por slot renderiza (18 chips = 3×6); subtotal **$49.000 + $3.000 = $52.000** (`boxesAdicionesTotal`); guardar → PADRE `esCaja` + 3 HIJAS, la del slot 0 con `adiciones:[{Oreo, insumoCosto: 32000}]` **congelado**; **pagar** descuenta PR01 8→6, PR02 6→5 (especie exacta), I08 9→8, **Nutella 1.8→1.75** (reserva `tipo:"insumo"` "adición Oreo" 0.05); **cancelar** devuelve TODO (Nutella 1.75→1.8), 5 reservas Liberadas; `DetallePedido` muestra "🍫 Oreo (+$3.000)" solo en su sub-momo. **Maqueta restaurada a semilla pristina** (backup/restore; Oreo vuelve a gratis, sin P-1046 ni evidencias de test).
+
+**➕ Sesión 2026-07-10:** (a) **Fase 1 arrancada**: `supabase/schema-v5.sql` (esquema completo del shape real, dominios cerrados por regla del usuario — ver `DISEÑO-TRAFICKER.md` §5) + decisiones POAS híbrido y HeyGen+Higgsfield (§4/§6). (b) **✅ Botón "❄️ Empezar congelamiento"** en cards de lote "En preparación" (`Produccion`, junto al MiniSelect ~2860): sella `inicioCongelacion` + audit + pasa a Congelando; el dropdown queda como override. **Verificado en preview** (origen de test aparte, puerto propio): renderiza solo en "En preparación", click → estado+sello+audit correctos, cronómetro corre, stock intacto, 0 errores de consola, semilla del origen de test restaurada. *Nota: durante el test, clicks parásitos de las herramientas tocaron el dropdown de L-018 (audit lo probó) — artefacto de test, no bug del botón.* (c) **✅ schema-v5 AFINADO (sesión nueva 2026-07-10):** **PKs texto-legible DECIDIDO** (uuid descartado — su único beneficio real, no exponer secuencias en URLs públicas, se captura con un token opaco aparte cuando llegue Pide MOMOS) + **RLS concreto** reemplaza al esqueleto: deny-by-default en todas las tablas, admin-all + staff-read, writes por rol (Marketing/CRM, Logística, Cocina/Empaque), rol Postgres **`claude_agent`** (login propio, JAMÁS service key; solo escribe marketing con checks `autor='claude'`/`fuente='mcp-*'`; no puede firmar 'manual' ni tocar lo Aprobado), **vistas `shop_*`** (catálogo público sin costos + seguimiento con estados públicos simplificados), `security_invoker` en `v_order_totals`/`v_campaign_metrics` (tapaba fuga de margen) y `search_path` fijo en funciones definer. + **Tabla `toppings` nueva** (era `settings.toppings` — regla de listas editables → tabla). **🚀 SCHEMA-V5 CORRIDO EN SUPABASE (2026-07-10, VERIFICADO):** se REUTILIZÓ el proyecto Supabase viejo del usuario (`momos-ops-v1`, ex "Postres Momos Admin" — predecesor Next.js inventariado antes de borrar: solo datos de prueba; sus 2 ideas rescatadas al BACKLOG #11b: `expenses` + inbox omnicanal). Wipe de `public` + schema-v5 completo vía SQL Editor (el usuario corre los bloques; Claude no toca credenciales — regla deny de `.env*`). **Verificación: 40 tablas / 40 con RLS / 138 políticas / 9 vistas / rol `claude_agent` creado.** (f) **✅ Storage HECHO:** buckets `evidencias` (privado, staff sube/ve, solo admin borra) + `productos` (público) con 7 políticas — verificado; las 4 políticas `product_assets_*` del sistema viejo se droppearon (verificado: 7). (g) **✅ EMBAJADORES v2 fusionada** en `EMBAJADORES.md` ("Ampliación v2"): fijo mensual por TRAMOS de $500k (75×3 desbloquea, <50×2 o <30 suspende tramo), ciclo de vida con aprobación manual, y regla técnica: TODO umbral en motor configurable, jamás hardcodeado. (h) **MCP de Supabase EN CONEXIÓN:** el usuario corre `agregar-mcp-supabase.cmd` (raíz del repo; pide el token en runtime — las credenciales NUNCA pasan por Claude). **La próxima sesión debería arrancar con herramientas `mcp__supabase__*` — verificar la conexión primero** (listar proyectos/tablas). **Falta de Fase 1:** borrar el bucket viejo desde la UI de Storage (SIN CONFIRMAR), rotar la contraseña de la base (SIN CONFIRMAR — débil y expuesta en captura), crear usuarios reales del equipo en Auth + poblar `users.auth_id` (pedir correos+roles), y la prueba viva del MCP de Meta. Luego → Fase 2 (RPCs, con los 22 bugs pagados como tests de aceptación). (d) **✅ Ganchos de ORQUESTACIÓN aplicados a schema-v5** (franjas+`orders.franja`, `capacidad` en moldes/ubicaciones_frio, rol Mensajero+`deliveries.mensajero_user_id`, vista `shop_franjas`) — el análisis de orquestación del usuario ya estaba absorbido en BACKLOG #8-11; solo faltaban estos ganchos, gratis antes de correr el esquema. (e) **✅ Blueprint EMBAJADORES** → [`EMBAJADORES.md`](EMBAJADORES.md) (análisis del usuario 2026-07-10): programa de referidos con comisión 20% solo-cliente-nuevo, billetera, antifraude, niveles — es fase shop V2, secuencia intacta; `benefits` ya cubre el reward y el COGS congelado hace computable el margen/LTV por embajador. Cero cambios de esquema (no hay historial posible antes del shop).
+
+**➕➕ Sesión 2026-07-10 (3ª) — FASE 1 CASI CERRADA (solo falta Meta MCP):** (a) **✅ MCP de Supabase VERIFICADO Y OPERATIVO** — el proyecto se llama **`momo`** (`csojbqpvujymesuvntxb`, us-east-1, PG 17.6; en el dashboard ya no figura como "momos-ops-v1"). Verificado por MCP: 40 tablas / 40 RLS / 138 políticas / 9 vistas / rol `claude_agent`. Claude ejecuta SQL directo — se acabó el copy-paste al SQL Editor. (b) **✅ Bucket viejo `product-assets` BORRADO** (7 objetos = la misma imagen de prueba de mayo repetida; verificado antes de borrar). Quedan solo `evidencias` (privado) + `productos` (público) con las 7 políticas exactas. *Aprendido: Supabase bloquea DELETE directo en `storage.*` (trigger `protect_delete`); la vía sin service key es la UI: Edit bucket ⌄ → Empty → Delete.* (c) **✅ Contraseña de la base ROTADA** (confirmado por el usuario; el MCP va por token, no la usa). (d) **✅ USUARIOS REALES creados y verificados:** Auth (dashboard, Auto Confirm) + `public.users` poblada por MCP — **U01 Julián Vargas / jlnvargas25@gmail.com / Administrador** y **U02 Fernanda Moreno / moreno1999hernand@gmail.com / Cocina** (hace cocina y empaque; se eligió Cocina porque en la BASE ambos roles tienen permisos idénticos — las 3 políticas que los mencionan los otorgan juntos — y en la UI de la maqueta Cocina abre Producción/Inventario/Pedidos). **RLS verificado EN VIVO por simulación JWT** (`SET LOCAL ROLE authenticated` + `request.jwt.claims` + ROLLBACK): `current_rol()` de Julián = Administrador ✓; INSERT de Fernanda a `campaigns` rechazado con 42501 ✓ — técnica reutilizable para los tests de aceptación de Fase 2. Usuario QA residual del sistema viejo (`tuusuario+qa-momos@gmail.com`) borrado de Auth. (e) **PENDIENTE ÚNICO de Fase 1 → MCP de Meta:** el usuario debe correr `claude mcp add --transport http meta-ads https://mcp.facebook.com/ads` y autenticar OAuth con `/mcp` en sesión interactiva; la sesión siguiente hace la prueba viva (listar cuentas/campañas). **Luego → Fase 2 (RPCs, con los 22 bugs pagados como tests de aceptación).**
+
+**➕➕➕ Misma sesión (2026-07-10, 3ª) — FASE 2 ARRANCADA Y CON EL SLICE 1 HECHO:** (a) **✅ Seed de catálogos corrido y verificado** (`supabase/seed-catalogos.sql`, idempotente): 15 products, 14 inventory_items, 13 recipes, 7 figuras, 6 toppings, 6 combo_components, 20 catalog_values, 4 zonas, 25 counters, cats/proveedores/settings. Vacías A PROPÓSITO (ganchos v5 sin equivalente en maqueta, el usuario define las listas): `franjas`, `moldes`, `ubicaciones_frio`. (b) **✅ RPCs DEL CICLO DE VIDA DEL PEDIDO corriendo en Supabase** (migración `rpc_pedidos_v1`, fuente `supabase/rpc-pedidos-v1.sql`): 3 flags nuevos en `orders` (inventario_reservado/insumos_descontados/metricas_cliente_actualizadas) + 10 helpers `_*` sin grants + 4 RPCs públicas **security definer** con gate `is_staff()` y grant solo a `authenticated`: `crear_pedido(jsonb)` (servidor NO confía en precios del cliente; snapshot insumo_costo server-side; padre+hijas por especie exacta vía figura→especie→componente; idempotency_key), `set_order_status(id, estado, venta_rapida)` (grafo TRANSICIONES + TODAS las gates + efectos: reserva al pagar, receta en producción, redes de seguridad #4/#7, cancelación con liberación exacta, beneficios tal cual, métricas cliente post-entrega con reversa, sync deliveries + retroceso #14), wrappers `marcar_pagado`/`cancelar_pedido`. **Proceso:** 2 agentes extractores (spec dominio + contrato esquema) → diseño orquestador → escritor → **revisión cazó 2 bugs CRÍTICOS antes de aplicar** (order_items antes que orders = FK rota; currval() como FK de adiciones de slot) + 5 más (combo legacy doble resta, producto gratis sin costo, stock por snapshot de cursor, counter mal nombrado, flag confundido). (c) **✅ TESTS DE ACEPTACIÓN PASS** (patrón sin residuos: transacción + JWT simulado de U01 + DO con ASSERTs + raise final = rollback total; base verificada en 0 filas y counter intacto): **A** momo+adición round-trip exacto (PR01 8→6→8, Nutella 1.8→1.7→1.8, snapshot $32.000 congelado, 2 reservas→Liberadas) · **B** caja x3 especie exacta (PR01 −2 gato, PR02 −1 perro, I08 −1, TODO vuelve al cancelar) · **C** gate de comprobante bloquea pagar sin foto. **Falta de Fase 2:** RPCs de producción/lotes (crear lote, congelamiento, merma), WAC de Entrada de insumo, reclamos. Después → Fase 3 (front async contra Supabase).
+
+**➕➕➕➕ Sesión 2026-07-10 (4ª) — FASE 2 COMPLETA (slice 2: producción/WAC/reclamos HECHO):** `supabase/rpc-produccion-v1.sql` → migración **`rpc_produccion_v1` APLICADA Y VERIFICADA** (10/10 funciones `security definer`, anon bloqueado, authenticated con grant, counters intactos, índice `inv_items_nombre_uq` + columna `production_batches.idempotency_key` creados). **10 RPCs:** `crear_lote` (descuenta receta por `prod` con `least()`, faltantes NO bloquean y van en el retorno, SIN reservas — consumo de lote IRREVERSIBLE, paridad-maqueta; idempotency_key con manejo de carrera vía `unique_violation`; `sugerencia_id`→Atendida solo si Pendiente y de área Producción), `set_lote_estado` (transiciones LIBRES como la maqueta; →Congelando sella/reinicia `inicio_congelacion=now()`; →Listo suma `perfectas` a `products.stock` con flag `stock_contabilizado`; la reversa resta SOLO hacia En preparación/Congelando con `greatest(0,…)` — ir a Vendido/Descartado no resta, paridad), `empezar_congelamiento` (wrapper, exige En preparación), `convertir_imperfectas` (solo etiqueta `destino`, no toca inventario), `crear_insumo` (duplicado case-insensitive rechazado + índice único `lower(nombre)`; categoría nueva se auto-crea; costo = total÷stock a 4 dec), `entrada_insumo` (WAC exacto de la maqueta; **costo 0 NO diluye**, solo suma stock; redondeos 2/4 dec), `movimiento_insumo` (Salida/Ajuste/Merma/Uso en producción; **signo forzado por tipo** — hardening; registra lo APLICADO con clamp a stock≥0; error claro si trunca a 0), `crear_reclamo` (reusa `set_order_status(…,'Reclamo')` del slice 1, doble audit = paridad; `entregado_en` reconstruido de `orders.fecha + deliveries.h_entrega` interpretado en **UTC** — ver follow-up), `set_reclamo_estado` (libre entre los 6, sin efectos colaterales), `editar_reclamo` (solo tipo/descr/resp/decision/solucion/costo≥0/evidencia). **Proceso:** 2 extractores paralelos (spec dominio + contrato esquema, con validación cruzada) → diseño orquestador → escritor → **revisión adversarial: 0 críticos, 1 ALTO (timezone de `entregado_en`) + 7 MEDIOS → 13 fixes aplicados antes del deploy** → migración por MCP → **tests de aceptación PASS** (3 bloques A/B/C, ~30 asserts: ciclo completo de lote con receta exacta e idempotencia · WAC con fórmula verificada + entrada gratis + guards de signo · reclamo punta a punta con doble-reclamo bloqueado; patrón sin residuos VERIFICADO: counters 18/32/14, 0 filas, I01/PR01 intactos). **Hardenings sobre la maqueta:** perfectas ≤ prod, costo_total ≥ 0 explícito, signo por tipo de movimiento, sellos/actor 100% server-side, referencias por id (se acabó el matcheo por nombre). **Follow-ups:** (a) armonizar los sellos del slice 1 a zona Bogotá (hoy `h_entrega=localtime` y `fecha=current_date` en sesión UTC; cuando se armonice, el `'UTC'` de `crear_reclamo` debe pasar a `'America/Bogota'`); (b) **pregunta de producto abierta:** crear un reclamo con el pedido "En ruta" dispara el retroceso #14 del slice 1 (domicilio vuelve a Asignado y se borra `h_salida`) — ¿es lo deseado? Hoy queda así por paridad. **Fase 2 NO tiene más pendientes. Siguiente salto: Fase 3 (front async contra Supabase)** + la prueba viva del MCP de Meta (sigue esperando el OAuth interactivo del usuario: `claude mcp add --transport http meta-ads https://mcp.facebook.com/ads` + `/mcp`).
+
+**➕ Misma sesión (4ª) — GANCHO MULTI-SEDE APLICADO:** el usuario trajo el análisis multi-sede (v1 + v2 ampliada el mismo día): *"no construir hoy toda la operación de las islas, pero sí evitar que el sistema quede amarrado a una sola cocina"* — Caney produce; las islas venden/almacenan/entregan/amplían cobertura. **Absorbido en [`BACKLOG.md`](BACKLOG.md) → "🔭 Multi-sede"** (etapas: ahora / antes de la primera isla / antes del local + lista de sobreingeniería prohibida) y **migración `sedes_v1` APLICADA Y VERIFICADA** (fuente [`supabase/sedes-v1.sql`](supabase/sedes-v1.sql), solo DDL+defaults, CERO cambios de RPC/front — smoke test PASS: crear_lote hereda SEDE-01 solo): tabla **`sedes`** (SEDE-01 "Cocina Central Caney"; tipo cocina|isla|local|bodega; lat/lng, radio_cobertura_km, `config` jsonb para horarios/capacidad/límites — motor configurable), **14 columnas de sede** con default (`orders` lleva 4: sede_id + prep_sede_id + despacho_sede_id + pickup_sede_id null=domicilio, + turno_id; inventory_items/movements, production_batches, deliveries, users, claims, zonas), esqueleto **`turnos`**, contrato CONGELADO de **`transferencias` + `transferencia_items`** (7 estados, cant_enviada vs recibida, batch_id), counters, RLS admin_all+staff_read (4 tablas, 8 políticas). **Línea trazada a propósito:** los DATOS multi-sede van ya; los MOTORES (selección automática de nodo, reposición, flujo de transferencias, reserva por canal, caja) se construyen cuando la primera isla tenga fecha — hoy serían código muerto. `products.stock` se re-interpreta como stock de la sede única (partición a `product_stock` = migración mecánica de etapa isla). Cliente/fidelidad SIEMPRE globales (jamás por sede).
+
+**➕ Misma sesión (4ª) — AUDIT DE SEGURIDAD + FIX DE PERMISOS:** a pedido del usuario ("¿miramos si todo está bien antes de seguir?") se corrió el linter de Supabase (`get_advisors`). **Hallazgo real → ARREGLADO:** los helpers internos `_*` del slice 1 y `next_id()` eran ejecutables vía REST por `authenticated` (y `next_id` hasta por `anon`) — causa: los **default privileges de Supabase** otorgan EXECUTE a anon/authenticated sobre toda función nueva, y el slice 1 revocó de public/anon pero NO de authenticated. Migración **`fix_helper_grants_v1` APLICADA Y VERIFICADA** (fuente [`supabase/fix-grants-v1.sql`](supabase/fix-grants-v1.sql)): revoke de los 10 helpers + next_id; is_staff/RPCs públicas intactas. **⚠️ REGLA PARA TODA FUNCIÓN NUEVA: el revoke SIEMPRE debe incluir `authenticated`** (public/anon no alcanza); NUNCA revocar is_staff/is_admin/current_rol/current_customer_id (las policies RLS los evalúan como el rol consultante). Advisors restantes ACEPTADOS y documentados: vistas `shop_*` definer = by design (re-mirar al construir el shop), `atributos_de_tipo` sin search_path fijo, bucket `productos` listable, leaked-password-protection de Auth apagada (toggle del dashboard, pendiente del usuario). Además: decisión de producto tomada — **crear reclamo NO debe resetear el domicilio** (se resuelve comercialmente con bono/detalle vía `benefits`); → **fix APLICADO** (migración `fix_retroceso_reclamo_v1`, tras terminar la sesión del chip de timezone — que armonizó TODOS los sellos operativos a Bogotá con `rpc_sellos_operativos_bogota`; verificado: 0 funciones con current_date/localtime y crear_reclamo ya interpreta en Bogotá): 'Reclamo' excluido del retroceso #14 vía edición QUIRÚRGICA de la función desplegada (pg_get_functiondef + replace con assert de patrón único — sin retranscribir el cuerpo; técnica reutilizable) + gancho **`claims.benefit_id`** (FK a benefits) creado para atribuir el bono de compensación al reclamo que lo originó. Verificado post-apply: retroceso excluye Reclamo ✓, Bogotá intacto ✓, grants intactos ✓.
+
+**➕ Sesión 2026-07-10 (5ª — el "chip de timezone") — SELLOS OPERATIVOS ARMONIZADOS A BOGOTÁ:** follow-up (a) del slice 2 **CERRADO**. Migración **`rpc_sellos_operativos_bogota` APLICADA Y VERIFICADA**: los 10 sellos operativos del slice 1 que usaban el reloj de sesión UTC pasan a `(now() at time zone 'America/Bogota')::date/::time` vía variables `v_hoy`/`v_ahora` — `_reserve_inventory` (production_suggestions.fecha ×5), `crear_pedido` (orders.fecha/hora + gate de beneficios `vence >= v_hoy`: antes un beneficio "moría" a las 19:00 Bogotá porque en UTC ya era mañana), `set_order_status` (deliveries.h_salida, customers.ultima, deliveries.h_entrega). En `crear_reclamo` (slice 2) el `at time zone 'UTC'` pasó a `'America/Bogota'` como pedía su NOTA. Los **timestamptz canónicos NO se tocaron** (pagado_en, liberada_en, reclamo_en, defaults `now()`) — correcto que sigan siendo instantes UTC. Fuentes actualizados en espejo: [`supabase/rpc-pedidos-v1.sql`](supabase/rpc-pedidos-v1.sql) y [`supabase/rpc-produccion-v1.sql`](supabase/rpc-produccion-v1.sql) (firmas intactas → `create or replace` preserva ACLs). **Proceso:** inventario cruzado contra schema-v5 (columnas date/time operativas vs timestamptz canónicas) → base verificada SIN datos operativos (counts 0 — nada que corregir retroactivamente) → **revisión adversarial DUAL (2 jueces ciegos en paralelo): 0 críticos, 0 warnings reales**; confirmaron migración≡fuentes y que `now()` es estable-por-transacción → v_hoy/v_ahora consistentes en cadenas anidadas (crear_reclamo→set_order_status→_reserve_inventory) → apply por MCP → verificación pg_proc (0 funciones de `public` con current_date/localtime; 4/4 prosecdef+search_path; anon sin execute; helper sin grant) → **tests de aceptación PASS** (patrón sin residuos: JWT U01 + ciclo Rappi completo crear→Pagado→En producción→Empacado→En ruta→Entregado→Reclamo + beneficios vigente/vencido; asserts exactos: `orders.fecha+hora == now() en Bogotá`, `h_salida/h_entrega == hora Bogotá`, `claims.entregado_en == now()` — round-trip perfecto —, sugerencia y `ultima` en fecha Bogotá; **residuo 0** con checksums de products/counters idénticos). **Limitación preexistente (jueces, teórica, NO empeoró):** una entrega que cruza medianoche reconstruye `entregado_en` con la fecha del pedido (h_entrega no tiene fecha propia); si algún día molesta, la salida es un `deliveries.entregado_en timestamptz` canónico sellado al entregar. **🔓 DESBLOQUEADO:** el fix de producto "crear reclamo NO resetea domicilio" (excluir 'Reclamo' del retroceso #14 en `set_order_status`) que esperaba a esta sesión ya puede aplicarse sin riesgo de pisarse.
+
+**Con esto queda cerrado TODO el polish de Fase 0.** Lo único abierto son items ya rotulados como Fase 1 (menú al cliente, fotos de producto, toppings declarados por producto, trazabilidad compartida) → **el próximo salto real es Supabase (Fase 1), en proyecto/sesión fresca.**
+
+### ➕ Misma sesión (2026-07-09): VISIÓN Claude-traficker — RUMBO ELEGIDO, pendiente de diseñar
+
+**Visión del usuario (sus palabras, 2026-07-09):** la app debe comportarse como una **agencia de marketing digital y de creación de contenido**. Claude, por medio de **MCP (o CLI)**, se enlaza a las redes sociales y actúa como el **traficker experto y experto de redes** de D'Momos; la app sirve como el **medio/ventana** para que quien la opera entienda qué está pasando en redes.
+
+**Estado real de los 4 módulos de marketing (verificado en código esta sesión — NO revisados adversarialmente; las auditorías de Fase 0 solo cubrieron el núcleo operativo):**
+- `Marketing` (~4648), `Creativos` (~4790), `Calendario` (~4919), `Crecimiento` (~5157) — **los 4 con CRUD real** (`{db, update, user}`), no son paneles muertos.
+- **El lazo de atribución YA existe:** los pedidos guardan `campaignId`/`creativeId`/`origenDetalle`; `campaignMetrics` (~1107) computa **CAC y ROAS = ventas atribuidas ÷ gastoReal** (métrica real, no pintada).
+- **"Asistente de marca" del Dashboard (~1129-1141) = proto-traficker de heurísticas fijas** (gastó >$60k sin pedidos → pausar; ROAS ≥ 2 → subir presupuesto ~20%). Es el MOLDE donde después escribe Claude.
+- **100% manual/demo:** `creative_results` (impresiones/alcance/clicks se tipean a mano) — exactamente lo que un MCP de Meta/TikTok automatizaría.
+
+**Punto de arquitectura (cerrado conceptualmente):** la visión **EXIGE Fase 1** — Claude NO puede llegar al `localStorage` de la tablet. Supabase = punto de encuentro: la app escribe pedidos/margen → Claude (por MCP) lee Meta Ads/TikTok + Postgres → escribe recomendaciones/insights en tablas → la app las muestra. Con el COGS sólido de Fase 0, el lazo **gasto→pedido→MARGEN ya es computable** (era el faltante señalado en la charla abierta).
+
+**PRÓXIMO PASO (sesión fresca):** (1) ~~revisar los 4 módulos con esta lente (modelo de datos → esquema Supabase)~~ ✅ **HECHO 2026-07-09 (2ª sesión)** — revisión completa + esquema Supabase propuesto + diseño del lazo traficker en [`DISEÑO-TRAFICKER.md`](DISEÑO-TRAFICKER.md); (2) ~~diseñar el lazo traficker~~ ✅ ídem (§3 del doc: cron diario → MCP Meta/TikTok → `metrics_daily` → recomendaciones persistidas con estado aceptada/descartada; Claude con rol Postgres propio, solo escribe tablas de marketing); (3) ~~¿optimizar por VOLUMEN o por MARGEN?~~ ✅ **DECIDIDO 2026-07-09: HÍBRIDO** — margen (POAS) como objetivo con **piso de volumen mínimo** configurable (detalle e implicaciones en §4 del doc). **Los 3 pasos del rumbo traficker quedaron cerrados** → lo que sigue es ejecutar Fase 1 (ver §5 del doc: fusionar esquema con el SQL v4 + RLS, elegir MCP de Meta Ads, definir el agente cron).
+
+Se cortó acá por **costo de sesión ($110.89)**, no por bloqueo técnico (mismo patrón que la sesión de $131).
+
+> ⚠️ Nota de entorno: en esta sesión el hook **GateGuard** (fact-forcing) intercepta cada `Edit`/`Bash`; hay que presentar los 4 hechos (importadores/superficie pública/datos/instrucción) en el mensaje justo antes del tool call. Recovery documentado: `ECC_GATEGUARD=off` o `ECC_DISABLED_HOOKS+=pre:edit-write:gateguard-fact-force`.
+
+---
+
+## 🆕🆕🆕 Sesión 2026-07-07 (4ª) — LEER DESPUÉS DE LA 2026-07-09
+
+**Foco:** implementar **Combos reales (P1)** — el último gap grande de Fase 0. **✅ HECHO Y VERIFICADO EN NAVEGADOR de punta a punta.** El diseño cerrado del BACKLOG se implementó en las 6 zonas + migración + CSV, sin bump de `DB_VERSION`.
+
+**Qué quedó:**
+- **Modelo:** momos tienen `especie` (`gato`/`perro`); el stock vive a nivel especie (PR01=pool gato, PR02=pool perro). La figura de cada slot → especie → momo-componente exacto. Helpers `momoEspecie`/`figuraEspecie`/`componentProductForFigura`/`figurasDeCombo` (junto a `comboComponentStock`).
+- **`order_items` = PADRE (caja, `esCaja`) + N HIJAS (`parentItemId`, `esSubMomo`).** El precio y el costo viven SOLO en la padre (hijas en 0 → sin doble conteo en `orderSubtotal`/`orderCOGS`).
+- **`reserveInventory`:** guard `tieneHijas` → si la caja tiene sub-momos, cada hija se descuenta sola por la rama `momo` (especie exacta) y se SALTA el pull genérico; combo legacy sin hijas mantiene el pull genérico (retrocompat). `releaseReservations` NO se tocó (revierte por tipo).
+- **`NuevoPedido`:** al elegir un combo aparece "🎁 ARMÁ LA CAJA" con `comboSize` slots (figura de `figurasDeCombo` + sabor + salsa) + botón "= igual para todos". Los selects sabor/salsa de línea y el picker de toppings se ocultan en combos.
+- **`Productos`:** tipo "combo" desbloqueado al crear + bloque de config (momos por caja, caja de cat. "Cajas", chips de momos-componentes con especie 🐱/🐶). Editable también.
+- **`DetallePedido`:** las hijas se filtran del map principal y se muestran indentadas bajo la caja ("COMPOSICIÓN DE LA CAJA (para la cocina)"). CSV de items con columna "Padre (caja)".
+
+**Verificación en vivo (todo PASS, 0 errores de consola):** el backfill de `especie` corrió sobre data existente (PR01=gato, PR02=perro). Pedido Caja x3 con Lizi+Momo (gato) + Max (perro) → PADRE $49.000 + 3 HIJAS $0, subtotal $49.000 · comprobante → **Marcar pagado** descuenta **PR01 8→6, PR02 6→5, I08 9→8** (especie exacta, sin pull genérico) con 4 reservas · **cancelar** devuelve TODO (PR01→8, PR02→6, I08→9, 4 reservas Liberadas) · el detalle muestra los 3 sub-momos · form de Productos desbloquea combo (config + empaque solo cajas x3/x4/x6). Maqueta restaurada a semilla pristina al final.
+
+**Pendiente-futuro (no bloqueante):** toppings por sub-momo (hoy hijas con `adiciones:[]`); composición distinta por caja dentro de una misma línea (hoy el slot se repite en las N cajas de la línea). Ambos anotados en BACKLOG.
+
+**Con esto, Fase 0 queda cerrada en lógica de dominio.** El próximo salto es el menú con cara al cliente → **Fase 1 (Supabase)** — pero la decisión FIRME del usuario es pulir la lógica antes de migrar; combos era el último gap grande.
+
+### ➕ Ampliación misma sesión: composición DISTINTA por caja (#2) + revisión adversarial
+
+- **#2 HECHO Y VERIFICADO.** Dentro de UNA línea combo, cada caja se arma distinta. Estado `boxes` = Array(cant) × Array(comboSize); `guardar()` emite 1 hija por (caja, slot) con `cajaNum` y `cant:1` (total momos = cajas × comboSize → **reserveInventory/releaseReservations NO se tocaron**). UI "ARMÁ LAS N CAJAS" con "Caja 1 → todas" y "= mismos momos" por caja; `setCant` redimensiona conservando lo compuesto. `DetallePedido` agrupa por `cajaNum`; CSV con columna "Caja #". Verificado en vivo: 2 cajas distintas → padre cant=2 + 6 hijas (cajaNum 1/2) · pagar PR01 8→5, PR02 6→3, I08 9→7 · cancelar devuelve todo · redimensión OK · validación bloquea cajas incompletas · 0 errores. **Además:** se pueden mezclar combos distintos en un mismo pedido con "＋ Agregar otro producto" (cada línea combo es independiente; verificado por código, no en vivo).
+- **Revisión adversarial (workflow, 7 agentes, 4 dimensiones + verificación escéptica) → 3 hallazgos confirmados, los 3 ARREGLADOS y verificados:**
+  - 🔴 **ALTA — el gate de disponibilidad miraba el POOL combinado de especies, el descuento es por especie EXACTA.** Un combo concentrado en una especie agotada mostraba "disponible" y no alertaba hasta pagar. Fix: helper `comboFaltantesEspecie` + `faltaStock`/aviso por línea ahora muestran el faltante de especie real ("Faltan 1 Momo Perrito…"). **No bloquea** (coherente con oversell→sugerir producción). **Nota:** este bug era PREEXISTENTE de la #1 (descuento por especie), no nuevo de la #2. Verificado en vivo.
+  - 🟡 **BAJA — cantidad decimal** desincronizaba `boxes.length` de `cant` → `Math.floor` en `setCant`.
+  - **ux-edge** y **retrocompat**: limpias.
+- **➕ Cards accionables en Producción y Domicilios (HECHO Y VERIFICADO).** Se hicieron clickeables 3 cards resumen (reusando el `onClick` de `Card`/`Stat`, que ya trae cursor+hover): (1) **Stock operativo** (Producción) → filtra la lista "Lotes" a ese producto + scroll, con chip "Mostrando lotes de: … (N)" y "✕ Quitar filtro"; (2) **Lotes en proceso** (Producción) → filtra "Lotes" a esa combinación exacta producto·sabor·figura·gramaje; (3) **Domicilios activos** → filtra la lista a los no Entregado/Cancelado + scroll, con "✕ ver todos". Estado local (`foco` en Produccion, `soloActivos` en Domicilios), scroll vía `document.getElementById(...)`. **NO toca dominio** (reserveInventory etc.), no persiste nada. Verificado en vivo: 5 lotes→1, chip de combinación completa, 4 domicilios→2 activos. **Nota:** durante los edits el HMR mostró errores transitorios de builds a medio guardar (`enProceso` pasó a objetos antes de actualizar su `.map`); el build final está limpio (confirmado por timestamp del módulo).
+
+---
+
+## 🆕🆕 Sesión 2026-07-07 (3ª) — LEER DESPUÉS DE LA 4ª
+
+**Foco:** cerrar Fase 0 en orden 1→2→3 (verificar → CRM → combos). Se hizo 1 y 2 completos; 3 quedó con diseño cerrado.
+1. **✅ Verificación en navegador** de lo que la sesión anterior dejó build-verde pero sin probar: **WAC** (Nutella → $35.200/kg exacto), **venta rápida ⚡** (Pagado→Entregado, bloquea sin foto de entrega omitiendo el sello, red de seguridad de receta), **banner de cuota** (`QuotaExceededError`→banner rojo + `beforeunload` bloquea reload). Los 3 PASAN. Maqueta restaurada a semilla pristina.
+2. **✅ CRM** — `Clientes` ahora recibe `{db, update, user}`: **editar cliente** (todos los campos salvo métricas derivadas) + **＋ Nuevo cliente (lead)** (alta manual sin pedido). **Bug arreglado de paso:** el `if (!c.ultima) return` de las alertas mataba el cumpleaños de los leads → separado (inactividad tras `if (c.ultima)`, cumpleaños siempre). Verificado en navegador (alta de lead C09 con alerta de cumple revivida, edición con métricas intactas). Detalle en [`BACKLOG.md`](BACKLOG.md).
+3. **✅ Combos — IMPLEMENTADO Y VERIFICADO EN NAVEGADOR (sesión 4ª, ver arriba).** El diseño cerrado (composición libre por slot · figura nombrada de las 7 · esquema padre+hijas `parentItemId`) se implementó en las 6 zonas + migración + CSV. Descuento por especie exacta, cancelación redonda, detalle con composición para cocina. Semilla restaurada pristina.
+
+> ⚠️ Los errores `QuotaExceededError` en la consola del navegador son residuo del test de cuota de esta sesión (inyectados a propósito) — NO son bugs. Se limpian al recargar.
+
+---
+
+## 🆕 Sesión 2026-07-07 (continuación) — LEER DESPUÉS DE LA 3ª
+
+**Foco:** pulir la lógica de dominio ANTES de Supabase. Decisión FIRME del usuario: **no migrar a Supabase hasta tener la lógica impecable** (guardado en memoria + BACKLOG).
+
+### ✅ Hecho y VERIFICADO adversarialmente esta sesión
+- **Costeo de insumos (WAC).** Form "Nuevo insumo" pide **costo TOTAL** (deriva unitario = total÷stock, con helper en vivo). Cada **Entrada** pide cantidad numérica + costo total, con **unidad CERRADA** (badge de la unidad del insumo, no editable) y recalcula el costo por **promedio ponderado (WAC)**. Decisión: la Entrada usa siempre la unidad del insumo (sin conversión).
+- **Auditoría adversarial de dominio** (workflow, 51 agentes) → **7 bugs confirmados** de 15 (8 falsos positivos descartados por verificación triple). **Los 7 arreglados y re-verificados** (todas las lentes limpias):
+  - **#1** stock fantasma al cancelar → `deductRecipe` ahora registra el consumo REAL como reserva `tipo:"insumo"` (con `orderId`); `releaseReservations` devuelve exactamente lo consumido.
+  - **#3** costo negativo en Entrada → guard endurecido (`+form.precio < 0`).
+  - **#7** costo 0 en Entrada → no diluye el WAC; solo suma stock ("entrada sin costo").
+  - **#4** transiciones de estado → **grafo estricto `TRANSICIONES`** (Cancelado/Reclamo = excepciones universales) + **red de seguridad de receta** (descuenta al llegar a En ruta/Entregado si no se hizo) + **venta rápida** ("⚡ Entrega inmediata": Pagado→Entregado, exige pago + foto de entrega, OMITE sello).
+  - **#2/#6** pérdida silenciosa por cuota → estado **"error"** + **banner rojo** + `beforeunload` advierte (fix REAL = fotos → Supabase Storage, Fase 1).
+  - **#5** `dbLoad` persiste tras normalizar solo si el shape cambió (no más "guardado" mentiroso).
+- **Formato colombiano de millones** (`$1'250.000`) — helper `milCO`, centralizado en `fmt`.
+- Todo **build-verde** (Vite, 0 errores). ✅ **Verificación EN NAVEGADOR HECHA (2026-07-07, sesión nueva).** Los 3 flujos que quedaron sin probar PASAN en vivo:
+  - **WAC en Entrada de insumo:** Nutella 1.8 kg @ $32.000 + Entrada 1.2 kg por $48.000 total → stock 3.0 kg y costo **$35.200/kg** exacto (promedio ponderado), unidad CERRADA (badge `kg`), persiste en `localStorage`, cero errores de consola.
+  - **Venta rápida ⚡:** el botón "⚡ Entrega inmediata" está condicionado a `o.pagadoEn` (línea 2180) — correcto, no aparece sin pago real. Con pago: bloquea sin foto de entrega ("falta la foto de entrega") **omitiendo el sello** (como se diseñó); con foto pasa Pagado→Entregado, `insumosDescontados=true` y crea reserva `tipo:"producto"` Consumida (red de seguridad de receta, reversible). **Nota:** `tieneEvidencia` (línea 970) exige `url` no vacía — una evidencia sin foto real NO cuenta (buen blindaje).
+  - **Banner de cuota:** al forzar `QuotaExceededError` en el persist, `sync→"error"`, header muestra "⚠ No se pudo guardar" y aparece el **banner rojo** (#A03B2A) "…almacenamiento local está lleno… Exportá un backup…". El `beforeunload` bloquea el reload mientras `sync==="error"` (protección real contra pérdida de datos, verificado en vivo).
+  - Maqueta restaurada a **estado seed pristino** al final (resembrada). Sync "Guardado ✓".
+
+### 📝 Pendiente (detalle en BACKLOG.md)
+- **P1 · Combos reales** (esfuerzo ALTO, toca esquema `order_items`) — el gap grande que resta en Fase 0. **✅ DISEÑO CERRADO 2026-07-07** (composición libre por slot · figura nombrada de las 7 · esquema padre+hijas `parentItemId` · las 6 zonas de código exactas). **Todo escrito en [`BACKLOG.md`](BACKLOG.md) → sección "P1 · Combos reales", listo para implementar en SESIÓN FRESCA** (no re-explorar). Se frenó acá por costo de sesión ($131), no por bloqueo técnico.
+- ~~**P2 · CRM sin alta/edición de clientes**~~ ✅ **HECHO 2026-07-07 (sesión nueva, verificado en navegador).** `Clientes` ahora recibe `{db, update, user}`: **✏️ Editar cliente** (todos los campos editables salvo métricas derivadas) + **＋ Nuevo cliente (lead)** (alta manual sin pedido, decisión del usuario). **Bug de paso arreglado:** el `if (!c.ultima) return` de las alertas mataba también el cumpleaños de los leads → separado (inactividad tras `if (c.ultima)`, cumpleaños siempre). Detalle en [`BACKLOG.md`](BACKLOG.md).
+- **Charla abierta (redes/pauta):** cómo hacer de Claude un asesor de redes que administre pautas para maximizar ventas. Insight clave: una IA de pauta necesita el lazo cerrado gasto→pedido→MARGEN (por eso primero se pule el núcleo). Pregunta pendiente del usuario: **¿optimizar por VOLUMEN o por MARGEN?**
+
+---
+
+## ⭐ Sesión 2026-07-07 — LEER ESTO PRIMERO (supera lo de abajo donde aplique)
+
+### ✅ Construido y VERIFICADO en navegador esta sesión
+- **✅ Evidencias guiadas por paso (punch-list #2 — HECHO 2026-07-07, sesión nueva).** Se invirtió la relación: el PASO pide su foto con el **tipo YA FIJO**, no el operador adivinando en un dropdown. Constante `FOTOS_PASO` (fuente de verdad por transición) + helpers `reqFotosPaso`/`faltanFotosPaso`/`tieneEvidencia`. Gates NUEVAS en `setOrderStatus`: **Empacado** exige Caja abierta + Sello; **Entregado** exige Foto de entrega (además del sello/pago existentes; Rappi también pide entrega). UI en `DetallePedido`: bloque "📸 Fotos requeridas para avanzar" con un slot por foto (○/✓) y botón de cámara por tipo fijo; el Sello ofrece **dos botones válidos** (Caja cerrada con sello / Bolsa sellada), ninguno es "el equivocado". Subida vía `tipoSubidaRef` (un solo `<input>`, tipo fijo por click). Se conservó el **modo libre** bajo "＋ otra foto (opcional)" para documentales, con default "Comprobante de pago" si el pedido no está pagado. **Verificado en vivo (cero errores):** P-1044 (Pendiente de pago) → slot Comprobante, "Marcar pagado" bloquea; P-1041 (En producción) → Caja abierta + Sello, "Pasar a Empacado" bloquea con mensaje; P-1043 (Rappi, En ruta) → slot Entrega, "Pasar a Entregado" bloquea. **Nota:** las gates solo corren en la transición → la semilla en estados avanzados no se rompe.
+- **✅ Polish de toppings + revisión adversarial (HECHO 2026-07-07, sesión nueva).** (1) **COGS** ahora suma el costo del insumo de las adiciones (`lineAdicionesCOGS`+`orderCOGS`). (2) **CSV** de items con 3 columnas de adiciones. (3) **Modelo topping = POR MOMO** (decisión del usuario): inventario, COGS y precio escalan por `it.cant` en `reserveInventory`/`lineAdicionesCOGS`/`lineAdicionesTotal` — coherentes (verificado 1 vs 2 momos = ×2 en los tres). Un **workflow de revisión adversarial (3 dimensiones)** confirmó 4 issues reales: el `× it.cant` (ALTA, arreglado con "por momo"); botón "Marcar pagado" en "Reclamo" sin slot (BAJA, arreglado); Rappi exige "Entrega" (es lo decidido, sin cambio); y **congelar el costo de insumo → DIFERIDO a Supabase** (hoy usa costo en vivo; en Fase 2 el COGS va server-side). Ver [`BACKLOG.md`](BACKLOG.md).
+- **Catálogo de figuras con nombre.** `settings.figuras` = objetos `{ nombre, especie: "gato"|"perro", gramaje }`. 7 figuras: gatos **Lizi/Momo/Toby/Teo(280g)**, perros **Max/Rocco/Danna**. Editor dedicado en Configuración → "Figuras (catálogo)" (crear/editar gramaje/eliminar). Migración retro-compat `string[]`→objetos. **Decisión FIRME: figura ⊥ sabor** (ortogonales; toda figura disponible en los 11 sabores).
+- **Relleno = constante fija** `"Cheesecake con ganache"` (ya NO es elección). `RELLENOS=["Cheesecake con ganache"]` + migración del default viejo `["Cheesecake","Ganache"]`. Semilla histórica normalizada.
+- **CRUD de productos + feature #1 (atributos por producto).** En el componente `Productos` (~2686): botones **"＋ Nuevo producto" / "✏️ Editar"** + Modal de form. Campo `atributos` en TODOS los productos (momo=`[sabor,salsa,figura]`, combo=`[sabor,salsa]`, pedido=`[]`). `NuevoPedido` gatea los selects por `atributos`. **SIN bump de DB_VERSION** (backfill idempotente en `normalizeDbShape`). `counters.product:15` → ids desde `PR16`. CREAR solo momo|pedido (combo excluido); EDITAR todos, **tipo inmutable**. `precioRappi` con fallback ×1.25. **Soft-delete only**. Hardening de lecturas de `stock` (`||0`).
+- **✅ Atributos derivados del tipo (pendiente #1 — HECHO 2026-07-07).** Helper único `atributosDeTipo(tipo)` (pedido→`[]`, combo→`[sabor,salsa]`, momo→`[sabor,salsa,figura]`) + `ATRIBUTO_LABEL`. Se **quitaron los toggles manuales** del form (`toggleAtributo` eliminado); ahora una línea de **solo lectura** muestra los atributos derivados ("Ninguno — se vende tal cual" para pedido). `guardarNuevo`/`guardarEdicion` derivan de `tipo`; `normalizeDbShape` **fuerza** la derivación (idempotente, no solo backfill). Verificado en navegador: momos→3 chips, pedido→"Ninguno", cero botones toggle, migración fuerza-derivó los 15 productos correctos. **Un granizado ya no puede tener salsa/figura — imposible por diseño.**
+
+### 📝 DECIDIDO con el usuario, PENDIENTE de implementar
+1. ~~**Atributos derivados del tipo (SACAR los toggles manuales).**~~ ✅ **HECHO 2026-07-07** (ver bullet en "Construido y VERIFICADO" arriba). Helper `atributosDeTipo`, sin toggles, migración fuerza-derivada, verificado en navegador.
+2. ~~**Toppings = sistema de ADICIONES.**~~ ✅ **HECHO 2026-07-07** (ver bullet en "Construido y VERIFICADO"). Catálogo `settings.toppings=[{nombre,precio,insumoId,insumoCant}]`, editable en Configuración; línea `order_items[].adiciones=[{nombre,precio,cant,insumoId,insumoCant}]`; suma al total; descuenta inventario liberable al cancelar. Semilla: Oreo/M&M/Milo/Chips/Maní/Almendras (todos gratis por default, editables). **Nota:** sabores/salsas/rellenos YA tenían editor ("Catálogos del negocio" en Configuración) — no se reconstruyó.
+3. **Crear combos con selectores reales** (`componentProductIds` multiselect, `empaqueItem`, `comboSize`). Hoy el CRUD BLOQUEA crear combos porque sin esos selectores quedan invendibles (availability 0). → Engram `momos/crud-productos-blueprint`.
+4. ~~**Evidencias guiadas por paso** (punch-list #2).~~ ✅ **HECHO 2026-07-07 (sesión nueva)** — ver bullet en "Construido y VERIFICADO" arriba.
+
+### 🎯 EL SALTO: menú con cara al cliente → Supabase (Fase 1)
+El usuario quiere: mandar al cliente un **link de menú**, que elija (con **fotos** de producto), y que el pedido entre a la app con toda la trazabilidad. **NO es posible en la maqueta local-first** (el cliente está en otro dispositivo/localStorage; no comparten nada). Cuatro features ya empujan al backend: **menú del cliente, fotos de producto, precios de adiciones, trazabilidad compartida** → todo = **Fase 1 (Supabase)**. Las fotos NO van como base64 en localStorage (revienta la cuota ~5 MB; la app ya avisa esto ~línea 1968) → **Supabase Storage**, el producto guarda la **URL**. **RECOMENDACIÓN: arrancar Supabase como proyecto propio, en sesión fresca.**
+
+> Memorias Engram de esta sesión: `momos/catalogo-figuras` · `momos/relleno-fijo` · `momos/crud-productos-blueprint` · `momos/atributos-derivados-tipo` · `momos/toppings-adiciones`.
+
+## OJO — no romper
+- El flujo de **beneficios** (Activo → Reservado en `NuevoPedido` → Usado al pagar)
+  está BIEN. Un análisis lo marcó como bug pero fue **FALSO POSITIVO**. No tocar.
+
+## Punch-list Fase 0 — features de UX (confirmadas con el usuario)
+
+### 1) Atributos por producto
+El form "Nuevo pedido" pide **Sabor/Salsa/Relleno/Figura para TODOS los productos**,
+incluso donde no aplican (una crepa no tiene figura; el "Momo Gatito" ya trae la
+figura en el nombre). Arreglarlo con **atributos por producto** (no un parche):
+- Agregar a cada producto `atributos: [...]` (subconjunto de sabor/salsa/relleno/figura):
+  - Momo Gatito / Perrito → `["sabor","salsa","relleno"]` (sin figura)
+  - Momo grande / premium → `["sabor","salsa","relleno","figura"]`
+  - Cheesecake cuchareable → `["sabor","salsa","relleno"]` (revisar)
+  - Crepas / malteadas / granizados (tipo `pedido`) → `[]`
+  - Combos → definir (surtido)
+- En `NuevoPedido`, renderizar cada `<Select>` sólo si el producto lo pide.
+- **Sumar `products.atributos` al esquema de Supabase** para migrar con la forma correcta.
+
+### 2) Flujo de evidencias guiado por paso (reemplaza el dropdown manual)
+Problema (trampa de UX detectada en smoke-test): hoy el operador elige el tipo de foto de un
+dropdown cuyo default es "Caja cerrada con sello"; sube el comprobante con el tipo equivocado
+y NO puede marcar Pagado (la gate de `setOrderStatus` exige tipo exacto "Comprobante de pago").
+Solución: cada paso pide la foto que le corresponde, con el **tipo YA FIJO** (sin dropdown que se
+equivoque), y no deja avanzar sin ella. Mapa CONFIRMADO con el usuario (todas OBLIGATORIAS):
+
+| Transición          | Foto (tipo fijo)                                                        |
+|---------------------|-------------------------------------------------------------------------|
+| → Pagado (no Rappi) | Comprobante de pago                                                      |
+| → Empacado          | 1) Caja abierta (contenido + estado)  ·  2) Sello (caja cerrada / bolsa sellada) |
+| → En ruta           | (ya viene del empaque; nada nuevo)                                      |
+| → Entregado         | Entrega                                                                 |
+
+- Las 4 son OBLIGATORIAS. La **"caja abierta"** es la defensa ante reclamos dudosos
+  (ej. seed R-031, que reclamó 3 h después) — decisión explícita del usuario: obligatoria.
+- El bloque de empaque (abierta → sello) va TODO en el paso **Empacado** (es una secuencia del
+  momento de empacar; no en En ruta con el domiciliario esperando).
+- **Rappi:** NO pide comprobante (se paga en la app); igual pide la foto de Entrega.
+- Mantener un botón **"＋ otra foto"** opcional para documentales (pedido armado, etc.).
+- Como el sello se captura en Empacado, las gates de En ruta/Entregado (que exigen sello) ya lo encuentran.
+- Bonus rápido: mientras tanto, el default de `tipoEv` debería ser "Comprobante de pago" cuando el pedido aún no está pagado.
+
+**Setup operativo (confirmado con el usuario):** la app corre en un tablet/celular fijo en cada
+estación de empaque (sobre un soporte), **instalable como PWA** (pantalla completa, tipo app nativa).
+El código ya usa la cámara del dispositivo (`capture="environment"`), así que la captura por paso
+funciona sin hardware especial ni servicios externos. La app guía la cámara al tipo correcto en cada
+paso; no hay IA ni proceso externo en el runtime.
+**Verificación de fotos por IA (visión): DESCARTADA por ahora — decisión explícita del usuario.**
+
+### 3) Composición de combos / cajas (por figura y sabor)
+Problema: hoy una caja (Caja x3/x4/x6) es UNA sola línea con un solo sabor/figura, así que no se
+puede expresar "1 gatito maracuyá + 1 perrito oreo + 1 gatito coco". La semilla lo mete a mano en
+texto libre (IT03: sabor "Surtido frutal", figura "Gatito y perrito") — la cocina no puede trabajar con eso.
+Solución: al elegir un combo, la línea se **expande en N sub-momos** (N = `comboSize`), y cada uno se
+configura con figura + sabor (+ salsa/relleno). La **figura se limita a las del combo**
+(`componentProductIds` → p.ej. x3 = gatito/perrito), no a las 4 figuras globales. Es composición
+slot por slot, NO un dropdown de combinaciones fijas.
+- **Recomendación (a confirmar con el usuario):** composición LIBRE por slot, con atajo "igual para
+  todos". (Alternativa: presets de caja fijos — más rápido pero menos flexible.)
+- **Bonus de inventario:** `reserveInventory` puede descontar la figura EXACTA (p.ej. 2 de PR01 +
+  1 de PR02) en vez del pull genérico actual del pool de componentes. El sabor es atributo de
+  producción, no dimensión de stock.
+- **Impacto en el esquema (decidir ANTES de migrar):** `order_items` debe poder representar los
+  sub-momos de la caja — N filas ligadas a la línea de la caja, una tabla de composición, o un JSON.
+
+### 4) Catálogo de figuras con nombre (estandarización) — ✅ HECHO (2026-07-07)
+**Implementado y verificado en navegador (cero errores de consola).** `settings.figuras` ahora es
+catálogo de objetos `{ nombre, especie: "gato"|"perro", gramaje }` con las 7 figuras. Editor dedicado
+en **Configuración → "Figuras (catálogo)"** (crear / editar gramaje inline / eliminar, con auditoría).
+Se sacó figuras del editor genérico de strings. Los 3 dropdowns (Nuevo pedido, Nuevo lote, Marketing)
+mapean a `.nombre`. `normalizeDbShape` convierte figuras-string viejas a objetos (retro-compatible).
+`vite.config.js` ahora respeta `process.env.PORT` (fix del preview con puertos ocupados).
+- **Decisión FIRME:** figura ⊥ sabor (ortogonales). La figura es la forma; el sabor es 1 de 11, elegido
+  aparte. NO se acoplan (evita 7×11 entradas basura). Se combinan en runtime al armar el pedido.
+- **Defaults por preguntas abiertas (todas editables en la UI):** los 6 chicos = 150 g, Teo = 280 g.
+  Osito/Corazón se retiraron del catálogo (re-agregables desde el editor). La figura NO define precio aún
+  (el precio sigue en el producto).
+- **Derivado p/ Supabase:** `figuras` es su propia tabla `{ nombre, especie, gramaje }`.
+
+_Texto original de la feature (referencia):_
+El usuario estandariza las 7 figuras con nombre propio, agrupadas por especie:
+- **Gatos:** Lizi, Momo, Toby, Teo
+- **Perros:** Max, Rocco, Danna
+- **Teo** es el grande ~280 g (mapea al actual "Momo premium 280 g").
+Modelar `figuras` como **catálogo de objetos** `{ nombre, especie: "gato"|"perro", gramaje }` en vez de
+la lista plana actual `["Gatito","Perrito","Osito","Corazón"]`. Alimenta la feature #1 (atributos) y
+la #3 (composición de cajas: los slots eligen entre estos personajes según especie/tamaño).
+ABIERTO (definir con el usuario, idealmente en la sesión nueva):
+- Tamaño de los otros 6 (¿todos 150 g?).
+- ¿La figura define el tamaño y el precio (figura → gramaje → precio, p.ej. Teo=280g=premium), o el
+  tamaño sigue aparte y la figura es solo la forma? Esto define si los `products` se reorganizan por figura.
+- Naming: "Momo" como figura choca con la marca MOMOS — confirmar que no confunde en la UI.
+- ¿Se retiran "Osito" y "Corazón" del catálogo, o quedan?
+
+## Smoke-test de Fase 0 — ✅ CORRIDO EN VIVO 2026-07-07 (todos PASAN)
+Método: chequeo estático de la lógica (`reserveInventory`, `releaseReservations`,
+`setOrderStatus`, `deductRecipe`, `fmtHoras`, `update`) + verificación EN VIVO por
+navegador (pedidos de test inyectados como precondición, transiciones disparadas con
+los botones reales, aserciones sobre `localStorage`). Artefactos de test limpiados al
+final; la maqueta quedó en estado seed pristino.
+
+1. **✅ Pedido → Pagado (reserva UNA vez) → Cancelar.** Stock PR01 8→6→8; beneficio
+   B-10 Activo→Reservado→Usado→Activo; reserva creada y luego Liberada;
+   `inventarioReservado` evita doble reserva. Insumos y beneficio vuelven. PASS.
+2. **✅ Combo Caja x3 con receta extra (lazo) → vender → baja el lazo.** Jaló 3 momos
+   del pool (PR01 8→5), 1 caja (I08 9→8), y el lazo 20→19 con movimiento
+   "Combo … · -1 und". PASS. (Ver hallazgo: al cancelar, el lazo NO vuelve.)
+3. **✅ Dos ediciones rápidas → el sync no miente.** Tras doble edición sincrónica el
+   indicador se mantuvo "Guardando…" (t=60ms, t=360ms) y recién pasó a "Guardado ✓"
+   una sola vez al asentar (t=860ms+). El token guard (#13, línea 5240) funciona. PASS.
+4. **✅ Lote "Congelando" — no muestra "9 h 60 min".** L-018 mostró "6 h 11 min ·
+   listo en ~3 h 49 min". `fmtHoras` (línea 978) convierte a minutos totales primero
+   y `mm = total % 60` ∈ [0,59]: es imposible imprimir 60 min. PASS.
+
+**Hallazgo fuera de los 4 → ✅ YA ARREGLADO (ver "Estado actual"):** los extras de
+receta descontados al reservar ahora se registran como reserva `tipo:"insumo"` y
+vuelven al cancelar. Base correcta para toppings/adiciones (#2).
+
+## Decisiones de arquitectura (cerradas con el usuario)
+- **Dos frontends, UN backend (2026-07-10).** MOMOS OPS (interno, operación) + **"Pide MOMOS"** (web pública del cliente — nombre elegido por el usuario; reemplaza Reorder) sobre la MISMA base Supabase. NUNCA dos sistemas aislados (inventarios/clientes duplicados = veneno). El pedido nace UNA sola vez: shop → RPC `crear_pedido()` (valida disponibilidad, reserva, domicilio por zona, pago) → aparece en OPS con cocina/despacho/CRM/atribución/margen — es decir, las mismas RPCs de Fase 2. Ganchos ya en `schema-v5`: `customers.auth_id` + política RLS del rol cliente (ve solo SUS pedidos y el catálogo, jamás costos). Monorepo `apps/ops + apps/shop` con packages compartidos = la forma de Fase 3. **Secuencia intacta: primero migrar OPS (Fase 1-2), el MVP del shop (catálogo/carrito/pago/estado) después.**
+- **Online-first.** Bajones de wifi cortos + hotspot de respaldo → NO se hace motor
+  offline / CRDT / PowerSync. Sólo un caché de lectura liviano para los blips.
+- **La lógica de negocio va a Postgres** (funciones RPC transaccionales con locks).
+  El servidor es el árbitro del stock: es lo que hace seguro el multiusuario.
+- Escala prevista: **2–4 personas** ahora, más adelante puede crecer.
+- **RLS + Auth OBLIGATORIOS** (el esquema ya trae `users.auth_id`).
+
+## Roadmap maqueta → app oficial
+- **Fase 0** — Verificar la maqueta (los 15 fixes). ← ACÁ ESTAMOS; falta el smoke-test.
+- **Fase 1** — Supabase: crear proyecto, correr el esquema v4, RLS por rol, Auth,
+  bucket de Storage para evidencias.
+- **Fase 2** — Portar la lógica (`setOrderStatus`, `reserveInventory`, `deductRecipe`,
+  `releaseReservations`…) a funciones RPC de Postgres.
+- **Fase 3** — Front async: reemplazar `repo` y `update()` por llamadas a Supabase
+  + caché de lectura local.
+- **Fase 4** — Migrar datos reales (JSON local → tablas; fotos base64 → Storage).
+- **Fase 5** — Deploy (Vercel), backups de la base, correr en paralelo unos días
+  antes de apagar la maqueta.
+
+## Archivos clave
+- App: `src/MomosOps.jsx`
+- Esquema SQL: **`supabase/schema-v5.sql` es LA fuente de verdad** (completo, con RLS concreto y ganchos de orquestación). El v4 ya no existe (el usuario no lo tiene, 2026-07-10) y schema-v5 lo superaba de todos modos — cruce cerrado N/A.
+- Entrada / build: `src/main.jsx`, `index.html`, `vite.config.js`, `package.json`.
