@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { supabase } from "./lib/supabase";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -5815,6 +5816,61 @@ const MODULOS = [
 
 const ROLES = ["Administrador","Cocina","Empaque","Logística","Marketing/CRM"];
 
+/* ── Fase 3 · slice 1: login real contra Supabase Auth ── */
+function PantallaLogin() {
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState("");
+  async function entrar(e) {
+    e.preventDefault();
+    if (enviando) return;
+    setEnviando(true); setError("");
+    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
+    if (err) {
+      setError(err.message === "Invalid login credentials" ? "Correo o contraseña incorrectos." : "No se pudo iniciar sesión: " + err.message);
+      setEnviando(false);
+    }
+    // Con éxito no hay que hacer nada: onAuthStateChange cambia la pantalla solo.
+  }
+  return (
+    <div className="momos min-h-screen flex items-center justify-center p-4" style={{ background: T.bg }}>
+      <style>{FONTS}</style>
+      <form onSubmit={entrar} className="w-full max-w-sm rounded-3xl border p-6 shadow-sm" style={{ background: T.surface, borderColor: T.border }}>
+        <div className="text-center mb-5">
+          <div className="text-4xl mb-2" aria-hidden="true">🐱</div>
+          <div className="display text-xl font-semibold">MOMOS <span style={{ color: T.coral }}>OPS</span></div>
+          <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>D'Momos Sweet Love · El Caney, Cali</div>
+        </div>
+        <label className="block text-xs font-bold mb-1" style={{ color: T.choco2 }}>Correo</label>
+        <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+          className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none mb-3" style={inputStyle} />
+        <label className="block text-xs font-bold mb-1" style={{ color: T.choco2 }}>Contraseña</label>
+        <input type="password" autoComplete="current-password" required value={pass} onChange={(e) => setPass(e.target.value)}
+          className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none mb-4" style={inputStyle} />
+        {error && <div className="text-xs font-bold mb-3" style={{ color: "#A03B2A" }}>{error}</div>}
+        <button type="submit" disabled={enviando} className="w-full rounded-xl px-3 py-2.5 text-sm font-bold" style={{ background: T.coral, color: "#fff", opacity: enviando ? 0.6 : 1 }}>
+          {enviando ? "Entrando…" : "Entrar"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function PantallaSinPerfil({ mensaje }) {
+  return (
+    <div className="momos min-h-screen flex items-center justify-center p-4" style={{ background: T.bg }}>
+      <style>{FONTS}</style>
+      <div className="w-full max-w-sm rounded-3xl border p-6 text-center" style={{ background: T.surface, borderColor: T.border }}>
+        <div className="text-4xl mb-2" aria-hidden="true">🚫</div>
+        <div className="display text-lg font-semibold mb-2">Sin acceso</div>
+        <div className="text-sm font-semibold mb-4" style={{ color: T.choco2 }}>{mensaje}</div>
+        <button onClick={() => supabase.auth.signOut()} className="rounded-xl px-4 py-2.5 text-sm font-bold" style={{ background: T.coral, color: "#fff" }}>Salir</button>
+      </div>
+    </div>
+  );
+}
+
 export default function MomosOps() {
   const [db, setDb] = useState(null);
   const [incompat, setIncompat] = useState(null); // versión guardada más nueva que la app
@@ -5822,7 +5878,9 @@ export default function MomosOps() {
   const [restoreMsg, setRestoreMsg] = useState("");
   const [vista, setVista] = useState("Dashboard");
   const [focus, setFocus] = useState(null); // contexto de navegación: {estado} | {itemId} | {claimId} | {desde,hasta}
-  const [rol, setRol] = useState("Administrador");
+  const [session, setSession] = useState(undefined); // undefined = verificando sesión · null = sin sesión
+  const [perfil, setPerfil] = useState(null); // fila de public.users del usuario logueado (id, nombre, rol, activo)
+  const [perfilError, setPerfilError] = useState(null);
   const [masAbierto, setMasAbierto] = useState(false);
   const [sync, setSync] = useState("cargando"); // cargando | guardado | guardando | local
   const saveTimer = useRef(null);
@@ -5831,6 +5889,33 @@ export default function MomosOps() {
   const dbRef = useRef(null);
   useEffect(() => { syncRef.current = sync; }, [sync]);
   useEffect(() => { dbRef.current = db; }, [db]);
+
+  // ── Fase 3 · slice 1: sesión Supabase = fuente de verdad de la identidad ──
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_ev, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
+  const authUserId = session?.user?.id;
+  useEffect(() => {
+    if (!authUserId) { setPerfil(null); setPerfilError(null); return; }
+    let vivo = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id,nombre,rol,activo")
+        .eq("auth_id", authUserId)
+        .maybeSingle();
+      if (!vivo) return;
+      if (error) setPerfilError("No se pudo cargar tu perfil: " + error.message);
+      else if (!data) setPerfilError("Tu usuario no está vinculado al equipo. Avisale al administrador.");
+      else if (!data.activo) setPerfilError("Tu usuario está desactivado. Avisale al administrador.");
+      else { setPerfil(data); setPerfilError(null); }
+    })();
+    return () => { vivo = false; };
+  }, [authUserId]);
 
   // Advertencia al cerrar la página si hay cambios pendientes + intento de guardado síncrono
   useEffect(() => {
@@ -6034,6 +6119,34 @@ export default function MomosOps() {
     );
   }
 
+  // ── Gates de sesión (Fase 3: login real) — van antes del gate de datos ──
+  if (session === undefined) {
+    return (
+      <div className="momos min-h-screen flex items-center justify-center" style={{ background: T.bg }}>
+        <style>{FONTS}</style>
+        <div className="text-center">
+          <div className="text-4xl mb-2" aria-hidden="true">🐱</div>
+          <div className="display text-lg font-semibold">MOMOS OPS</div>
+          <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>Verificando sesión…</div>
+        </div>
+      </div>
+    );
+  }
+  if (!session) return <PantallaLogin />;
+  if (perfilError) return <PantallaSinPerfil mensaje={perfilError} />;
+  if (!perfil) {
+    return (
+      <div className="momos min-h-screen flex items-center justify-center" style={{ background: T.bg }}>
+        <style>{FONTS}</style>
+        <div className="text-center">
+          <div className="text-4xl mb-2" aria-hidden="true">🐱</div>
+          <div className="display text-lg font-semibold">MOMOS OPS</div>
+          <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>Cargando tu perfil…</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!db) {
     return (
       <div className="momos min-h-screen flex items-center justify-center" style={{ background: T.bg }}>
@@ -6047,6 +6160,7 @@ export default function MomosOps() {
     );
   }
 
+  const rol = perfil.rol; // el rol ya no se simula: viene del perfil real
   const visibles = MODULOS.filter((m) => m.roles.includes(rol));
   const activa = visibles.some((m) => m.id === vista) ? vista : visibles[0].id;
   const navPrincipal = visibles.slice(0, 4);
@@ -6092,11 +6206,12 @@ export default function MomosOps() {
             <div className="text-[11px] font-semibold truncate" style={{ color: T.choco2 }}>D'Momos Sweet Love · El Caney, Cali · <span style={{ color: syncColor }}>{syncLabel}</span></div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <label className="text-[11px] font-bold hidden sm:block" style={{ color: T.choco2 }}>Rol</label>
-            <select value={rol} onChange={(e) => { setRol(e.target.value); setMasAbierto(false); }}
-              className="rounded-xl px-2.5 py-2 text-xs border font-bold" style={inputStyle} aria-label="Rol de usuario">
-              {ROLES.map((r) => <option key={r}>{r}</option>)}
-            </select>
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-bold leading-tight">{perfil.nombre}</div>
+              <div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{perfil.rol}</div>
+            </div>
+            <button onClick={() => supabase.auth.signOut()}
+              className="rounded-xl px-2.5 py-2 text-xs border font-bold" style={inputStyle} aria-label="Cerrar sesión">Salir</button>
           </div>
         </div>
       </header>
