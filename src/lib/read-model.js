@@ -8,6 +8,13 @@ import { supabase } from "./supabase";
 
 const nz = (v, def = "") => (v === null || v === undefined ? def : v);
 
+// Sellos operativos: el server guarda timestamptz UTC; la maqueta espera hora LOCAL Bogotá.
+const BOGOTA = "America/Bogota";
+const fechaBogota = (ts) => (ts ? new Date(ts).toLocaleDateString("en-CA", { timeZone: BOGOTA }) : "");
+const horaBogota = (ts) => (ts ? new Date(ts).toLocaleTimeString("en-GB", { timeZone: BOGOTA, hour: "2-digit", minute: "2-digit" }) : "");
+const tsBogota = (ts) => (ts ? fechaBogota(ts) + " " + horaBogota(ts) : "");
+const hhmm = (t) => (t ? String(t).slice(0, 5) : ""); // time 'HH:MM:SS' → 'HH:MM'
+
 export async function fetchCatalogos() {
   const q = await Promise.all([
     supabase.from("products").select("id,nombre,cat,tipo,especie,precio,precio_rappi,costo,stock,prep,frio,lejano,activo,descr,combo_size,empaque_item_id").order("id"),
@@ -101,4 +108,135 @@ export async function fetchCatalogos() {
   } : null;
 
   return { products, inventory_items, recipes, users, settingsCatalogos, brand_library };
+}
+
+/* ── Fase 3 · slice 3a: lecturas OPERATIVAS desde Supabase ──
+   El servidor es el dueño del ciclo de pedido: orders, order_items (+adiciones),
+   customers, deliveries, evidences (signed URLs), benefits, claims, y el rastro de
+   inventario del ciclo (movements, reservations, suggestions) + audit.
+   production_batches NO se hidrata: sigue local hasta el slice de producción.
+   Vacío es LEGÍTIMO acá (la operación real arranca en 0). */
+
+export async function fetchOperativo() {
+  const q = await Promise.all([
+    supabase.from("orders").select("id,fecha,hora,canal,customer_id,barrio,direccion,zona,dom_cobrado,dom_costo,descuento,benefit_id,pago,comprobante,estado,obs,pagado_en,metricas_cliente_actualizadas,campaign_id,creative_id,origen_detalle").order("fecha", { ascending: false }).order("hora", { ascending: false }),
+    supabase.from("order_items").select("id,order_id,product_id,nombre,sabor,salsa,relleno,figura,cant,precio,costo_unitario,es_caja,parent_item_id,caja_num,es_sub_momo").order("id"),
+    supabase.from("order_item_adiciones").select("order_item_id,nombre,precio,cant,insumo_id,insumo_cant"),
+    supabase.from("customers").select("id,nombre,telefono,instagram,barrio,direccion,canal,primera,ultima,total,pedidos,cumple,favoritos,estado,notas").order("id"),
+    supabase.from("deliveries").select("id,order_id,proveedor,costo_real,cobrado,zona,h_solicitud,h_salida,h_entrega,codigo,estado,obs").order("id"),
+    supabase.from("evidences").select("id,order_id,tipo,storage_path,fecha,user_id").order("fecha"),
+    supabase.from("benefits").select("id,customer_id,beneficio,tipo_beneficio,valor,producto_gratis_id,condicion,minimo,activacion,vence,estado,pedido_uso,obs").order("id"),
+    supabase.from("claims").select("id,order_id,customer_id,fecha,tipo,entregado_en,reclamo_en,descr,resp,decision,solucion,costo,estado,evidencia").order("id"),
+    supabase.from("inventory_movements").select("id,fecha,tipo,item_id,cant,nota").order("fecha", { ascending: false }),
+    supabase.from("inventory_reservations").select("id,order_id,tipo,product_id,item_id,nombre,cantidad,fecha,estado").order("id"),
+    supabase.from("production_suggestions").select("id,fecha,product_id,item_id,cantidad,motivo,order_id,estado,area").order("id"),
+    supabase.from("audit_logs").select("id,fecha,user_id,entidad,entidad_id,accion,de,a").order("fecha", { ascending: false }),
+    supabase.from("users").select("id,rol"),
+    supabase.from("inventory_items").select("id,nombre,unidad"),
+    supabase.from("products").select("id,nombre"),
+  ]);
+  const conError = q.find((r) => r.error);
+  if (conError) throw new Error(conError.error.message);
+  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods] = q.map((r) => r.data);
+
+  const rolDe = {}; usrs.forEach((u) => { rolDe[u.id] = u.rol; });
+  const insumoDe = {}; invs.forEach((i) => { insumoDe[i.id] = i; });
+  const productoDe = {}; prods.forEach((p) => { productoDe[p.id] = p; });
+
+  const orders = ords.map((o) => ({
+    id: o.id, fecha: o.fecha, hora: hhmm(o.hora), canal: o.canal,
+    customerId: nz(o.customer_id), barrio: nz(o.barrio), direccion: nz(o.direccion), zona: nz(o.zona),
+    domCobrado: o.dom_cobrado, domCosto: o.dom_costo, descuento: o.descuento,
+    benefitId: nz(o.benefit_id), pago: nz(o.pago), comprobante: o.comprobante,
+    estado: o.estado, obs: nz(o.obs),
+    pagadoEn: o.pagado_en ? tsBogota(o.pagado_en) : undefined, // undefined, NO '' (los guards usan truthiness)
+    metricasClienteActualizadas: o.metricas_cliente_actualizadas,
+    campaignId: nz(o.campaign_id), creativeId: nz(o.creative_id), origenDetalle: nz(o.origen_detalle),
+  }));
+
+  const adicionesDe = {};
+  adics.forEach((a) => {
+    (adicionesDe[a.order_item_id] = adicionesDe[a.order_item_id] || []).push({
+      nombre: a.nombre, precio: Number(a.precio), cant: Number(a.cant), insumoId: nz(a.insumo_id), insumoCant: Number(a.insumo_cant),
+    });
+  });
+  const order_items = items.map((i) => ({
+    id: i.id, orderId: i.order_id, productId: i.product_id, nombre: i.nombre,
+    sabor: nz(i.sabor), salsa: nz(i.salsa), relleno: nz(i.relleno), figura: nz(i.figura),
+    cant: i.cant, precio: i.precio, costoUnitario: i.costo_unitario, // COGS congelado server-side: jamás recalcular
+    adiciones: adicionesDe[i.id] || [],
+    esCaja: i.es_caja, esSubMomo: i.es_sub_momo,
+    parentItemId: i.parent_item_id ?? undefined, cajaNum: i.caja_num ?? undefined,
+  }));
+
+  const customers = custs.map((c) => ({
+    id: c.id, nombre: c.nombre, telefono: nz(c.telefono), instagram: nz(c.instagram),
+    barrio: nz(c.barrio), direccion: nz(c.direccion), canal: nz(c.canal),
+    primera: nz(c.primera), ultima: nz(c.ultima), total: c.total, pedidos: c.pedidos,
+    cumple: nz(c.cumple), favoritos: nz(c.favoritos), estado: c.estado, notas: nz(c.notas),
+  }));
+
+  const deliveries = delivs.map((d) => ({
+    id: d.id, orderId: d.order_id, proveedor: d.proveedor, costoReal: d.costo_real, cobrado: d.cobrado,
+    zona: nz(d.zona), hSolicitud: hhmm(d.h_solicitud), hSalida: hhmm(d.h_salida), hEntrega: hhmm(d.h_entrega),
+    codigo: nz(d.codigo), estado: d.estado, obs: nz(d.obs),
+  }));
+
+  // Evidencias: bucket privado → signed URLs (8 h; se regeneran en cada hidratación)
+  let urlDe = {};
+  const paths = evids.map((e) => e.storage_path).filter(Boolean);
+  if (paths.length) {
+    const { data: firmadas, error: errFirma } = await supabase.storage.from("evidencias").createSignedUrls(paths, 60 * 60 * 8);
+    if (!errFirma && firmadas) firmadas.forEach((f, i) => { if (f.signedUrl) urlDe[paths[i]] = f.signedUrl; });
+  }
+  const evidences = evids.map((e) => ({
+    id: e.id, orderId: e.order_id, tipo: e.tipo,
+    url: urlDe[e.storage_path] || "",
+    fecha: fechaBogota(e.fecha), hora: horaBogota(e.fecha),
+    user: nz(rolDe[e.user_id]), // la maqueta guarda el ROL del que subió
+  }));
+
+  const benefits = bens.map((b) => ({
+    id: b.id, customerId: b.customer_id, beneficio: b.beneficio, tipoBeneficio: b.tipo_beneficio,
+    valor: b.valor, productoGratisId: nz(b.producto_gratis_id), condicion: nz(b.condicion), minimo: b.minimo,
+    activacion: nz(b.activacion), vence: nz(b.vence), estado: b.estado, pedidoUso: nz(b.pedido_uso), obs: nz(b.obs),
+  }));
+
+  const claims = clms.map((c) => ({
+    id: c.id, orderId: c.order_id, customerId: nz(c.customer_id), fecha: c.fecha, tipo: c.tipo,
+    hEntrega: horaBogota(c.entregado_en), hReclamo: horaBogota(c.reclamo_en), // legacy HH:MM
+    entregadoEn: tsBogota(c.entregado_en), reclamoEn: tsBogota(c.reclamo_en), // canónicos (ventana de 20 min)
+    desc: nz(c.descr), resp: nz(c.resp), decision: nz(c.decision), solucion: nz(c.solucion),
+    costo: c.costo, estado: c.estado, evidencia: nz(c.evidencia),
+  }));
+
+  const inventory_movements = movs.map((m) => {
+    const it = insumoDe[m.item_id];
+    const n = Number(m.cant);
+    return {
+      id: m.id, fecha: tsBogota(m.fecha), tipo: m.tipo,
+      item: it ? it.nombre : "", cant: (n > 0 ? "+" : "") + n + " " + (it ? it.unidad : ""),
+      nota: nz(m.nota),
+    };
+  });
+
+  const inventory_reservations = resvs.map((r) => ({
+    id: r.id, orderId: r.order_id, tipo: r.tipo,
+    refId: r.tipo === "producto" ? nz(r.product_id) : nz(r.item_id),
+    nombre: r.nombre, cantidad: r.cantidad, fecha: tsBogota(r.fecha), estado: r.estado,
+  }));
+
+  const production_suggestions = sugs.map((s) => ({
+    id: s.id, fecha: s.fecha,
+    producto: s.area === "Inventario" ? (insumoDe[s.item_id] ? insumoDe[s.item_id].nombre : "") : (productoDe[s.product_id] ? productoDe[s.product_id].nombre : ""),
+    cantidad: s.cantidad, motivo: nz(s.motivo), orderId: nz(s.order_id), estado: s.estado, area: s.area,
+    itemId: nz(s.item_id),
+  }));
+
+  const audit_logs = audits.map((a) => ({
+    id: a.id, fecha: tsBogota(a.fecha), user: nz(rolDe[a.user_id]),
+    entidad: a.entidad, entidadId: nz(a.entidad_id), accion: a.accion, de: nz(a.de), a: nz(a.a),
+  }));
+
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs };
 }

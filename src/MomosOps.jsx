@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
-import { fetchCatalogos } from "./lib/read-model";
+import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -5920,26 +5920,31 @@ export default function MomosOps() {
     return () => { vivo = false; };
   }, [authUserId]);
 
-  // ── Fase 3 · slice 2: hidratar MAESTROS/CATÁLOGOS desde Supabase (una vez por carga) ──
-  // Lo operativo (pedidos, clientes, lotes…) sigue local hasta que su slice porte las escrituras.
+  // ── Fase 3: hidratar desde Supabase (una vez por carga; re-usable tras cada escritura remota) ──
+  // Maestros/catálogos + operativo (ciclo de pedido). production_batches y marketing siguen locales.
+  async function hidratarDesdeServidor() {
+    const [cat, op] = await Promise.all([fetchCatalogos(), fetchOperativo()]);
+    update((d) => {
+      d.products = cat.products;
+      d.inventory_items = cat.inventory_items;
+      d.recipes = cat.recipes;
+      d.users = cat.users;
+      if (cat.brand_library) d.brand_library = cat.brand_library;
+      Object.assign(d.settings, cat.settingsCatalogos);
+      Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit
+      normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
+    }, { silencioso: true });
+  }
+
   useEffect(() => {
     if (!perfil || !db || hidratadoRef.current) return;
     hidratadoRef.current = true;
     (async () => {
       try {
-        const cat = await fetchCatalogos();
-        update((d) => {
-          d.products = cat.products;
-          d.inventory_items = cat.inventory_items;
-          d.recipes = cat.recipes;
-          d.users = cat.users;
-          if (cat.brand_library) d.brand_library = cat.brand_library;
-          Object.assign(d.settings, cat.settingsCatalogos);
-          normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
-        }, { silencioso: true });
+        await hidratarDesdeServidor();
         setCatalogosDe("servidor");
       } catch (e) {
-        console.warn("Catálogos: no se pudo hidratar desde Supabase; se usa la caché local.", e);
+        console.warn("Hidratación: no se pudo leer de Supabase; se usa la caché local.", e);
         setCatalogosDe("cache");
       }
     })();
