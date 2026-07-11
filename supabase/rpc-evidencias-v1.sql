@@ -36,6 +36,16 @@ begin
   if p_storage_path is null or length(trim(p_storage_path)) = 0 then
     raise exception 'Falta la ruta del archivo de la evidencia';
   end if;
+  -- Hardening (deuda 2026-07-11): la fila de evidences destranca gates de
+  -- set_order_status — exigir que el ARCHIVO exista de verdad en Storage
+  -- (el front sube primero y llama esta RPC después; una fila sin archivo
+  -- solo puede venir de un client malicioso o de un bug).
+  if not exists (
+    select 1 from storage.objects
+    where bucket_id = 'evidencias' and name = p_storage_path
+  ) then
+    raise exception 'El archivo de la evidencia no existe en Storage — subí la foto primero';
+  end if;
 
   select id into v_user_id from users where auth_id = auth.uid();
 
