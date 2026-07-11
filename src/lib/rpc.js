@@ -28,3 +28,41 @@ export async function subirEvidencia({ orderId, tipo, dataUrl }) {
   if (error) throw new Error("La foto subió pero no se pudo registrar: " + error.message);
   return data; // id de la evidencia (E01, E02…)
 }
+
+/* ── Fase 3 · slice 3c: reclamos, domicilios y clientes ──
+   crear_reclamo ya transiciona el pedido a 'Reclamo' y audita server-side (no llamar setOrderStatusRemoto aparte). */
+
+export async function crearReclamo(orderId, tipo, descr) {
+  const { data, error } = await supabase.rpc("crear_reclamo", { p_order_id: orderId, p_tipo: tipo, p_descr: descr });
+  if (error) throw new Error(error.message);
+  return data; // {claim_id}
+}
+
+export async function setReclamoEstado(claimId, estado) {
+  const { data, error } = await supabase.rpc("set_reclamo_estado", { p_claim_id: claimId, p_estado: estado });
+  if (error) throw new Error(error.message);
+  return data; // {ok, estado}
+}
+
+export async function editarReclamo(claimId, payload) {
+  const { data, error } = await supabase.rpc("editar_reclamo", { p_claim_id: claimId, p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok}
+}
+
+export async function crearDomicilio(orderId, proveedor, zona, costoReal, obs) {
+  const { data, error } = await supabase.rpc("crear_domicilio", { p_order_id: orderId, p_proveedor: proveedor, p_zona: zona, p_costo_real: costoReal, p_obs: obs });
+  if (error) throw new Error(error.message);
+  return data; // delivery_id
+}
+
+export async function actualizarDomicilio(deliveryId, payload) {
+  const { error } = await supabase.rpc("actualizar_domicilio", { p_delivery_id: deliveryId, p: payload });
+  if (error) throw new Error(error.message);
+}
+
+export async function upsertCliente(customerId, payload) {
+  const { data, error } = await supabase.rpc("upsert_cliente", { p_customer_id: customerId || null, p: payload });
+  if (error) throw new Error(error.message);
+  return data; // customer_id
+}

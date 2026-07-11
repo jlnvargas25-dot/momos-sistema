@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -1649,9 +1649,9 @@ function Select({ options, ...props }) {
     </select>
   );
 }
-function MiniSelect({ value, onChange, options, placeholder }) {
+function MiniSelect({ value, onChange, options, placeholder, disabled }) {
   return (
-    <select value={value} onChange={onChange} className="rounded-xl px-2 py-2 text-xs border font-semibold" style={inputStyle}>
+    <select value={value} onChange={onChange} disabled={disabled} className="rounded-xl px-2 py-2 text-xs border font-semibold" style={{ ...inputStyle, opacity: disabled ? 0.5 : 1 }}>
       {placeholder && <option value="">{placeholder}</option>}
       {options.map((o) => <option key={o} value={o}>{o}</option>)}
     </select>
@@ -2084,6 +2084,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
   const [libre, setLibre] = useState(false); // muestra el picker manual para documentales
   const [subiendo, setSubiendo] = useState(false);
   const [foto, setFoto] = useState(null);
+  const [enviando, setEnviando] = useState(false); // guarda local: cambiar() y crearReclamo() son async vía props
   const c = customerOf(db, o.customerId);
   const evs = evidencesOf(db, o.id);
   const flujo = { "Nuevo": "Confirmado", "Confirmado": "Pendiente de pago", "Pendiente de pago": "Pagado", "Pagado": "En producción", "En producción": "Empacado", "Empacado": "Listo para despacho", "Listo para despacho": "En ruta", "En ruta": "Entregado" };
@@ -2278,23 +2279,32 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2 sticky bottom-0 py-3" style={{ background: T.bg }}>
-        {siguiente && <Btn onClick={() => cambiar(o.id, siguiente)}>Pasar a “{siguiente}”</Btn>}
-        {!o.comprobante && !["Pagado","Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="soft" onClick={() => cambiar(o.id, "Pagado")}>Marcar pagado</Btn>}
-        {o.pagadoEn && ["Pagado","En producción","Empacado","Listo para despacho"].includes(o.estado) && <Btn kind="soft" onClick={() => cambiar(o.id, "Entregado", { ventaRapida: true })}>⚡ Entrega inmediata</Btn>}
+        {siguiente && <Btn disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, siguiente); setEnviando(false); }}>Pasar a “{siguiente}”</Btn>}
+        {!o.comprobante && !["Pagado","Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Pagado"); setEnviando(false); }}>Marcar pagado</Btn>}
+        {o.pagadoEn && ["Pagado","En producción","Empacado","Listo para despacho"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Entregado", { ventaRapida: true }); setEnviando(false); }}>⚡ Entrega inmediata</Btn>}
         {!["Reclamo","Cancelado"].includes(o.estado) && (
-          <Btn kind="danger" onClick={() => {
-            update((d) => {
-              const id = nextId(d, "claim", "R-", 3);
-              const dEnt = d.deliveries.find((x) => x.orderId === o.id && x.hEntrega && x.hEntrega !== "—");
-              const entregadoEn = dEnt && dEnt.hEntrega ? (o.fecha + " " + dEnt.hEntrega) : "";
-              d.claims.unshift({ id, orderId: o.id, customerId: o.customerId, fecha: hoyISO(), tipo: "Reclamo por calidad", hEntrega: dEnt && dEnt.hEntrega ? dEnt.hEntrega : "—", hReclamo: ahoraHora(), entregadoEn, reclamoEn: hoyISO() + " " + ahoraHora(), desc: "Reclamo creado desde el pedido. Completar detalle.", resp: "", decision: "", solucion: "", costo: 0, estado: "Abierto", evidencia: "" });
-              setOrderStatus(d, o.id, "Reclamo", user);
-              addAudit(d, { user, entidad: "Reclamo", entidadId: id, accion: "Caso creado", a: "Abierto" });
-            });
+          <Btn kind="danger" disabled={enviando} onClick={async () => {
+            setEnviando(true);
+            // Fase 3: crear_reclamo ya transiciona el pedido a 'Reclamo' y audita server-side (no llamar setOrderStatusRemoto aparte).
+            try {
+              await crearReclamo(o.id, "Reclamo por calidad", "Reclamo creado desde el pedido. Completar detalle.");
+            } catch (e) {
+              setAviso({ titulo: "Acción no permitida", texto: e.message });
+              setEnviando(false);
+              return;
+            }
+            try {
+              await refrescar();
+            } catch (e) {
+              setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El reclamo se creó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
+              setEnviando(false);
+              return;
+            }
             setAviso({ titulo: "Reclamo creado", texto: `Se abrió un caso conectado al pedido ${o.id}. Complétalo en el módulo Reclamos.` });
+            setEnviando(false);
           }}>Crear reclamo</Btn>
         )}
-        {!["Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="ghost" onClick={() => cambiar(o.id, "Cancelado")}>Cancelar pedido</Btn>}
+        {!["Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="ghost" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Cancelado"); setEnviando(false); }}>Cancelar pedido</Btn>}
       </div>
 
       {foto && (
@@ -2311,6 +2321,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
   const s = db.settings;
   const idemKeyRef = useRef("ui-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36)); // 1 por apertura del form: tolera retries de red
   const enviandoRef = useRef(false);
+  const [enviando, setEnviando] = useState(false); // espejo de enviandoRef solo para feedback visual (disabled); el ref sigue siendo el guard real
   const [customerId, setCustomerId] = useState("");
   const [nc, setNc] = useState({ nombre: "", telefono: "", barrio: "" });
   const [canal, setCanal] = useState("WhatsApp");
@@ -2410,6 +2421,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
     if (combosIncompletos.length) { setError("Completá figura, sabor y salsa en cada momo de cada caja."); return; }
     if (enviandoRef.current) return;
     enviandoRef.current = true;
+    setEnviando(true);
     setError("");
     // Fase 3: el pedido nace en el SERVER. crear_pedido calcula precios, snapshotea costos,
     // crea el cliente nuevo, arma padre+hijas de combos, reserva el beneficio y el delivery Rappi.
@@ -2434,6 +2446,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
     } catch (e) {
       setError(e.message);
       enviandoRef.current = false;
+      setEnviando(false);
       return;
     }
     onClose();
@@ -2444,6 +2457,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
       setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: `${res.order_id} se creó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo.` });
     }
     enviandoRef.current = false;
+    setEnviando(false);
   }
 
   return (
@@ -2660,7 +2674,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
 
       {error && <div className="text-sm font-bold mt-3 p-2.5 rounded-xl" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{error}</div>}
       <div className="mt-4 flex gap-2">
-        <Btn onClick={guardar}>Crear pedido</Btn>
+        <Btn disabled={enviando} onClick={guardar}>Crear pedido</Btn>
         <Btn kind="ghost" onClick={onClose}>Cancelar</Btn>
       </div>
     </Modal>
@@ -3485,9 +3499,10 @@ function Productos({ db, update, user }) {
 
 const DOM_ESTADOS = ["Por solicitar","Solicitado","Asignado","En ruta","Entregado","Problema","Cancelado"];
 
-function Domicilios({ db, update, user }) {
+function Domicilios({ db, update, user, refrescar }) {
   const [nuevo, setNuevo] = useState(false);
   const [avisoDom, setAvisoDom] = useState(null);
+  const [enviando, setEnviando] = useState(false);
   const s = db.settings;
   const [form, setForm] = useState({ orderId: "", proveedor: s.proveedores[0], costoReal: "", zona: s.zonas[0].nombre, obs: "" });
   const [soloActivos, setSoloActivos] = useState(false); // click en "Domicilios activos" → filtra la lista
@@ -3549,41 +3564,39 @@ function Domicilios({ db, update, user }) {
                   Cobrado {fmt(d.cobrado)} · Costo {fmt(d.costoReal)} ·{" "}
                   <b style={{ color: dif < 0 ? "#A03B2A" : "#3F6B42" }}>{dif < 0 ? `subsidio ${fmt(-dif)}` : dif > 0 ? `excedente ${fmt(dif)}` : "sin diferencia"}</b>
                 </div>
-                <MiniSelect options={DOM_ESTADOS} value={d.estado} onChange={(e) => {
+                <MiniSelect options={DOM_ESTADOS} value={d.estado} disabled={enviando} onChange={async (e) => {
                   const nuevo = e.target.value;
-                  if (nuevo === "En ruta") {
-                    // pasa por las validaciones del pedido; el domicilio se sincroniza dentro de setOrderStatus
-                    let res;
-                    update((dd) => {
-                      const x = dd.deliveries.find((y) => y.id === d.id);
-                      const o = dd.orders.find((y) => y.id === x.orderId);
-                      if (o && o.estado !== "En ruta") {
-                        res = setOrderStatus(dd, x.orderId, "En ruta", user);
-                        if (!res.ok) return; // no aplicar cambios si falla la validación
-                      } else {
-                        x.estado = "En ruta"; if (!x.hSalida) x.hSalida = ahoraHora();
-                        addAudit(dd, { user, entidad: "Domicilio", entidadId: d.id, accion: "Cambio de estado", a: "En ruta" });
-                      }
-                    });
-                    if (res && !res.ok) setAvisoDom(res.error);
+                  setEnviando(true);
+                  // "En ruta"/"Entregado" son dominio del PEDIDO: set_order_status sincroniza pedido+domicilio+sellos server-side.
+                  if (nuevo === "En ruta" || nuevo === "Entregado") {
+                    try {
+                      await setOrderStatusRemoto(d.orderId, nuevo);
+                    } catch (err) {
+                      setAvisoDom({ titulo: "No se puede despachar todavía", texto: err.message });
+                      setEnviando(false);
+                      return;
+                    }
+                    try {
+                      await refrescar();
+                    } catch (err) {
+                      setAvisoDom({ titulo: "Acción aplicada, vista desactualizada", texto: "El domicilio se actualizó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
+                    }
+                    setEnviando(false);
                     return;
                   }
-                  if (nuevo === "Entregado") {
-                    let res;
-                    update((dd) => {
-                      const x = dd.deliveries.find((y) => y.id === d.id);
-                      res = setOrderStatus(dd, x.orderId, "Entregado", user);
-                      if (!res.ok) return;
-                      x.estado = "Entregado"; x.hEntrega = ahoraHora();
-                    });
-                    if (res && !res.ok) setAvisoDom(res.error);
+                  try {
+                    await actualizarDomicilio(d.id, { estado: nuevo });
+                  } catch (err) {
+                    setAvisoDom({ titulo: "No se pudo actualizar el domicilio", texto: err.message });
+                    setEnviando(false);
                     return;
                   }
-                  update((dd) => {
-                    const x = dd.deliveries.find((y) => y.id === d.id);
-                    addAudit(dd, { user, entidad: "Domicilio", entidadId: d.id, accion: "Cambio de estado", de: x.estado, a: nuevo });
-                    x.estado = nuevo;
-                  });
+                  try {
+                    await refrescar();
+                  } catch (err) {
+                    setAvisoDom({ titulo: "Acción aplicada, vista desactualizada", texto: "El domicilio se actualizó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
+                  }
+                  setEnviando(false);
                 }} />
               </div>
               {d.obs && <div className="text-xs mt-2" style={{ color: T.choco2 }}>📝 {d.obs}</div>}
@@ -3602,18 +3615,28 @@ function Domicilios({ db, update, user }) {
           </Field>
           <Field label="Proveedor"><Select options={s.proveedores} value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })} /></Field>
           <Field label="Zona"><Select options={s.zonas.map((z) => z.nombre)} value={form.zona} onChange={(e) => setForm({ ...form, zona: e.target.value })} /></Field>
-          <Field label="Costo real cotizado"><Input type="number" value={form.costoReal} onChange={(e) => setForm({ ...form, costoReal: e.target.value })} /></Field>
+          <Field label="Costo real cotizado"><Input type="number" min="0" value={form.costoReal} onChange={(e) => setForm({ ...form, costoReal: e.target.value })} /></Field>
           <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
           <div className="flex gap-2 mt-2">
-            <Btn onClick={() => {
+            <Btn disabled={enviando} onClick={async () => {
               if (!form.orderId) return;
-              update((d) => {
-                const o = d.orders.find((x) => x.id === form.orderId);
-                const id = nextId(d, "delivery", "D-");
-                d.deliveries.unshift({ id, orderId: form.orderId, proveedor: form.proveedor, costoReal: +form.costoReal || 0, cobrado: o ? o.domCobrado : 0, zona: form.zona, hSolicitud: ahoraHora(), hSalida: "", hEntrega: "", codigo: "", estado: "Solicitado", obs: form.obs });
-                if (o) o.domCosto = +form.costoReal || 0;
-                addAudit(d, { user, entidad: "Domicilio", entidadId: id, accion: "Domicilio solicitado", a: form.proveedor });
-              });
+              setEnviando(true);
+              try {
+                await crearDomicilio(form.orderId, form.proveedor, form.zona, Math.max(0, +form.costoReal || 0), form.obs);
+              } catch (e) {
+                setAvisoDom({ titulo: "No se pudo solicitar el domicilio", texto: e.message });
+                setEnviando(false);
+                return;
+              }
+              try {
+                await refrescar();
+              } catch (e) {
+                setAvisoDom({ titulo: "Acción aplicada, vista desactualizada", texto: "El domicilio se solicitó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
+                setEnviando(false);
+                setNuevo(false);
+                return;
+              }
+              setEnviando(false);
               setNuevo(false);
             }}>Solicitar</Btn>
             <Btn kind="ghost" onClick={() => setNuevo(false)}>Cancelar</Btn>
@@ -3622,8 +3645,8 @@ function Domicilios({ db, update, user }) {
       )}
 
       {avisoDom && (
-        <Modal title="No se puede despachar todavía" onClose={() => setAvisoDom(null)}>
-          <p className="text-sm m-0">{avisoDom}</p>
+        <Modal title={avisoDom.titulo} onClose={() => setAvisoDom(null)}>
+          <p className="text-sm m-0">{avisoDom.texto}</p>
           <div className="mt-4"><Btn onClick={() => setAvisoDom(null)}>Entendido</Btn></div>
         </Modal>
       )}
@@ -3650,8 +3673,10 @@ function minutosReclamo(r) {
   return minutosEntre(r.hEntrega, r.hReclamo);
 }
 
-function Reclamos({ db, update, user, focus }) {
+function Reclamos({ db, update, user, focus, refrescar }) {
   const [sel, setSel] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [enviando, setEnviando] = useState(false);
   const highlightId = focus && focus.claimId;
   const highlightRef = useRef(null);
   useEffect(() => {
@@ -3692,11 +3717,23 @@ function Reclamos({ db, update, user, focus }) {
               {r.decision && <div className="text-xs mt-2"><b>Decisión:</b> {r.decision}</div>}
               {r.solucion && <div className="text-xs mt-1"><b>Solución:</b> {r.solucion} {r.costo > 0 && `(costo ${fmt(r.costo)})`}</div>}
               <div className="flex gap-2 mt-3 items-center flex-wrap">
-                <MiniSelect options={["Abierto","En revisión","Aprobado","Rechazado","Compensado","Cerrado"]} value={r.estado} onChange={(e) => update((d) => {
-                  const x = d.claims.find((y) => y.id === r.id);
-                  addAudit(d, { user, entidad: "Reclamo", entidadId: r.id, accion: "Cambio de estado", de: x.estado, a: e.target.value });
-                  x.estado = e.target.value;
-                })} />
+                <MiniSelect options={["Abierto","En revisión","Aprobado","Rechazado","Compensado","Cerrado"]} value={r.estado} disabled={enviando} onChange={async (e) => {
+                  const estado = e.target.value;
+                  setEnviando(true);
+                  try {
+                    await setReclamoEstado(r.id, estado);
+                  } catch (err) {
+                    setAviso({ titulo: "Acción no permitida", texto: err.message });
+                    setEnviando(false);
+                    return;
+                  }
+                  try {
+                    await refrescar();
+                  } catch (err) {
+                    setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El estado del caso se actualizó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
+                  }
+                  setEnviando(false);
+                }} />
                 <Btn small kind="ghost" onClick={() => setSel({ ...r })}>Editar caso</Btn>
               </div>
             </Card>
@@ -3716,9 +3753,35 @@ function Reclamos({ db, update, user, focus }) {
           <Field label="Solución dada"><Input value={sel.solucion} onChange={(e) => setSel({ ...sel, solucion: e.target.value })} /></Field>
           <Field label="Costo de la solución"><Input type="number" value={sel.costo} onChange={(e) => setSel({ ...sel, costo: +e.target.value })} /></Field>
           <div className="flex gap-2 mt-2">
-            <Btn onClick={() => { update((d) => { const i = d.claims.findIndex((x) => x.id === sel.id); d.claims[i] = sel; addAudit(d, { user, entidad: "Reclamo", entidadId: sel.id, accion: "Caso editado" }); }); setSel(null); }}>Guardar caso</Btn>
+            <Btn disabled={enviando} onClick={async () => {
+              const hEntrega = sel.hEntrega && sel.hEntrega !== "—" ? sel.hEntrega : "";
+              setEnviando(true);
+              try {
+                await editarReclamo(sel.id, { tipo: sel.tipo, descr: sel.desc, resp: sel.resp, decision: sel.decision, solucion: sel.solucion, costo: sel.costo, h_entrega: hEntrega });
+              } catch (e) {
+                setAviso({ titulo: "Acción no permitida", texto: e.message });
+                setEnviando(false);
+                return;
+              }
+              try {
+                await refrescar();
+              } catch (e) {
+                setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El caso se guardó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
+                setEnviando(false);
+                setSel(null);
+                return;
+              }
+              setEnviando(false);
+              setSel(null);
+            }}>Guardar caso</Btn>
             <Btn kind="ghost" onClick={() => setSel(null)}>Cancelar</Btn>
           </div>
+        </Modal>
+      )}
+      {aviso && (
+        <Modal title={aviso.titulo} onClose={() => setAviso(null)}>
+          <p className="text-sm m-0">{aviso.texto}</p>
+          <div className="mt-4"><Btn onClick={() => setAviso(null)}>Entendido</Btn></div>
         </Modal>
       )}
     </div>
@@ -3729,11 +3792,13 @@ function Reclamos({ db, update, user, focus }) {
 
 const ESTADOS_CLIENTE = ["Nuevo", "Recurrente", "VIP", "Inactivo", "Riesgo por reclamos"];
 
-function Clientes({ db, update, user }) {
+function Clientes({ db, update, user, refrescar }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(null); // null = cerrado; objeto = alta/edición
   const [err, setErr] = useState("");
+  const [aviso, setAviso] = useState(null);
+  const [enviando, setEnviando] = useState(false);
   const hoy = hoyISO();
 
   function abrirNuevo() {
@@ -3744,23 +3809,28 @@ function Clientes({ db, update, user }) {
     setErr(""); setSel(null);
     setForm({ id: c.id, nombre: c.nombre || "", telefono: c.telefono || "", instagram: c.instagram || "", canal: c.canal || "WhatsApp", barrio: c.barrio || "", direccion: c.direccion || "", cumple: c.cumple || "", favoritos: c.favoritos || "", estado: c.estado || "Nuevo", notas: c.notas || "" });
   }
-  function guardarCliente() {
+  async function guardarCliente() {
     const nombre = form.nombre.trim();
     const telefono = form.telefono.trim();
     if (!nombre || !telefono) { setErr("Nombre y teléfono son obligatorios."); return; }
     const campos = { nombre, telefono, instagram: form.instagram.trim(), canal: form.canal, barrio: form.barrio.trim(), direccion: form.direccion.trim(), cumple: form.cumple, favoritos: form.favoritos.trim(), estado: form.estado, notas: form.notas.trim() };
-    update((d) => {
-      if (form.id) {
-        const c = d.customers.find((x) => x.id === form.id);
-        if (!c) return;
-        Object.assign(c, campos);
-        addAudit(d, { user, entidad: "Cliente", entidadId: c.id, accion: "Cliente editado", a: nombre });
-      } else {
-        const cid = nextId(d, "customer", "C", 2);
-        d.customers.push({ id: cid, ...campos, primera: "", ultima: "", total: 0, pedidos: 0 });
-        addAudit(d, { user, entidad: "Cliente", entidadId: cid, accion: "Cliente creado a mano (lead)", a: nombre });
-      }
-    });
+    setEnviando(true);
+    try {
+      await upsertCliente(form.id || null, campos);
+    } catch (e) {
+      setErr(e.message);
+      setEnviando(false);
+      return;
+    }
+    try {
+      await refrescar();
+    } catch (e) {
+      setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El cliente se guardó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
+      setEnviando(false);
+      setForm(null);
+      return;
+    }
+    setEnviando(false);
     setForm(null);
   }
   const lista = db.customers.filter((c) => (c.nombre + c.telefono + (c.barrio || "")).toLowerCase().includes(q.toLowerCase()));
@@ -3894,8 +3964,14 @@ function Clientes({ db, update, user }) {
           {err && <div className="text-sm font-bold mb-3" style={{ color: T.coral }}>{err}</div>}
           <div className="flex justify-end gap-2">
             <Btn kind="ghost" onClick={() => setForm(null)}>Cancelar</Btn>
-            <Btn kind="rosa" onClick={guardarCliente}>Guardar</Btn>
+            <Btn kind="rosa" disabled={enviando} onClick={guardarCliente}>Guardar</Btn>
           </div>
+        </Modal>
+      )}
+      {aviso && (
+        <Modal title={aviso.titulo} onClose={() => setAviso(null)}>
+          <p className="text-sm m-0">{aviso.texto}</p>
+          <div className="mt-4"><Btn onClick={() => setAviso(null)}>Entendido</Btn></div>
         </Modal>
       )}
     </div>

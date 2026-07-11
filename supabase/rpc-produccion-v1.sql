@@ -662,14 +662,19 @@ end $$;
 -- ---------------------------------------------------------------------------
 -- editar_reclamo(p_claim_id, p jsonb) returns jsonb
 -- Campos editables SOLO: tipo, descr, resp, decision, solucion, costo,
--- evidencia. Cualquier otra clave del payload se ignora (nunca estado/
--- order_id/customer_id/fechas por acá).
+-- evidencia, h_entrega. Cualquier otra clave del payload se ignora (nunca
+-- estado/order_id/customer_id/fechas por acá).
+-- v2/h_entrega: viene de slice 3c (source: editar-reclamo-hentrega-v1.sql) —
+-- NO reemplazar este cuerpo por una versión sin h_entrega o se pierde soporte
+-- en prod silenciosamente.
 -- ---------------------------------------------------------------------------
 create or replace function editar_reclamo(p_claim_id text, p jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   c claims%rowtype;
   v_costo numeric;
+  v_hentrega text;
+  v_entregado_en timestamptz;
 begin
   if not is_staff() then
     raise exception 'Solo staff activo';
@@ -687,6 +692,21 @@ begin
     end if;
   end if;
 
+  -- h_entrega opcional: '' limpia el sello; 'HH:MM' lo recompone con la fecha
+  -- del PEDIDO (no la del reclamo), igual que crear_reclamo.
+  if p ? 'h_entrega' then
+    v_hentrega := coalesce(p->>'h_entrega', '');
+    if v_hentrega = '' then
+      v_entregado_en := null;
+    elsif v_hentrega !~ '^([01]\d|2[0-3]):[0-5]\d$' then
+      raise exception 'Hora de entrega inválida (formato HH:MM): %', v_hentrega;
+    else
+      select (o.fecha + v_hentrega::time) at time zone 'America/Bogota'
+        into v_entregado_en
+      from orders o where o.id = c.order_id;
+    end if;
+  end if;
+
   update claims set
     -- tipo no admite vacío (claims.tipo es not null y un reclamo sin tipo no
     -- significa nada); los demás campos SÍ pueden vaciarse legítimamente.
@@ -696,7 +716,8 @@ begin
     decision = coalesce(p->>'decision', decision),
     solucion = coalesce(p->>'solucion', solucion),
     costo    = case when p ? 'costo' then coalesce(v_costo, costo) else costo end,
-    evidencia = coalesce(p->>'evidencia', evidencia)
+    evidencia = coalesce(p->>'evidencia', evidencia),
+    entregado_en = case when p ? 'h_entrega' then v_entregado_en else entregado_en end
   where id = p_claim_id;
 
   perform _add_audit('Reclamo', p_claim_id, 'Caso editado');
