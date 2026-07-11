@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -1889,7 +1890,7 @@ function Dashboard({ db, go, user }) {
 
 const KANBAN_COLS = ["Nuevo","Confirmado","Pendiente de pago","Pagado","En producción","Empacado","Listo para despacho","En ruta","Entregado"];
 
-function Pedidos({ db, update, user, focus }) {
+function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [modo, setModo] = useState("kanban");
   const [selId, setSelId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
@@ -1916,14 +1917,22 @@ function Pedidos({ db, update, user, focus }) {
       && (!f.hasta || o.fecha <= f.hasta);
   });
 
-  function cambiar(orderId, estado, opts) {
-    let res;
-    update((d) => { res = setOrderStatus(d, orderId, estado, user, opts); });
-    if (res && !res.ok) setAviso({ titulo: "Acción no permitida", texto: res.error });
-    else if (res && res.faltantes && res.faltantes.length) {
-      setAviso({ titulo: "Inventario insuficiente", texto: `Se reservó lo disponible, pero falta producir: ${res.faltantes.map((x) => x.cant + "× " + x.producto).join(", ")}. Se creó una sugerencia en Producción.` });
-    } else if (res && res.faltInsumos && res.faltInsumos.length) {
-      setAviso({ titulo: "Insumos insuficientes", texto: `Se descontaron las recetas, pero el inventario no alcanzó para: ${res.faltInsumos.join(", ")}. Revisa el módulo Inventario y registra la compra.` });
+  // Fase 3: la transición vive en el SERVER (set_order_status con todas las gates). Luego re-fetch.
+  async function cambiar(orderId, estado, opts) {
+    try {
+      const res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
+      await refrescar();
+      const faltantes = (res && res.faltantes) || [];
+      if (faltantes.length) {
+        const prod = faltantes.filter((x) => x.area !== "Inventario");
+        const ins = faltantes.filter((x) => x.area === "Inventario");
+        const partes = [];
+        if (prod.length) partes.push(`falta producir: ${prod.map((x) => x.cant + "× " + x.producto).join(", ")}`);
+        if (ins.length) partes.push(`el inventario no alcanzó para: ${ins.map((x) => x.cant + "× " + x.producto).join(", ")}`);
+        setAviso({ titulo: "Inventario insuficiente", texto: `Se reservó lo disponible, pero ${partes.join(" y ")}. Ya quedó la sugerencia en Producción.` });
+      }
+    } catch (e) {
+      setAviso({ titulo: "Acción no permitida", texto: e.message });
     }
   }
 
@@ -2049,8 +2058,8 @@ function Pedidos({ db, update, user, focus }) {
         </Card>
       )}
 
-      {sel && <DetallePedido db={db} o={sel} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} />}
-      {nuevo && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} />}
+      {sel && <DetallePedido db={db} o={sel} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
+      {nuevo && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} refrescar={refrescar} />}
       {aviso && (
         <Modal title={aviso.titulo} onClose={() => setAviso(null)}>
           <p className="text-sm m-0">{aviso.texto}</p>
@@ -2061,7 +2070,7 @@ function Pedidos({ db, update, user, focus }) {
   );
 }
 
-function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso }) {
+function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refrescar, perfil }) {
   const fileRef = useRef(null);
   const tipoSubidaRef = useRef("Comprobante de pago"); // tipo fijo de la subida en curso
   const [tipoEv, setTipoEv] = useState(o.pagadoEn ? "Entrega" : "Comprobante de pago"); // solo para el modo libre (＋ otra foto)
@@ -2080,12 +2089,11 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso }) {
     try {
       const url = await compressImage(file);
       const tipo = tipoSubidaRef.current;
-      update((d) => {
-        repo.uploadEvidence(d, { id: nextId(d, "evidence", "E"), orderId: o.id, tipo, url, fecha: hoyISO(), hora: ahoraHora(), user });
-        addAudit(d, { user, entidad: "Evidencia", entidadId: o.id, accion: "Foto subida", a: tipo });
-      });
+      // Fase 3: la foto va al bucket privado + RPC crear_evidencia (id/user/audit server-side)
+      await subirEvidencia({ orderId: o.id, tipo, dataUrl: url });
+      await refrescar();
     } catch (err) {
-      setAviso({ titulo: "Error al subir", texto: "No se pudo procesar la imagen. Intenta con otra foto." });
+      setAviso({ titulo: "Error al subir", texto: err.message || "No se pudo procesar la imagen. Intenta con otra foto." });
     }
     setSubiendo(false);
     if (fileRef.current) fileRef.current.value = "";
@@ -2285,8 +2293,10 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso }) {
   );
 }
 
-function NuevoPedido({ db, update, user, onClose, setAviso }) {
+function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
   const s = db.settings;
+  const idemKeyRef = useRef("ui-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36)); // 1 por apertura del form: tolera retries de red
+  const enviandoRef = useRef(false);
   const [customerId, setCustomerId] = useState("");
   const [nc, setNc] = useState({ nombre: "", telefono: "", barrio: "" });
   const [canal, setCanal] = useState("WhatsApp");
@@ -2377,69 +2387,42 @@ function NuevoPedido({ db, update, user, onClose, setAviso }) {
     })) };
   }));
 
-  function guardar() {
+  async function guardar() {
     if (!customerId && (!nc.nombre || !nc.telefono)) { setError("Selecciona un cliente o registra nombre y teléfono."); return; }
     if (!lineas.some((l) => l.productId)) { setError("Agrega al menos un producto."); return; }
     if (subtotal < s.pedidoMinimo) { setError(`El pedido mínimo es ${fmt(s.pedidoMinimo)} (sin domicilio).`); return; }
     const combosIncompletos = lineas.filter((l) => l.productId && l.tipo === "combo")
       .filter((l) => !(l.boxes || []).length || (l.boxes || []).some((box) => !box.length || box.some((sl) => !sl.figura || !sl.sabor || !sl.salsa)));
     if (combosIncompletos.length) { setError("Completá figura, sabor y salsa en cada momo de cada caja."); return; }
-    let nuevoId = "";
-    update((d) => {
-      let cid = customerId;
-      if (!cid) {
-        cid = nextId(d, "customer", "C", 2);
-        d.customers.push({ id: cid, ...nc, instagram: "", direccion, canal, primera: hoyISO(), ultima: hoyISO(), total: 0, pedidos: 0, cumple: "", favoritos: "", estado: "Nuevo", notas: "" });
-        addAudit(d, { user, entidad: "Cliente", entidadId: cid, accion: "Cliente creado", a: nc.nombre });
-      }
-      nuevoId = nextId(d, "order", "P-"); // consecutivo único
-      const cli = d.customers.find((x) => x.id === cid);
-      const orden = {
-        id: nuevoId, fecha: hoyISO(), hora: ahoraHora(), canal, customerId: cid,
-        barrio: cli.barrio || nc.barrio, direccion, zona, domCobrado: tarifa, domCosto: 0,
-        descuento, benefitId: benefAplica && benef ? benef.id : "", pago, comprobante: false, estado: "Nuevo", obs,
-        campaignId, creativeId, origenDetalle,
-      };
-      const nuevasLineas = [];
-      lineas.filter((l) => l.productId).forEach((l) => {
-        const p = productOf(d, l.productId);
-        if (p && p.tipo === "combo") {
-          // PADRE: lleva precio + costo + empaque de la caja. Sabor/salsa/figura vacíos (viven en las hijas).
-          const parentId = nextId(d, "item", "IT");
-          nuevasLineas.push({ id: parentId, orderId: nuevoId, productId: l.productId, nombre: l.nombre, sabor: "", salsa: "", relleno: "", figura: "", cant: l.cant, precio: l.precio, costoUnitario: p.costo || 0, adiciones: [], esCaja: true });
-          // HIJAS: 1 por (caja, slot). Cada hija es UN momo físico (cant 1); cajaNum identifica la caja.
-          // Total de momos = cajas × comboSize (idéntico al modelo previo → reserveInventory suma cant de cada hija).
-          const nCajas = (l.boxes || []).length;
-          (l.boxes || []).forEach((box, bIdx) => {
-            box.forEach((sl) => {
-              const comp = componentProductForFigura(d, p, sl.figura);
-              const etiquetaCaja = nCajas > 1 ? " (caja " + (bIdx + 1) + " de " + l.nombre + ")" : " (en " + l.nombre + ")";
-              nuevasLineas.push({ id: nextId(d, "item", "IT"), orderId: nuevoId, parentItemId: parentId, cajaNum: bIdx + 1, productId: comp ? comp.id : (p.componentProductIds || [])[0], nombre: sl.figura + etiquetaCaja, sabor: sl.sabor, salsa: sl.salsa, relleno: RELLENOS[0], figura: sl.figura, cant: 1, precio: 0, costoUnitario: 0, adiciones: snapAdiciones(d, sl.adiciones), esSubMomo: true });
-            });
-          });
-        } else {
-          nuevasLineas.push({ id: nextId(d, "item", "IT"), orderId: nuevoId, productId: l.productId, nombre: l.nombre, sabor: l.sabor, salsa: l.salsa, relleno: l.relleno, figura: l.figura, cant: l.cant, precio: l.precio, costoUnitario: p ? p.costo : 0, adiciones: snapAdiciones(d, l.adiciones) });
-        }
-      });
-      if (productoGratis) {
-        nuevasLineas.push({ id: nextId(d, "item", "IT"), orderId: nuevoId, productId: productoGratis.id, nombre: productoGratis.nombre + " (beneficio)", sabor: "", salsa: "", relleno: "", figura: "", cant: 1, precio: 0, costoUnitario: productoGratis.costo || 0 });
-      }
-      repo.createOrder(d, orden, nuevasLineas);
-      // Domicilio automático para Rappi (evita el bloqueo al pasar a "En ruta"), sin duplicar
-      if (canal === "Rappi" && !d.deliveries.some((x) => x.orderId === nuevoId)) {
-        const deliveryId = nextId(d, "delivery", "D-");
-        d.deliveries.unshift({ id: deliveryId, orderId: nuevoId, proveedor: "Rappi", costoReal: 0, cobrado: 0, zona, hSolicitud: ahoraHora(), hSalida: "", hEntrega: "", codigo: "", estado: "Solicitado", obs: "Gestionado por la app de Rappi." });
-        addAudit(d, { user, entidad: "Domicilio", entidadId: deliveryId, accion: "Domicilio Rappi creado automáticamente", a: nuevoId });
-      }
-      if (benefAplica && benef) {
-        const b = d.benefits.find((x) => x.id === benef.id);
-        b.estado = "Reservado"; b.pedidoUso = nuevoId;
-        addAudit(d, { user, entidad: "Beneficio", entidadId: b.id, accion: "Beneficio reservado", de: "Activo", a: "Pedido " + nuevoId });
-      }
-      addAudit(d, { user, entidad: "Pedido", entidadId: nuevoId, accion: "Pedido creado", a: "Nuevo" });
-    });
-    onClose();
-    if (faltaStock.length) setAviso({ titulo: "Pedido creado con alerta", texto: `${nuevoId} creado. Ojo: disponibilidad insuficiente en ${faltaStock.map((l) => l.nombre).join(", ")}. Al marcar pagado se creará la sugerencia de producción.` });
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
+    setError("");
+    // Fase 3: el pedido nace en el SERVER. crear_pedido calcula precios, snapshotea costos,
+    // crea el cliente nuevo, arma padre+hijas de combos, reserva el beneficio y el delivery Rappi.
+    const mapAdic = (ads) => (ads || []).map((a) => ({ nombre: a.nombre, precio: +a.precio || 0, cant: +a.cant || 1, insumo_id: a.insumoId || null, insumo_cant: +a.insumoCant || 0 }));
+    const payload = {
+      customer_id: customerId || null,
+      nuevo_cliente: customerId ? null : { nombre: nc.nombre.trim(), telefono: nc.telefono.trim(), barrio: nc.barrio || "", direccion, canal },
+      canal, zona: zona || null, barrio: (c && c.barrio) || nc.barrio || "", direccion, pago,
+      obs, benefit_id: benefAplica && benef ? benef.id : null,
+      campaign_id: campaignId || null, creative_id: creativeId || null, origen_detalle: origenDetalle || "",
+      idempotency_key: idemKeyRef.current,
+      lineas: items.filter((l) => l.productId).map((l) => {
+        const p = productOf(db, l.productId);
+        const base = { product_id: l.productId, cant: l.cant, sabor: l.sabor || "", salsa: l.salsa || "", figura: l.figura || "", adiciones: mapAdic(l.adiciones) };
+        if (p && p.tipo === "combo") base.boxes = (l.boxes || []).map((box) => box.map((sl) => ({ figura: sl.figura, sabor: sl.sabor, salsa: sl.salsa, adiciones: mapAdic(sl.adiciones) })));
+        return base;
+      }),
+    };
+    try {
+      const res = await crearPedido(payload);
+      await refrescar();
+      onClose();
+      if (faltaStock.length) setAviso({ titulo: "Pedido creado con alerta", texto: `${res.order_id} creado. Ojo: disponibilidad insuficiente en ${faltaStock.map((l) => l.nombre).join(", ")}. Al marcar pagado se creará la sugerencia de producción.` });
+    } catch (e) {
+      setError(e.message);
+    }
+    enviandoRef.current = false;
   }
 
   return (
@@ -6206,7 +6189,7 @@ export default function MomosOps() {
   const user = rol;
 
   function render() {
-    const p = { db, update, user };
+    const p = { db, update, user, refrescar: hidratarDesdeServidor, perfil };
     switch (activa) {
       case "Dashboard": return <Dashboard db={db} go={go} user={user} />;
       case "Pedidos": return <Pedidos {...p} focus={focus} />;
