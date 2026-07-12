@@ -42,7 +42,12 @@ begin
   insert into counters(clave, valor) values (p_clave, 1)
     on conflict (clave) do update set valor = counters.valor + 1
     returning valor into n;
-  return p_prefix || case when p_pad > 0 then lpad(n::text, p_pad, '0') else n::text end;
+  -- greatest(p_pad, length): lpad TRUNCA cuando el número excede el ancho
+  -- (lpad('100',2)='10' → colisión de PK con el id 10 histórico). El pad es
+  -- un MÍNIMO de ancho, jamás un tope — A01..A99, A100, A101… (hotfix
+  -- 2026-07-12, detectado por el dry-run de variantes Etapa 2 con el
+  -- contador de audits en 71).
+  return p_prefix || case when p_pad > 0 then lpad(n::text, greatest(p_pad, length(n::text)), '0') else n::text end;
 end $$;
 
 -- ---------- Usuarios y roles ----------

@@ -149,7 +149,7 @@ export async function fetchOperativo() {
     supabase.from("claims").select("id,order_id,customer_id,fecha,tipo,entregado_en,reclamo_en,descr,resp,decision,solucion,costo,estado,evidencia").order("id"),
     supabase.from("inventory_movements").select("id,fecha,tipo,item_id,cant,nota").order("fecha", { ascending: false }),
     supabase.from("inventory_reservations").select("id,order_id,tipo,product_id,item_id,nombre,cantidad,fecha,estado,batch_id,figura").order("id"),
-    supabase.from("production_suggestions").select("id,fecha,product_id,item_id,cantidad,motivo,order_id,estado,area").order("id"),
+    supabase.from("production_suggestions").select("id,fecha,product_id,item_id,cantidad,motivo,order_id,estado,area,order_item_id").order("id"),
     supabase.from("audit_logs").select("id,fecha,user_id,entidad,entidad_id,accion,de,a").order("fecha", { ascending: false }),
     supabase.from("users").select("id,rol,nombre"),
     supabase.from("inventory_items").select("id,nombre,unidad"),
@@ -257,6 +257,9 @@ export async function fetchOperativo() {
     producto: s.area === "Inventario" ? (insumoDe[s.item_id] ? insumoDe[s.item_id].nombre : "") : (productoDe[s.product_id] ? productoDe[s.product_id].nombre : ""),
     cantidad: s.cantidad, motivo: nz(s.motivo), orderId: nz(s.order_id), estado: s.estado, area: s.area,
     itemId: nz(s.item_id),
+    // Variantes 2: item del pedido que espera — figura/sabor pedidos se
+    // resuelven contra db.order_items (la cola del server asigna con esto).
+    orderItemId: nz(s.order_item_id),
   }));
 
   const audit_logs = audits.map((a) => ({

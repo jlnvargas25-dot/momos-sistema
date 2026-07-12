@@ -3027,6 +3027,13 @@ function Produccion({ db, update, user, refrescar }) {
                 <div>
                   <div className="text-sm font-bold">{sg.cantidad}× {sg.producto}</div>
                   <div className="text-xs" style={{ color: T.choco2 }}>{sg.motivo}{sg.orderId && ` · pedido ${sg.orderId}`} · {sg.fecha}</div>
+                  {(() => {
+                    /* Variantes 2: qué variante espera este pedido — el desmolde
+                       la asigna solo (sabor duro, figura preferida). */
+                    const oi = sg.orderItemId && (db.order_items || []).find((i) => i.id === sg.orderItemId);
+                    if (!oi || (!oi.sabor && !oi.figura)) return null;
+                    return <div className="text-[11px] font-bold mt-0.5" style={{ color: "#8A6D1F" }}>⏳ espera: {[oi.sabor, oi.figura].filter(Boolean).join(" · ")} — se asigna sola al desmoldar</div>;
+                  })()}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge label={sg.estado} />
