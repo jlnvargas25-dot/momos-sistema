@@ -2888,6 +2888,15 @@ function Produccion({ db, update, user, refrescar }) {
 
   // Desmolde diferido: el paso directo a 'Listo' ahora falla en el server sin conteos.
   function abrirDesmolde(l) {
+    // Lote MIXTO (plan de 2+ figuras): el server exige conteos POR figura
+    // (variantes-v1) — el modal pide el detalle en vez de los 3 totales.
+    if ((l.figuras || []).length > 1) {
+      setDesmolde({
+        batchId: l.id, prod: l.prod,
+        figuras: l.figuras.map((f) => ({ figura: f.figura, cant: +f.cant || 0, perfectas: +f.cant || 0, imperfectas: 0, descartadas: 0 })),
+      });
+      return;
+    }
     const cargados = (l.perfectas || 0) + (l.imperfectas || 0) + (l.descartadas || 0);
     setDesmolde(cargados > 0
       ? { batchId: l.id, prod: l.prod, perfectas: l.perfectas, imperfectas: l.imperfectas, descartadas: l.descartadas }
@@ -2916,7 +2925,14 @@ function Produccion({ db, update, user, refrescar }) {
     const { batchId, perfectas, imperfectas, descartadas } = desmolde;
     setEnviandoDesmolde(true);
     try {
-      await desmoldarLote(batchId, +perfectas || 0, +imperfectas || 0, +descartadas || 0);
+      if (desmolde.figuras) {
+        // Lote mixto: totales = suma del detalle por figura (el server valida la coherencia doble).
+        const tot = (k) => desmolde.figuras.reduce((s, f) => s + (+f[k] || 0), 0);
+        await desmoldarLote(batchId, tot("perfectas"), tot("imperfectas"), tot("descartadas"),
+          desmolde.figuras.map((f) => ({ figura: f.figura, perfectas: +f.perfectas || 0, imperfectas: +f.imperfectas || 0, descartadas: +f.descartadas || 0 })));
+      } else {
+        await desmoldarLote(batchId, +perfectas || 0, +imperfectas || 0, +descartadas || 0);
+      }
     } catch (e) {
       setMsg("No se pudo registrar el desmolde: " + e.message);
       setEnviandoDesmolde(false);
@@ -2961,6 +2977,21 @@ function Produccion({ db, update, user, refrescar }) {
           </Card>
         ))}
         {stockOperativo.length === 0 && <Empty icon="🍮" text="No hay productos con stock operativo." />}
+      </div>
+
+      <SectionTitle>🎯 Disponible por variante (figura + sabor)</SectionTitle>
+      <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Qué figuras exactas hay, por sabor y gramaje, con su vencimiento más próximo. Se llena con cada desmolde por figura (lotes nuevos; los viejos no tienen detalle).</div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-2">
+        {(db.variantes || []).map((v) => (
+          <Card key={`${v.productId}·${v.figura}·${v.sabor}·${v.gramajeG}`} className="p-3 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold leading-snug">
+              {v.figura} · {v.sabor}
+              <div className="text-[10px] mt-0.5 font-semibold" style={{ color: T.choco2 }}>{v.producto}{v.gramajeG != null ? ` · ${v.gramajeG} g` : ""}{v.vence ? ` · vence ${v.vence}` : ""}</div>
+            </div>
+            <div className="display text-xl shrink-0" style={{ color: v.disponibles > 0 ? "#3F6B42" : "#A03B2A" }}>{v.disponibles}</div>
+          </Card>
+        ))}
+        {(db.variantes || []).length === 0 && <Empty icon="🎯" text="Sin desmoldes por figura todavía — el próximo desmolde llena este panel." />}
       </div>
 
       {subrecetasActivas.length > 0 && (
@@ -3221,6 +3252,35 @@ function Produccion({ db, update, user, refrescar }) {
       )}
 
       {desmolde && (() => {
+        // Lote MIXTO: conteos por figura — cada figura debe cuadrar completa
+        // contra su cant del plan (mismo guard que valida el server).
+        if (desmolde.figuras) {
+          const filaCuadra = (f) => (+f.perfectas || 0) + (+f.imperfectas || 0) + (+f.descartadas || 0) === f.cant;
+          const cuadraTodo = desmolde.figuras.every(filaCuadra);
+          const setFig = (i, k, v) => setDesmolde({
+            ...desmolde,
+            figuras: desmolde.figuras.map((f, j) => (j === i ? { ...f, [k]: Math.max(0, parseInt(v, 10) || 0) } : f)),
+          });
+          return (
+            <Modal title={`Desmolde ${desmolde.batchId} · lote mixto`} onClose={() => setDesmolde(null)}>
+              <div className="text-sm font-semibold mb-3" style={{ color: T.choco2 }}>Producidas: {desmolde.prod} · este lote combina {desmolde.figuras.length} figuras — contá cada una por separado.</div>
+              {desmolde.figuras.map((f, i) => (
+                <div key={f.figura} className="mb-2 rounded-xl p-2.5" style={{ background: T.vainilla }}>
+                  <div className="text-xs font-bold mb-1.5" style={{ color: filaCuadra(f) ? T.choco2 : "#A03B2A" }}>{f.figura} · {f.cant} producidas{filaCuadra(f) ? "" : ` — la suma debe dar ${f.cant}`}</div>
+                  <div className="grid grid-cols-3 gap-x-3">
+                    <Field label="Perfectas"><Input type="number" min="0" value={f.perfectas} onChange={(e) => setFig(i, "perfectas", e.target.value)} /></Field>
+                    <Field label="Imperfectas"><Input type="number" min="0" value={f.imperfectas} onChange={(e) => setFig(i, "imperfectas", e.target.value)} /></Field>
+                    <Field label="Descartadas"><Input type="number" min="0" value={f.descartadas} onChange={(e) => setFig(i, "descartadas", e.target.value)} /></Field>
+                  </div>
+                </div>
+              ))}
+              <div className="flex gap-2 mt-3">
+                <Btn disabled={enviandoDesmolde || !cuadraTodo} onClick={confirmarDesmolde}>Confirmar</Btn>
+                <Btn kind="ghost" disabled={enviandoDesmolde} onClick={() => setDesmolde(null)}>Cancelar</Btn>
+              </div>
+            </Modal>
+          );
+        }
         const suma = (+desmolde.perfectas || 0) + (+desmolde.imperfectas || 0) + (+desmolde.descartadas || 0);
         const cuadra = suma === desmolde.prod;
         return (

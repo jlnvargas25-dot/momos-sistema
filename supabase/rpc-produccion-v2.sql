@@ -484,6 +484,21 @@ end $$;
 -- ATÓMICAMENTE junto con el registro de conteos — no depende de una llamada
 -- posterior a set_lote_estado (aunque set_lote_estado también exige que ya
 -- estén cuadrados, ver sección D).
+--
+-- ESPEJO (variantes-v1.sql, 2026-07-12): desmoldar_lote EVOLUCIONÓ en ese
+-- archivo — nueva firma (agrega p_figuras jsonb default null) vía DROP de la
+-- función de 4 args + CREATE de la de 5 (un parámetro nuevo, aunque tenga
+-- DEFAULT, cambia la identidad de la función en Postgres; create or replace
+-- con firma distinta no reemplaza, crea una segunda función). El cuerpo
+-- vigente de la función es el que está en variantes-v1.sql — ESTE archivo es
+-- el espejo de lectura/histórico de Producción v2. Si tocás desmoldar_lote,
+-- tocá los DOS archivos. Resumen del cambio: ahora puede recibir conteos
+-- desglosados POR FIGURA para lotes mixtos (production_batches.figuras con
+-- 2+ entradas), que se guardan en la tabla nueva `lote_figuras`; un lote de
+-- una sola figura sigue funcionando SIN p_figuras (auto-deriva), y toda la
+-- lógica de guards/stock/audit de ESTE archivo se preserva intacta.
+-- set_lote_estado (sección D) NO CAMBIÓ — su guard existente de conteos
+-- cuadrados ya cubre lotes mixtos sin necesitar ningún ajuste.
 -- ============================================================================
 create or replace function desmoldar_lote(
   p_batch_id text, p_perfectas integer, p_imperfectas integer, p_descartadas integer

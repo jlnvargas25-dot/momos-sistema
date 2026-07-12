@@ -156,10 +156,11 @@ export async function fetchOperativo() {
     supabase.from("products").select("id,nombre"),
     supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras").order("id", { ascending: false }),
     supabase.from("subreceta_producciones").select("id,fecha,subreceta_id,gramos_nominales,gramos_obtenidos,costo_batch,faltantes,resp_user_id,obs,created_at").order("created_at", { ascending: false }).limit(50),
+    supabase.from("v_variantes_disponibles").select("product_id,producto,figura,sabor,gramaje_g,disponibles,vencimiento_proximo").order("producto").order("figura").order("sabor"),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches, subProds] = q.map((r) => r.data);
+  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches, subProds, variantesRows] = q.map((r) => r.data);
 
   const rolDe = {}; const nombreUserDe = {}; usrs.forEach((u) => { rolDe[u.id] = u.rol; nombreUserDe[u.id] = u.nombre; });
   const insumoDe = {}; invs.forEach((i) => { insumoDe[i.id] = i; });
@@ -287,5 +288,13 @@ export async function fetchOperativo() {
     resp: nz(nombreUserDe[sp.resp_user_id]), obs: nz(sp.obs), creado: tsBogota(sp.created_at),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, production_batches, subreceta_producciones };
+  // Variantes Etapa 1a: disponible por (producto, figura, sabor, gramaje) — nace
+  // del desmolde por figura (v_variantes_disponibles agrega lote_figuras de lotes
+  // Listo contabilizados; lotes viejos sin detalle por figura quedan fuera a propósito).
+  const variantes = (variantesRows || []).map((v) => ({
+    productId: v.product_id, producto: v.producto, figura: v.figura, sabor: nz(v.sabor),
+    gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
+  }));
+
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, production_batches, subreceta_producciones, variantes };
 }

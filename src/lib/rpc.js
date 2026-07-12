@@ -87,8 +87,12 @@ export async function crearCorrida(payload) {
   return data; // {corrida_id, lotes:[{batch_id,product_id,prod,gramaje_g}], faltantes:[{item_id,insumo,faltan,unidad}], idempotente?}
 }
 
-export async function desmoldarLote(batchId, perfectas, imperfectas, descartadas) {
-  const { data, error } = await supabase.rpc("desmoldar_lote", { p_batch_id: batchId, p_perfectas: perfectas, p_imperfectas: imperfectas, p_descartadas: descartadas });
+export async function desmoldarLote(batchId, perfectas, imperfectas, descartadas, figuras = null) {
+  // figuras (variantes-v1): lote MIXTO exige conteos por figura [{figura,perfectas,imperfectas,descartadas}];
+  // en lote de 1 figura se omite y el server auto-deriva (firma retrocompatible, p_figuras default null).
+  const params = { p_batch_id: batchId, p_perfectas: perfectas, p_imperfectas: imperfectas, p_descartadas: descartadas };
+  if (figuras) params.p_figuras = figuras;
+  const { data, error } = await supabase.rpc("desmoldar_lote", params);
   if (error) throw new Error(error.message);
   return data; // {ok, estado:'Listo'}
 }
