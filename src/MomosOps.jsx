@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -3034,6 +3034,14 @@ function Produccion({ db, update, user, refrescar }) {
                     if (!oi || (!oi.sabor && !oi.figura)) return null;
                     return <div className="text-[11px] font-bold mt-0.5" style={{ color: "#8A6D1F" }}>⏳ espera: {[oi.sabor, oi.figura].filter(Boolean).join(" · ")} — se asigna sola al desmoldar</div>;
                   })()}
+                  {(() => {
+                    /* Variantes 3: sugerido producir = cola + colchón del producto
+                       (advisory — la cantidad adeudada de arriba no se toca). */
+                    const prod = sg.productId && db.products.find((p) => p.id === sg.productId);
+                    const colchon = (prod && prod.colchonProduccion) || 0;
+                    if (!colchon || sg.estado !== "Pendiente") return null;
+                    return <div className="text-[11px] font-bold mt-0.5" style={{ color: "#3F6B42" }}>🛡️ Sugerido producir: {sg.cantidad} en cola + {colchon} de colchón = {(+sg.cantidad) + colchon}</div>;
+                  })()}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge label={sg.estado} />
@@ -3240,6 +3248,17 @@ function Produccion({ db, update, user, refrescar }) {
         });
         return (
           <Modal title={pre ? `Producción desde sugerencia ${pre.id}` : "Registrar producción"} onClose={() => { setNuevo(false); setPre(null); }} wide>
+            {pre && (() => {
+              /* Variantes 3: la cocina ve cuánto conviene producir — lo adeudado
+                 por la cola + el colchón del producto (merma y mostrador). */
+              const prod = pre.productId && db.products.find((p) => p.id === pre.productId);
+              const colchon = (prod && prod.colchonProduccion) || 0;
+              return (
+                <div className="mb-3 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: "#DDEBD9", color: "#3F6B42" }}>
+                  🛡️ {pre.cantidad}× {pre.producto} en cola{colchon > 0 ? ` + ${colchon} de colchón = sugerido producir ${(+pre.cantidad) + colchon}` : " (sin colchón configurado para este producto)"}
+                </div>
+              );
+            })()}
             <div className="grid sm:grid-cols-2 gap-x-4">
               <Field label="Sabor"><Select options={sabores} value={form.sabor} onChange={(e) => setForm({ ...form, sabor: e.target.value })} /></Field>
               <Field label="Relleno"><Select options={s.rellenos} value={form.relleno} onChange={(e) => setForm({ ...form, relleno: e.target.value })} /></Field>
@@ -3717,7 +3736,7 @@ function Productos({ db, update, user }) {
     setErrProd("");
   }
 
-  function guardarEdicion() {
+  async function guardarEdicion() {
     const nombre = form.nombre.trim();
     if (!nombre) { setErrProd("Falta el nombre"); return; }
     if (!(+form.precio > 0)) { setErrProd("Precio inválido"); return; }
@@ -3726,6 +3745,19 @@ function Productos({ db, update, user }) {
       if (!(+form.comboSize > 0)) { setErrProd("El combo necesita un tamaño (cuántos momos por caja)."); return; }
       if (!(form.componentProductIds || []).length) { setErrProd("Elegí al menos un momo componente."); return; }
       if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
+    }
+    /* Variantes 3: el colchón se persiste vía RPC (set_colchon_produccion,
+       gate is_admin en el server) ANTES del guardado local — si el server lo
+       rechaza (no admin, producto no server-side), la edición no continúa y
+       el error se muestra. El resto de campos sigue el camino local de
+       siempre (deuda conocida del módulo). */
+    if (editandoProd.tipo === "momo" && user === "Administrador" && (+form.colchonProduccion || 0) !== (editandoProd.colchonProduccion ?? 0)) {
+      try {
+        await setColchonProduccion(editandoProd.id, +form.colchonProduccion || 0);
+      } catch (e) {
+        setErrProd("No se pudo guardar el colchón: " + e.message);
+        return;
+      }
     }
     const precioRappi = +form.precioRappi > 0 ? +form.precioRappi : Math.round(+form.precio * 1.25);
     update((d) => {
@@ -3742,6 +3774,7 @@ function Productos({ db, update, user }) {
       x.lejano = !!form.lejano;
       x.desc = form.desc || "";
       x.atributos = atributosDeTipo(x.tipo); // siempre derivado del tipo (inmutable en edición)
+      if (x.tipo === "momo") x.colchonProduccion = +form.colchonProduccion || 0; // espejo local del valor ya persistido vía RPC
       if (x.tipo === "combo") { x.comboSize = +form.comboSize; x.componentProductIds = [...(form.componentProductIds || [])]; x.empaqueItem = form.empaqueItem; }
       addAudit(d, { user, entidad: "Producto", entidadId: x.id, accion: "Producto editado", de: "$" + dePrecio + "/" + deCosto, a: "$" + x.precio + "/" + x.costo });
     });
@@ -3791,7 +3824,7 @@ function Productos({ db, update, user }) {
                     <Btn small kind="rosa" onClick={() => { setLinea({ itemId: "", cantidad: "" }); setRecetaDe(p.id); }}>
                       🧾 Receta {recipeLines(db, p.id).length > 0 && `(${recipeLines(db, p.id).length})`}
                     </Btn>
-                    <Btn small kind="ghost" onClick={() => { setEditandoProd(p); setForm({ nombre: p.nombre, cat: p.cat, tipo: p.tipo, precio: p.precio, precioRappi: p.precioRappi, costo: p.costo, prep: p.prep, frio: !!p.frio, lejano: !!p.lejano, desc: p.desc || "", comboSize: p.comboSize || "", componentProductIds: [...(p.componentProductIds || [])], empaqueItem: p.empaqueItem || "" }); setErrProd(""); setAbrirForm(true); }}>✏️ Editar</Btn>
+                    <Btn small kind="ghost" onClick={() => { setEditandoProd(p); setForm({ nombre: p.nombre, cat: p.cat, tipo: p.tipo, precio: p.precio, precioRappi: p.precioRappi, costo: p.costo, prep: p.prep, frio: !!p.frio, lejano: !!p.lejano, desc: p.desc || "", comboSize: p.comboSize || "", componentProductIds: [...(p.componentProductIds || [])], empaqueItem: p.empaqueItem || "", colchonProduccion: p.colchonProduccion ?? 0 }); setErrProd(""); setAbrirForm(true); }}>✏️ Editar</Btn>
                     <Btn small kind={p.activo ? "ghost" : "soft"} onClick={() => update((d) => {
                       const x = d.products.find((y) => y.id === p.id);
                       x.activo = !x.activo;
@@ -3833,6 +3866,11 @@ function Productos({ db, update, user }) {
             <Field label="Requiere frío"><Select options={["Sí", "No"]} value={form.frio ? "Sí" : "No"} onChange={(e) => setForm({ ...form, frio: e.target.value === "Sí" })} /></Field>
             <Field label="Apto domicilio lejano"><Select options={["Sí", "No"]} value={form.lejano ? "Sí" : "No"} onChange={(e) => setForm({ ...form, lejano: e.target.value === "Sí" })} /></Field>
           </div>
+          {editandoProd && form.tipo === "momo" && user === "Administrador" && (
+            <Field label="🛡️ Colchón de producción (unidades extra por corrida — absorbe imperfectas y mostrador)">
+              <Input type="number" min="0" step="1" value={form.colchonProduccion ?? 0} onChange={(e) => setForm({ ...form, colchonProduccion: Math.max(0, parseInt(e.target.value, 10) || 0) })} />
+            </Field>
+          )}
           <Field label="Descripción"><Input value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} /></Field>
           {form.tipo === "combo" && (
             <div className="p-3 rounded-xl mb-3" style={{ background: T.vainilla }}>

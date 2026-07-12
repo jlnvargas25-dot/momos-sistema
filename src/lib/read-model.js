@@ -17,7 +17,7 @@ const hhmm = (t) => (t ? String(t).slice(0, 5) : ""); // time 'HH:MM:SS' → 'HH
 
 export async function fetchCatalogos() {
   const q = await Promise.all([
-    supabase.from("products").select("id,nombre,cat,tipo,especie,precio,precio_rappi,costo,stock,prep,frio,lejano,activo,descr,combo_size,empaque_item_id").order("id"),
+    supabase.from("products").select("id,nombre,cat,tipo,especie,precio,precio_rappi,costo,stock,prep,frio,lejano,activo,descr,combo_size,empaque_item_id,colchon_produccion").order("id"),
     supabase.from("combo_components").select("combo_id,component_id").order("component_id"),
     supabase.from("inventory_items").select("id,nombre,cat,unidad,stock,minimo,costo,proveedor,vence,ubicacion,compra,costo_estimado").order("id"),
     supabase.from("recipes").select("id,product_id,item_id,cantidad").order("id"),
@@ -64,6 +64,8 @@ export async function fetchCatalogos() {
     stock: p.stock ?? undefined,
     prep: p.prep, frio: p.frio, lejano: p.lejano, activo: p.activo,
     desc: nz(p.descr),
+    // Variantes 3: colchón de sobre-producción por producto (advisory).
+    colchonProduccion: p.colchon_produccion ?? 0,
     // atributos NO se hidrata: normalizeDbShape lo deriva SIEMPRE de tipo
     ...(p.tipo === "combo" ? {
       comboSize: p.combo_size ?? undefined,
@@ -257,6 +259,8 @@ export async function fetchOperativo() {
     producto: s.area === "Inventario" ? (insumoDe[s.item_id] ? insumoDe[s.item_id].nombre : "") : (productoDe[s.product_id] ? productoDe[s.product_id].nombre : ""),
     cantidad: s.cantidad, motivo: nz(s.motivo), orderId: nz(s.order_id), estado: s.estado, area: s.area,
     itemId: nz(s.item_id),
+    productId: nz(s.product_id), // Variantes 3: lookup del colchón del producto en el front
+
     // Variantes 2: item del pedido que espera — figura/sabor pedidos se
     // resuelven contra db.order_items (la cola del server asigna con esto).
     orderItemId: nz(s.order_item_id),

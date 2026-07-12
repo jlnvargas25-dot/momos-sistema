@@ -121,6 +121,12 @@ export async function crearInsumo(payload) {
   return data; // {item_id, costo}
 }
 
+export async function setColchonProduccion(productId, colchon) {
+  const { data, error } = await supabase.rpc("set_colchon_produccion", { p_product_id: productId, p_colchon: colchon });
+  if (error) throw new Error(error.message);
+  return data; // {ok, colchon, cambio}
+}
+
 export async function entradaInsumo(itemId, cant, costoTotal, nota = "") {
   const { data, error } = await supabase.rpc("entrada_insumo", { p_item_id: itemId, p_cant: cant, p_costo_total: costoTotal, p_nota: nota });
   if (error) throw new Error(error.message);
