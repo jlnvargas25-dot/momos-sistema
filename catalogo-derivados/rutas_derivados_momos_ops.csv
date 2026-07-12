@@ -1,0 +1,64 @@
+﻿route_code,step_order,step_code,description
+R-MCK-CONG,1,VERIFICAR_COMPONENTES,"Confirmar mousse, cheesecake, ganache/salsa, crocante, topping y figurita disponibles."
+R-MCK-CONG,2,FORMAR_BASE,Dosificar y compactar el crocante en el molde o envase.
+R-MCK-CONG,3,DOSIFICAR_MOUSSE_1,Agregar primera capa de mousse.
+R-MCK-CONG,4,AGREGAR_CENTRO,Agregar cheesecake y ganache o el relleno definido.
+R-MCK-CONG,5,CERRAR_MOUSSE,Completar y nivelar con mousse.
+R-MCK-CONG,6,CONGELAR,Congelar 8 a 12 horas o hasta desmolde seguro.
+R-MCK-CONG,7,DESMOLDAR,Desmoldar completamente congelado.
+R-MCK-CONG,8,DECORAR,Aplicar salsa/cobertura y topping.
+R-MCK-CONG,9,COLOCAR_FIGURA,Colocar 1 figurita horizontal del sabor.
+R-MCK-CONG,10,EMPACAR,Empacar y etiquetar lote.
+R-MCK-CONG,11,LIBERAR,Liberar como disponible congelado.
+R-CHK-REF,1,VERIFICAR_COMPONENTES,"Confirmar cheesecake, crocante, inclusión, salsa, topping y figurita."
+R-CHK-REF,2,FORMAR_BASE,Dosificar y compactar crocante en el envase.
+R-CHK-REF,3,SABORIZAR_CHEESECAKE,Mezclar cheesecake con la inclusión del sabor cuando aplique.
+R-CHK-REF,4,DOSIFICAR,Dosificar crema cheesecake sobre la base.
+R-CHK-REF,5,ESTABILIZAR_REF,Refrigerar hasta firmeza validada.
+R-CHK-REF,6,DECORAR,Aplicar salsa y topping.
+R-CHK-REF,7,COLOCAR_FIGURA,Colocar figurita congelada sobre barrera estable o cerca del despacho.
+R-CHK-REF,8,EMPACAR,Cerrar y etiquetar.
+R-CHK-REF,9,LIBERAR,Liberar como disponible refrigerado.
+R-PAV-REF,1,VERIFICAR_COMPONENTES,"Confirmar crema, mousse, Saltín, salsa, topping y figurita."
+R-PAV-REF,2,CAPA_CREMA,Dosificar primera capa de crema cheesecake/pavé.
+R-PAV-REF,3,CAPA_SALTIN,Colocar galleta Saltín seca o ligeramente humedecida según ficha.
+R-PAV-REF,4,CAPA_MOUSSE,Dosificar mousse del sabor.
+R-PAV-REF,5,REPETIR_CAPAS,"Repetir crema, Saltín y mousse según presentación."
+R-PAV-REF,6,DECORAR,Aplicar salsa y topping.
+R-PAV-REF,7,REPOSAR_REF,Refrigerar para integrar capas y ablandar parcialmente la galleta.
+R-PAV-REF,8,COLOCAR_FIGURA,Colocar figurita horizontal.
+R-PAV-REF,9,EMPACAR,Cerrar y etiquetar.
+R-PAV-REF,10,LIBERAR,Liberar como disponible refrigerado.
+R-CUC-REF,1,VERIFICAR_COMPONENTES,"Confirmar mousse, cheesecake, crocante, salsa, topping y figurita."
+R-CUC-REF,2,PREPARAR_ENVASE,Identificar vaso/envase y lote.
+R-CUC-REF,3,MONTAR_CAPAS,"Dosificar crocante, mousse, cheesecake y salsa en capas."
+R-CUC-REF,4,TERMINAR,Añadir topping y limpiar bordes.
+R-CUC-REF,5,ESTABILIZAR_REF,Refrigerar hasta la textura objetivo.
+R-CUC-REF,6,COLOCAR_FIGURA,Colocar figurita horizontal.
+R-CUC-REF,7,EMPACAR,Cerrar y etiquetar.
+R-CUC-REF,8,LIBERAR,Liberar como disponible refrigerado.
+R-SUN-PED,1,RECIBIR_PEDIDO,Crear preparación bajo pedido.
+R-SUN-PED,2,RESERVAR_COMPONENTES,"Reservar mousse congelada, crema, salsa, crocante e inclusiones."
+R-SUN-PED,3,PORCIONAR_MOUSSE,Dosificar mousse o trozos aptos.
+R-SUN-PED,4,ENSAMBLAR,"Añadir cheesecake/crema, salsa, crocante e inclusión."
+R-SUN-PED,5,TERMINAR,Aplicar topping.
+R-SUN-PED,6,ENTREGAR,Entregar inmediatamente; no crear stock terminado.
+R-MAL-PED,1,RECIBIR_PEDIDO,Crear preparación bajo pedido.
+R-MAL-PED,2,RESERVAR_BASE,"Tomar mousse, figura o imperfecto apto trazable."
+R-MAL-PED,3,LICUAR,Licuar con leche/base líquida según ficha.
+R-MAL-PED,4,AJUSTAR,Verificar textura y ajustar.
+R-MAL-PED,5,DECORAR,Agregar salsa y topping.
+R-MAL-PED,6,ENTREGAR,Entregar inmediatamente.
+R-CRZ-PED,1,RECIBIR_PEDIDO,Crear preparación bajo pedido.
+R-CRZ-PED,2,LICUAR_BASE,"Licuar hielo, agua, sirope, concentrado y ácido."
+R-CRZ-PED,3,AGREGAR_MACERADO,Agregar fruta macerada y chamoy/Tajín según versión.
+R-CRZ-PED,4,DECORAR,Terminar vaso y bordes.
+R-CRZ-PED,5,ENTREGAR,Entregar inmediatamente.
+R-YGB-CONG,1,PREPARAR_MEZCLA,"Preparar yogurt, fruta, leche en polvo y endulzante."
+R-YGB-CONG,2,PORCIONAR,Dosificar en moldes.
+R-YGB-CONG,3,CONGELAR,Congelar hasta firmeza.
+R-YGB-CONG,4,DESMOLDAR,Desmoldar.
+R-YGB-CONG,5,BANAR,Bañar con chocolate/cobertura.
+R-YGB-CONG,6,ESTABILIZAR,Volver a congelar o estabilizar.
+R-YGB-CONG,7,EMPACAR,Empacar y etiquetar.
+R-YGB-CONG,8,LIBERAR,Liberar como disponible congelado.
