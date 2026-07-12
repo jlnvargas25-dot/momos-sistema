@@ -3115,12 +3115,14 @@ function Produccion({ db, update, user, refrescar }) {
 
       {nuevo && (() => {
         const totalUnidades = Object.values(form.figuras).reduce((s, c) => s + (+c || 0), 0);
-        const porProducto = {};
+        // Espejo del server: crear_corrida agrupa lotes por (producto, gramaje_g)
+        const porLote = {};
         Object.entries(form.figuras).forEach(([figura, cant]) => {
           if (!(+cant > 0)) return;
           const p = productoDeFigura[figura];
-          const nombre = p ? p.nombre : figura;
-          porProducto[nombre] = (porProducto[nombre] || 0) + (+cant);
+          const f = figurasProducibles.find((x) => x.nombre === figura);
+          const etiqueta = (p ? p.nombre : figura) + (f?.gramajeG != null ? ` (${f.gramajeG} g)` : "");
+          porLote[etiqueta] = (porLote[etiqueta] || 0) + (+cant);
         });
         return (
           <Modal title={pre ? `Producción desde sugerencia ${pre.id}` : "Registrar producción"} onClose={() => { setNuevo(false); setPre(null); }} wide>
@@ -3149,7 +3151,7 @@ function Produccion({ db, update, user, refrescar }) {
             </div>
 
             <div className="text-xs font-semibold mb-3 p-2.5 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>
-              Total: <b>{totalUnidades}</b> unidades{Object.keys(porProducto).length > 0 && (" · " + Object.entries(porProducto).map(([nombre, cant]) => `${cant}× ${nombre}`).join(" · "))}
+              Total: <b>{totalUnidades}</b> unidades{Object.keys(porLote).length > 0 && (" · " + Object.entries(porLote).map(([etiqueta, cant]) => `${cant}× ${etiqueta}`).join(" · "))}
               <div className="mt-0.5 text-[10px]">Solo informativo — el server calcula los lotes reales al registrar.</div>
             </div>
 
