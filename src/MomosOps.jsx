@@ -2543,7 +2543,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
               {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("sabor") && <Select placeholder="Sabor" options={sabores} value={it.sabor} onChange={(e) => setItem(i, "sabor", e.target.value)} />}
               {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("salsa") && <Select placeholder="Salsa" options={s.salsas} value={it.salsa} onChange={(e) => setItem(i, "salsa", e.target.value)} />}
               {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("relleno") && <Select placeholder="Relleno" options={s.rellenos} value={it.relleno} onChange={(e) => setItem(i, "relleno", e.target.value)} />}
-              {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && <Select placeholder="Figura" options={s.figuras.map((f) => f.nombre)} value={it.figura} onChange={(e) => setItem(i, "figura", e.target.value)} />}
+              {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && <Select placeholder="Figura" options={(() => { const propias = (db.figuras || []).filter((f) => f.activo && f.productId === it.productId); return (propias.length ? propias : s.figuras).map((f) => f.nombre); })()} value={it.figura} onChange={(e) => setItem(i, "figura", e.target.value)} />}
               <Input type="number" min="1" value={it.cant} onChange={(e) => setCant(i, pSel, Math.max(1, +e.target.value))} />
               <div className="flex items-center justify-between px-1">
                 <span className="text-sm font-bold">{fmt(l.precio * l.cant + lineAdicionesTotal(l) + boxesAdicionesTotal(l))}</span>
