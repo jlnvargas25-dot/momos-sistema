@@ -3323,6 +3323,12 @@ function Inventario({ db, update, user, focus, refrescar }) {
     if (highlightRef.current) highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [highlightId]);
   const cats = [...new Set(db.inventory_items.map((i) => i.cat))];
+  // Dominios CERRADOS en Nuevo insumo (regla: dominio finito → cerrado; evita
+  // "Lácteos"/"lacteos" duplicadas). Solo Administrador puede ampliar la lista
+  // vía la opción centinela "➕ Nueva…" — cocina elige de lo existente.
+  const NUEVA_CAT = "➕ Nueva categoría…";
+  const NUEVA_UBI = "➕ Nueva ubicación…";
+  const ubicacionesInv = [...new Set(db.inventory_items.map((i) => i.ubicacion).filter(Boolean))].sort();
   const lista = db.inventory_items.filter((i) => !fCat || i.cat === fCat);
   const selMovIt = db.inventory_items.find((i) => i.nombre === form.item);
 
@@ -3463,8 +3469,8 @@ function Inventario({ db, update, user, focus, refrescar }) {
           <div className="grid sm:grid-cols-2 gap-x-4">
             <Field label="Nombre del insumo"><Input value={fi.nombre} onChange={(e) => setFi({ ...fi, nombre: e.target.value })} placeholder="Ej: Pulpa de coco 1 kg" /></Field>
             <Field label="Categoría">
-              <Input list="cats-insumo" value={fi.cat} onChange={(e) => setFi({ ...fi, cat: e.target.value })} placeholder="Elegir o escribir nueva…" />
-              <datalist id="cats-insumo">{cats.map((c) => <option key={c} value={c} />)}</datalist>
+              <Select placeholder="Elegir categoría…" options={[...cats, ...(user === "Administrador" ? [NUEVA_CAT] : [])]} value={fi.cat} onChange={(e) => setFi({ ...fi, cat: e.target.value, catNueva: "" })} />
+              {fi.cat === NUEVA_CAT && <Input value={fi.catNueva || ""} onChange={(e) => setFi({ ...fi, catNueva: e.target.value })} placeholder="Nombre de la categoría nueva" />}
             </Field>
             <Field label="Unidad de medida"><Select options={["und","kg","g","L","ml","paquete","docena"]} value={fi.unidad} onChange={(e) => setFi({ ...fi, unidad: e.target.value })} /></Field>
             <Field label="Stock inicial"><Input type="number" min="0" step="0.01" value={fi.stock} onChange={(e) => setFi({ ...fi, stock: e.target.value })} placeholder="Cantidad que entra hoy" /></Field>
@@ -3472,7 +3478,10 @@ function Inventario({ db, update, user, focus, refrescar }) {
             <Field label="Costo total de la compra"><Input type="number" min="0" value={fi.costoTotal} onChange={(e) => setFi({ ...fi, costoTotal: e.target.value })} placeholder="Lo que pagaste en total (factura)" /></Field>
             <Field label="Proveedor"><Input value={fi.proveedor} onChange={(e) => setFi({ ...fi, proveedor: e.target.value })} placeholder="Ej: Makro, Galería Alameda" /></Field>
             <Field label="Fecha de vencimiento (opcional)"><Input type="date" value={fi.vence} onChange={(e) => setFi({ ...fi, vence: e.target.value })} /></Field>
-            <Field label="Ubicación"><Input value={fi.ubicacion} onChange={(e) => setFi({ ...fi, ubicacion: e.target.value })} placeholder="Nevera 1, Congelador A, Estante seco…" /></Field>
+            <Field label="Ubicación">
+              <Select placeholder="Elegir ubicación…" options={[...ubicacionesInv, ...(user === "Administrador" ? [NUEVA_UBI] : [])]} value={fi.ubicacion} onChange={(e) => setFi({ ...fi, ubicacion: e.target.value, ubiNueva: "" })} />
+              {fi.ubicacion === NUEVA_UBI && <Input value={fi.ubiNueva || ""} onChange={(e) => setFi({ ...fi, ubiNueva: e.target.value })} placeholder="Ej: Nevera 1, Congelador A, Estante seco…" />}
+            </Field>
           </div>
           {(+fi.costoTotal > 0 && +fi.stock > 0) && (
             <div className="text-xs font-bold mb-3 p-2.5 rounded-xl" style={{ background: "#DDEBD9", color: "#3F6B42" }}>Costo unitario calculado: {fmt(+fi.costoTotal / +fi.stock)} / {fi.unidad}  ·  (costo total ÷ stock inicial)</div>
@@ -3484,17 +3493,20 @@ function Inventario({ db, update, user, focus, refrescar }) {
           <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>El stock inicial quedará registrado como un movimiento de entrada (fecha de compra: hoy).</div>
           <div className="flex gap-2">
             <Btn disabled={enviando} onClick={async () => {
+              // Centinelas "➕ Nueva…" (solo admin): el valor final sale del input de texto.
+              const catFinal = fi.cat === NUEVA_CAT ? (fi.catNueva || "").trim() : fi.cat.trim();
+              const ubiFinal = fi.ubicacion === NUEVA_UBI ? (fi.ubiNueva || "").trim() : fi.ubicacion.trim();
               if (!fi.nombre.trim()) { setErrIns("Escribe el nombre del insumo."); return; }
               if (db.inventory_items.some((i) => i.nombre.toLowerCase() === fi.nombre.trim().toLowerCase())) { setErrIns("Ya existe un insumo con ese nombre. Usa “Registrar movimiento” para sumarle stock."); return; }
-              if (!fi.cat.trim()) { setErrIns("Indica la categoría."); return; }
+              if (!catFinal) { setErrIns("Indica la categoría."); return; }
               setErrIns("");
               setEnviando(true);
               try {
                 await crearInsumo({
-                  nombre: fi.nombre.trim(), cat: fi.cat.trim(), unidad: fi.unidad,
+                  nombre: fi.nombre.trim(), cat: catFinal, unidad: fi.unidad,
                   stock: parseFloat(fi.stock) || 0, minimo: parseFloat(fi.min) || 0,
                   costo_total: +fi.costoTotal || 0, proveedor: fi.proveedor.trim(),
-                  vence: fi.vence || null, ubicacion: fi.ubicacion.trim(),
+                  vence: fi.vence || null, ubicacion: ubiFinal,
                 });
               } catch (e) {
                 setErrIns(e.message);
