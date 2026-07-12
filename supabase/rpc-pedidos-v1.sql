@@ -154,6 +154,10 @@ end $$;
 -- _reserve_inventory: recorre TODOS los order_items del pedido y descuenta/
 -- reserva stock. Acumula faltantes → production_suggestions + audits
 -- agregados. Devuelve faltantes como jsonb (array de objetos).
+--
+-- EVOLUCIONADA en variantes-1b-fifo.sql (FIFO por variante) — el cuerpo
+-- desplegado vive allá; este archivo conserva la versión pre-1b como
+-- referencia histórica.
 -- ---------------------------------------------------------------------------
 create or replace function _reserve_inventory(p_order_id text) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -341,6 +345,10 @@ end $$;
 -- _release_reservations: libera reservas 'Reservada' del pedido devolviendo
 -- stock. 'producto' sin movement (paridad con la maqueta); 'empaque'/'insumo'
 -- con movement 'Entrada'. Devuelve cantidad de reservas liberadas.
+--
+-- EVOLUCIONADA en variantes-1b-fifo.sql (FIFO por variante) — el cuerpo
+-- desplegado vive allá; este archivo conserva la versión pre-1b como
+-- referencia histórica.
 -- ---------------------------------------------------------------------------
 create or replace function _release_reservations(p_order_id text) returns integer
 language plpgsql security definer set search_path = public as $$
