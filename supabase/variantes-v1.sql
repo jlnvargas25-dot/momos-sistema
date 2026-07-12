@@ -369,7 +369,11 @@ from lote_figuras lf
 join production_batches b on b.id = lf.batch_id
 join products p on p.id = b.product_id
 where b.estado = 'Listo' and b.stock_contabilizado = true
-group by p.id, p.nombre, lf.figura, b.sabor, b.gramaje_g;
+group by p.id, p.nombre, lf.figura, b.sabor, b.gramaje_g
+-- Una variante con 0 perfectas no está "disponible" (ej. figura 100%
+-- descartada): sin este filtro el panel acumula variantes muertas con la
+-- historia. (Evolución 2026-07-12, migración vista_variantes_ocultar_ceros.)
+having sum(lf.perfectas) > 0;
 
 grant select on v_variantes_disponibles to authenticated;
 -- Sin políticas RLS propias: es una vista (no una tabla), security_invoker

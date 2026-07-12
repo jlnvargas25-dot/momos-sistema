@@ -1758,7 +1758,7 @@ function Dashboard({ db, go, user }) {
 
       {lotesListos.length > 0 && (
         <div className="mt-3 text-xs font-bold p-3 rounded-xl" style={{ background: "#DDEBD9", color: "#3F6B42" }}>
-          🧊✅ {lotesListos.length} lote(s) cumplieron su tiempo de congelación y esperan pasar a "Listo": {lotesListos.map((l) => `${l.id} (${l.sabor})`).join(", ")}.{" "}
+          🧊✅ {lotesListos.length} lote(s) cumplieron su tiempo de congelación y esperan pasar a "Listo": {lotesListos.map((l) => `${l.id} (${[l.producto, l.gramaje, l.sabor].filter(Boolean).join(" · ")})`).join(", ")}.{" "}
           <button className="underline" onClick={() => go("Producción")}>Ir a Producción</button>
         </div>
       )}

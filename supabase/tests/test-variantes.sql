@@ -315,6 +315,17 @@ begin
     where sabor like 'Test variantes bloque C%'
   ), 'D3 v_variantes_disponibles no debe incluir lotes que no llegaron a Listo/contabilizado';
 
+  -- v_variantes_disponibles oculta variantes con 0 perfectas (HAVING de la
+  -- migración vista_variantes_ocultar_ceros): se fuerza el caso insertando
+  -- una figura 100% descartada sobre el batch Listo del bloque A (insert
+  -- directo como admin — los guards de cuadratura viven en el RPC, acá se
+  -- prueba solo la vista; el rollback final lo limpia).
+  insert into lote_figuras (batch_id, figura, cant, perfectas, imperfectas, descartadas)
+  values (v_batch_a, 'Figura test D4 cero', 1, 0, 0, 1);
+  assert not exists (
+    select 1 from v_variantes_disponibles where figura = 'Figura test D4 cero'
+  ), 'D4 v_variantes_disponibles debe ocultar variantes con 0 disponibles';
+
   -- ==========================================================================
   -- E. PLAN CORRUPTO: production_batches.figuras con la misma figura repetida
   -- dos veces (dato corrupto a mano, nunca lo produciría crear_corrida) debe
