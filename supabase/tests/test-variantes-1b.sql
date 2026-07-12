@@ -1,8 +1,9 @@
 -- ============================================================================
 -- MOMOS OPS — Batería de aceptación RE-EJECUTABLE · Variantes Etapa 1b
--- (venta FIFO por variante: FIFO simple por vencimiento, multi-lote, match de
---  sabor con fallback, remanente sin lote, liberación al cancelar, no-
---  regresión legacy sin lote_figuras, idempotencia de _reserve_inventory)
+-- (venta FIFO por variante: FIFO simple por vencimiento, multi-lote, SABOR
+--  como filtro duro + FIGURA como preferencia blanda [decisión 2 revisada
+--  2026-07-12], remanente sin lote, liberación al cancelar, no-regresión
+--  legacy sin lote_figuras, idempotencia de _reserve_inventory)
 --
 -- CÓMO CORRERLA: ejecutar este archivo COMPLETO como un solo script (vía MCP
 -- execute_sql o SQL Editor). Patrón SIN RESIDUOS: transacción + JWT simulado
@@ -62,15 +63,21 @@ declare
   v_cnt_reservas_b integer;
   v_sum_cant_b integer;
 
-  -- ---- Bloque C: sabor (match preferido + fallback) ----
+  -- ---- Bloque C: sabor DURO + figura BLANDA (decisión 2 revisada) ----
   v_product_c text;
-  v_batch_c_sabor_a text;  -- sabor A, vence PRIMERO (sería FIFO ganador si no importara sabor)
-  v_batch_c_sabor_b text;  -- sabor B, vence DESPUÉS (debe ganar por sabor exacto)
+  v_batch_c_sabor_a text;  -- figura M, sabor A, vence PRIMERO (ganaría por FIFO puro Y por figura pedida)
+  v_batch_c_sabor_b text;  -- figura R, sabor B, vence DESPUÉS (debe ganar por sabor exacto)
+  v_batch_c_fig_match text; -- figura M, sabor B, vence AÚN MÁS TARDE (gana a R por figura, dentro del sabor)
   v_order_c1 text;
   v_item_c1 text;
-  v_order_c2 text;  -- pedido con sabor inexistente → fallback por vencimiento
+  v_order_c2 text;  -- pedido con sabor inexistente → remanente SIN lote (ya no hay fallback)
   v_item_c2 text;
+  v_order_c3 text;  -- figura exacta se antepone DENTRO del sabor aunque venza después
+  v_item_c3 text;
   v_res_c record;
+  v_c2_con_batch integer;
+  v_c2_sin_batch integer;
+  v_c2_cant_sin_batch numeric;
 
   -- ---- Bloque D: delta sin lote (cantidad > disponible) ----
   v_product_d text;
@@ -218,9 +225,16 @@ begin
     'B6 el lote 2 debe quedar parcialmente consumido (3 de 6)';
 
   -- ==========================================================================
-  -- C. SABOR: lote sabor A vence ANTES, lote sabor B vence DESPUÉS. Un pedido
-  -- que pide sabor B debe tomar el de sabor B (match de sabor gana al FIFO
-  -- puro). Un pedido con sabor inexistente cae a fallback por vencimiento.
+  -- C. SABOR DURO + FIGURA BLANDA (decisión 2 revisada 2026-07-12):
+  --   C1: el pedido pide figura M + sabor B; hay figura M SOLO en sabor A
+  --       (vence primero) y figura R en sabor B (vence después) → debe tomar
+  --       R/B: el sabor pedido FILTRA (jamás sirve otro sabor), la figura
+  --       pedida solo PREFIERE (R de sabor B sirve perfectamente).
+  --   C2: sabor inexistente → cursor vacío → remanente COMPLETO sin lote
+  --       (ya NO hay fallback a otro sabor — se produce a pedido).
+  --   C3: dentro del sabor pedido, la figura exacta se antepone aunque su
+  --       lote venza DESPUÉS (la preferencia blanda le gana al FIFO puro;
+  --       el FIFO manda solo DENTRO de cada grupo de match).
   -- ==========================================================================
   v_product_c := 'T1B-PRC';
   insert into products (id, nombre, cat, tipo, especie, precio, costo, stock)
@@ -228,25 +242,26 @@ begin
 
   v_batch_c_sabor_a := 'T1B-LCA';
   insert into production_batches (id, fecha, product_id, figura, sabor, prod, estado, stock_contabilizado, vencimiento)
-  values (v_batch_c_sabor_a, current_date, v_product_c, 'FiguraC', 'Sabor Test1bA', 5, 'Listo', true, current_date + 1);
+  values (v_batch_c_sabor_a, current_date, v_product_c, 'FiguraCM', 'Sabor Test1bA', 5, 'Listo', true, current_date + 1);
   insert into lote_figuras (batch_id, figura, cant, perfectas, imperfectas, descartadas)
-  values (v_batch_c_sabor_a, 'FiguraC', 5, 5, 0, 0);
+  values (v_batch_c_sabor_a, 'FiguraCM', 5, 5, 0, 0);
 
   v_batch_c_sabor_b := 'T1B-LCB';
   insert into production_batches (id, fecha, product_id, figura, sabor, prod, estado, stock_contabilizado, vencimiento)
-  values (v_batch_c_sabor_b, current_date, v_product_c, 'FiguraC', 'Sabor Test1bB', 5, 'Listo', true, current_date + 20);
+  values (v_batch_c_sabor_b, current_date, v_product_c, 'FiguraCR', 'Sabor Test1bB', 5, 'Listo', true, current_date + 20);
   insert into lote_figuras (batch_id, figura, cant, perfectas, imperfectas, descartadas)
-  values (v_batch_c_sabor_b, 'FiguraC', 5, 5, 0, 0);
+  values (v_batch_c_sabor_b, 'FiguraCR', 5, 5, 0, 0);
 
   update products set stock = 10 where id = v_product_c;
 
-  -- C1: pedido con sabor B (vence después) debe ganarle al lote de sabor A (vence antes).
+  -- C1: figura M + sabor B pedidos. FiguraCM existe solo en sabor A (vence
+  -- antes, ganaría por FIFO puro Y por figura). Debe tomar FiguraCR/sabor B.
   v_order_c1 := 'T1B-PC1';
   insert into orders (id, fecha, hora, canal, customer_id, estado, pago, comprobante)
   values (v_order_c1, current_date, current_time, 'WhatsApp', v_customer_id, 'Nuevo', 'Nequi', true);
   v_item_c1 := 'T1B-ITC1';
   insert into order_items (id, order_id, product_id, nombre, figura, sabor, cant, precio, costo_unitario)
-  values (v_item_c1, v_order_c1, v_product_c, 'Test 1b momo C', 'FiguraC', 'Sabor Test1bB', 2, 1000, 500);
+  values (v_item_c1, v_order_c1, v_product_c, 'Test 1b momo C', 'FiguraCM', 'Sabor Test1bB', 2, 1000, 500);
 
   insert into evidences (id, order_id, tipo, storage_path)
   values ('T1B-EC1', v_order_c1, 'Comprobante de pago', 'test/1b/c1.jpg');
@@ -255,28 +270,65 @@ begin
 
   select * into v_res_c from inventory_reservations where order_id = v_order_c1 and tipo = 'producto';
   assert v_res_c.batch_id = v_batch_c_sabor_b,
-    'C1 el pedido con sabor B debe tomar del lote de sabor B aunque venza después: esperado '||v_batch_c_sabor_b||' fue '||v_res_c.batch_id;
-  assert (select consumidas from lote_figuras where batch_id = v_batch_c_sabor_a and figura = 'FiguraC') = 0,
-    'C1b el lote de sabor A (match no preferido) no debe haberse tocado';
+    'C1 sabor duro: el pedido de sabor B debe tomar el lote de sabor B (otra figura, vence después) y JAMÁS el de sabor A con la figura pedida: esperado '||v_batch_c_sabor_b||' fue '||v_res_c.batch_id;
+  assert v_res_c.figura = 'FiguraCR',
+    'C1b la reserva debe llevar la figura REAL del lote consumido (FiguraCR), no la pedida: fue '||coalesce(v_res_c.figura,'null');
+  assert (select consumidas from lote_figuras where batch_id = v_batch_c_sabor_a and figura = 'FiguraCM') = 0,
+    'C1c el lote de sabor A (figura pedida, vence antes) NO debe haberse tocado — el sabor no se sustituye';
 
-  -- C2: pedido con sabor inexistente en el catálogo de este producto → cae a
-  -- fallback por figura sola, ordenado por vencimiento (debe tomar sabor A,
-  -- que vence primero, ya que ningún lote hace match de sabor).
+  -- C2: sabor inexistente → ya NO hay fallback: remanente completo SIN lote,
+  -- consumidas de ambos lotes intactas. products.stock baja igual (modelo
+  -- producir-a-pedido intacto, mismo camino que el legacy sin lote_figuras).
   v_order_c2 := 'T1B-PC2';
   insert into orders (id, fecha, hora, canal, customer_id, estado, pago, comprobante)
   values (v_order_c2, current_date, current_time, 'WhatsApp', v_customer_id, 'Nuevo', 'Nequi', true);
   v_item_c2 := 'T1B-ITC2';
   insert into order_items (id, order_id, product_id, nombre, figura, sabor, cant, precio, costo_unitario)
-  values (v_item_c2, v_order_c2, v_product_c, 'Test 1b momo C', 'FiguraC', 'Sabor que no existe', 1, 1000, 500);
+  values (v_item_c2, v_order_c2, v_product_c, 'Test 1b momo C', 'FiguraCM', 'Sabor que no existe', 1, 1000, 500);
 
   insert into evidences (id, order_id, tipo, storage_path)
   values ('T1B-EC2', v_order_c2, 'Comprobante de pago', 'test/1b/c2.jpg');
   r := set_order_status(v_order_c2, 'Pagado', false);
   assert (r->>'ok')::boolean, 'C0b pagar el pedido C2 (vía pública set_order_status) debe suceder';
 
-  select * into v_res_c from inventory_reservations where order_id = v_order_c2 and tipo = 'producto';
-  assert v_res_c.batch_id = v_batch_c_sabor_a,
-    'C2 sabor inexistente debe caer a fallback por vencimiento (sabor A, que vence primero): fue '||v_res_c.batch_id;
+  select count(*) filter (where batch_id is not null), count(*) filter (where batch_id is null),
+         coalesce(sum(cantidad) filter (where batch_id is null), 0)
+    into v_c2_con_batch, v_c2_sin_batch, v_c2_cant_sin_batch
+  from inventory_reservations where order_id = v_order_c2 and tipo = 'producto';
+  assert v_c2_con_batch = 0,
+    'C2 sabor inexistente NO debe asignar ningún lote (fin del fallback de sabor): hubo '||v_c2_con_batch||' reserva(s) con batch';
+  assert v_c2_sin_batch = 1 and v_c2_cant_sin_batch = 1,
+    'C2b el total pedido debe quedar como remanente sin lote: filas='||v_c2_sin_batch||' cant='||v_c2_cant_sin_batch;
+  assert (select consumidas from lote_figuras where batch_id = v_batch_c_sabor_a and figura = 'FiguraCM') = 0
+     and (select consumidas from lote_figuras where batch_id = v_batch_c_sabor_b and figura = 'FiguraCR') = 2,
+    'C2c ningún lote debe consumirse por un sabor inexistente (LCB queda en las 2 de C1)';
+
+  -- C3: figura blanda DENTRO del sabor — lote de figura exacta (vence +30)
+  -- debe ganarle al de otra figura del mismo sabor que vence antes (+20).
+  v_batch_c_fig_match := 'T1B-LCC';
+  insert into production_batches (id, fecha, product_id, figura, sabor, prod, estado, stock_contabilizado, vencimiento)
+  values (v_batch_c_fig_match, current_date, v_product_c, 'FiguraCM', 'Sabor Test1bB', 4, 'Listo', true, current_date + 30);
+  insert into lote_figuras (batch_id, figura, cant, perfectas, imperfectas, descartadas)
+  values (v_batch_c_fig_match, 'FiguraCM', 4, 4, 0, 0);
+  update products set stock = stock + 4 where id = v_product_c;
+
+  v_order_c3 := 'T1B-PC3';
+  insert into orders (id, fecha, hora, canal, customer_id, estado, pago, comprobante)
+  values (v_order_c3, current_date, current_time, 'WhatsApp', v_customer_id, 'Nuevo', 'Nequi', true);
+  v_item_c3 := 'T1B-ITC3';
+  insert into order_items (id, order_id, product_id, nombre, figura, sabor, cant, precio, costo_unitario)
+  values (v_item_c3, v_order_c3, v_product_c, 'Test 1b momo C', 'FiguraCM', 'Sabor Test1bB', 1, 1000, 500);
+
+  insert into evidences (id, order_id, tipo, storage_path)
+  values ('T1B-EC3', v_order_c3, 'Comprobante de pago', 'test/1b/c3.jpg');
+  r := set_order_status(v_order_c3, 'Pagado', false);
+  assert (r->>'ok')::boolean, 'C0c pagar el pedido C3 (vía pública set_order_status) debe suceder';
+
+  select * into v_res_c from inventory_reservations where order_id = v_order_c3 and tipo = 'producto';
+  assert v_res_c.batch_id = v_batch_c_fig_match,
+    'C3 dentro del sabor pedido, la figura exacta debe anteponerse aunque venza después: esperado '||v_batch_c_fig_match||' fue '||v_res_c.batch_id;
+  assert (select consumidas from lote_figuras where batch_id = v_batch_c_sabor_b and figura = 'FiguraCR') = 2,
+    'C3b el lote de otra figura del mismo sabor NO debe crecer (queda en las 2 de C1)';
 
   -- ==========================================================================
   -- D. DELTA SIN LOTE: cantidad pedida > disponible en lote_figuras → el

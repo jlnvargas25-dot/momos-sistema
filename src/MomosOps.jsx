@@ -2574,22 +2574,23 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
             </div>
             {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && (() => {
               /* Disponibilidad por variante EN VIVO: dice si lo que pide el cliente
-                 está desmoldado y, si no, qué variantes ofrece el FIFO (mismo orden
-                 de decisión que _asignar_variante_fifo en el server). */
+                 está desmoldado y, si no, qué ofrece el FIFO (mismo orden de decisión
+                 que _asignar_variante_fifo en el server: SABOR filtra duro — jamás se
+                 sustituye —, FIGURA solo prefiere dentro del sabor). */
               const vars = (db.variantes || []).filter((v) => v.productId === it.productId && v.disponibles > 0);
               const chip = (bg, color, texto) => <div className="mt-1 px-2 py-1.5 rounded-lg text-[11px] font-bold" style={{ background: bg, color }}>{texto}</div>;
               const lista = (arr) => arr.map((v) => `${v.figura} · ${v.sabor} (${v.disponibles})`).join(" · ");
               if (!vars.length) return chip("#F3D7DC", "#8E4B5A", "Sin desmoldes por figura de este producto — se vende igual y se produce a pedido.");
-              if (!it.figura) return chip("#DCE7F2", "#3E5C7E", `Desmoldado disponible: ${lista(vars)}`);
-              const deFigura = vars.filter((v) => v.figura === it.figura);
-              if (!deFigura.length) return chip("#F3D7DC", "#8E4B5A", `Sin ${it.figura} desmoldado — hay: ${lista(vars)} · igual se puede vender (a pedido).`);
-              const exacta = it.sabor ? deFigura.filter((v) => v.sabor === it.sabor) : deFigura;
+              if (!it.sabor) return chip("#DCE7F2", "#3E5C7E", `Desmoldado disponible: ${lista(vars)}`);
+              const deSabor = vars.filter((v) => v.sabor === it.sabor);
+              if (!deSabor.length) return chip("#F3D7DC", "#8E4B5A", `Sin ${it.sabor} desmoldado — hay: ${lista(vars)} · el sabor no se sustituye: se produce a pedido.`);
+              const exacta = it.figura ? deSabor.filter((v) => v.figura === it.figura) : deSabor;
               if (exacta.length) {
                 const n = exacta.reduce((s, v) => s + v.disponibles, 0);
                 const vence = exacta.map((v) => v.vence).filter(Boolean).sort()[0];
-                return chip("#DDEBD9", "#3F6B42", `✓ Hay ${n}× ${it.figura}${it.sabor ? ` · ${it.sabor}` : ""}${vence ? ` · vence ${vence}` : ""}`);
+                return chip("#DDEBD9", "#3F6B42", `✓ Hay ${n}× ${it.sabor}${it.figura ? ` · ${it.figura}` : ""}${vence ? ` · vence ${vence}` : ""}`);
               }
-              return chip("#F7EAC9", "#8A6D1F", `${it.figura} hay, pero de otro sabor: ${lista(deFigura)} — el FIFO tomará el más próximo a vencer.`);
+              return chip("#F7EAC9", "#8A6D1F", `${it.sabor} hay, pero en otra figura: ${lista(deSabor)} — el FIFO la asignará (figura es preferencia).`);
             })()}
             {it.productId && pSel && pSel.tipo === "combo" && (() => {
               const boxes = it.boxes || [];

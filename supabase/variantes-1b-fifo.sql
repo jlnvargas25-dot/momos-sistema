@@ -19,11 +19,16 @@
 -- DECISIONES DE PRODUCTO (cerradas por el dueño, NO reabrir):
 --   1. La asignación de lote físico ocurre AL PAGAR, FIFO automático por
 --      vencimiento más próximo (coalesce(vencimiento, vence) asc).
---   2. Matching: figura+sabor preferido, con fallback a figura sola (mismo
---      pase, orden por match de sabor primero — no dos pasadas separadas).
---   3. Si no hay stock desmoldado suficiente de esa figura: la venta
+--   2. Matching (REVISADA 2026-07-12, tras validación en vivo — invierte la
+--      versión original de 1b): SABOR = FILTRO DURO (jamás se asigna un lote
+--      de otro sabor sin decisión consciente del humano — el cliente COME el
+--      sabor), FIGURA = PREFERENCIA BLANDA (entre lotes del sabor pedido, la
+--      figura exacta se antepone; si no hay, cualquier figura de ese sabor
+--      sirve — la figura es la forma). Mismo pase, un solo cursor.
+--   3. Si no hay stock desmoldado suficiente de ese SABOR: la venta
 --      PROCEDE igual; el remanente queda SIN lote (batch_id null), exacto
---      como hoy — el modelo producir-a-pedido queda intacto.
+--      como hoy — el modelo producir-a-pedido queda intacto. Ya NO hay
+--      fallback a otro sabor: sabor sin stock = remanente a producir.
 --
 -- INVARIANTE QUE ESTE ARCHIVO NO ROMPE: products.stock sigue siendo la
 -- fuente agregada de verdad (se descuenta EXACTAMENTE como hoy, mismo total,
@@ -142,13 +147,18 @@ grant select on v_variantes_disponibles to authenticated;
 -- cubierto (>= 0) — el caller es quien decide qué hacer con ese remanente
 -- (hoy: reservarlo agregado, sin batch, igual que el comportamiento actual).
 --
--- ORDEN DEL CURSOR (decisión 2 del dueño — figura+sabor preferido, fallback
--- a figura sola, MISMO PASE): "case when sabor coincide then 0 else 1 end"
--- antepone las filas de sabor exacto SIN necesitar una segunda consulta —
--- una fila de sabor distinto pero vencimiento más próximo NUNCA gana contra
--- una de sabor exacto (el CASE es la clave primaria de orden), pero entre
--- dos filas del MISMO grupo de match (ambas sabor-exacto, o ambas fallback)
--- manda el vencimiento más próximo — eso ES el FIFO dentro de cada grupo.
+-- FILTRO Y ORDEN DEL CURSOR (decisión 2 del dueño, REVISADA 2026-07-12 —
+-- sabor duro, figura blanda): el WHERE exige `b.sabor = v_sabor` (si el item
+-- trae sabor) — un lote de OTRO sabor jamás entra al cursor, sin importar su
+-- vencimiento: si el sabor pedido no tiene stock desmoldado, el cursor viene
+-- vacío y TODO queda como remanente a producir (ya no hay fallback de sabor).
+-- El ORDER BY antepone "case when figura coincide then 0 else 1 end": entre
+-- lotes del sabor pedido, la figura exacta gana aunque venza después; entre
+-- dos filas del MISMO grupo de match (ambas figura-exacta, o ambas otra
+-- figura) manda el vencimiento más próximo — eso ES el FIFO dentro de cada
+-- grupo. Item sin sabor (null/vacío, ej. pull genérico de combo): el WHERE
+-- no filtra nada y decide la preferencia de figura + vencimiento, igual que
+-- el comportamiento agregado de siempre.
 --
 -- LOCK: FOR UPDATE OF lf — mismo objeto (lote_figuras) que ya lockea
 -- desmoldar_lote (variantes-v1.sql) vía `select ... for update` sobre
@@ -179,10 +189,10 @@ begin
     where b.product_id = p_product_id
       and b.estado = 'Listo'
       and b.stock_contabilizado
-      and (v_figura is null or lf.figura = v_figura)
+      and (v_sabor is null or b.sabor = v_sabor)
       and (lf.perfectas - lf.consumidas) > 0
     order by
-      (case when v_sabor is not null and b.sabor = v_sabor then 0 else 1 end),
+      (case when v_figura is not null and lf.figura = v_figura then 0 else 1 end),
       coalesce(b.vencimiento, b.vence) asc nulls last,
       b.fecha asc,
       b.id asc,
@@ -226,7 +236,8 @@ revoke execute on function _asignar_variante_fifo(text, text, text, text, intege
 --   (2) sección "2) Combos" — pull genérico SOLO si no tiene hijas: mismo
 --       patrón, FIFO con la figura/sabor del ITEM del combo (el pull
 --       genérico no tiene figura/sabor propios en order_items — ver nota
---       en el bloque, cae a fallback por figura null = solo vencimiento).
+--       en el bloque: sabor null no filtra y figura null no prefiere =
+--       solo vencimiento, el mismo criterio agregado de siempre).
 -- Todo lo demás (empaque, extras de receta del combo, adiciones, faltantes,
 -- production_suggestions, audits) queda CARÁCTER POR CARÁCTER igual.
 -- ============================================================================
