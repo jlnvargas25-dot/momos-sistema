@@ -19,7 +19,7 @@ export async function fetchCatalogos() {
   const q = await Promise.all([
     supabase.from("products").select("id,nombre,cat,tipo,especie,precio,precio_rappi,costo,stock,prep,frio,lejano,activo,descr,combo_size,empaque_item_id").order("id"),
     supabase.from("combo_components").select("combo_id,component_id").order("component_id"),
-    supabase.from("inventory_items").select("id,nombre,cat,unidad,stock,minimo,costo,proveedor,vence,ubicacion,compra").order("id"),
+    supabase.from("inventory_items").select("id,nombre,cat,unidad,stock,minimo,costo,proveedor,vence,ubicacion,compra,costo_estimado").order("id"),
     supabase.from("recipes").select("id,product_id,item_id,cantidad").order("id"),
     supabase.from("users").select("id,nombre,email,rol,activo").order("id"),
     supabase.from("toppings").select("nombre,precio,insumo_id,insumo_cant").eq("activo", true).order("orden"),
@@ -29,10 +29,13 @@ export async function fetchCatalogos() {
     supabase.from("proveedores_domicilio").select("nombre").eq("activo", true).order("orden"),
     supabase.from("brand_library").select("frases,tono,palabras_si,palabras_no").limit(1).maybeSingle(),
     supabase.from("app_settings").select("clave,valor"),
+    supabase.from("subrecetas").select("id,nombre,tipo,sabor,merma_pct,rinde_g,item_id,activo").order("id"),
+    supabase.from("subreceta_ingredientes").select("subreceta_id,item_id,cantidad").order("subreceta_id"),
+    supabase.from("figura_relleno").select("id,subreceta_id,gramos_por_unidad,activo").order("id"),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet] = q.map((r) => r.data);
+  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell] = q.map((r) => r.data);
 
   // RLS deny-by-default devuelve VACÍO (no error): un catálogo estructural vacío = algo anda mal,
   // mejor quedarse con la caché local que pisar el db con arrays vacíos.
@@ -73,6 +76,7 @@ export async function fetchCatalogos() {
     id: i.id, nombre: i.nombre, cat: i.cat, unidad: i.unidad,
     stock: i.stock, min: i.minimo, costo: i.costo,
     proveedor: nz(i.proveedor), vence: nz(i.vence), ubicacion: nz(i.ubicacion), compra: nz(i.compra),
+    costoEstimado: !!i.costo_estimado, // marca "corregir con compra real" (Componentes+BOM)
   }));
 
   const recipes = recs.map((r) => ({ id: r.id, productId: r.product_id, itemId: r.item_id, cantidad: r.cantidad }));
@@ -112,7 +116,16 @@ export async function fetchCatalogos() {
   // settingsCatalogos.figuras arriba sigue igual (solo activas, gramaje en texto) para no romper otros consumidores.
   const figuras = figs.map((f) => ({ nombre: f.nombre, especie: f.especie, gramajeG: f.gramaje_g ?? null, productId: nz(f.product_id), activo: f.activo }));
 
-  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras };
+  // Componentes + BOM (hito 2): bases/subrecetas, su receta por 1000 g y el relleno
+  // configurable de figuras. Vacío es legítimo en bases sin migración — sin guard.
+  const subrecetas = (subrs || []).map((sr) => ({
+    id: sr.id, nombre: sr.nombre, tipo: sr.tipo, sabor: nz(sr.sabor),
+    mermaPct: Number(sr.merma_pct), rindeG: Number(sr.rinde_g), itemId: sr.item_id, activo: sr.activo,
+  }));
+  const subreceta_ingredientes = (subrIngs || []).map((r) => ({ subrecetaId: r.subreceta_id, itemId: r.item_id, cantidad: Number(r.cantidad) }));
+  const figura_relleno = (figRell || []).map((f) => ({ id: f.id, subrecetaId: f.subreceta_id, gramosPorUnidad: Number(f.gramos_por_unidad), activo: f.activo }));
+
+  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
@@ -142,10 +155,11 @@ export async function fetchOperativo() {
     supabase.from("inventory_items").select("id,nombre,unidad"),
     supabase.from("products").select("id,nombre"),
     supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras").order("id", { ascending: false }),
+    supabase.from("subreceta_producciones").select("id,fecha,subreceta_id,gramos_nominales,gramos_obtenidos,costo_batch,faltantes,resp_user_id,obs,created_at").order("created_at", { ascending: false }).limit(50),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches] = q.map((r) => r.data);
+  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches, subProds] = q.map((r) => r.data);
 
   const rolDe = {}; const nombreUserDe = {}; usrs.forEach((u) => { rolDe[u.id] = u.rol; nombreUserDe[u.id] = u.nombre; });
   const insumoDe = {}; invs.forEach((i) => { insumoDe[i.id] = i; });
@@ -265,5 +279,13 @@ export async function fetchOperativo() {
     corridaId: b.corrida_id || "", figuras: Array.isArray(b.figuras) ? b.figuras : [],
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, production_batches };
+  // Componentes + BOM (hito 2): historial de preparaciones de bases (últimas 50).
+  const subreceta_producciones = (subProds || []).map((sp) => ({
+    id: sp.id, fecha: sp.fecha, subrecetaId: sp.subreceta_id,
+    gramosNominales: Number(sp.gramos_nominales), gramosObtenidos: Number(sp.gramos_obtenidos),
+    costoBatch: Number(sp.costo_batch), faltantes: Array.isArray(sp.faltantes) ? sp.faltantes : [],
+    resp: nz(nombreUserDe[sp.resp_user_id]), obs: nz(sp.obs), creado: tsBogota(sp.created_at),
+  }));
+
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, production_batches, subreceta_producciones };
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -2685,6 +2685,12 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
 
 const LOTE_ESTADOS = ["En preparación","Congelando","Listo","Reservado","Vendido","Imperfecto","Descartado"];
 
+// Componentes + BOM: agrupación del select de bases por tipo de subreceta.
+const PREP_TIPOS = [
+  ["mousse_frutal", "Mousses frutales"], ["mousse_cremosa", "Mousses cremosas"],
+  ["cheesecake", "Cheesecake"], ["ganache", "Ganache"], ["salsa", "Salsas"], ["crocante", "Crocante"],
+];
+
 function Produccion({ db, update, user, refrescar }) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
@@ -2711,6 +2717,33 @@ function Produccion({ db, update, user, refrescar }) {
   const [enviandoBatchId, setEnviandoBatchId] = useState(null); // deshabilita solo la card del lote en vuelo
   const [desmolde, setDesmolde] = useState(null); // {batchId, prod, perfectas, imperfectas, descartadas} — mini-modal de conteos
   const [enviandoDesmolde, setEnviandoDesmolde] = useState(false);
+
+  // ── Componentes + BOM (hito 2): preparar bases/subrecetas ──
+  const [prepBase, setPrepBase] = useState(false);
+  const prepIdemKeyRef = useRef(null); // 1 por apertura del form (mismo patrón que corridaIdemKeyRef)
+  const [prepForm, setPrepForm] = useState({ subrecetaId: "", nominal: 1000, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
+  const [enviandoPrep, setEnviandoPrep] = useState(false);
+  const subrecetasActivas = useMemo(() => (db.subrecetas || []).filter((sr) => sr.activo), [db.subrecetas]);
+  const itemDe = useMemo(() => { const m = {}; db.inventory_items.forEach((i) => { m[i.id] = i; }); return m; }, [db.inventory_items]);
+  const prepSel = subrecetasActivas.find((sr) => sr.id === prepForm.subrecetaId) || null;
+  // Derivado en vivo: consumo escalado (cantidad × nominal/1000) + costo estimado del batch.
+  const prepIngredientes = useMemo(() => {
+    if (!prepSel) return [];
+    const factor = (+prepForm.nominal || 0) / 1000;
+    return (db.subreceta_ingredientes || []).filter((r) => r.subrecetaId === prepSel.id).map((r) => {
+      const it = itemDe[r.itemId];
+      const req = Math.round(r.cantidad * factor * 10000) / 10000;
+      return { itemId: r.itemId, nombre: it ? it.nombre : r.itemId, unidad: it ? it.unidad : "", req, alcanza: it ? it.stock >= req : false, costo: it ? req * it.costo : 0 };
+    });
+  }, [prepSel, prepForm.nominal, db.subreceta_ingredientes, itemDe]);
+  const prepCosto = prepIngredientes.reduce((a, x) => a + x.costo, 0);
+  const prepObtenidosDefault = prepSel ? Math.round((+prepForm.nominal || 0) * (1 - prepSel.mermaPct / 100) * 10) / 10 : 0;
+  const prepObtenidos = prepForm.obtenidosTocado && prepForm.obtenidos !== "" ? prepForm.obtenidos : prepObtenidosDefault;
+  const ultimaPrepDe = useMemo(() => {
+    const m = {};
+    (db.subreceta_producciones || []).forEach((sp) => { if (!m[sp.subrecetaId]) m[sp.subrecetaId] = sp; }); // vienen desc por created_at
+    return m;
+  }, [db.subreceta_producciones]);
 
   // Resuelve el nombre libre del form al id del staff activo (RPC exige FK real,
   // no nombre suelto). Sin match → null (resp_user_id es opcional server-side).
@@ -2812,6 +2845,42 @@ function Produccion({ db, update, user, refrescar }) {
     }
   }
 
+  function abrirPrepararBase() {
+    prepIdemKeyRef.current = "subprod-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+    setPrepForm({ subrecetaId: subrecetasActivas[0] ? subrecetasActivas[0].id : "", nominal: 1000, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
+    setPrepBase(true);
+  }
+
+  async function registrarPreparacion() {
+    if (!prepSel) { setMsg("Elegí la base a preparar."); return; }
+    if (!(+prepForm.nominal > 0)) { setMsg("Los gramos preparados deben ser mayores a 0."); return; }
+    const payload = {
+      subreceta_id: prepSel.id,
+      gramos_nominales: +prepForm.nominal,
+      gramos_obtenidos: +prepObtenidos,
+      resp_user_id: respUserId(prepForm.resp),
+      obs: prepForm.obs,
+      idempotency_key: prepIdemKeyRef.current,
+    };
+    setEnviandoPrep(true);
+    let resultado;
+    try {
+      resultado = await producirSubreceta(payload);
+    } catch (e) {
+      setMsg("No se pudo registrar la preparación: " + e.message);
+      setEnviandoPrep(false);
+      return;
+    }
+    setEnviandoPrep(false);
+    setPrepBase(false);
+    prepIdemKeyRef.current = null; // fuerza key nueva en la próxima apertura
+    await refrescarSilencioso(() => setMsg("La base se preparó correctamente, pero no se pudo actualizar la vista. Recargá la página para verla."));
+    const faltantesPrep = resultado && resultado.faltantes;
+    if (Array.isArray(faltantesPrep) && faltantesPrep.length) {
+      setMsg(`Base preparada, pero el inventario no alcanzó para: ${faltantesPrep.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}. Registra la compra en Inventario.`);
+    }
+  }
+
   // Desmolde diferido: el paso directo a 'Listo' ahora falla en el server sin conteos.
   function abrirDesmolde(l) {
     const cargados = (l.perfectas || 0) + (l.imperfectas || 0) + (l.descartadas || 0);
@@ -2855,7 +2924,7 @@ function Produccion({ db, update, user, refrescar }) {
 
   return (
     <div>
-      <div className="mb-4"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn></div>
+      <div className="mb-4 flex gap-2 flex-wrap"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn>{subrecetasActivas.length > 0 && <Btn kind="soft" onClick={abrirPrepararBase}>🥣 Preparar base</Btn>}</div>
 
       {sugerencias.length > 0 && (
         <>
@@ -2888,6 +2957,30 @@ function Produccion({ db, update, user, refrescar }) {
         ))}
         {stockOperativo.length === 0 && <Empty icon="🍮" text="No hay productos con stock operativo." />}
       </div>
+
+      {subrecetasActivas.length > 0 && (
+        <>
+          <SectionTitle>🥣 Bases preparadas (subrecetas)</SectionTitle>
+          <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Mousses, rellenos y salsas producidos en cocina. Las corridas de figuras descuentan de acá; el costo lo pone el WAC al preparar.</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-2">
+            {subrecetasActivas.map((sr) => {
+              const it = itemDe[sr.itemId];
+              const ult = ultimaPrepDe[sr.id];
+              return (
+                <Card key={sr.id} className="p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold leading-snug">{sr.nombre}</div>
+                    <div className="display text-xl shrink-0" style={{ color: it && it.stock > 0 ? "#3F6B42" : "#A03B2A" }}>{it ? it.stock : "—"}</div>
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>
+                    {it ? `${it.unidad} · ${fmt(it.costo)}/${it.unidad}` : "sin item de inventario"}{ult ? ` · última: ${ult.creado || ult.fecha}` : ""}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       <SectionTitle>🧊 Lotes en proceso (aún no disponibles)</SectionTitle>
       <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Congelando, en preparación o reservados. No suman al stock operativo hasta pasar a "Listo".</div>
@@ -3075,6 +3168,51 @@ function Produccion({ db, update, user, refrescar }) {
         );
       })()}
 
+      {prepBase && (
+        <Modal title="🥣 Preparar base (subreceta)" onClose={() => setPrepBase(false)} wide>
+          <div className="grid sm:grid-cols-2 gap-x-4">
+            <Field label="Base a preparar">
+              <select value={prepForm.subrecetaId} onChange={(e) => setPrepForm({ ...prepForm, subrecetaId: e.target.value, obtenidos: "", obtenidosTocado: false })} className="w-full rounded-lg px-2 py-2 text-sm border" style={inputStyle}>
+                {PREP_TIPOS.map(([tipo, label]) => {
+                  const grupo = subrecetasActivas.filter((sr) => sr.tipo === tipo);
+                  return grupo.length ? (
+                    <optgroup key={tipo} label={label}>
+                      {grupo.map((sr) => <option key={sr.id} value={sr.id}>{sr.nombre}</option>)}
+                    </optgroup>
+                  ) : null;
+                })}
+              </select>
+            </Field>
+            <Field label="Responsable"><Select options={db.users.filter((u) => u.activo).map((u) => u.nombre)} value={prepForm.resp} onChange={(e) => setPrepForm({ ...prepForm, resp: e.target.value })} placeholder="Sin responsable" /></Field>
+            <Field label="Gramos preparados (nominal)"><Input type="number" min="1" step="50" value={prepForm.nominal} onChange={(e) => setPrepForm({ ...prepForm, nominal: Math.max(0, +e.target.value || 0), obtenidos: "", obtenidosTocado: false })} /></Field>
+            <Field label={`Gramos obtenidos (sugerido ${prepObtenidosDefault} · merma ${prepSel ? prepSel.mermaPct : 0}%)`}><Input type="number" min="0" value={prepObtenidos} onChange={(e) => setPrepForm({ ...prepForm, obtenidos: e.target.value, obtenidosTocado: true })} /></Field>
+          </div>
+          <Field label="Observaciones"><Input value={prepForm.obs} onChange={(e) => setPrepForm({ ...prepForm, obs: e.target.value })} /></Field>
+          {prepSel && (
+            <>
+              <div className="text-xs font-bold mb-1.5" style={{ color: T.choco2 }}>Ingredientes a consumir ({+prepForm.nominal || 0} g de {prepSel.nombre})</div>
+              <div className="mb-3 rounded-xl p-2.5 text-xs" style={{ background: T.vainilla }}>
+                {prepIngredientes.map((x) => (
+                  <div key={x.itemId} className="flex justify-between gap-2 py-0.5">
+                    <span>{x.nombre}</span>
+                    <span className="font-semibold" style={{ color: x.alcanza ? T.choco : "#A03B2A" }}>{x.req} {x.unidad}{x.alcanza ? "" : " · ⚠ falta stock"}</span>
+                  </div>
+                ))}
+                {prepIngredientes.length === 0 && <div>Esta base no tiene receta cargada.</div>}
+                <div className="flex justify-between gap-2 pt-1.5 mt-1.5 font-bold" style={{ borderTop: "1px solid " + T.border }}>
+                  <span>Costo estimado del batch</span><span>{fmt(Math.round(prepCosto))}</span>
+                </div>
+              </div>
+            </>
+          )}
+          <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los ingredientes por los gramos nominales, y los gramos obtenidos suman al stock de la base con su costo real (WAC). Los faltantes no bloquean: quedan avisados.</div>
+          <div className="flex gap-2">
+            <Btn disabled={enviandoPrep || !prepSel || !(+prepForm.nominal > 0)} onClick={registrarPreparacion}>Registrar preparación</Btn>
+            <Btn kind="ghost" disabled={enviandoPrep} onClick={() => setPrepBase(false)}>Cancelar</Btn>
+          </div>
+        </Modal>
+      )}
+
       {desmolde && (() => {
         const suma = (+desmolde.perfectas || 0) + (+desmolde.imperfectas || 0) + (+desmolde.descartadas || 0);
         const cuadra = suma === desmolde.prod;
@@ -3198,6 +3336,7 @@ function Inventario({ db, update, user, focus, refrescar }) {
               <div className="flex gap-1.5 mt-2 flex-wrap">
                 {bajo && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Stock bajo</span>}
                 {vencePronto && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>Vence pronto</span>}
+                {i.costoEstimado && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>≈ costo estimado</span>}
               </div>
             </Card>
             </div>
@@ -6196,6 +6335,9 @@ export default function MomosOps() {
       d.recipes = cat.recipes;
       d.users = cat.users;
       d.figuras = cat.figuras || []; // catálogo figuras con product_id/gramaje (Producción v2)
+      d.subrecetas = cat.subrecetas || []; // Componentes+BOM: bases (mousses/cheesecake/ganache/salsas/crocante)
+      d.subreceta_ingredientes = cat.subreceta_ingredientes || []; // receta maestra por 1000 g
+      d.figura_relleno = cat.figura_relleno || []; // relleno configurable de figuras (20/15 g editables)
       if (cat.brand_library) d.brand_library = cat.brand_library;
       Object.assign(d.settings, cat.settingsCatalogos);
       Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches

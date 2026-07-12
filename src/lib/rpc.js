@@ -129,6 +129,16 @@ export async function movimientoInsumo(itemId, tipo, cant, nota = "") {
   return data; // {stock, aplicado, truncado?}
 }
 
+/* ── Componentes + BOM (hito 2): producción de bases/subrecetas ──
+   producir_subreceta NO bloquea por faltantes (paridad crear_lote/crear_corrida):
+   faltantes[] es un AVISO post-hecho. El server aplica el WAC al item de la base. */
+
+export async function producirSubreceta(payload) {
+  const { data, error } = await supabase.rpc("producir_subreceta", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok, id, costo_batch, gramos_obtenidos, faltantes:[{item_id,insumo,faltan,unidad}], idempotente?}
+}
+
 export async function setSugerenciaEstado(sugId, estado) {
   const { error } = await supabase.rpc("set_sugerencia_estado", { p_sug_id: sugId, p_estado: estado });
   if (error) throw new Error(error.message);
