@@ -6545,7 +6545,9 @@ export default function MomosOps() {
   }
 
   // Frescura multi-dispositivo: re-leer del servidor al volver a la pestaña/ventana
-  // (throttle 60 s). Via ref para no cerrar sobre una versión vieja de la función.
+  // (throttle 60 s) + polling suave cada 90 s mientras la pestaña siga visible
+  // (una tablet fija en Producción nunca dispara focus/visibilitychange).
+  // Via ref para no cerrar sobre una versión vieja de la función.
   const refetchFocoRef = useRef(null);
   refetchFocoRef.current = hidratarDesdeServidor;
   const ultimoRefetchFocoRef = useRef(0);
@@ -6560,9 +6562,11 @@ export default function MomosOps() {
     }
     window.addEventListener("focus", alVolver);
     document.addEventListener("visibilitychange", alVolver);
+    const poll = setInterval(alVolver, 90000); // mismos guards y throttle que el foco
     return () => {
       window.removeEventListener("focus", alVolver);
       document.removeEventListener("visibilitychange", alVolver);
+      clearInterval(poll);
     };
   }, []);
 
