@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion, crearUsuarioStaff, setUserActivo } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -4854,10 +4854,12 @@ function Reportes({ db }) {
 
 /* ================= CONFIGURACIÓN ================= */
 
-function Configuracion({ db, update, user, resetear, restaurarBackup }) {
+function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar }) {
   const [nuevoItem, setNuevoItem] = useState({});
   const [confirmar, setConfirmar] = useState(false);
   const [nuevoUser, setNuevoUser] = useState({ nombre: "", email: "", rol: "Cocina" });
+  const [userMsg, setUserMsg] = useState("");
+  const [enviandoUser, setEnviandoUser] = useState(false);
   const [backupMsg, setBackupMsg] = useState("");
   const [nuevaFig, setNuevaFig] = useState({ nombre: "", especie: "gato", gramaje: "150 g" });
   const [nuevoTop, setNuevoTop] = useState({ nombre: "", precio: "", insumoId: "" });
@@ -5065,11 +5067,23 @@ function Configuracion({ db, update, user, resetear, restaurarBackup }) {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Badge label={u.activo ? "Activo" : "Inactivo"} />
-              <Btn small kind="ghost" onClick={() => update((d) => {
-                const x = d.users.find((y) => y.id === u.id);
-                x.activo = !x.activo;
-                addAudit(d, { user, entidad: "Usuario", entidadId: u.id, accion: x.activo ? "Usuario activado" : "Usuario desactivado", a: u.nombre });
-              })}>{u.activo ? "Desactivar" : "Activar"}</Btn>
+              <Btn small kind="ghost" onClick={async () => {
+                if (enviandoUser) return;
+                setEnviandoUser(true); setUserMsg("");
+                try {
+                  await setUserActivo(u.id, !u.activo);
+                } catch (e) {
+                  setUserMsg("⚠️ " + e.message);
+                  setEnviandoUser(false);
+                  return;
+                }
+                try {
+                  await refrescar();
+                } catch {
+                  setUserMsg("El cambio se aplicó, pero no se pudo actualizar la vista. Recargá la página.");
+                }
+                setEnviandoUser(false);
+              }}>{u.activo ? "Desactivar" : "Activar"}</Btn>
             </div>
           </div>
         ))}
@@ -5078,17 +5092,29 @@ function Configuracion({ db, update, user, resetear, restaurarBackup }) {
             className="flex-1 min-w-[110px] rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
           <input value={nuevoUser.email} onChange={(e) => setNuevoUser({ ...nuevoUser, email: e.target.value })} placeholder="Correo"
             className="flex-1 min-w-[130px] rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
-          <MiniSelect options={["Administrador","Cocina","Empaque","Logística","Marketing/CRM"]} value={nuevoUser.rol} onChange={(e) => setNuevoUser({ ...nuevoUser, rol: e.target.value })} />
-          <Btn small kind="rosa" onClick={() => {
-            if (!nuevoUser.nombre.trim()) return;
-            update((d) => {
-              const id = nextId(d, "user", "U", 2);
-              d.users.push({ id, nombre: nuevoUser.nombre.trim(), email: nuevoUser.email.trim(), rol: nuevoUser.rol, activo: true });
-              addAudit(d, { user, entidad: "Usuario", entidadId: id, accion: "Usuario creado", a: nuevoUser.nombre + " (" + nuevoUser.rol + ")" });
-            });
+          <MiniSelect options={["Administrador","Cocina","Empaque","Logística","Marketing/CRM","Mensajero"]} value={nuevoUser.rol} onChange={(e) => setNuevoUser({ ...nuevoUser, rol: e.target.value })} />
+          <Btn small kind="rosa" onClick={async () => {
+            if (!nuevoUser.nombre.trim() || !nuevoUser.email.trim() || enviandoUser) return;
+            setEnviandoUser(true); setUserMsg("");
+            let r;
+            try {
+              r = await crearUsuarioStaff(nuevoUser.nombre, nuevoUser.email, nuevoUser.rol);
+            } catch (e) {
+              setUserMsg("⚠️ " + e.message);
+              setEnviandoUser(false);
+              return;
+            }
             setNuevoUser({ nombre: "", email: "", rol: "Cocina" });
+            try {
+              await refrescar();
+              setUserMsg(`Usuario ${r.id} creado. Sin acceso de login hasta vincular su cuenta.`);
+            } catch {
+              setUserMsg(`Usuario ${r.id} creado, pero no se pudo actualizar la vista. Recargá la página.`);
+            }
+            setEnviandoUser(false);
           }}>＋ Agregar</Btn>
         </div>
+        {userMsg && <div className="text-xs font-bold mt-2" style={{ color: userMsg.startsWith("⚠️") ? "#A03B2A" : "#3F6B42" }}>{userMsg}</div>}
       </Card>
 
       <SectionTitle>Políticas comerciales</SectionTitle>

@@ -127,6 +127,18 @@ export async function setColchonProduccion(productId, colchon) {
   return data; // {ok, colchon, cambio}
 }
 
+export async function crearUsuarioStaff(nombre, email, rol) {
+  const { data, error } = await supabase.rpc("crear_usuario_staff", { p_nombre: nombre, p_email: email, p_rol: rol });
+  if (error) throw new Error(error.message);
+  return data; // {ok, id} — fila staff sin login (auth_id NULL) hasta vincular cuenta
+}
+
+export async function setUserActivo(userId, activo) {
+  const { data, error } = await supabase.rpc("set_user_activo", { p_user_id: userId, p_activo: activo });
+  if (error) throw new Error(error.message);
+  return data; // {ok, activo, cambio}
+}
+
 export async function entradaInsumo(itemId, cant, costoTotal, nota = "") {
   const { data, error } = await supabase.rpc("entrada_insumo", { p_item_id: itemId, p_cant: cant, p_costo_total: costoTotal, p_nota: nota });
   if (error) throw new Error(error.message);
