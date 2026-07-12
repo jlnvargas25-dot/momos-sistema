@@ -2733,7 +2733,12 @@ function Produccion({ db, update, user, refrescar }) {
     return (db.subreceta_ingredientes || []).filter((r) => r.subrecetaId === prepSel.id).map((r) => {
       const it = itemDe[r.itemId];
       const req = Math.round(r.cantidad * factor * 10000) / 10000;
-      return { itemId: r.itemId, nombre: it ? it.nombre : r.itemId, unidad: it ? it.unidad : "", req, alcanza: it ? it.stock >= req : false, costo: it ? req * it.costo : 0 };
+      // Texto para cocina: kg/L chicos se leen en g/ml (el descuento real sigue en la unidad del insumo)
+      const unidad = it ? it.unidad : "";
+      const reqTxt = unidad === "kg" && req < 1 ? `${Math.round(req * 10000) / 10} g`
+        : unidad === "L" && req < 1 ? `${Math.round(req * 10000) / 10} ml`
+        : `${req} ${unidad}`;
+      return { itemId: r.itemId, nombre: it ? it.nombre : r.itemId, unidad, req, reqTxt, alcanza: it ? it.stock >= req : false, costo: it ? req * it.costo : 0 };
     });
   }, [prepSel, prepForm.nominal, db.subreceta_ingredientes, itemDe]);
   const prepCosto = prepIngredientes.reduce((a, x) => a + x.costo, 0);
@@ -3197,7 +3202,7 @@ function Produccion({ db, update, user, refrescar }) {
                 {prepIngredientes.map((x) => (
                   <div key={x.itemId} className="flex justify-between gap-2 py-0.5">
                     <span>{x.nombre}</span>
-                    <span className="font-semibold" style={{ color: x.alcanza ? T.choco : "#A03B2A" }}>{x.req} {x.unidad}{x.alcanza ? "" : " · ⚠ falta stock"}</span>
+                    <span className="font-semibold" style={{ color: x.alcanza ? T.choco : "#A03B2A" }}>{x.reqTxt}{x.alcanza ? "" : " · ⚠ falta stock"}</span>
                   </div>
                 ))}
                 {prepIngredientes.length === 0 && <div>Esta base no tiene receta cargada.</div>}
