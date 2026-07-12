@@ -2236,6 +2236,35 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         })}
       </div>
 
+      {(() => {
+        /* Variantes 1b: rastro del FIFO — de qué lote físico (desmolde) salió
+           cada unidad al pagar. Solo reservas tipo 'producto'; 'Liberada'
+           (cancelación) no se muestra porque esa unidad volvió al lote. */
+        const rvs = (db.inventory_reservations || []).filter((r) => r.orderId === o.id && r.tipo === "producto" && r.estado !== "Liberada");
+        if (!rvs.length) return null;
+        const conLote = rvs.filter((r) => r.batchId);
+        const sinLote = rvs.filter((r) => !r.batchId);
+        return (
+          <div className="mt-4">
+            <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>📦 LOTES ASIGNADOS (FIFO al pagar)</div>
+            <Card className="p-3">
+              {conLote.map((r) => (
+                <div key={r.id} className="flex justify-between gap-2 text-xs py-0.5">
+                  <span className="font-bold">{r.cantidad}× {r.nombre}</span>
+                  <span className="font-semibold shrink-0" style={{ color: r.estado === "Consumida" ? T.choco2 : "#3F6B42" }}>{r.estado === "Consumida" ? "consumida ✓" : "reservada"}</span>
+                </div>
+              ))}
+              {sinLote.map((r) => (
+                <div key={r.id} className="flex justify-between gap-2 text-xs py-0.5" style={{ color: "#8E4B5A" }}>
+                  <span className="font-bold">{r.cantidad}× {r.nombre}</span>
+                  <span className="font-semibold shrink-0">{r.estado === "Consumida" ? "sin lote (pre-variantes o a pedido) ✓" : "a producir · sin lote"}</span>
+                </div>
+              ))}
+            </Card>
+          </div>
+        );
+      })()}
+
       <div className="mt-4">
         <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>EVIDENCIAS ({evs.length})</div>
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
