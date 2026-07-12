@@ -1890,6 +1890,26 @@ function Dashboard({ db, go, user }) {
 
 const KANBAN_COLS = ["Nuevo","Confirmado","Pendiente de pago","Pagado","En producción","Empacado","Listo para despacho","En ruta","Entregado"];
 
+/* Resumen de actividad por módulo (pedido del usuario 2026-07-12): últimas
+   filas del rastro que YA viaja en el read-model (audit_logs / movements) —
+   cada módulo arma sus filas {texto, meta} y esto solo las pinta. */
+function UltimosMovimientos({ filas }) {
+  if (!filas || !filas.length) return null;
+  return (
+    <>
+      <SectionTitle>🕓 Últimos movimientos</SectionTitle>
+      <Card className="p-3 mb-2">
+        {filas.slice(0, 8).map((f, i) => (
+          <div key={i} className="flex justify-between items-baseline gap-3 py-1 text-xs" style={{ borderTop: i ? `1px solid ${T.border}` : "none" }}>
+            <span className="font-semibold min-w-0">{f.texto}</span>
+            <span className="shrink-0 font-semibold text-[10px]" style={{ color: T.choco2 }}>{f.meta}</span>
+          </div>
+        ))}
+      </Card>
+    </>
+  );
+}
+
 function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [modo, setModo] = useState("kanban");
   const [selId, setSelId] = useState(null);
@@ -2064,6 +2084,8 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
           </table>
         </Card>
       )}
+
+      <UltimosMovimientos filas={db.audit_logs.filter((a) => ["Pedido", "Evidencia", "Domicilio", "Reclamo"].includes(a.entidad)).map((a) => ({ texto: `${a.accion}${a.entidadId ? ` · ${a.entidadId}` : ""}${a.a ? ` → ${a.a}` : ""}`, meta: `${a.fecha}${a.user ? ` · ${a.user}` : ""}` }))} />
 
       {sel && <DetallePedido db={db} o={sel} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
       {nuevo && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} refrescar={refrescar} />}
@@ -2550,6 +2572,25 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
                 {items.length > 1 && <button onClick={() => setItems(items.filter((_, x) => x !== i))} className="text-xs font-bold" style={{ color: "#A03B2A" }}>Quitar</button>}
               </div>
             </div>
+            {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && (() => {
+              /* Disponibilidad por variante EN VIVO: dice si lo que pide el cliente
+                 está desmoldado y, si no, qué variantes ofrece el FIFO (mismo orden
+                 de decisión que _asignar_variante_fifo en el server). */
+              const vars = (db.variantes || []).filter((v) => v.productId === it.productId && v.disponibles > 0);
+              const chip = (bg, color, texto) => <div className="mt-1 px-2 py-1.5 rounded-lg text-[11px] font-bold" style={{ background: bg, color }}>{texto}</div>;
+              const lista = (arr) => arr.map((v) => `${v.figura} · ${v.sabor} (${v.disponibles})`).join(" · ");
+              if (!vars.length) return chip("#F3D7DC", "#8E4B5A", "Sin desmoldes por figura de este producto — se vende igual y se produce a pedido.");
+              if (!it.figura) return chip("#DCE7F2", "#3E5C7E", `Desmoldado disponible: ${lista(vars)}`);
+              const deFigura = vars.filter((v) => v.figura === it.figura);
+              if (!deFigura.length) return chip("#F3D7DC", "#8E4B5A", `Sin ${it.figura} desmoldado — hay: ${lista(vars)} · igual se puede vender (a pedido).`);
+              const exacta = it.sabor ? deFigura.filter((v) => v.sabor === it.sabor) : deFigura;
+              if (exacta.length) {
+                const n = exacta.reduce((s, v) => s + v.disponibles, 0);
+                const vence = exacta.map((v) => v.vence).filter(Boolean).sort()[0];
+                return chip("#DDEBD9", "#3F6B42", `✓ Hay ${n}× ${it.figura}${it.sabor ? ` · ${it.sabor}` : ""}${vence ? ` · vence ${vence}` : ""}`);
+              }
+              return chip("#F7EAC9", "#8A6D1F", `${it.figura} hay, pero de otro sabor: ${lista(deFigura)} — el FIFO tomará el más próximo a vencer.`);
+            })()}
             {it.productId && pSel && pSel.tipo === "combo" && (() => {
               const boxes = it.boxes || [];
               const multi = boxes.length > 1;
@@ -3300,6 +3341,8 @@ function Produccion({ db, update, user, refrescar }) {
         );
       })()}
 
+      <UltimosMovimientos filas={db.audit_logs.filter((a) => ["Lote", "Producción", "Corrida", "Subreceta"].includes(a.entidad)).map((a) => ({ texto: `${a.accion}${a.entidadId ? ` · ${a.entidadId}` : ""}${a.a ? ` → ${a.a}` : ""}`, meta: `${a.fecha}${a.user ? ` · ${a.user}` : ""}` }))} />
+
       {msg && <Modal title="Aviso de producción" onClose={() => setMsg("")}><p className="text-sm m-0">{msg}</p><div className="mt-4"><Btn onClick={() => setMsg("")}>Listo</Btn></div></Modal>}
     </div>
   );
@@ -3582,6 +3625,8 @@ function Inventario({ db, update, user, focus, refrescar }) {
           </div>
         </Modal>
       )}
+
+      <UltimosMovimientos filas={db.inventory_movements.map((m) => ({ texto: `${m.tipo} · ${m.item} · ${m.cant}${m.nota ? ` — ${m.nota}` : ""}`, meta: m.fecha }))} />
 
       {avisoInv && (
         <Modal title={avisoInv.titulo} onClose={() => setAvisoInv(null)}>
