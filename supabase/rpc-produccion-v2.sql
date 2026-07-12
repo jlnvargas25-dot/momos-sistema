@@ -43,6 +43,18 @@
 -- crear_lote (rpc-produccion-v1.sql línea 77). Los timestamptz canónicos
 -- (created_at, inicio_congelacion) siguen con now() (hora servidor UTC).
 --
+-- ESPEJO (subrecetas-bom-v1.sql, 2026-07-11): crear_corrida (sección B, abajo)
+-- fue evolucionada por ese archivo vía CREATE OR REPLACE con firma intacta.
+-- El cuerpo vigente de la función es el que está ACÁ (mismo texto, copia
+-- literal) — subrecetas-bom-v1.sql es la migración que se ejecuta; ESTE
+-- archivo es el espejo de lectura/histórico de Producción v2. Si tocás
+-- crear_corrida, tocá los DOS archivos. Resumen del cambio: el bloque de
+-- descuento por lote hijo ahora intenta primero resolver una subreceta de
+-- mousse activa para el sabor de la corrida (consume mousse + figura_relleno,
+-- relleno configurable — NUNCA hardcodeado); si no hay subreceta para ese
+-- sabor, cae al camino legacy por `recipes` intacto (retrocompat total) y
+-- marca "modo":"legacy" en el retorno de ese lote.
+--
 -- NO EJECUTAR contra ninguna base desde acá — archivo de definición únicamente.
 -- ============================================================================
 
@@ -174,6 +186,12 @@ declare
   v_req numeric;
   v_toma numeric;
   v_prod_nombre text;
+  -- ---- NUEVO (subrecetas-bom-v1.sql): consumo por subreceta con fallback legacy ----
+  v_mousse record;              -- subreceta de mousse resuelta para v_sabor (si existe)
+  v_gramos_relleno numeric;     -- Σ(figura_relleno.gramos_por_unidad activos)
+  v_gramos_mousse numeric;      -- gramaje_g del lote − v_gramos_relleno
+  v_rel record;                 -- fila de figura_relleno (join subrecetas)
+  v_modo text;                  -- 'subreceta' | 'legacy' — informativo, por lote
 begin
   if not is_staff() then
     raise exception 'Solo staff activo puede crear corridas de producción';
@@ -296,6 +314,23 @@ begin
     raise;  -- otra violación de unicidad (p.ej. PK): no es idempotencia, propagar
   end;
 
+  -- ---- NUEVO: resolver UNA vez la mousse del sabor de la corrida (aplica
+  -- igual a todos los lotes hijos — la corrida es de UN sabor). Si no hay
+  -- subreceta activa de mousse para ese sabor, v_mousse.id queda null y CADA
+  -- lote hijo cae al camino legacy (retrocompat total).
+  select id, nombre, item_id, merma_pct into v_mousse
+  from subrecetas
+  where tipo in ('mousse_frutal','mousse_cremosa')
+    and activo
+    and lower(sabor) = lower(v_sabor)
+  limit 1;
+
+  -- ---- NUEVO: Σ gramos de relleno activos (regla configurable, jamás
+  -- hardcodeada — ver figura_relleno). Se calcula UNA vez, aplica a todos
+  -- los lotes de esta corrida por igual (el relleno no varía por figura).
+  select coalesce(sum(gramos_por_unidad), 0) into v_gramos_relleno
+  from figura_relleno where activo;
+
   -- Derivación server-side: agrupar por (product_id, gramaje_g) — cada grupo
   -- es UN lote hijo. jsonb_agg arma la composición ("figuras") de ese lote.
   for v_grupo in
@@ -325,37 +360,98 @@ begin
     );
 
     v_total_unidades := v_total_unidades + v_grupo.prod_total;
-    v_lotes := v_lotes || jsonb_build_object(
-      'batch_id', v_batch_id, 'product_id', v_grupo.product_id,
-      'prod', v_grupo.prod_total, 'gramaje_g', v_grupo.gramaje_g);
 
-    -- Descuento de receta por PROD de ESTE lote hijo — mecánica IDÉNTICA a
-    -- crear_lote (rpc-produccion-v1.sql ~173-193), inline (no se llama a
-    -- crear_lote(): sus defaults de perfectas y su idempotencia por-lote no
-    -- aplican acá — ver RESUMEN DE DECISIÓN). Lock ordenado por item_id para
-    -- que dos lotes concurrentes (de esta u otra corrida) no se deadlockeen.
-    for rec in
-      select r.item_id, r.cantidad, it.nombre, it.stock, it.unidad
-      from recipes r join inventory_items it on it.id = r.item_id
-      where r.product_id = v_grupo.product_id
-      order by r.item_id
-      for update of it
-    loop
-      v_req := round(rec.cantidad * v_grupo.prod_total, 3);
+    if v_mousse.id is not null then
+      -- ================== CAMINO NUEVO: consumo por subreceta ==================
+      v_modo := 'subreceta';
+
+      v_gramos_mousse := v_grupo.gramaje_g - v_gramos_relleno;
+      if v_gramos_mousse <= 0 then
+        raise exception 'El gramaje del lote (%) no alcanza para descontar el relleno configurado (% g) — revisá figura_relleno',
+          v_grupo.gramaje_g, v_gramos_relleno;
+      end if;
+
+      -- Consumo de la mousse: (gramaje − relleno) × prod, convertido a la
+      -- unidad del item de la subreceta (kg/L → /1000; g → tal cual).
+      select it.id, it.nombre, it.stock, it.unidad into rec
+      from inventory_items it where it.id = v_mousse.item_id for update;
+
+      v_req := round(
+        (v_gramos_mousse * v_grupo.prod_total) / (case rec.unidad when 'g' then 1 else 1000 end),
+        4);
       v_toma := least(rec.stock, v_req);
-      update inventory_items set stock = round(stock - v_toma, 3) where id = rec.item_id;
+      update inventory_items set stock = round(stock - v_toma, 4) where id = v_mousse.item_id;
       if v_toma > 0 then
-        perform _add_movement('Uso en producción', rec.item_id, -v_toma, 'Lote ' || v_batch_id, null, v_batch_id);
+        perform _add_movement('Uso en producción', v_mousse.item_id, -v_toma, 'Lote ' || v_batch_id, null, v_batch_id);
       end if;
       if v_toma < v_req then
         v_faltantes := v_faltantes || jsonb_build_object(
-          'item_id', rec.item_id, 'insumo', rec.nombre,
-          'faltan', round(v_req - v_toma, 3), 'unidad', rec.unidad);
+          'item_id', v_mousse.item_id, 'insumo', rec.nombre,
+          'faltan', round(v_req - v_toma, 4), 'unidad', rec.unidad);
       end if;
-    end loop;
+
+      -- Consumo de CADA figura_relleno activa: gramos_por_unidad × prod,
+      -- convertido a la unidad del item de SU subreceta. Mismo patrón least().
+      for v_rel in
+        select fr.id, fr.gramos_por_unidad, sr.item_id, sr.nombre as sr_nombre
+        from figura_relleno fr join subrecetas sr on sr.id = fr.subreceta_id
+        where fr.activo
+        order by fr.id
+      loop
+        select it.id, it.nombre, it.stock, it.unidad into rec
+        from inventory_items it where it.id = v_rel.item_id for update;
+
+        v_req := round(
+          (v_rel.gramos_por_unidad * v_grupo.prod_total) / (case rec.unidad when 'g' then 1 else 1000 end),
+          4);
+        v_toma := least(rec.stock, v_req);
+        update inventory_items set stock = round(stock - v_toma, 4) where id = v_rel.item_id;
+        if v_toma > 0 then
+          perform _add_movement('Uso en producción', v_rel.item_id, -v_toma, 'Lote ' || v_batch_id, null, v_batch_id);
+        end if;
+        if v_toma < v_req then
+          v_faltantes := v_faltantes || jsonb_build_object(
+            'item_id', v_rel.item_id, 'insumo', rec.nombre,
+            'faltan', round(v_req - v_toma, 4), 'unidad', rec.unidad);
+        end if;
+      end loop;
+
+    else
+      -- ================== CAMINO LEGACY: consumo por `recipes` (intacto) ==================
+      v_modo := 'legacy';
+
+      -- Descuento de receta por PROD de ESTE lote hijo — mecánica IDÉNTICA a
+      -- crear_lote (rpc-produccion-v1.sql ~173-193), inline (no se llama a
+      -- crear_lote(): sus defaults de perfectas y su idempotencia por-lote no
+      -- aplican acá — ver RESUMEN DE DECISIÓN). Lock ordenado por item_id para
+      -- que dos lotes concurrentes (de esta u otra corrida) no se deadlockeen.
+      for rec in
+        select r.item_id, r.cantidad, it.nombre, it.stock, it.unidad
+        from recipes r join inventory_items it on it.id = r.item_id
+        where r.product_id = v_grupo.product_id
+        order by r.item_id
+        for update of it
+      loop
+        v_req := round(rec.cantidad * v_grupo.prod_total, 3);
+        v_toma := least(rec.stock, v_req);
+        update inventory_items set stock = round(stock - v_toma, 3) where id = rec.item_id;
+        if v_toma > 0 then
+          perform _add_movement('Uso en producción', rec.item_id, -v_toma, 'Lote ' || v_batch_id, null, v_batch_id);
+        end if;
+        if v_toma < v_req then
+          v_faltantes := v_faltantes || jsonb_build_object(
+            'item_id', rec.item_id, 'insumo', rec.nombre,
+            'faltan', round(v_req - v_toma, 3), 'unidad', rec.unidad);
+        end if;
+      end loop;
+    end if;
+
+    v_lotes := v_lotes || jsonb_build_object(
+      'batch_id', v_batch_id, 'product_id', v_grupo.product_id,
+      'prod', v_grupo.prod_total, 'gramaje_g', v_grupo.gramaje_g, 'modo', v_modo);
 
     perform _add_audit('Lote', v_batch_id, 'Lote creado',
-      '', v_grupo.prod_total || '× ' || v_prod_nombre || ' (corrida ' || v_id || ')');
+      '', v_grupo.prod_total || '× ' || v_prod_nombre || ' (corrida ' || v_id || ', modo ' || v_modo || ')');
   end loop;
 
   -- Atender sugerencia de producción, si vino — igual que crear_lote v1.
