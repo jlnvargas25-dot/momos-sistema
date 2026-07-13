@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion, crearUsuarioStaff, setUserActivo } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion, crearUsuarioStaff, setUserActivo, crearCampana, editarCampana, setCampanaEstado } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -5359,7 +5359,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
 
 /* ================= MARKETING 📣 ================= */
 
-function Marketing({ db, update, user }) {
+function Marketing({ db, update, user, refrescar }) {
   const [nueva, setNueva] = useState(false);
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState({ nombre: "", canal: "Instagram", objetivo: "Ventas", productoFoco: "", oferta: "", fechaInicio: hoyISO(), fechaFin: dISO(15), presupuesto: 0, gastoReal: 0, estado: "Planeada", responsable: "Marketing", notas: "" });
@@ -5377,15 +5377,24 @@ function Marketing({ db, update, user }) {
       conMetrics.map(({ c, m }) => [c.id, c.nombre, c.canal, c.objetivo, c.productoFoco, c.oferta, c.fechaInicio, c.fechaFin, c.presupuesto, c.gastoReal, m.pedidos, m.ventas, m.cac ? Math.round(m.cac) : "", m.roas ? m.roas.toFixed(2) : "", c.estado, c.responsable]));
   }
 
-  function guardar() {
-    if (!form.nombre.trim()) return;
-    update((d) => {
-      const id = nextId(d, "campaign", "CMP-", 2);
-      d.campaigns.unshift({ id, ...form });
-      addAudit(d, { user, entidad: "Campaña", entidadId: id, accion: "Campaña creada", a: form.nombre });
-    });
+  // Fase 3 · Hito 2: la campaña nace en el SERVER (crear_campana). productoFoco (nombre) → id.
+  async function guardar() {
+    if (!form.nombre.trim()) { toast("error", "Falta el nombre de la campaña"); return; }
+    const prodId = form.productoFoco ? (db.products.find((p) => p.nombre === form.productoFoco)?.id || null) : null;
+    let res;
+    try {
+      res = await crearCampana({
+        nombre: form.nombre, canal: form.canal, objetivo: form.objetivo,
+        producto_foco_id: prodId, oferta: form.oferta,
+        fecha_inicio: form.fechaInicio, fecha_fin: form.fechaFin,
+        presupuesto: form.presupuesto, gasto_real: form.gastoReal,
+        estado: form.estado, responsable: form.responsable, notas: form.notas,
+      });
+    } catch (e) { toast("error", e.message); return; }
     setNueva(false);
     setForm({ nombre: "", canal: "Instagram", objetivo: "Ventas", productoFoco: "", oferta: "", fechaInicio: hoyISO(), fechaFin: dISO(15), presupuesto: 0, gastoReal: 0, estado: "Planeada", responsable: "Marketing", notas: "" });
+    toast("ok", `Campaña ${res.id} creada`);
+    try { await refrescar(); } catch { toast("error", "Campaña creada; recargá para verla"); }
   }
 
   return (
@@ -5470,7 +5479,7 @@ function Marketing({ db, update, user }) {
             <Field label="Estado"><Select options={CAMP_ESTADOS} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} /></Field>
           </div>
           <Field label="Notas"><Input value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></Field>
-          <div className="flex gap-2 mt-2"><Btn onClick={guardar}>Crear campaña</Btn><Btn kind="ghost" onClick={() => setNueva(false)}>Cancelar</Btn></div>
+          <div className="flex gap-2 mt-2"><BtnAsync onClick={guardar} textoEnVuelo="Creando…">Crear campaña</BtnAsync><Btn kind="ghost" onClick={() => setNueva(false)}>Cancelar</Btn></div>
         </Modal>
       )}
 
@@ -5481,8 +5490,9 @@ function Marketing({ db, update, user }) {
             <Field label="Estado">
               <select value={sel.estado} onChange={(e) => setSel({ ...sel, estado: e.target.value })} className={inputCls} style={inputStyle}>{CAMP_ESTADOS.map((s) => <option key={s}>{s}</option>)}</select>
             </Field>
-            <Field label="Gasto real"><Input type="number" value={sel.gastoReal} onChange={(e) => setSel({ ...sel, gastoReal: +e.target.value })} /></Field>
-            <Field label="Presupuesto"><Input type="number" value={sel.presupuesto} onChange={(e) => setSel({ ...sel, presupuesto: +e.target.value })} /></Field>
+            {/* String crudo (no +coerción): vaciar el input queda '' y el PATCH lo OMITE — no pisa a 0. */}
+            <Field label="Gasto real"><Input type="number" value={sel.gastoReal} onChange={(e) => setSel({ ...sel, gastoReal: e.target.value })} /></Field>
+            <Field label="Presupuesto"><Input type="number" value={sel.presupuesto} onChange={(e) => setSel({ ...sel, presupuesto: e.target.value })} /></Field>
             <Field label="Oferta"><Input value={sel.oferta} onChange={(e) => setSel({ ...sel, oferta: e.target.value })} /></Field>
           </div>
           <Field label="Notas"><Input value={sel.notas} onChange={(e) => setSel({ ...sel, notas: e.target.value })} /></Field>
@@ -5490,7 +5500,26 @@ function Marketing({ db, update, user }) {
             Creativos de esta campaña: {db.creatives.filter((cr) => cr.campaignId === sel.id).length} · Pedidos atribuidos: {ordersDeCampaign(db, sel.id).length}
           </div>
           <div className="flex gap-2">
-            <Btn onClick={() => { update((d) => { const i = d.campaigns.findIndex((x) => x.id === sel.id); const prev = d.campaigns[i].estado; d.campaigns[i] = sel; addAudit(d, { user, entidad: "Campaña", entidadId: sel.id, accion: prev !== sel.estado ? "Cambio de estado" : "Campaña editada", de: prev !== sel.estado ? prev : "", a: prev !== sel.estado ? sel.estado : "" }); }); setSel(null); }}>Guardar</Btn>
+            <BtnAsync onClick={async () => {
+              // PATCH por DIFF: solo las claves que cambiaron respecto del valor hidratado (el
+              // resto — nombre, canal, foco, fechas — queda intacto server-side). Los numéricos
+              // van solo si quedaron con un número válido: vaciar el input NO pisa el dato a 0.
+              const orig = db.campaigns.find((x) => x.id === sel.id) || sel;
+              const patch = {};
+              if (sel.estado !== orig.estado) patch.estado = sel.estado;
+              if (sel.oferta !== orig.oferta) patch.oferta = sel.oferta;
+              if (sel.notas !== orig.notas) patch.notas = sel.notas;
+              if (String(sel.presupuesto).trim() !== "" && !Number.isNaN(+sel.presupuesto) && +sel.presupuesto !== orig.presupuesto) patch.presupuesto = +sel.presupuesto;
+              if (String(sel.gastoReal).trim() !== "" && !Number.isNaN(+sel.gastoReal) && +sel.gastoReal !== orig.gastoReal) patch.gasto_real = +sel.gastoReal;
+              if (Object.keys(patch).length === 0) { setSel(null); toast("ok", "Sin cambios"); return; }
+              let res;
+              try {
+                res = await editarCampana(sel.id, patch);
+              } catch (e) { toast("error", e.message); return; }
+              setSel(null);
+              toast("ok", res.cambio_estado ? `Campaña → ${sel.estado}` : "Campaña actualizada");
+              try { await refrescar(); } catch { toast("error", "Guardado; recargá para verlo"); }
+            }}>Guardar</BtnAsync>
             <Btn kind="ghost" onClick={() => setSel(null)}>Cancelar</Btn>
           </div>
         </Modal>
@@ -5868,7 +5897,7 @@ function resultadoSimple(m) {
   return { texto: `Funcionó regular: gastó más de lo que vendió. Revisa el precio o el mensaje, o prueba otro creativo.`, tono: "#A03B2A", bg: "#F6D4CD" };
 }
 
-function Crecimiento({ db, update, user, go }) {
+function Crecimiento({ db, update, user, go, refrescar }) {
   const [seccion, setSeccion] = useState("inicio");
 
   const TARJETAS = [
@@ -5902,13 +5931,13 @@ function Crecimiento({ db, update, user, go }) {
         {seccion === "escribir" && <AQuienEscribir db={db} go={go} />}
         {seccion === "mensajes" && <MensajesWhatsApp db={db} customer={null} />}
         {seccion === "promo" && <QuePromo db={db} go={go} />}
-        {seccion === "campanas" && <CampanasSimples db={db} update={update} user={user} />}
+        {seccion === "campanas" && <CampanasSimples db={db} update={update} user={user} refrescar={refrescar} />}
         {seccion === "funciono" && <QueFunciono db={db} />}
-        {seccion === "pausar" && <QuePausar db={db} update={update} user={user} />}
+        {seccion === "pausar" && <QuePausar db={db} update={update} user={user} refrescar={refrescar} />}
         {seccion === "repetir" && <IdeasListas db={db} update={update} user={user} soloRepetir />}
         {seccion === "ideas" && <IdeasListas db={db} update={update} user={user} />}
         {seccion === "marca" && <BibliotecaMarca db={db} />}
-        {seccion === "resultados" && <ResultadosFaciles db={db} update={update} user={user} />}
+        {seccion === "resultados" && <ResultadosFaciles db={db} update={update} user={user} refrescar={refrescar} />}
         {seccion === "tareas" && <TareasRedes db={db} update={update} user={user} />}
       </div>
     );
@@ -6174,7 +6203,7 @@ function QuePromo({ db, go }) {
 }
 
 /* --- Campañas simples (crear con objetivo claro) --- */
-function CampanasSimples({ db, update, user }) {
+function CampanasSimples({ db, update, user, refrescar }) {
   const [nueva, setNueva] = useState(false);
   const [form, setForm] = useState({ objetivo: "vender", producto: "", dias: 7, canal: "Instagram" });
 
@@ -6205,15 +6234,17 @@ function CampanasSimples({ db, update, user }) {
             Crearemos una campaña "{form.objetivo}" para {form.producto || "tus productos"} en {form.canal}, por {form.dias} días.
           </div>
           <div className="flex gap-2">
-            <Btn onClick={() => {
-              update((d) => {
-                const id = nextId(d, "campaign", "CMP-", 2);
-                const nombre = "Campaña " + form.objetivo + (form.producto ? " · " + form.producto : "");
-                d.campaigns.unshift({ id, nombre, canal: form.canal, objetivo: MAP_OBJ[form.objetivo] || "Ventas", productoFoco: form.producto, oferta: "", fechaInicio: hoyISO(), fechaFin: dISO(form.dias), presupuesto: 0, gastoReal: 0, estado: "Activa", responsable: "Marketing", notas: "Creada desde Crecimiento MOMOS" });
-                addAudit(d, { user, entidad: "Campaña", entidadId: id, accion: "Campaña simple creada", a: nombre });
-              });
+            <BtnAsync textoEnVuelo="Creando…" onClick={async () => {
+              const prodId = form.producto ? (db.products.find((p) => p.nombre === form.producto)?.id || null) : null;
+              const nombre = "Campaña " + form.objetivo + (form.producto ? " · " + form.producto : "");
+              let res;
+              try {
+                res = await crearCampana({ nombre, canal: form.canal, objetivo: MAP_OBJ[form.objetivo] || "Ventas", producto_foco_id: prodId, oferta: "", fecha_inicio: hoyISO(), fecha_fin: dISO(form.dias), presupuesto: 0, gasto_real: 0, estado: "Activa", responsable: "Marketing", notas: "Creada desde Crecimiento MOMOS" });
+              } catch (e) { toast("error", e.message); return; }
               setNueva(false);
-            }}>Crear campaña</Btn>
+              toast("ok", `Campaña ${res.id} creada`);
+              try { await refrescar(); } catch { toast("error", "Campaña creada; recargá para verla"); }
+            }}>Crear campaña</BtnAsync>
             <Btn kind="ghost" onClick={() => setNueva(false)}>Cancelar</Btn>
           </div>
         </Modal>
@@ -6264,7 +6295,7 @@ function QueFunciono({ db }) {
 }
 
 /* --- Qué pausar --- */
-function QuePausar({ db, update, user }) {
+function QuePausar({ db, update, user, refrescar }) {
   const malas = (db.campaigns || []).map((c) => ({ c, m: campaignMetrics(db, c) })).filter((x) => x.c.estado === "Activa" && ((x.m.roas !== null && x.m.roas < 1) || (x.c.gastoReal > 0 && x.m.pedidos === 0)));
 
   return (
@@ -6279,10 +6310,11 @@ function QuePausar({ db, update, user }) {
               <div className="flex justify-between items-start gap-2"><div className="font-bold text-sm">{x.c.nombre}</div><Badge label={x.c.estado} /></div>
               <div className="text-xs mt-2 p-2 rounded-lg" style={{ background: r.bg, color: r.tono }}>{r.texto}</div>
               <div className="text-xs mt-2" style={{ color: T.choco2 }}>Gastó {fmt(x.c.gastoReal)} · vendió {fmt(x.m.ventas)}</div>
-              <div className="mt-3"><Btn small kind="danger" onClick={() => update((d) => {
-                const c = d.campaigns.find((y) => y.id === x.c.id); c.estado = "Pausada";
-                addAudit(d, { user, entidad: "Campaña", entidadId: c.id, accion: "Cambio de estado", de: "Activa", a: "Pausada" });
-              })}>⏸️ Pausar campaña</Btn></div>
+              <div className="mt-3"><BtnAsync small kind="danger" textoEnVuelo="Pausando…" onClick={async () => {
+                try { await setCampanaEstado(x.c.id, "Pausada"); } catch (e) { toast("error", e.message); return; }
+                toast("ok", `Campaña ${x.c.nombre} pausada`);
+                try { await refrescar(); } catch { toast("error", "Pausada; recargá para verlo"); }
+              }}>⏸️ Pausar campaña</BtnAsync></div>
             </Card>
           );
         })}
@@ -6370,7 +6402,7 @@ function BibliotecaMarca({ db }) {
 }
 
 /* --- Resultados fáciles: métricas traducidas a recomendaciones --- */
-function ResultadosFaciles({ db, update, user }) {
+function ResultadosFaciles({ db, update, user, refrescar }) {
   const traffic = trafficRecomendaciones(db);
   const recomendaciones = [];
   const creM = (db.creatives || []).map((cr) => ({ cr, pedidos: ordersDeCreative(db, cr.id).length, ventas: ventasDeCreative(db, cr.id) }));
@@ -6418,14 +6450,19 @@ function ResultadosFaciles({ db, update, user }) {
                   <div className="font-bold text-sm mb-1">{r.titulo}</div>
                   <div className="text-sm p-2 rounded-lg" style={{ background: r.bg, color: r.color }}>{r.texto}</div>
                   {r.accion === "pausar" && (
-                    <div className="mt-2"><Btn small kind="danger" onClick={() => update((d) => {
-                      const c = d.campaigns.find((y) => y.id === r.campaignId); if (c) { c.estado = "Pausada"; addAudit(d, { user, entidad: "Campaña", entidadId: c.id, accion: "Cambio de estado", de: "Activa", a: "Pausada" }); }
-                    })}>⏸️ Pausar campaña</Btn></div>
+                    <div className="mt-2"><BtnAsync small kind="danger" textoEnVuelo="Pausando…" onClick={async () => {
+                      try { await setCampanaEstado(r.campaignId, "Pausada"); } catch (e) { toast("error", e.message); return; }
+                      toast("ok", `Campaña ${r.titulo} pausada`);
+                      try { await refrescar(); } catch { toast("error", "Pausada; recargá para verlo"); }
+                    }}>⏸️ Pausar campaña</BtnAsync></div>
                   )}
                   {r.accion === "subir" && (
-                    <div className="mt-2"><Btn small kind="rosa" onClick={() => update((d) => {
-                      const c = d.campaigns.find((y) => y.id === r.campaignId); if (c) { const antes = c.presupuesto; c.presupuesto = r.nuevoPresupuesto; addAudit(d, { user, entidad: "Campaña", entidadId: c.id, accion: "Presupuesto ajustado", de: fmt(antes), a: fmt(r.nuevoPresupuesto) }); }
-                    })}>🚀 Subir presupuesto 20%</Btn></div>
+                    <div className="mt-2"><BtnAsync small kind="rosa" textoEnVuelo="Ajustando…" onClick={async () => {
+                      // PATCH: solo presupuesto (editar_campana conserva el resto).
+                      try { await editarCampana(r.campaignId, { presupuesto: r.nuevoPresupuesto }); } catch (e) { toast("error", e.message); return; }
+                      toast("ok", `Presupuesto de ${r.titulo} → ${fmt(r.nuevoPresupuesto)}`);
+                      try { await refrescar(); } catch { toast("error", "Ajustado; recargá para verlo"); }
+                    }}>🚀 Subir presupuesto 20%</BtnAsync></div>
                   )}
                 </div>
               </div>
@@ -6501,7 +6538,7 @@ function TareasRedes({ db, update, user }) {
 
 // Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
 // sus cambios no llegan al servidor y la próxima hidratación los pisa.
-const MODULOS_EN_MIGRACION = ["Productos", "Beneficios", "Crecimiento", "Marketing", "Creativos", "Calendario", "Resultados", "Finanzas", "Configuración"];
+const MODULOS_EN_MIGRACION = ["Productos", "Beneficios", "Crecimiento", "Creativos", "Calendario", "Resultados", "Finanzas", "Configuración"];
 
 function BannerMigracion() {
   return (
@@ -6651,6 +6688,7 @@ export default function MomosOps() {
       d.subrecetas = cat.subrecetas || []; // Componentes+BOM: bases (mousses/cheesecake/ganache/salsas/crocante)
       d.subreceta_ingredientes = cat.subreceta_ingredientes || []; // receta maestra por 1000 g
       d.figura_relleno = cat.figura_relleno || []; // relleno configurable de figuras (20/15 g editables)
+      d.campaigns = cat.campaigns || []; // Marketing Hito 2: campañas server-side (las demo locales se van al hidratar, decisión aprobada)
       if (cat.brand_library) d.brand_library = cat.brand_library;
       Object.assign(d.settings, cat.settingsCatalogos);
       Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches

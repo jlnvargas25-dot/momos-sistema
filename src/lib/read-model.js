@@ -32,10 +32,11 @@ export async function fetchCatalogos() {
     supabase.from("subrecetas").select("id,nombre,tipo,sabor,merma_pct,rinde_g,item_id,activo").order("id"),
     supabase.from("subreceta_ingredientes").select("subreceta_id,item_id,cantidad").order("subreceta_id"),
     supabase.from("figura_relleno").select("id,subreceta_id,gramos_por_unidad,activo").order("id"),
+    supabase.from("campaigns").select("id,nombre,canal,objetivo,producto_foco_id,oferta,fecha_inicio,fecha_fin,presupuesto,gasto_real,estado,responsable,notas").order("id"),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell] = q.map((r) => r.data);
+  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, camps] = q.map((r) => r.data);
 
   // RLS deny-by-default devuelve VACÍO (no error): un catálogo estructural vacío = algo anda mal,
   // mejor quedarse con la caché local que pisar el db con arrays vacíos.
@@ -127,7 +128,20 @@ export async function fetchCatalogos() {
   const subreceta_ingredientes = (subrIngs || []).map((r) => ({ subrecetaId: r.subreceta_id, itemId: r.item_id, cantidad: Number(r.cantidad) }));
   const figura_relleno = (figRell || []).map((f) => ({ id: f.id, subrecetaId: f.subreceta_id, gramosPorUnidad: Number(f.gramos_por_unidad), activo: f.activo }));
 
-  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno };
+  // Marketing Hito 2: campaigns desde el server. productoFoco se hidrata como NOMBRE
+  // (el front lo usa por nombre en el Select y en stockProductoFoco); productoFocoId
+  // conserva el id crudo. Vacío es LEGÍTIMO (marketing sin campañas) — sin guard.
+  const nombreProd = {}; prods.forEach((p) => { nombreProd[p.id] = p.nombre; });
+  const campaigns = (camps || []).map((c) => ({
+    id: c.id, nombre: c.nombre, canal: c.canal, objetivo: c.objetivo,
+    productoFocoId: nz(c.producto_foco_id, null),
+    productoFoco: c.producto_foco_id ? (nombreProd[c.producto_foco_id] || "") : "",
+    oferta: nz(c.oferta), fechaInicio: nz(c.fecha_inicio), fechaFin: nz(c.fecha_fin),
+    presupuesto: Number(c.presupuesto || 0), gastoReal: Number(c.gasto_real || 0),
+    estado: c.estado, responsable: nz(c.responsable), notas: nz(c.notas),
+  }));
+
+  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──

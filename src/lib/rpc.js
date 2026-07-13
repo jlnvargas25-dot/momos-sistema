@@ -139,6 +139,26 @@ export async function setUserActivo(userId, activo) {
   return data; // {ok, activo, cambio}
 }
 
+// Marketing Hito 2: gate is_staff() is not true (server). productoFocoId → id crudo.
+export async function crearCampana(payload) {
+  const { data, error } = await supabase.rpc("crear_campana", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok, id}
+}
+
+// PATCH real: solo las claves presentes se aplican; ausentes se conservan.
+export async function editarCampana(id, payload) {
+  const { data, error } = await supabase.rpc("editar_campana", { p_id: id, p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok, cambio_estado}
+}
+
+export async function setCampanaEstado(id, estado) {
+  const { data, error } = await supabase.rpc("set_campana_estado", { p_id: id, p_estado: estado });
+  if (error) throw new Error(error.message);
+  return data; // {ok, de, a, cambio}
+}
+
 export async function entradaInsumo(itemId, cant, costoTotal, nota = "") {
   const { data, error } = await supabase.rpc("entrada_insumo", { p_item_id: itemId, p_cant: cant, p_costo_total: costoTotal, p_nota: nota });
   if (error) throw new Error(error.message);
