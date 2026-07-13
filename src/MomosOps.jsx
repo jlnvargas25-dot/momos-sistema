@@ -1614,6 +1614,89 @@ function Btn({ children, onClick, kind = "primary", small, disabled, type = "but
   );
 }
 
+/* ── Juice v1: feedback táctil de acciones (spec engram momos/juice-v1-spec) ── */
+// Vibración háptica: solo Android/Chrome — iOS Safari no soporta la Vibration API,
+// ahí el juice queda visual (degradación silenciosa, jamás rompe).
+function vibrar(tipo) {
+  try {
+    if (!("vibrate" in navigator)) return;
+    navigator.vibrate(tipo === "ok" ? [30, 60, 30] : tipo === "error" ? 120 : 30);
+  } catch { /* nunca romper por vibrar */ }
+}
+
+// Bus a nivel módulo: toast() se puede llamar desde cualquier componente sin
+// enhebrar props por el monolito; <Toasts/> (montado una vez en el shell) se registra.
+let _pushToast = null;
+function toast(tipo, texto) {
+  vibrar(tipo);
+  if (_pushToast) _pushToast({ tipo, texto });
+}
+
+function Toasts() {
+  const [items, setItems] = useState([]);
+  const idRef = useRef(0);
+  useEffect(() => {
+    _pushToast = (t) => {
+      const id = ++idRef.current;
+      setItems((xs) => [...xs.slice(-2), { ...t, id }]);
+      setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), t.tipo === "error" ? 6000 : 3500);
+    };
+    return () => { _pushToast = null; };
+  }, []);
+  if (!items.length) return null;
+  return (
+    <div className="fixed left-1/2 -translate-x-1/2 bottom-20 md:bottom-6 z-[60] flex flex-col gap-2 items-center w-[calc(100%-2rem)] max-w-md pointer-events-none" aria-live="polite">
+      {items.map((t) => (
+        <div key={t.id} className="w-full rounded-2xl px-4 py-3 text-sm font-bold shadow-lg border"
+          style={t.tipo === "error"
+            ? { background: "#F6D4CD", color: "#A03B2A", borderColor: "#ECBBB1" }
+            : { background: "#E3EFE0", color: "#3F6B42", borderColor: "#BFD8BE" }}>
+          {t.tipo === "error" ? "✕ " : "✓ "}{t.texto}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Botón que escribe: estado en vuelo (spinner + disabled) + vibración al tocar.
+// `confirmar` (irreversibles): primer toque arma la confirmación 4 s, segundo ejecuta.
+// El guard real es el ref (el estado es solo feedback visual) — patrón de la casa.
+function BtnAsync({ children, onClick, kind, small, disabled, confirmar, textoEnVuelo = "Guardando…" }) {
+  const [enVuelo, setEnVuelo] = useState(false);
+  const [pideConfirmar, setPideConfirmar] = useState(false);
+  const vueloRef = useRef(false);
+  const vivoRef = useRef(true);
+  // vivo se re-arma en el CUERPO del efecto: bajo StrictMode el ciclo
+  // mount→cleanup→remount reusa el ref y un cleanup solo lo dejaría en false.
+  useEffect(() => { vivoRef.current = true; return () => { vivoRef.current = false; }; }, []);
+  useEffect(() => {
+    if (!pideConfirmar) return;
+    const t = setTimeout(() => { if (vivoRef.current) setPideConfirmar(false); }, 4000);
+    return () => clearTimeout(t);
+  }, [pideConfirmar]);
+  async function click() {
+    if (vueloRef.current) return;
+    if (confirmar && !pideConfirmar) { vibrar("tap"); setPideConfirmar(true); return; }
+    setPideConfirmar(false);
+    vibrar("tap");
+    vueloRef.current = true;
+    setEnVuelo(true);
+    try {
+      await onClick();
+    } finally {
+      vueloRef.current = false;
+      if (vivoRef.current) setEnVuelo(false);
+    }
+  }
+  return (
+    <Btn kind={pideConfirmar ? "danger" : kind} small={small} disabled={disabled || enVuelo} onClick={click}>
+      {enVuelo
+        ? <span className="inline-flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" />{textoEnVuelo}</span>
+        : pideConfirmar ? (typeof confirmar === "string" ? confirmar : "¿Seguro? Tocá de nuevo") : children}
+    </Btn>
+  );
+}
+
 function Modal({ title, onClose, children, wide }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" role="dialog" aria-modal="true">
@@ -1943,7 +2026,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
     try {
       res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
     } catch (e) {
-      setAviso({ titulo: "Acción no permitida", texto: e.message });
+      toast("error", e.message);
       return;
     }
     const faltantes = (res && res.faltantes) || [];
@@ -1953,6 +2036,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
       setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El cambio se aplicó correctamente, pero no se pudo actualizar la vista. Recargá la página para ver el estado actual." + (faltantes.length ? " Ojo: había alertas de inventario, revisá Producción." : "") });
       return;
     }
+    toast("ok", estado === "Cancelado" ? `Pedido ${orderId} cancelado` : `${orderId} → ${estado}`);
     if (faltantes.length) {
       const prod = faltantes.filter((x) => x.area !== "Inventario");
       const ins = faltantes.filter((x) => x.area === "Inventario");
@@ -2355,7 +2439,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
             setEnviando(false);
           }}>Crear reclamo</Btn>
         )}
-        {!["Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="ghost" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Cancelado"); setEnviando(false); }}>Cancelar pedido</Btn>}
+        {!["Entregado","Cancelado","Reclamo"].includes(o.estado) && <BtnAsync kind="ghost" confirmar="¿Cancelar el pedido? Tocá de nuevo" textoEnVuelo="Cancelando…" disabled={enviando} onClick={async () => { setEnviando(true); try { await cambiar(o.id, "Cancelado"); } finally { setEnviando(false); } }}>Cancelar pedido</BtnAsync>}
       </div>
 
       {foto && (
@@ -2501,6 +2585,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
       return;
     }
     onClose();
+    toast("ok", `Pedido ${res.order_id} creado`);
     try {
       await refrescar();
       if (faltaStock.length) setAviso({ titulo: "Pedido creado con alerta", texto: `${res.order_id} creado. Ojo: disponibilidad insuficiente en ${faltaStock.map((l) => l.nombre).join(", ")}. Al marcar pagado se creará la sugerencia de producción.` });
@@ -2914,6 +2999,7 @@ function Produccion({ db, update, user, refrescar }) {
     setEnviando(false);
     setNuevo(false); setPre(null);
     corridaIdemKeyRef.current = null; // fuerza una key nueva en la próxima apertura (abrirNuevaCorrida)
+    toast("ok", `Producción registrada${resultado && resultado.corrida_id ? ` (${resultado.corrida_id})` : ""}`);
     await refrescarSilencioso(() => setMsg("La producción se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
     const faltantes = resultado && resultado.faltantes;
     if (Array.isArray(faltantes) && faltantes.length) {
@@ -2950,6 +3036,7 @@ function Produccion({ db, update, user, refrescar }) {
     setEnviandoPrep(false);
     setPrepBase(false);
     prepIdemKeyRef.current = null; // fuerza key nueva en la próxima apertura
+    toast("ok", "Base preparada — inventario actualizado");
     await refrescarSilencioso(() => setMsg("La base se preparó correctamente, pero no se pudo actualizar la vista. Recargá la página para verla."));
     const faltantesPrep = resultado && resultado.faltantes;
     if (Array.isArray(faltantesPrep) && faltantesPrep.length) {
@@ -3011,6 +3098,7 @@ function Produccion({ db, update, user, refrescar }) {
     }
     setEnviandoDesmolde(false);
     setDesmolde(null);
+    toast("ok", "Lote desmoldado — stock actualizado");
     await refrescarSilencioso(() => setMsg("El lote se desmoldó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
   }
 
@@ -3372,7 +3460,7 @@ function Produccion({ db, update, user, refrescar }) {
                 </div>
               ))}
               <div className="flex gap-2 mt-3">
-                <Btn disabled={enviandoDesmolde || !cuadraTodo} onClick={confirmarDesmolde}>Confirmar</Btn>
+                <BtnAsync confirmar="¿Desmoldar? Tocá de nuevo" textoEnVuelo="Desmoldando…" disabled={enviandoDesmolde || !cuadraTodo} onClick={confirmarDesmolde}>Confirmar</BtnAsync>
                 <Btn kind="ghost" disabled={enviandoDesmolde} onClick={() => setDesmolde(null)}>Cancelar</Btn>
               </div>
             </Modal>
@@ -3390,7 +3478,7 @@ function Produccion({ db, update, user, refrescar }) {
             </div>
             {!cuadra && <div className="text-xs font-bold mb-3" style={{ color: "#A03B2A" }}>La suma ({suma}) debe ser igual a las producidas ({desmolde.prod}).</div>}
             <div className="flex gap-2">
-              <Btn disabled={enviandoDesmolde || !cuadra} onClick={confirmarDesmolde}>Confirmar</Btn>
+              <BtnAsync confirmar="¿Desmoldar? Tocá de nuevo" textoEnVuelo="Desmoldando…" disabled={enviandoDesmolde || !cuadra} onClick={confirmarDesmolde}>Confirmar</BtnAsync>
               <Btn kind="ghost" disabled={enviandoDesmolde} onClick={() => setDesmolde(null)}>Cancelar</Btn>
             </div>
           </Modal>
@@ -6895,6 +6983,7 @@ export default function MomosOps() {
   return (
     <div className="momos min-h-screen" style={{ background: T.bg }}>
       <style>{FONTS}</style>
+      <Toasts />
 
       <header className="sticky top-0 z-40 border-b" style={{ background: "rgba(250,244,236,.92)", backdropFilter: "blur(8px)", borderColor: T.border }}>
         <div className="max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
