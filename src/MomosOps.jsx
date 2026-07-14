@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion, crearUsuarioStaff, setUserActivo, crearCampana, editarCampana, setCampanaEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion, crearUsuarioStaff, setUserActivo, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo } from "./lib/rpc";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -27,10 +27,81 @@ const T = {
 const FONTS = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700;6..12,800&display=swap');
 * { box-sizing: border-box; } body { margin: 0; }
-.momos { font-family: 'Nunito Sans', system-ui, sans-serif; color: ${T.choco}; }
+.momos {
+  --momo-ease: cubic-bezier(.2,.8,.2,1);
+  --momo-spring: cubic-bezier(.16,1,.3,1);
+  font-family: 'Nunito Sans', system-ui, sans-serif;
+  color: ${T.choco};
+}
 .momos h1,.momos h2,.momos h3,.momos .display { font-family: 'Fraunces', Georgia, serif; }
 .momos ::-webkit-scrollbar { height: 8px; width: 8px; }
 .momos ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 8px; }
+.momos button, .momos [role="button"], .momos input, .momos select, .momos textarea { -webkit-tap-highlight-color: transparent; }
+.momos button:not(:disabled), .momos [role="button"] { cursor: pointer; }
+.momos button { touch-action: manipulation; }
+.momos button:focus-visible, .momos [role="button"]:focus-visible { outline: 3px solid rgba(229,113,78,.28); outline-offset: 3px; }
+.momos button:not(:disabled):active, .momos [role="button"]:active { transform: translateY(1px) scale(.975); }
+.momo-btn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(84,56,43,.08), 0 5px 14px rgba(84,56,43,.08);
+  transition: transform 150ms var(--momo-ease), box-shadow 180ms var(--momo-ease), filter 180ms var(--momo-ease), opacity 180ms ease;
+}
+.momo-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 20%, rgba(255,255,255,.3) 46%, transparent 72%);
+  transform: translateX(-130%);
+  transition: transform 480ms var(--momo-ease);
+}
+.momo-btn:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 2px 0 rgba(84,56,43,.08), 0 9px 20px rgba(84,56,43,.12); filter: saturate(1.04); }
+.momo-btn:not(:disabled):hover::after { transform: translateX(130%); }
+.momo-btn:disabled { cursor: not-allowed; box-shadow: none; }
+.momo-btn[aria-busy="true"] { cursor: progress; }
+.momo-btn[data-confirming="true"] { animation: momo-confirm 900ms ease-in-out infinite alternate; }
+.momo-card-action {
+  position: relative;
+  transition: transform 180ms var(--momo-ease), box-shadow 220ms var(--momo-ease), border-color 180ms ease;
+}
+.momo-card-action:hover { transform: translateY(-2px); border-color: #E3C5B1 !important; box-shadow: 0 12px 26px rgba(84,56,43,.1); }
+.momo-card-action:focus-visible { outline: 3px solid rgba(229,113,78,.28); outline-offset: 3px; }
+.momo-nav-item { position: relative; transition: color 160ms ease, background 180ms ease, transform 160ms var(--momo-ease); }
+.momo-nav-item::before { content: ""; position: absolute; left: 0; top: 25%; bottom: 25%; width: 3px; border-radius: 0 4px 4px 0; background: ${T.coral}; transform: scaleY(0); transition: transform 220ms var(--momo-spring); }
+.momo-nav-item[data-active="true"]::before { transform: scaleY(1); }
+.momo-nav-item:not([data-active="true"]):hover { background: rgba(243,215,220,.42) !important; transform: translateX(2px); }
+.momo-mobile-nav { transition: color 160ms ease, background 160ms ease, transform 160ms var(--momo-ease); }
+.momo-mobile-nav[data-active="true"] { background: linear-gradient(180deg, rgba(243,215,220,.22), rgba(243,215,220,0)); }
+.momo-mobile-nav[data-active="true"] > span { animation: momo-icon-pop 380ms var(--momo-spring); }
+.momo-page-enter { animation: momo-page-in 360ms var(--momo-spring); }
+.momo-module-icon { box-shadow: inset 0 0 0 1px rgba(196,128,142,.18), 0 8px 20px rgba(196,128,142,.12); animation: momo-icon-pop 420ms var(--momo-spring) both; }
+.momo-field { transition: color 160ms ease; }
+.momo-field:focus-within > span { color: ${T.coral} !important; }
+.momos input, .momos select, .momos textarea { transition: border-color 160ms ease, box-shadow 180ms ease, background 160ms ease; }
+.momos input:focus, .momos select:focus, .momos textarea:focus { border-color: ${T.coral} !important; box-shadow: 0 0 0 4px rgba(229,113,78,.13); background: #FFFEFC !important; }
+.momos input:invalid:not(:placeholder-shown) { border-color: #D99A8E; }
+.momo-modal-backdrop { animation: momo-fade-in 180ms ease-out both; backdrop-filter: blur(2px); }
+.momo-modal-sheet { animation: momo-sheet-in 340ms var(--momo-spring) both; }
+.momo-toast { position: relative; overflow: hidden; animation: momo-toast-in 420ms var(--momo-spring) both; box-shadow: 0 14px 36px rgba(84,56,43,.16); }
+.momo-toast-icon { animation: momo-icon-pop 460ms 90ms var(--momo-spring) both; }
+.momo-toast-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; transform-origin: left; animation: momo-toast-life var(--toast-life, 3500ms) linear both; background: currentColor; opacity: .3; }
+.momo-sync { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.momo-sync-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.momo-sync[data-state="guardando"] .momo-sync-dot, .momo-sync[data-state="cargando"] .momo-sync-dot { animation: momo-breathe 720ms ease-in-out infinite alternate; }
+.momo-sync[data-state="guardado"] .momo-sync-dot { animation: momo-icon-pop 360ms var(--momo-spring); }
+.momo-bar { transition: width 620ms var(--momo-spring), background 180ms ease; }
+.momo-busy-spinner { animation: momo-spin 650ms linear infinite; }
+@keyframes momo-page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes momo-sheet-in { from { opacity: 0; transform: translateY(28px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes momo-toast-in { 0% { opacity: 0; transform: translateY(18px) scale(.94); } 65% { transform: translateY(-2px) scale(1.01); } 100% { opacity: 1; transform: none; } }
+@keyframes momo-toast-life { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes momo-icon-pop { 0% { opacity: 0; transform: scale(.65) rotate(-8deg); } 70% { transform: scale(1.1) rotate(2deg); } 100% { opacity: 1; transform: none; } }
+@keyframes momo-confirm { from { box-shadow: 0 0 0 0 rgba(160,59,42,.08); } to { box-shadow: 0 0 0 5px rgba(160,59,42,.16); } }
+@keyframes momo-breathe { from { opacity: .35; transform: scale(.7); } to { opacity: 1; transform: scale(1.25); } }
+@keyframes momo-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes momo-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .momos * { transition: none !important; animation: none !important; } }
 `;
 
@@ -1104,6 +1175,55 @@ const ordersDeCampaign = (db, campId) => db.orders.filter((o) => o.campaignId ==
 const ordersDeCreative = (db, creaId) => db.orders.filter((o) => o.creativeId === creaId && esPedidoCobrado(o));
 const ventasDeCampaign = (db, campId) => ordersDeCampaign(db, campId).reduce((s, o) => s + orderTotal(db, o), 0);
 const ventasDeCreative = (db, creaId) => ordersDeCreative(db, creaId).reduce((s, o) => s + orderTotal(db, o), 0);
+const claveDimensionResultado = (r) => `${r.fecha}|${r.creativeId ? `creative:${r.creativeId}` : `campaign:${r.campaignId || ""}`}`;
+const ordenFuenteResultado = (a, b) => (a.fuente === "manual" ? 1 : 0) - (b.fuente === "manual" ? 1 : 0)
+  || String(a.fuente || "").localeCompare(String(b.fuente || "")) || String(a.id).localeCompare(String(b.id));
+// Resultados guarda métricas de plataforma por día. Pedidos/ventas salen SIEMPRE
+// de orders (misma fecha + creativo/campaña), nunca de campos tipeados a mano.
+function atribucionDeResultado(db, r) {
+  // Un pedido conoce el creativo/campaña, pero no la fuente de métricas. Si
+  // conviven manual + MCP para el mismo día, se atribuye solo a una fila para
+  // no duplicar pedidos/ventas en tarjetas, CSV, reportes ni recomendaciones.
+  const clave = claveDimensionResultado(r);
+  const canonico = (db.creative_results || []).filter((x) => claveDimensionResultado(x) === clave).sort(ordenFuenteResultado)[0];
+  if (canonico && canonico.id !== r.id) return { pedidos: 0, ventas: 0, contabilizar: false };
+  const pedidos = db.orders.filter((o) => {
+    if (!esPedidoCobrado(o) || (r.fecha && o.fecha !== r.fecha)) return false;
+    if (r.creativeId) return o.creativeId === r.creativeId;
+    if (!r.campaignId || o.campaignId !== r.campaignId) return false;
+    // Si el pedido tiene creativo y ese creativo posee métricas ese día, su
+    // atribución vive en esa dimensión; la fila de campaña solo cubre el resto.
+    return !o.creativeId || !(db.creative_results || []).some((x) => x.fecha === r.fecha && x.creativeId === o.creativeId);
+  });
+  return { pedidos: pedidos.length, ventas: pedidos.reduce((s, o) => s + orderTotal(db, o), 0), contabilizar: true };
+}
+
+// Para analítica, fuentes MCP distintas se suman. La captura manual funciona
+// como fallback: si ya existe cualquier fuente automática en esa dimensión/día,
+// se omite para no duplicar la misma lectura digitada y sincronizada.
+function resultadosDePlataforma(db) {
+  const raw = db.creative_results || [];
+  const elegibles = raw.filter((r) => r.fuente !== "manual"
+    || !raw.some((x) => x.fuente !== "manual" && claveDimensionResultado(x) === claveDimensionResultado(r)));
+  const grupos = new Map();
+  elegibles.forEach((r) => {
+    const clave = claveDimensionResultado(r);
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(r);
+  });
+  return [...grupos.values()].map((filas) => {
+    const ordenadas = [...filas].sort(ordenFuenteResultado);
+    const base = ordenadas[0];
+    const suma = (campo) => filas.reduce((s, x) => s + Number(x[campo] || 0), 0);
+    return {
+      ...base,
+      fuente: [...new Set(filas.map((x) => x.fuente || "manual"))].sort().join(" + "),
+      impresiones: suma("impresiones"), alcance: suma("alcance"), clicks: suma("clicks"),
+      mensajesWhatsApp: suma("mensajesWhatsApp"), gasto: suma("gasto"),
+      notas: filas.map((x) => x.notas).filter(Boolean).join(" · "),
+    };
+  });
+}
 function campaignMetrics(db, c) {
   const pedidos = ordersDeCampaign(db, c.id).length;
   const ventas = ventasDeCampaign(db, c.id);
@@ -1144,11 +1264,12 @@ function trafficRecomendaciones(db) {
         accion: "subir", nuevoPresupuesto: nuevo, bg: "#DDEBD9", color: "#3F6B42" });
     }
   });
-  (db.creative_results || []).forEach((r) => {
-    if (r.mensajesWhatsApp >= 30 && r.pedidos <= 3) {
+  resultadosDePlataforma(db).forEach((r) => {
+    const atrib = atribucionDeResultado(db, r);
+    if (r.mensajesWhatsApp >= 30 && atrib.pedidos <= 3) {
       const cre = db.creatives.find((x) => x.id === r.creativeId);
       recs.push({ tipo: "copy", icon: "✏️", titulo: cre ? cre.titulo : "Contenido",
-        texto: `Recibió muchos mensajes (${r.mensajesWhatsApp}) pero pocos pedidos (${r.pedidos}). Revisa el precio, la oferta o el mensaje: la gente pregunta pero no compra.`,
+        texto: `Recibió muchos mensajes (${r.mensajesWhatsApp}) pero pocos pedidos (${atrib.pedidos}). Revisa el precio, la oferta o el mensaje: la gente pregunta pero no compra.`,
         bg: "#FBE8C8", color: "#96690F" });
     }
   });
@@ -1565,13 +1686,20 @@ function compressImage(file, maxW = 900, quality = 0.72) {
 
 function Badge({ label, map }) {
   const s = (map || STATE_STYLE)[label] || { bg: "#EBE6E0", fg: "#7A6E63" };
-  return <span style={{ background: s.bg, color: s.fg }} className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap">{label}</span>;
+  return <span style={{ background: s.bg, color: s.fg }} className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors">{label}</span>;
 }
 
 function Card({ children, className = "", onClick }) {
+  function keyDown(e) {
+    if (!onClick || !["Enter", " "].includes(e.key)) return;
+    e.preventDefault();
+    vibrar("tap");
+    onClick(e);
+  }
   return (
-    <div onClick={onClick} style={{ background: T.surface, borderColor: T.border }}
-      className={`rounded-2xl border shadow-sm ${onClick ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${className}`}>
+    <div onClick={onClick} onKeyDown={keyDown} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined}
+      style={{ background: T.surface, borderColor: T.border }}
+      className={`rounded-2xl border shadow-sm ${onClick ? "momo-card-action" : ""} ${className}`}>
       {children}
     </div>
   );
@@ -1598,7 +1726,29 @@ function SectionTitle({ children, action }) {
   );
 }
 
-function Btn({ children, onClick, kind = "primary", small, disabled, type = "button" }) {
+function textoOperacion(children) {
+  if (typeof children !== "string") return "Procesando…";
+  const t = children.trim().toLowerCase();
+  if (t.includes("foto") || t.includes("evidencia")) return "Procesando foto…";
+  if (t.startsWith("crear")) return "Creando…";
+  if (t.startsWith("guardar")) return "Guardando…";
+  if (t.startsWith("registr")) return "Registrando…";
+  if (t.startsWith("actualiz")) return "Actualizando…";
+  if (t.startsWith("marcar pagado")) return "Confirmando pago…";
+  if (t.startsWith("marcar")) return "Confirmando…";
+  if (t.startsWith("pasar a")) return "Cambiando estado…";
+  if (t.includes("congelamiento")) return "Iniciando frío…";
+  if (t.includes("entrega")) return "Confirmando entrega…";
+  if (t.includes("convertir")) return "Convirtiendo…";
+  if (t.includes("pausar")) return "Pausando…";
+  if (t.includes("programar")) return "Programando…";
+  return "Procesando…";
+}
+
+function Btn({ children, onClick, kind = "primary", small, disabled, type = "button", managed = false, busy = false, busyText, confirming = false }) {
+  const [autoBusy, setAutoBusy] = useState(false);
+  const vivoRef = useRef(true);
+  useEffect(() => { vivoRef.current = true; return () => { vivoRef.current = false; }; }, []);
   const styles = {
     primary: { background: T.coral, color: "#fff", border: "1px solid " + T.coral },
     soft: { background: T.coralSoft, color: "#A34A2A", border: "1px solid #F3CDBE" },
@@ -1606,10 +1756,27 @@ function Btn({ children, onClick, kind = "primary", small, disabled, type = "but
     rosa: { background: T.rosa, color: "#8E4B5A", border: "1px solid #E9BFC7" },
     danger: { background: "#F6D4CD", color: "#A03B2A", border: "1px solid #ECBBB1" },
   }[kind];
+  const enVuelo = busy || autoBusy;
+  const bloqueado = disabled || enVuelo;
+  function click(e) {
+    if (!onClick || bloqueado) return;
+    let result;
+    try { result = onClick(e); }
+    catch (err) { toast("error", err?.message || "No se pudo completar la acción"); return; }
+    if (!managed && result && typeof result.then === "function") {
+      setAutoBusy(true);
+      Promise.resolve(result)
+        .catch((err) => toast("error", err?.message || "No se pudo completar la acción"))
+        .finally(() => { if (vivoRef.current) setAutoBusy(false); });
+    }
+  }
   return (
-    <button type={type} onClick={onClick} disabled={disabled} style={{ ...styles, opacity: disabled ? 0.5 : 1 }}
-      className={`rounded-xl font-bold ${small ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm"} active:scale-[.98] transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`}>
-      {children}
+    <button type={type} onClick={click} disabled={bloqueado} aria-busy={enVuelo || undefined} data-confirming={confirming || undefined}
+      style={{ ...styles, opacity: bloqueado ? 0.62 : 1 }}
+      className={`momo-btn rounded-xl font-bold ${small ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm"} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`}>
+      {autoBusy
+        ? <span className="inline-flex items-center gap-1.5" aria-live="polite"><span className="momo-busy-spinner inline-block w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{busyText || textoOperacion(children)}</span>
+        : children}
     </button>
   );
 }
@@ -1645,13 +1812,19 @@ function Toasts() {
   }, []);
   if (!items.length) return null;
   return (
-    <div className="fixed left-1/2 -translate-x-1/2 bottom-20 md:bottom-6 z-[60] flex flex-col gap-2 items-center w-[calc(100%-2rem)] max-w-md pointer-events-none" aria-live="polite">
+    <div className="fixed left-1/2 -translate-x-1/2 bottom-20 md:bottom-6 z-[60] flex flex-col gap-2 items-center w-[calc(100%-2rem)] max-w-md pointer-events-none" aria-live="polite" aria-atomic="false">
       {items.map((t) => (
-        <div key={t.id} className="w-full rounded-2xl px-4 py-3 text-sm font-bold shadow-lg border"
-          style={t.tipo === "error"
+        <div key={t.id} className="momo-toast w-full rounded-2xl px-4 py-3 border flex items-center gap-3" role={t.tipo === "error" ? "alert" : "status"}
+          style={{ "--toast-life": t.tipo === "error" ? "6000ms" : "3500ms", ...(t.tipo === "error"
             ? { background: "#F6D4CD", color: "#A03B2A", borderColor: "#ECBBB1" }
-            : { background: "#E3EFE0", color: "#3F6B42", borderColor: "#BFD8BE" }}>
-          {t.tipo === "error" ? "✕ " : "✓ "}{t.texto}
+            : { background: "#E3EFE0", color: "#3F6B42", borderColor: "#BFD8BE" }) }}>
+          <span className="momo-toast-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-base font-black"
+            style={{ background: t.tipo === "error" ? "#fff7f5" : "#fff" }} aria-hidden="true">{t.tipo === "error" ? "!" : "✓"}</span>
+          <span className="min-w-0">
+            <span className="block text-[10px] uppercase tracking-[.12em] font-extrabold opacity-70">{t.tipo === "error" ? "Revisá esto" : "Acción completada"}</span>
+            <span className="block text-sm font-bold leading-snug">{t.texto}</span>
+          </span>
+          <span className="momo-toast-progress" aria-hidden="true" />
         </div>
       ))}
     </div>
@@ -1689,22 +1862,27 @@ function BtnAsync({ children, onClick, kind, small, disabled, confirmar, textoEn
     }
   }
   return (
-    <Btn kind={pideConfirmar ? "danger" : kind} small={small} disabled={disabled || enVuelo} onClick={click}>
+    <Btn managed busy={enVuelo} confirming={pideConfirmar} kind={pideConfirmar ? "danger" : kind} small={small} disabled={disabled} onClick={click}>
       {enVuelo
-        ? <span className="inline-flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" />{textoEnVuelo}</span>
+        ? <span className="inline-flex items-center gap-1.5" aria-live="polite"><span className="momo-busy-spinner inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{textoEnVuelo}</span>
         : pideConfirmar ? (typeof confirmar === "string" ? confirmar : "¿Seguro? Tocá de nuevo") : children}
     </Btn>
   );
 }
 
 function Modal({ title, onClose, children, wide }) {
+  useEffect(() => {
+    function cerrarConEscape(e) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", cerrarConEscape);
+    return () => window.removeEventListener("keydown", cerrarConEscape);
+  }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" role="dialog" aria-modal="true">
-      <div className="absolute inset-0" style={{ background: "rgba(60,40,30,.45)" }} onClick={onClose} />
-      <div style={{ background: T.bg }} className={`relative w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"} max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-xl`}>
+      <div className="momo-modal-backdrop absolute inset-0" style={{ background: "rgba(60,40,30,.45)" }} onClick={onClose} />
+      <div style={{ background: T.bg }} className={`momo-modal-sheet relative w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"} max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-xl`}>
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b" style={{ background: T.bg, borderColor: T.border }}>
           <h3 className="display text-lg font-semibold m-0">{title}</h3>
-          <button onClick={onClose} aria-label="Cerrar" className="w-9 h-9 rounded-full font-bold" style={{ background: T.surface, border: "1px solid " + T.border, color: T.choco }}>✕</button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onClose(); }} aria-label="Cerrar" className="momo-btn w-9 h-9 rounded-full font-bold" style={{ background: T.surface, border: "1px solid " + T.border, color: T.choco }}>✕</button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -1714,7 +1892,7 @@ function Modal({ title, onClose, children, wide }) {
 
 function Field({ label, children }) {
   return (
-    <label className="block mb-3">
+    <label className="momo-field block mb-3">
       <span className="block text-xs font-bold mb-1" style={{ color: T.choco2 }}>{label}</span>
       {children}
     </label>
@@ -1758,7 +1936,7 @@ function Bars({ data, money }) {
         <div key={d.label + i} className="flex items-center gap-2">
           <div className="w-28 sm:w-36 text-xs font-semibold truncate" style={{ color: T.choco2 }}>{d.label}</div>
           <div className="flex-1 h-5 rounded-full overflow-hidden" style={{ background: T.vainilla }}>
-            <div className="h-full rounded-full" style={{ width: Math.max((d.value / max) * 100, 3) + "%", background: d.color || T.rosaDeep }} />
+            <div className="momo-bar h-full rounded-full" style={{ width: Math.max((d.value / max) * 100, 3) + "%", background: d.color || T.rosaDeep }} />
           </div>
           <div className="w-20 text-right text-xs font-bold">{money ? fmt(d.value) : d.value}</div>
         </div>
@@ -4888,11 +5066,13 @@ function Reportes({ db }) {
         const ganadores = (db.creatives || []).filter((c) => c.estado === "Ganador");
         // conversión por canal de marketing desde resultados
         const canalConv = {};
-        (db.creative_results || []).forEach((r) => {
+        resultadosDePlataforma(db).forEach((r) => {
+          const atrib = atribucionDeResultado(db, r);
           const cre = db.creatives.find((x) => x.id === r.creativeId);
           const canal = cre ? cre.canal : "Otro";
           if (!canalConv[canal]) canalConv[canal] = { msg: 0, ped: 0 };
-          canalConv[canal].msg += r.mensajesWhatsApp; canalConv[canal].ped += r.pedidos;
+          canalConv[canal].msg += r.mensajesWhatsApp;
+          canalConv[canal].ped += atrib.pedidos;
         });
         const bajaRent = campM.filter((x) => x.m.roas !== null && x.m.roas < 1);
         return (
@@ -5272,7 +5452,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
               ["calendario", ["Id","Fecha","Hora","Canal","Campaña","Creativo","Título","Estado"],
                 db.content_calendar.map((p) => [p.id, p.fecha, p.hora, p.canal, p.campaignId, p.creativeId, p.titulo, p.estado])],
               ["resultados-creativos", ["Id","Creativo","Campaña","Fecha","Impresiones","Alcance","Clicks","Mensajes WA","Pedidos","Ventas","Gasto"],
-                db.creative_results.map((r) => [r.id, r.creativeId, r.campaignId, r.fecha, r.impresiones, r.alcance, r.clicks, r.mensajesWhatsApp, r.pedidos, r.ventas, r.gasto])],
+                db.creative_results.map((r) => { const a = atribucionDeResultado(db, r); return [r.id, r.creativeId, r.campaignId, r.fecha, r.impresiones, r.alcance, r.clicks, r.mensajesWhatsApp, a.contabilizar ? a.pedidos : "", a.contabilizar ? a.ventas : "", r.gasto]; })],
               ["ideas-marketing", ["Id","Título","Categoría","Objetivo","Producto","Copy","Guion","Canal","Estado"],
                 (db.marketing_ideas || []).map((i) => [i.id, i.titulo, i.cat, i.objetivo, i.productoSugerido, i.copy, i.guionCorto, i.canal, i.estado])],
               ["guiones-marketing", ["Id","Título","Duración","Producto","Objetivo","Dificultad","Escena 1","Escena 2","Escena 3","Escena 4","Texto pantalla","Audio"],
@@ -5530,9 +5710,10 @@ function Marketing({ db, update, user, refrescar }) {
 
 /* ================= CREATIVOS 🎨 ================= */
 
-function Creativos({ db, update, user }) {
+function Creativos({ db, refrescar }) {
   const [nuevo, setNuevo] = useState(false);
   const [sel, setSel] = useState(null);
+  const [selBase, setSelBase] = useState(null);
   const [fEstado, setFEstado] = useState("");
   const vacio = { campaignId: "", titulo: "", canal: "Instagram", formato: "Reel", productoFoco: "", figuraFoco: "", saborFoco: "", hook: "", copy: "", guion: "", estado: "Idea", responsable: "Marketing", fechaEntrega: dISO(3), assetUrl: "", notas: "" };
   const [form, setForm] = useState(vacio);
@@ -5547,14 +5728,56 @@ function Creativos({ db, update, user }) {
       db.creatives.map((c) => { const camp = db.campaigns.find((x) => x.id === c.campaignId); return [c.id, camp ? camp.nombre : "", c.titulo, c.canal, c.formato, c.productoFoco, c.figuraFoco, c.saborFoco, c.hook, c.estado, c.responsable, c.fechaEntrega]; }));
   }
 
-  function guardar() {
-    if (!form.titulo.trim()) return;
-    update((d) => {
-      const id = nextId(d, "creative", "CRE-", 2);
-      d.creatives.unshift({ id, ...form });
-      addAudit(d, { user, entidad: "Creativo", entidadId: id, accion: "Creativo creado", a: form.titulo });
-    });
+  function payloadCreativo(f) {
+    const prodId = f.productoFoco ? (db.products.find((p) => p.nombre === f.productoFoco)?.id || null) : null;
+    return {
+      campaign_id: f.campaignId || null, titulo: f.titulo, canal: f.canal, formato: f.formato,
+      producto_foco_id: prodId, figura: f.figuraFoco || null, sabor: f.saborFoco || null,
+      hook: f.hook, copy: f.copy, guion: f.guion, estado: f.estado,
+      responsable: f.responsable, fecha_entrega: f.fechaEntrega || null,
+      asset_url: f.assetUrl, notas: f.notas,
+    };
+  }
+
+  async function guardar() {
+    if (!form.titulo.trim()) { toast("error", "Falta el título del creativo"); return; }
+    let res;
+    try { res = await crearCreativo(payloadCreativo(form)); }
+    catch (e) { toast("error", e.message); return; }
     setNuevo(false); setForm(vacio);
+    toast("ok", `Creativo ${res.id} creado`);
+    try { await refrescar(); } catch { toast("error", "Creativo creado; recargá para verlo"); }
+  }
+
+  async function guardarEdicion() {
+    // El baseline queda congelado al abrir el modal. Comparar contra el polling
+    // más reciente podría reenviar valores viejos y pisar cambios de otro equipo.
+    const orig = selBase || sel;
+    const antes = payloadCreativo(orig);
+    const despues = payloadCreativo(sel);
+    const patch = {};
+    Object.keys(despues).forEach((k) => { if (despues[k] !== antes[k]) patch[k] = despues[k]; });
+    if (!Object.keys(patch).length) { setSel(null); setSelBase(null); toast("ok", "Sin cambios"); return; }
+    let res;
+    try { res = await editarCreativo(sel.id, patch); }
+    catch (e) { toast("error", e.message); return; }
+    setSel(null); setSelBase(null);
+    toast("ok", res.cambio_estado ? `Creativo → ${sel.estado}` : "Creativo actualizado");
+    try { await refrescar(); } catch { toast("error", "Guardado; recargá para verlo"); }
+  }
+
+  async function crearPostDesdeCreativo() {
+    let res;
+    try {
+      res = await crearPublicacion({
+        fecha: hoyISO(), hora: "12:00", canal: sel.canal,
+        creative_id: sel.id, titulo: sel.titulo, copy_final: sel.copy || "",
+        estado: "Programado", url_publicacion: "", notas: "Creado desde Creativos",
+      });
+    } catch (e) { toast("error", e.message); return; }
+    setSel(null); setSelBase(null);
+    toast("ok", `Publicación ${res.id} creada`);
+    try { await refrescar(); } catch { toast("error", "Publicación creada; recargá para verla"); }
   }
 
   return (
@@ -5579,7 +5802,7 @@ function Creativos({ db, update, user }) {
           const camp = db.campaigns.find((x) => x.id === c.campaignId);
           const pedidos = ordersDeCreative(db, c.id).length;
           return (
-            <Card key={c.id} className="p-4" onClick={() => setSel({ ...c })}>
+            <Card key={c.id} className="p-4" onClick={() => { setSel({ ...c }); setSelBase({ ...c }); }}>
               <div className="flex justify-between items-start gap-2">
                 <div className="min-w-0">
                   <div className="font-bold text-sm leading-tight">{c.titulo}</div>
@@ -5603,10 +5826,18 @@ function Creativos({ db, update, user }) {
       </div>
 
       {(nuevo || sel) && (
-        <Modal title={sel ? sel.titulo : "Nuevo creativo"} onClose={() => { setNuevo(false); setSel(null); }} wide>
+        <Modal title={sel ? sel.titulo : "Nuevo creativo"} onClose={() => { setNuevo(false); setSel(null); setSelBase(null); }} wide>
           {(() => { const f = sel || form; const setF = sel ? setSel : setForm;
             return (
               <>
+                {sel && selBase && sel.estado !== selBase.estado && (
+                  <div className="flex flex-wrap items-center gap-2 mb-3 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: "#FFF1D6", color: "#7A5510" }} role="status">
+                    <span>Cambio listo para guardar</span>
+                    <Badge label={selBase.estado} />
+                    <span aria-hidden="true">→</span>
+                    <Badge label={sel.estado} />
+                  </div>
+                )}
                 <div className="grid sm:grid-cols-2 gap-x-4">
                   <Field label="Título"><Input value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} placeholder="Nombre interno del creativo" /></Field>
                   <Field label="Campaña">
@@ -5635,18 +5866,14 @@ function Creativos({ db, update, user }) {
                 <Field label="Notas"><Input value={f.notas} onChange={(e) => setF({ ...f, notas: e.target.value })} /></Field>
                 <div className="flex gap-2 mt-2 flex-wrap">
                   {sel ? (
-                    <Btn onClick={() => { update((d) => { const i = d.creatives.findIndex((x) => x.id === sel.id); const prev = d.creatives[i].estado; d.creatives[i] = sel; addAudit(d, { user, entidad: "Creativo", entidadId: sel.id, accion: prev !== sel.estado ? "Cambio de estado" : "Creativo editado", de: prev !== sel.estado ? prev : "", a: prev !== sel.estado ? sel.estado : "" }); }); setSel(null); }}>Guardar</Btn>
+                    <BtnAsync onClick={guardarEdicion}>Guardar</BtnAsync>
                   ) : (
-                    <Btn onClick={guardar}>Crear creativo</Btn>
+                    <BtnAsync onClick={guardar} textoEnVuelo="Creando…">Crear creativo</BtnAsync>
                   )}
                   {sel && ["Aprobado","Publicado","Ganador"].includes(sel.estado) && (
-                    <Btn kind="soft" onClick={() => { update((d) => {
-                      const id = nextId(d, "calendar", "CAL-", 2);
-                      d.content_calendar.push({ id, fecha: hoyISO(), hora: "12:00", canal: sel.canal, campaignId: sel.campaignId || "", creativeId: sel.id, titulo: sel.titulo, copyFinal: sel.copy || "", estado: "Programado", urlPublicacion: "", notas: "Creado desde Creativos" });
-                      addAudit(d, { user, entidad: "Publicación", entidadId: id, accion: "Publicación creada desde creativo", a: sel.titulo });
-                    }); setSel(null); }}>🗓️ Crear publicación</Btn>
+                    <BtnAsync kind="soft" onClick={crearPostDesdeCreativo} textoEnVuelo="Creando…">🗓️ Crear publicación</BtnAsync>
                   )}
-                  <Btn kind="ghost" onClick={() => { setNuevo(false); setSel(null); }}>Cancelar</Btn>
+                  <Btn kind="ghost" onClick={() => { setNuevo(false); setSel(null); setSelBase(null); }}>Cancelar</Btn>
                 </div>
               </>
             );
@@ -5659,10 +5886,14 @@ function Creativos({ db, update, user }) {
 
 /* ================= CALENDARIO 🗓️ ================= */
 
-function Calendario({ db, update, user }) {
+function Calendario({ db, refrescar }) {
   const [nueva, setNueva] = useState(false);
   const vacio = { fecha: hoyISO(), hora: "12:00", canal: "Instagram", campaignId: "", creativeId: "", titulo: "", copyFinal: "", estado: "Pendiente", urlPublicacion: "", notas: "" };
   const [form, setForm] = useState(vacio);
+  const cambiosRef = useRef(new Set());
+  const [estadosPendientes, setEstadosPendientes] = useState({});
+  const vivoRef = useRef(true);
+  useEffect(() => { vivoRef.current = true; return () => { vivoRef.current = false; }; }, []);
 
   const semana = [...Array(7)].map((_, i) => dISO(i - new Date().getDay() + 1));
   const pubs = [...db.content_calendar].sort((a, b) => (a.fecha + a.hora) < (b.fecha + b.hora) ? -1 : 1);
@@ -5675,18 +5906,40 @@ function Calendario({ db, update, user }) {
       pubs.map((p) => { const camp = db.campaigns.find((x) => x.id === p.campaignId); const cre = db.creatives.find((x) => x.id === p.creativeId); return [p.id, p.fecha, p.hora, p.canal, camp ? camp.nombre : "", cre ? cre.titulo : "", p.titulo, p.estado, p.urlPublicacion]; }));
   }
 
-  function guardar() {
-    if (!form.titulo.trim()) return;
-    update((d) => {
-      const id = nextId(d, "calendar", "CAL-", 2);
-      d.content_calendar.push({ id, ...form });
-      addAudit(d, { user, entidad: "Publicación", entidadId: id, accion: "Publicación creada", a: form.titulo });
-    });
+  async function guardar() {
+    if (!form.titulo.trim()) { toast("error", "Falta el título de la publicación"); return; }
+    let res;
+    try {
+      res = await crearPublicacion({
+        fecha: form.fecha, hora: form.hora, canal: form.canal,
+        campaign_id: form.campaignId || null, creative_id: form.creativeId || null,
+        titulo: form.titulo, copy_final: form.copyFinal, estado: form.estado,
+        url_publicacion: form.urlPublicacion, notas: form.notas,
+      });
+    } catch (e) { toast("error", e.message); return; }
     setNueva(false); setForm(vacio);
+    toast("ok", `Publicación ${res.id} creada`);
+    try { await refrescar(); } catch { toast("error", "Publicación creada; recargá para verla"); }
   }
 
-  function cambiarEstado(p, estado) {
-    update((d) => { const x = d.content_calendar.find((y) => y.id === p.id); addAudit(d, { user, entidad: "Publicación", entidadId: p.id, accion: "Cambio de estado", de: x.estado, a: estado }); x.estado = estado; });
+  async function cambiarEstado(p, estado) {
+    if (cambiosRef.current.has(p.id) || estado === p.estado) return;
+    cambiosRef.current.add(p.id);
+    setEstadosPendientes((actuales) => ({ ...actuales, [p.id]: estado }));
+    try {
+      let res;
+      try { res = await setPublicacionEstado(p.id, estado); }
+      catch (e) { toast("error", e.message); return; }
+      toast("ok", res.cambio ? `Publicación → ${estado}` : "Sin cambios");
+      try { await refrescar(); } catch { toast("error", "Guardado; recargá para verlo"); }
+    } finally {
+      cambiosRef.current.delete(p.id);
+      if (vivoRef.current) setEstadosPendientes((actuales) => {
+        const siguientes = { ...actuales };
+        delete siguientes[p.id];
+        return siguientes;
+      });
+    }
   }
 
   return (
@@ -5717,6 +5970,7 @@ function Calendario({ db, update, user }) {
               <div className="flex flex-col gap-2 min-h-[60px] rounded-2xl p-2" style={{ background: T.vainilla + "80" }}>
                 {delDia.map((p) => {
                   const cre = db.creatives.find((x) => x.id === p.creativeId);
+                  const estadoPendiente = estadosPendientes[p.id];
                   return (
                     <Card key={p.id} className="p-2.5">
                       <div className="flex justify-between items-start gap-1">
@@ -5725,9 +5979,15 @@ function Calendario({ db, update, user }) {
                       </div>
                       <div className="text-xs font-semibold mt-1 leading-tight">{p.titulo}</div>
                       {cre && <div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>🎨 {cre.titulo}</div>}
-                      <select value={p.estado} onChange={(e) => cambiarEstado(p, e.target.value)} className="mt-2 w-full rounded-lg px-1.5 py-1 text-[11px] border font-bold" style={inputStyle}>
+                      <select value={estadoPendiente ?? p.estado} disabled={Boolean(estadoPendiente)} onChange={(e) => cambiarEstado(p, e.target.value)} className="mt-2 w-full rounded-lg px-1.5 py-1 text-[11px] border font-bold disabled:opacity-60" style={inputStyle}>
                         {CAL_ESTADOS.map((s) => <option key={s}>{s}</option>)}
                       </select>
+                      {estadoPendiente && (
+                        <div className="flex items-center justify-center gap-1.5 mt-1.5 text-[10px] font-bold" style={{ color: "#96690F" }} role="status">
+                          <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" />
+                          Guardando → {estadoPendiente}
+                        </div>
+                      )}
                     </Card>
                   );
                 })}
@@ -5766,7 +6026,7 @@ function Calendario({ db, update, user }) {
             <textarea rows={2} value={form.copyFinal} onChange={(e) => setForm({ ...form, copyFinal: e.target.value })} className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none resize-y" style={{ ...inputStyle, fontFamily: "inherit" }} />
           </Field>
           <Field label="Notas"><Input value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></Field>
-          <div className="flex gap-2 mt-2"><Btn onClick={guardar}>Crear publicación</Btn><Btn kind="ghost" onClick={() => setNueva(false)}>Cancelar</Btn></div>
+          <div className="flex gap-2 mt-2"><BtnAsync onClick={guardar} textoEnVuelo="Creando…">Crear publicación</BtnAsync><Btn kind="ghost" onClick={() => setNueva(false)}>Cancelar</Btn></div>
         </Modal>
       )}
     </div>
@@ -5775,45 +6035,90 @@ function Calendario({ db, update, user }) {
 
 /* ================= RESULTADOS CREATIVOS 📊 ================= */
 
-function ResultadosCreativos({ db, update, user }) {
+function ResultadosCreativos({ db, refrescar }) {
   const [nuevo, setNuevo] = useState(false);
-  const vacio = { creativeId: "", campaignId: "", fecha: hoyISO(), impresiones: 0, alcance: 0, clicks: 0, mensajesWhatsApp: 0, pedidos: 0, ventas: 0, gasto: 0, notas: "" };
+  const vacio = { creativeId: "", fecha: hoyISO(), impresiones: 0, alcance: 0, clicks: 0, mensajesWhatsApp: 0, gasto: 0, notas: "" };
   const [form, setForm] = useState(vacio);
+  const existente = db.creative_results.find((r) => r.fuente === "manual" && r.creativeId === form.creativeId && r.fecha === form.fecha);
+  const resultados = resultadosDePlataforma(db);
+  const numeroPreview = (valor) => {
+    if (String(valor).trim() === "") return null;
+    const numero = Number(valor);
+    return Number.isFinite(numero) && numero >= 0 ? numero : null;
+  };
+  const previewImpresiones = numeroPreview(form.impresiones);
+  const previewClicks = numeroPreview(form.clicks);
+  const previewMensajes = numeroPreview(form.mensajesWhatsApp);
+  const previewGasto = numeroPreview(form.gasto);
+  const previewCtr = previewImpresiones > 0 && previewClicks !== null ? previewClicks / previewImpresiones : null;
+  const previewCostoMsg = previewMensajes > 0 && previewGasto !== null ? previewGasto / previewMensajes : null;
 
-  const metric = (r) => ({
-    ctr: r.impresiones > 0 ? r.clicks / r.impresiones : null,
-    costoMsg: r.mensajesWhatsApp > 0 ? r.gasto / r.mensajesWhatsApp : null,
-    cac: r.pedidos > 0 ? r.gasto / r.pedidos : null,
-    roas: r.gasto > 0 ? r.ventas / r.gasto : null,
-    conv: r.mensajesWhatsApp > 0 ? r.pedidos / r.mensajesWhatsApp : null,
-  });
+  function cargarDia(creativeId, fecha) {
+    const r = db.creative_results.find((x) => x.fuente === "manual" && x.creativeId === creativeId && x.fecha === fecha);
+    setForm(r ? {
+      creativeId, fecha, impresiones: r.impresiones, alcance: r.alcance, clicks: r.clicks,
+      mensajesWhatsApp: r.mensajesWhatsApp, gasto: r.gasto, notas: r.notas || "",
+    } : { ...vacio, creativeId, fecha });
+  }
+
+  const metric = (r) => {
+    const atrib = atribucionDeResultado(db, r);
+    return {
+      ...atrib,
+      ctr: r.impresiones > 0 ? r.clicks / r.impresiones : null,
+      costoMsg: r.mensajesWhatsApp > 0 ? r.gasto / r.mensajesWhatsApp : null,
+      cac: atrib.contabilizar && atrib.pedidos > 0 ? r.gasto / atrib.pedidos : null,
+      roas: atrib.contabilizar && r.gasto > 0 ? atrib.ventas / r.gasto : null,
+      conv: atrib.contabilizar && r.mensajesWhatsApp > 0 ? atrib.pedidos / r.mensajesWhatsApp : null,
+    };
+  };
 
   function exportar() {
     downloadCSV("resultados-creativos",
       ["Id","Creativo","Campaña","Fecha","Impresiones","Alcance","Clicks","CTR","Mensajes WA","Costo/msg","Pedidos","CAC","Ventas","Gasto","ROAS","Conv WA→pedido"],
-      db.creative_results.map((r) => { const cre = db.creatives.find((x) => x.id === r.creativeId); const camp = db.campaigns.find((x) => x.id === r.campaignId); const m = metric(r); return [r.id, cre ? cre.titulo : "", camp ? camp.nombre : "", r.fecha, r.impresiones, r.alcance, r.clicks, m.ctr ? (m.ctr * 100).toFixed(2) + "%" : "", r.mensajesWhatsApp, m.costoMsg ? Math.round(m.costoMsg) : "", r.pedidos, m.cac ? Math.round(m.cac) : "", r.ventas, r.gasto, m.roas ? m.roas.toFixed(2) : "", m.conv ? (m.conv * 100).toFixed(1) + "%" : ""]; }));
+      resultados.map((r) => { const cre = db.creatives.find((x) => x.id === r.creativeId); const camp = db.campaigns.find((x) => x.id === r.campaignId); const m = metric(r); return [r.id, cre ? cre.titulo : "", camp ? camp.nombre : "", r.fecha, r.impresiones, r.alcance, r.clicks, m.ctr ? (m.ctr * 100).toFixed(2) + "%" : "", r.mensajesWhatsApp, m.costoMsg ? Math.round(m.costoMsg) : "", m.contabilizar ? m.pedidos : "", m.cac ? Math.round(m.cac) : "", m.contabilizar ? m.ventas : "", r.gasto, m.roas ? m.roas.toFixed(2) : "", m.conv ? (m.conv * 100).toFixed(1) + "%" : ""]; }));
   }
 
-  function guardar() {
-    if (!form.creativeId) return;
-    update((d) => {
-      const cre = d.creatives.find((x) => x.id === form.creativeId);
-      const id = nextId(d, "result", "RES-", 2);
-      d.creative_results.unshift({ id, ...form, campaignId: cre ? cre.campaignId : form.campaignId });
-      addAudit(d, { user, entidad: "Resultado", entidadId: id, accion: "Resultado registrado", a: cre ? cre.titulo : "" });
-    });
+  async function guardar() {
+    if (!form.creativeId) { toast("error", "Elegí un creativo"); return; }
+    const campos = ["impresiones", "alcance", "clicks", "mensajesWhatsApp", "gasto"];
+    if (campos.some((k) => String(form[k]).trim() === "")) {
+      toast("error", "Completá todas las métricas; un campo vacío no se guarda como cero"); return;
+    }
+    if (campos.some((k) => !Number.isFinite(Number(form[k])) || Number(form[k]) < 0)) {
+      toast("error", "Las métricas deben ser números iguales o mayores a cero"); return;
+    }
+    // Impresiones/alcance/clicks/mensajes son integer en la RPC: un decimal la haría
+    // rechazar ('10.5'::integer). Se ataja acá con el mismo mensaje que devuelve el server.
+    if (["impresiones", "alcance", "clicks", "mensajesWhatsApp"].some((k) => !Number.isInteger(Number(form[k])))) {
+      toast("error", "Impresiones, alcance, clicks y mensajes deben ser números enteros"); return;
+    }
+    let res;
+    try {
+      res = await registrarMetricasCreativo({
+        creative_id: form.creativeId, fecha: form.fecha,
+        impresiones: Number(form.impresiones), alcance: Number(form.alcance), clicks: Number(form.clicks),
+        mensajes_wa: Number(form.mensajesWhatsApp), gasto: Number(form.gasto), notas: form.notas,
+      });
+    } catch (e) { toast("error", e.message); return; }
     setNuevo(false); setForm(vacio);
+    toast("ok", res.actualizado ? "Métricas del día actualizadas" : "Métricas registradas");
+    try { await refrescar(); } catch { toast("error", "Métricas guardadas; recargá para verlas"); }
   }
 
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-4">
-        <Btn onClick={() => setNuevo(true)}>＋ Registrar resultado</Btn>
+        <Btn onClick={() => { setForm(vacio); setNuevo(true); }}>＋ Registrar métricas</Btn>
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
       </div>
 
+      <div className="text-xs font-bold p-2.5 rounded-xl mb-3" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>
+        Pedidos y ventas se calculan desde los pedidos atribuidos del servidor. Acá solo registrás métricas de la plataforma.
+      </div>
+
       <div className="grid lg:grid-cols-2 gap-3">
-        {db.creative_results.map((r) => {
+        {resultados.map((r) => {
           const cre = db.creatives.find((x) => x.id === r.creativeId);
           const camp = db.campaigns.find((x) => x.id === r.campaignId);
           const m = metric(r);
@@ -5821,8 +6126,8 @@ function ResultadosCreativos({ db, update, user }) {
             <Card key={r.id} className="p-4">
               <div className="flex justify-between items-start gap-2">
                 <div className="min-w-0">
-                  <div className="font-bold text-sm truncate">{cre ? cre.titulo : "Creativo eliminado"}</div>
-                  <div className="text-[11px]" style={{ color: T.choco2 }}>{camp ? camp.nombre : "—"} · {r.fecha}</div>
+                  <div className="font-bold text-sm truncate">{cre ? cre.titulo : (r.creativeId ? "Creativo eliminado" : "Métricas de campaña")}</div>
+                  <div className="text-[11px]" style={{ color: T.choco2 }}>{camp ? camp.nombre : "—"} · {r.fecha} · {r.fuente || "manual"}</div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="display text-lg" style={{ color: m.roas >= 1 ? "#3F6B42" : "#A03B2A" }}>{m.roas !== null ? m.roas.toFixed(1) + "x" : "—"}</div>
@@ -5830,7 +6135,7 @@ function ResultadosCreativos({ db, update, user }) {
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-                {[["CTR", m.ctr !== null ? (m.ctr * 100).toFixed(1) + "%" : "—"], ["Costo/msg", m.costoMsg !== null ? fmt(m.costoMsg) : "—"], ["CAC", m.cac !== null ? fmt(m.cac) : "—"], ["Mensajes", r.mensajesWhatsApp], ["Pedidos", r.pedidos], ["Conv WA", m.conv !== null ? (m.conv * 100).toFixed(0) + "%" : "—"]].map(([lab, v]) => (
+                {[["CTR", m.ctr !== null ? (m.ctr * 100).toFixed(1) + "%" : "—"], ["Costo/msg", m.costoMsg !== null ? fmt(m.costoMsg) : "—"], ["CAC", m.contabilizar && m.cac !== null ? fmt(m.cac) : "—"], ["Mensajes", r.mensajesWhatsApp], ["Pedidos", m.contabilizar ? m.pedidos : "—"], ["Conv WA", m.contabilizar && m.conv !== null ? (m.conv * 100).toFixed(0) + "%" : "—"]].map(([lab, v]) => (
                   <div key={lab} className="rounded-xl py-1.5" style={{ background: T.vainilla }}>
                     <div className="text-xs font-bold truncate px-0.5">{v}</div>
                     <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{lab}</div>
@@ -5839,35 +6144,56 @@ function ResultadosCreativos({ db, update, user }) {
               </div>
               <div className="flex justify-between text-[11px] font-semibold mt-2" style={{ color: T.choco2 }}>
                 <span>👁️ {milCO(r.impresiones)} impres. · {milCO(r.alcance)} alcance</span>
-                <span>💵 {fmt(r.ventas)} / gasto {fmt(r.gasto)}</span>
+                <span>💵 {m.contabilizar ? fmt(m.ventas) : "atribución en otra fuente"} / gasto {fmt(r.gasto)}</span>
               </div>
               {r.notas && <div className="text-xs mt-1.5" style={{ color: T.choco2 }}>📝 {r.notas}</div>}
             </Card>
           );
         })}
-        {db.creative_results.length === 0 && <Empty icon="📊" text="Sin resultados registrados." />}
+        {resultados.length === 0 && <Empty icon="📊" text="Sin resultados registrados." />}
       </div>
 
       {nuevo && (
-        <Modal title="Registrar resultado de creativo" onClose={() => setNuevo(false)} wide>
+        <Modal title={existente ? "Actualizar métricas del día" : "Registrar métricas de creativo"} onClose={() => setNuevo(false)} wide>
           <Field label="Creativo">
-            <select value={form.creativeId} onChange={(e) => setForm({ ...form, creativeId: e.target.value })} className={inputCls} style={inputStyle}>
+            <select value={form.creativeId} onChange={(e) => cargarDia(e.target.value, form.fecha)} className={inputCls} style={inputStyle}>
               <option value="">Elegir creativo…</option>
               {db.creatives.map((c) => <option key={c.id} value={c.id}>{c.titulo}</option>)}
             </select>
           </Field>
+          {existente && (
+            <div className="text-xs font-bold px-3 py-2 rounded-xl mb-3" style={{ background: "#DCE7F2", color: "#3E5C7E" }} role="status">
+              Ya existe una captura manual para este creativo y día. Al guardar se actualiza; no se duplica.
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4">
-            <Field label="Fecha"><Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></Field>
-            <Field label="Impresiones"><Input type="number" value={form.impresiones} onChange={(e) => setForm({ ...form, impresiones: +e.target.value })} /></Field>
-            <Field label="Alcance"><Input type="number" value={form.alcance} onChange={(e) => setForm({ ...form, alcance: +e.target.value })} /></Field>
-            <Field label="Clicks"><Input type="number" value={form.clicks} onChange={(e) => setForm({ ...form, clicks: +e.target.value })} /></Field>
-            <Field label="Mensajes WhatsApp"><Input type="number" value={form.mensajesWhatsApp} onChange={(e) => setForm({ ...form, mensajesWhatsApp: +e.target.value })} /></Field>
-            <Field label="Pedidos"><Input type="number" value={form.pedidos} onChange={(e) => setForm({ ...form, pedidos: +e.target.value })} /></Field>
-            <Field label="Ventas"><Input type="number" value={form.ventas} onChange={(e) => setForm({ ...form, ventas: +e.target.value })} /></Field>
-            <Field label="Gasto"><Input type="number" value={form.gasto} onChange={(e) => setForm({ ...form, gasto: +e.target.value })} /></Field>
+            <Field label="Fecha"><Input type="date" value={form.fecha} onChange={(e) => cargarDia(form.creativeId, e.target.value)} /></Field>
+            <Field label="Impresiones"><Input type="number" step="1" min="0" value={form.impresiones} onChange={(e) => setForm({ ...form, impresiones: e.target.value })} /></Field>
+            <Field label="Alcance"><Input type="number" step="1" min="0" value={form.alcance} onChange={(e) => setForm({ ...form, alcance: e.target.value })} /></Field>
+            <Field label="Clicks"><Input type="number" step="1" min="0" value={form.clicks} onChange={(e) => setForm({ ...form, clicks: e.target.value })} /></Field>
+            <Field label="Mensajes WhatsApp"><Input type="number" step="1" min="0" value={form.mensajesWhatsApp} onChange={(e) => setForm({ ...form, mensajesWhatsApp: e.target.value })} /></Field>
+            <Field label="Gasto"><Input type="number" step="any" min="0" value={form.gasto} onChange={(e) => setForm({ ...form, gasto: e.target.value })} /></Field>
+          </div>
+          <div className="rounded-2xl p-3 mb-3" style={{ background: T.vainilla, border: `1px solid ${T.border}` }} aria-live="polite">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-bold">Vista previa de plataforma</span>
+              <span className="text-[10px] font-semibold" style={{ color: T.choco2 }}>se actualiza al escribir</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                ["CTR", previewCtr !== null ? `${(previewCtr * 100).toFixed(1)}%` : "—"],
+                ["Costo/msg", previewCostoMsg !== null ? fmt(previewCostoMsg) : "—"],
+                ["Gasto", previewGasto !== null ? fmt(previewGasto) : "—"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl px-1 py-2" style={{ background: T.surface }}>
+                  <div className="text-sm font-bold truncate">{value}</div>
+                  <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{label}</div>
+                </div>
+              ))}
+            </div>
           </div>
           <Field label="Notas"><Input value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></Field>
-          <div className="flex gap-2 mt-2"><Btn onClick={guardar}>Guardar resultado</Btn><Btn kind="ghost" onClick={() => setNuevo(false)}>Cancelar</Btn></div>
+          <div className="flex gap-2 mt-2"><BtnAsync onClick={guardar}>{existente ? "Actualizar métricas" : "Guardar métricas"}</BtnAsync><Btn kind="ghost" onClick={() => setNuevo(false)}>Cancelar</Btn></div>
         </Modal>
       )}
     </div>
@@ -5925,7 +6251,7 @@ function Crecimiento({ db, update, user, go, refrescar }) {
     return (
       <div>
         <button onClick={() => setSeccion("inicio")} className="text-sm font-bold mb-4 flex items-center gap-1" style={{ color: T.coral }}>← Volver a Crecimiento MOMOS</button>
-        {seccion === "publicar" && <QuePublicar db={db} update={update} user={user} />}
+        {seccion === "publicar" && <QuePublicar db={db} update={update} refrescar={refrescar} />}
         {seccion === "grabar" && <Guiones db={db} />}
         {seccion === "guiones" && <Guiones db={db} />}
         {seccion === "escribir" && <AQuienEscribir db={db} go={go} />}
@@ -5980,7 +6306,7 @@ function Crecimiento({ db, update, user, go, refrescar }) {
 }
 
 /* --- Qué publicar hoy: recomendación del día --- */
-function QuePublicar({ db, update, user }) {
+function QuePublicar({ db, update, refrescar }) {
   const hoy = hoyISO();
   const pubHoy = (db.content_calendar || []).filter((p) => p.fecha === hoy);
   // recomendación: ideas ganadoras/repetir primero, luego nuevas
@@ -5988,6 +6314,23 @@ function QuePublicar({ db, update, user }) {
     const rank = { "Ganadora": 0, "Repetir": 1, "Nueva": 2, "Usada": 3, "Descartada": 4 };
     return (rank[a.estado] ?? 5) - (rank[b.estado] ?? 5);
   }).slice(0, 3);
+
+  async function programar(idea) {
+    let res;
+    try {
+      res = await crearPublicacion({
+        fecha: hoy, hora: "12:00", canal: idea.canal, titulo: idea.titulo,
+        copy_final: idea.copy, estado: "Programado", notas: "Desde Crecimiento MOMOS",
+      });
+    } catch (e) { toast("error", e.message); return; }
+    // La idea sigue en el slice local de Crecimiento; solo su estado se actualiza acá.
+    update((d) => {
+      const x = d.marketing_ideas.find((y) => y.id === idea.id);
+      if (x && x.estado === "Nueva") x.estado = "Usada";
+    });
+    toast("ok", `Publicación ${res.id} programada`);
+    try { await refrescar(); } catch { toast("error", "Programada; recargá para verla"); }
+  }
 
   return (
     <div>
@@ -6024,12 +6367,7 @@ function QuePublicar({ db, update, user }) {
           {idea.guionCorto && <div className="text-xs mt-2" style={{ color: T.choco2 }}>🎬 Cómo grabarlo: {idea.guionCorto}</div>}
           <div className="flex gap-2 mt-3 flex-wrap">
             <CopyBtn texto={idea.copy} />
-            <Btn small kind="soft" onClick={() => update((d) => {
-              const id = nextId(d, "calendar", "CAL-", 2);
-              d.content_calendar.push({ id, fecha: hoy, hora: "12:00", canal: idea.canal, campaignId: "", creativeId: "", titulo: idea.titulo, copyFinal: idea.copy, estado: "Programado", urlPublicacion: "", notas: "Desde Crecimiento MOMOS" });
-              const x = d.marketing_ideas.find((y) => y.id === idea.id); if (x && x.estado === "Nueva") x.estado = "Usada";
-              addAudit(d, { user, entidad: "Publicación", entidadId: id, accion: "Programada desde Crecimiento", a: idea.titulo });
-            })}>📅 Programar para hoy</Btn>
+            <BtnAsync small kind="soft" onClick={() => programar(idea)} textoEnVuelo="Programando…">📅 Programar para hoy</BtnAsync>
           </div>
         </Card>
       ))}
@@ -6416,8 +6754,9 @@ function ResultadosFaciles({ db, update, user, refrescar }) {
   if (topProd) recomendaciones.push({ icon: "⭐", texto: `${topProd[0]} es el que más pedidos generó. Ponlo como protagonista mañana.`, bg: "#F7ECD9", color: "#8A6520" });
 
   // campañas con muchos mensajes pocas ventas
-  (db.creative_results || []).forEach((r) => {
-    if (r.mensajesWhatsApp >= 30 && r.pedidos <= 3) {
+  resultadosDePlataforma(db).forEach((r) => {
+    const atrib = atribucionDeResultado(db, r);
+    if (r.mensajesWhatsApp >= 30 && atrib.pedidos <= 3) {
       const cre = db.creatives.find((x) => x.id === r.creativeId);
       recomendaciones.push({ icon: "⚠️", texto: `"${cre ? cre.titulo : "Un contenido"}" tuvo muchos mensajes pero pocas ventas. Revisa el precio o el mensaje.`, bg: "#FBE8C8", color: "#96690F" });
     }
@@ -6538,7 +6877,7 @@ function TareasRedes({ db, update, user }) {
 
 // Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
 // sus cambios no llegan al servidor y la próxima hidratación los pisa.
-const MODULOS_EN_MIGRACION = ["Productos", "Beneficios", "Crecimiento", "Creativos", "Calendario", "Resultados", "Finanzas", "Configuración"];
+const MODULOS_EN_MIGRACION = ["Productos", "Beneficios", "Crecimiento", "Finanzas", "Configuración"];
 
 function BannerMigracion() {
   return (
@@ -6551,23 +6890,23 @@ function BannerMigracion() {
 }
 
 const MODULOS = [
-  { id: "Dashboard", icon: "🏠", roles: ["Administrador","Cocina","Empaque","Logística","Marketing/CRM"] },
-  { id: "Pedidos", icon: "🧾", roles: ["Administrador","Cocina","Empaque","Logística"] },
-  { id: "Producción", icon: "👩‍🍳", roles: ["Administrador","Cocina"] },
-  { id: "Inventario", icon: "📦", roles: ["Administrador","Cocina"] },
-  { id: "Productos", icon: "🍰", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Domicilios", icon: "🛵", roles: ["Administrador","Logística"] },
-  { id: "Reclamos", icon: "⚠️", roles: ["Administrador","Empaque","Logística","Marketing/CRM"] },
-  { id: "Clientes", icon: "💗", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Beneficios", icon: "🎁", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Crecimiento", icon: "🌱", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Marketing", icon: "📣", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Creativos", icon: "🎨", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Calendario", icon: "🗓️", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Resultados", icon: "📊", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Finanzas", icon: "💰", roles: ["Administrador"] },
-  { id: "Reportes", icon: "📊", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Configuración", icon: "⚙️", roles: ["Administrador"] },
+  { id: "Dashboard", icon: "🏠", hint: "Lo urgente de hoy, en el orden correcto.", roles: ["Administrador","Cocina","Empaque","Logística","Marketing/CRM"] },
+  { id: "Pedidos", icon: "🧾", hint: "Confirmá, cobrá, prepará y entregá sin saltarte pasos.", roles: ["Administrador","Cocina","Empaque","Logística"] },
+  { id: "Producción", icon: "👩‍🍳", hint: "Prepará, congelá y desmoldá cada lote con trazabilidad.", roles: ["Administrador","Cocina"] },
+  { id: "Inventario", icon: "📦", hint: "Registrá lo que entra, se usa, se ajusta o se acaba.", roles: ["Administrador","Cocina"] },
+  { id: "Productos", icon: "🍰", hint: "Definí qué vendemos, cuánto cuesta y cómo se prepara.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Domicilios", icon: "🛵", hint: "Asigná, despachá y seguí cada entrega hasta cerrar.", roles: ["Administrador","Logística"] },
+  { id: "Reclamos", icon: "⚠️", hint: "Investigá, decidí y resolvé cada caso con evidencia.", roles: ["Administrador","Empaque","Logística","Marketing/CRM"] },
+  { id: "Clientes", icon: "💗", hint: "Reconocé a cada persona y prepará el siguiente contacto.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Beneficios", icon: "🎁", hint: "Creá motivos claros para volver, regalar y recomendar.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Crecimiento", icon: "🌱", hint: "Convertí oportunidades en acciones simples para hoy.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Marketing", icon: "📣", hint: "Planeá campañas con objetivo, presupuesto y responsable.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Creativos", icon: "🎨", hint: "Llevá cada idea de borrador a pieza ganadora.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Calendario", icon: "🗓️", hint: "Programá qué sale, dónde, cuándo y con qué intención.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Resultados", icon: "📊", hint: "Registrá señales reales y decidí qué repetir o pausar.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Finanzas", icon: "💰", hint: "Entendé ingresos, costos y caja antes de decidir.", roles: ["Administrador"] },
+  { id: "Reportes", icon: "📊", hint: "Leé el negocio por periodo, canal y resultado.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Configuración", icon: "⚙️", hint: "Ajustá reglas, accesos y respaldos de la operación.", roles: ["Administrador"] },
 ];
 
 const ROLES = ["Administrador","Cocina","Empaque","Logística","Marketing/CRM"];
@@ -6676,7 +7015,7 @@ export default function MomosOps() {
   }, [authUserId]);
 
   // ── Fase 3: hidratar desde Supabase (una vez por carga; re-usable tras cada escritura remota) ──
-  // Maestros/catálogos + operativo (ciclo de pedido + producción). Marketing sigue local.
+  // Maestros/catálogos + operativo + campaigns/creatives/content_posts/metrics_daily.
   async function hidratarDesdeServidor() {
     const [cat, op] = await Promise.all([fetchCatalogos(), fetchOperativo()]);
     update((d) => {
@@ -6689,6 +7028,9 @@ export default function MomosOps() {
       d.subreceta_ingredientes = cat.subreceta_ingredientes || []; // receta maestra por 1000 g
       d.figura_relleno = cat.figura_relleno || []; // relleno configurable de figuras (20/15 g editables)
       d.campaigns = cat.campaigns || []; // Marketing Hito 2: campañas server-side (las demo locales se van al hidratar, decisión aprobada)
+      d.creatives = cat.creatives || []; // Marketing contenido v1: Creativos server-side
+      d.content_calendar = cat.content_calendar || []; // Calendario → content_posts
+      d.creative_results = cat.creative_results || []; // Resultados → metrics_daily (sin pedidos/ventas manuales)
       if (cat.brand_library) d.brand_library = cat.brand_library;
       Object.assign(d.settings, cat.settingsCatalogos);
       Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
@@ -6757,7 +7099,13 @@ export default function MomosOps() {
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
 
-  function go(v, payload) { setFocus(payload || null); setVista(v); }
+  function go(v, payload) {
+    if (v !== vista) vibrar("tap");
+    setFocus(payload || null);
+    setVista(v);
+    const reducirMovimiento = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: reducirMovimiento ? "auto" : "smooth" }));
+  }
 
   useEffect(() => {
     (async () => {
@@ -6990,6 +7338,7 @@ export default function MomosOps() {
   const navPrincipal = visibles.slice(0, 4);
   const navExtra = visibles.slice(4);
   const user = rol;
+  const moduloActivo = visibles.find((m) => m.id === activa) || visibles[0];
 
   function render() {
     const p = { db, update, user, refrescar: hidratarDesdeServidor, perfil };
@@ -7028,7 +7377,13 @@ export default function MomosOps() {
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0" style={{ background: `linear-gradient(135deg, ${T.rosa}, ${T.coralSoft})` }} aria-hidden="true">🐱</div>
           <div className="min-w-0">
             <div className="display font-bold leading-none" style={{ fontSize: 18 }}>MOMOS <span style={{ color: T.coral }}>OPS</span></div>
-            <div className="text-[11px] font-semibold truncate" style={{ color: T.choco2 }}>D'Momos Sweet Love · El Caney, Cali · <span style={{ color: syncColor }}>{syncLabel}</span>{catalogosDe && <span style={{ color: catalogosDe === "servidor" ? "#3F6B42" : "#96690F" }}> · catálogos: {catalogosDe === "servidor" ? "servidor ✓" : "caché"}</span>}</div>
+            <div className="text-[11px] font-semibold truncate flex items-center gap-1" style={{ color: T.choco2 }}>
+              <span className="hidden sm:inline">D'Momos Sweet Love · El Caney, Cali ·</span>
+              <span className="momo-sync" data-state={sync} style={{ color: syncColor }} aria-live="polite">
+                <span className="momo-sync-dot" aria-hidden="true" />{syncLabel}
+              </span>
+              {catalogosDe && <span style={{ color: catalogosDe === "servidor" ? "#3F6B42" : "#96690F" }}> · {catalogosDe === "servidor" ? "servidor ✓" : "caché"}</span>}
+            </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <div className="text-right hidden sm:block">
@@ -7051,7 +7406,9 @@ export default function MomosOps() {
         <nav className="hidden md:flex flex-col gap-1 w-52 shrink-0 p-3 sticky top-[65px] self-start" aria-label="Módulos">
           {visibles.map((m) => (
             <button key={m.id} onClick={() => go(m.id)}
-              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-left transition-colors"
+              className="momo-nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-left"
+              data-active={activa === m.id}
+              aria-current={activa === m.id ? "page" : undefined}
               style={{ background: activa === m.id ? T.rosa : "transparent", color: activa === m.id ? "#8E4B5A" : T.choco }}>
               <span aria-hidden="true">{m.icon}</span>{m.id}
             </button>
@@ -7059,23 +7416,36 @@ export default function MomosOps() {
         </nav>
 
         <main className="flex-1 min-w-0 p-4 pb-28 md:pb-8">
-          <h1 className="display text-2xl font-semibold mt-1 mb-4">{activa}</h1>
-          {MODULOS_EN_MIGRACION.includes(activa) && <BannerMigracion />}
-          {render()}
+          <div key={activa} className="momo-page-enter">
+            <div className="flex items-center gap-3 mt-1 mb-5">
+              <div className="momo-module-icon w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0"
+                style={{ background: `linear-gradient(135deg, ${T.rosa}, ${T.coralSoft})` }} aria-hidden="true">{moduloActivo.icon}</div>
+              <div className="min-w-0">
+                <h1 className="display text-2xl font-semibold m-0 leading-tight">{activa}</h1>
+                <p className="text-xs sm:text-sm font-semibold m-0 mt-0.5" style={{ color: T.choco2 }}>{moduloActivo.hint}</p>
+              </div>
+            </div>
+            {MODULOS_EN_MIGRACION.includes(activa) && <BannerMigracion />}
+            {render()}
+          </div>
         </main>
       </div>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t flex" style={{ background: T.surface, borderColor: T.border }} aria-label="Módulos">
         {navPrincipal.map((m) => (
           <button key={m.id} onClick={() => { go(m.id); setMasAbierto(false); }}
-            className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold"
+            className="momo-mobile-nav flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold"
+            data-active={activa === m.id}
+            aria-current={activa === m.id ? "page" : undefined}
             style={{ color: activa === m.id ? T.coral : T.choco2 }}>
             <span className="text-lg" aria-hidden="true">{m.icon}</span>{m.id}
           </button>
         ))}
         {navExtra.length > 0 && (
           <button onClick={() => setMasAbierto(!masAbierto)}
-            className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold"
+            className="momo-mobile-nav flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold"
+            data-active={navExtra.some((m) => m.id === activa)}
+            aria-expanded={masAbierto}
             style={{ color: navExtra.some((m) => m.id === activa) ? T.coral : T.choco2 }}>
             <span className="text-lg" aria-hidden="true">➕</span>Más
           </button>

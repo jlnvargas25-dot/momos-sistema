@@ -258,7 +258,8 @@ create table creatives (
   estado           text not null default 'Idea' check (estado in
     ('Idea','En diseño','En revisión','Aprobado','Publicado','Ganador','Descartado')),
   responsable      text default '',
-  fecha_entrega    date,
+  fecha_entrega    date constraint creatives_fecha_entrega_finita
+    check (fecha_entrega is null or isfinite(fecha_entrega)),
   asset_url        text default '',
   notas            text default '',
   external_id      text,                           -- ad id / post id
@@ -267,7 +268,7 @@ create table creatives (
 
 create table content_posts (                       -- ex content_calendar
   id               text primary key,               -- CAL-01
-  fecha            date not null,
+  fecha            date not null constraint content_posts_fecha_finita check (isfinite(fecha)),
   hora             time not null default '12:00',
   canal            text not null check (canal in
     ('Instagram','Facebook','TikTok','WhatsApp','Rappi','Referidos','Influencer','Orgánico')),
@@ -283,7 +284,7 @@ create table content_posts (                       -- ex content_calendar
 
 create table metrics_daily (                       -- ex creative_results: LA ESCRIBE EL MCP/agente
   id          bigint generated always as identity primary key,
-  fecha       date not null,
+  fecha       date not null constraint metrics_daily_fecha_finita check (isfinite(fecha)),
   fuente      text not null check (fuente in ('mcp-meta','mcp-tiktok','manual')),
   campaign_id text references campaigns(id),
   creative_id text references creatives(id),
@@ -293,9 +294,62 @@ create table metrics_daily (                       -- ex creative_results: LA ES
   clicks      integer not null default 0,
   mensajes_wa integer not null default 0,
   gasto       numeric not null default 0,
-  unique (fecha, fuente, campaign_id, creative_id, post_id)
+  notas       text not null default '',
+  constraint metrics_daily_valores_validos check (
+    impresiones >= 0 and alcance >= 0 and clicks >= 0 and mensajes_wa >= 0
+    and gasto >= 0 and gasto::text not in ('NaN', 'Infinity', '-Infinity')
+  ),
+  constraint metrics_daily_tiene_dimension check (num_nonnulls(campaign_id, creative_id, post_id) >= 1)
   -- pedidos/ventas/margen NO van acá: se derivan de orders (v_campaign_metrics)
 );
+
+create unique index metrics_daily_dimensiones_dia_uq
+  on metrics_daily (fecha, fuente, campaign_id, creative_id, post_id)
+  nulls not distinct;
+
+-- Captura manual de la UI: una fila por creativo+día. El UNIQUE general de
+-- arriba admite duplicados con NULL; este índice hace idempotente el upsert.
+create unique index metrics_daily_manual_creative_dia_uq
+  on metrics_daily (fecha, creative_id)
+  where fuente = 'manual' and post_id is null;
+
+create or replace function validar_publicacion_creativo_campaign()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_campaign text;
+begin
+  if new.creative_id is null then return new; end if;
+  select campaign_id into v_campaign from creatives where id = new.creative_id for share;
+  if not found then raise exception 'El creativo % no existe', new.creative_id; end if;
+  if new.campaign_id is null then
+    new.campaign_id := v_campaign;
+  elsif new.campaign_id is distinct from v_campaign then
+    raise exception 'La publicación y el creativo deben pertenecer a la misma campaña';
+  end if;
+  return new;
+end $$;
+
+create trigger trg_content_posts_campaign_creative
+before insert or update of creative_id, campaign_id on content_posts
+for each row execute function validar_publicacion_creativo_campaign();
+
+create or replace function validar_cambio_campaign_creativo()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.campaign_id is distinct from old.campaign_id and exists (
+    select 1 from content_posts
+    where creative_id = old.id and campaign_id is distinct from new.campaign_id
+  ) then
+    raise exception 'No se puede cambiar la campaña: el creativo ya tiene publicaciones ligadas';
+  end if;
+  return new;
+end $$;
+
+create trigger trg_creatives_campaign_posts
+before update of campaign_id on creatives
+for each row execute function validar_cambio_campaign_creativo();
+
+revoke execute on function validar_publicacion_creativo_campaign() from public, anon, authenticated;
+revoke execute on function validar_cambio_campaign_creativo() from public, anon, authenticated;
 
 create table recommendations (                     -- LO QUE ESCRIBE CLAUDE
   id          bigint generated always as identity primary key,

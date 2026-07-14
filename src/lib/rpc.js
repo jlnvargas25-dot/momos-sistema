@@ -159,6 +159,41 @@ export async function setCampanaEstado(id, estado) {
   return data; // {ok, de, a, cambio}
 }
 
+/* ── Marketing contenido v1: Creativos, Calendario y Resultados ──
+   Resultados manda solo métricas de plataforma. Pedidos/ventas se derivan de
+   orders en el read-model del front; jamás forman parte del payload. */
+
+export async function crearCreativo(payload) {
+  const { data, error } = await supabase.rpc("crear_creativo", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok, id}
+}
+
+// PATCH real: solo las claves presentes se aplican.
+export async function editarCreativo(id, payload) {
+  const { data, error } = await supabase.rpc("editar_creativo", { p_id: id, p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok, cambio_estado}
+}
+
+export async function crearPublicacion(payload) {
+  const { data, error } = await supabase.rpc("crear_publicacion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok, id}
+}
+
+export async function setPublicacionEstado(id, estado) {
+  const { data, error } = await supabase.rpc("set_publicacion_estado", { p_id: id, p_estado: estado });
+  if (error) throw new Error(error.message);
+  return data; // {ok, de, a, cambio}
+}
+
+export async function registrarMetricasCreativo(payload) {
+  const { data, error } = await supabase.rpc("registrar_metricas_creativo", { p: payload });
+  if (error) throw new Error(error.message);
+  return data; // {ok, id, actualizado}
+}
+
 export async function entradaInsumo(itemId, cant, costoTotal, nota = "") {
   const { data, error } = await supabase.rpc("entrada_insumo", { p_item_id: itemId, p_cant: cant, p_costo_total: costoTotal, p_nota: nota });
   if (error) throw new Error(error.message);

@@ -2,8 +2,8 @@ import { supabase } from "./supabase";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
-   Lo operativo (orders, customers, lotes, reclamos, marketing) sigue local
-   hasta que su slice porte las escrituras por RPC.
+   Maestros operativos y marketing hidratado se traducen al shape legado del
+   monolito; las escrituras correspondientes viven en RPCs por slice.
    settings.counters NO se hidrata: los ids operativos siguen siendo locales. */
 
 const nz = (v, def = "") => (v === null || v === undefined ? def : v);
@@ -33,10 +33,13 @@ export async function fetchCatalogos() {
     supabase.from("subreceta_ingredientes").select("subreceta_id,item_id,cantidad").order("subreceta_id"),
     supabase.from("figura_relleno").select("id,subreceta_id,gramos_por_unidad,activo").order("id"),
     supabase.from("campaigns").select("id,nombre,canal,objetivo,producto_foco_id,oferta,fecha_inicio,fecha_fin,presupuesto,gasto_real,estado,responsable,notas").order("id"),
+    supabase.from("creatives").select("id,campaign_id,titulo,canal,formato,producto_foco_id,figura,sabor,hook,copy,guion,estado,responsable,fecha_entrega,asset_url,notas,external_id,generacion").order("id"),
+    supabase.from("content_posts").select("id,fecha,hora,canal,campaign_id,creative_id,titulo,copy_final,estado,url_publicacion,external_post_id,notas").order("fecha").order("hora"),
+    supabase.from("metrics_daily").select("id,fecha,fuente,campaign_id,creative_id,post_id,impresiones,alcance,clicks,mensajes_wa,gasto,notas").order("fecha", { ascending: false }).order("id", { ascending: false }),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, camps] = q.map((r) => r.data);
+  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, camps, creativeRows, postRows, metricRows] = q.map((r) => r.data);
 
   // RLS deny-by-default devuelve VACÍO (no error): un catálogo estructural vacío = algo anda mal,
   // mejor quedarse con la caché local que pisar el db con arrays vacíos.
@@ -141,7 +144,32 @@ export async function fetchCatalogos() {
     estado: c.estado, responsable: nz(c.responsable), notas: nz(c.notas),
   }));
 
-  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns };
+  // Marketing contenido v1: los tres arrays conservan el shape legado para
+  // reducir la superficie del front, pero la fuente ya es Supabase. Igual que
+  // campaigns, productoFoco expone nombre para la UI + id crudo para round-trip.
+  const creatives = (creativeRows || []).map((c) => ({
+    id: c.id, campaignId: nz(c.campaign_id), titulo: c.titulo, canal: c.canal, formato: c.formato,
+    productoFocoId: nz(c.producto_foco_id, null),
+    productoFoco: c.producto_foco_id ? (nombreProd[c.producto_foco_id] || "") : "",
+    figuraFoco: nz(c.figura), saborFoco: nz(c.sabor), hook: nz(c.hook), copy: nz(c.copy),
+    guion: nz(c.guion), estado: c.estado, responsable: nz(c.responsable),
+    fechaEntrega: nz(c.fecha_entrega), assetUrl: nz(c.asset_url), notas: nz(c.notas),
+    externalId: nz(c.external_id), generacion: c.generacion || null,
+  }));
+  const content_calendar = (postRows || []).map((p) => ({
+    id: p.id, fecha: p.fecha, hora: hhmm(p.hora), canal: p.canal,
+    campaignId: nz(p.campaign_id), creativeId: nz(p.creative_id), titulo: p.titulo,
+    copyFinal: nz(p.copy_final), estado: p.estado, urlPublicacion: nz(p.url_publicacion),
+    externalPostId: nz(p.external_post_id), notas: nz(p.notas),
+  }));
+  const creative_results = (metricRows || []).map((m) => ({
+    id: String(m.id), fecha: m.fecha, fuente: m.fuente,
+    campaignId: nz(m.campaign_id), creativeId: nz(m.creative_id), postId: nz(m.post_id),
+    impresiones: Number(m.impresiones), alcance: Number(m.alcance), clicks: Number(m.clicks),
+    mensajesWhatsApp: Number(m.mensajes_wa), gasto: Number(m.gasto), notas: nz(m.notas),
+  }));
+
+  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
