@@ -342,6 +342,27 @@ export async function registrarMetricasCreativo(payload) {
   return data; // {ok, id, actualizado}
 }
 
+/* ── Distribución Comercial MOMOS v1 (migración 19) ── */
+export async function guardarPreparacionDistribucion(postId, checklist, notes = "") {
+  const { data, error } = await supabase.rpc("guardar_preparacion_distribucion", { p_post_id: postId, p_checklist: checklist, p_notes: notes });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function aprobarDistribucion(postId) {
+  const { data, error } = await supabase.rpc("aprobar_distribucion", { p_post_id: postId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function cerrarDistribucionPublicacion(postId, result, externalUrl = "", externalPostId = "", note = "") {
+  const { data, error } = await supabase.rpc("cerrar_distribucion_publicacion", {
+    p_post_id: postId, p_result: result, p_external_url: externalUrl, p_external_post_id: externalPostId, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 /* ── Agencia Comercial MOMOS v1 (migración 16) ── */
 export async function guardarConfiguracionAgencia(payload) {
   const { data, error } = await supabase.rpc("guardar_configuracion_agencia", { p: payload });

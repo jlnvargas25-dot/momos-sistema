@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderTransitionPermission } from "./lib/order-workflow";
 import { buildFinishedInventory } from "./lib/finished-inventory";
@@ -17,6 +17,7 @@ import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
+import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "./lib/commercial-distribution";
 import { buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
 
 /* ================================================================
@@ -666,7 +667,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -687,7 +688,7 @@ function normalizeDbShape(d) {
     "orders", "order_items", "customers", "products", "production_batches",
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
-    "users", "campaigns", "creatives", "content_calendar", "creative_results",
+    "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions",
     "marketing_ideas", "marketing_guiones", "marketing_mensajes", "marketing_tasks",
   ];
   arrayTables.forEach((k) => {
@@ -9201,6 +9202,7 @@ function Creativos({ db, refrescar }) {
 function Calendario({ db, refrescar }) {
   const [nueva, setNueva] = useState(false);
   const [vista, setVista] = useState("Activas");
+  const [distributionDraft, setDistributionDraft] = useState(null);
   const vacio = { fecha: hoyISO(), hora: "12:00", canal: "Instagram", campaignId: "", creativeId: "", titulo: "", copyFinal: "", estado: "Pendiente", urlPublicacion: "", notas: "" };
   const [form, setForm] = useState(vacio);
   const cambiosRef = useRef(new Set());
@@ -9209,6 +9211,7 @@ function Calendario({ db, refrescar }) {
   useEffect(() => { vivoRef.current = true; return () => { vivoRef.current = false; }; }, []);
 
   const commercialCalendar = useMemo(() => buildCommercialCalendar(db, hoyISO()), [db]);
+  const distributionRoom = useMemo(() => buildDistributionRoom(db, hoyISO(), new Date().toLocaleTimeString("en-GB", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit" })), [db]);
   const formScheduleGuard = useMemo(() => form.creativeId
     ? calendarTransitionGuard({ ...form, id: "CAL-DRAFT", estado: "Pendiente" }, "Programado", db, hoyISO())
     : null, [form, db]);
@@ -9225,6 +9228,52 @@ function Calendario({ db, refrescar }) {
   function planificarCreativo(creative) {
     setForm({ ...vacio, ...buildPostDraftFromCreative(creative, db, hoyISO()) });
     setNueva(true);
+  }
+
+  function abrirPreparacion(item) {
+    const checklist = {};
+    distributionChecklistFor(item.post, db).forEach((step) => { checklist[step.key] = item.run?.checklist?.[step.key] === true; });
+    setDistributionDraft({ mode: "prepare", item, checklist, notes: item.run?.notes || "", externalUrl: "", externalPostId: "", reason: "" });
+  }
+
+  function abrirCierre(item, mode = "publish") {
+    setDistributionDraft({ mode, item, checklist: item.run?.checklist || {}, notes: "", externalUrl: item.run?.externalUrl || "", externalPostId: item.run?.externalPostId || "", reason: item.run?.failureReason || "" });
+  }
+
+  async function guardarPreparacionComercial() {
+    const draft = distributionDraft;
+    if (!draft) return;
+    if (!db.distributionServerReady) { toast("error", "Aplicá la migración 19 para guardar la distribución trazable."); return; }
+    const guard = validateDistributionAction("prepare", draft.item.post, db, draft.item.run, {}, hoyISO());
+    if (!guard.allowed) { toast("error", guard.reasons[0]); return; }
+    try {
+      const res = await guardarPreparacionDistribucion(draft.item.post.id, draft.checklist, draft.notes);
+      toast("ok", res.status === "Lista" ? "Checklist completo · salida Lista para aprobación" : "Preparación guardada");
+      setDistributionDraft(null); await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function aprobarSalidaComercial(item) {
+    if (!db.distributionServerReady) { toast("error", "Aplicá la migración 19 para aprobar distribuciones."); return; }
+    const guard = validateDistributionAction("approve", item.post, db, item.run, {}, hoyISO());
+    if (!guard.allowed) { toast("error", guard.reasons[0]); return; }
+    try { await aprobarDistribucion(item.post.id); toast("ok", "Salida aprobada · lista para publicar en su horario"); await refrescar(); }
+    catch (error) { toast("error", error.message); }
+  }
+
+  async function cerrarSalidaComercial() {
+    const draft = distributionDraft;
+    if (!draft) return;
+    if (!db.distributionServerReady) { toast("error", "Aplicá la migración 19 para cerrar distribuciones."); return; }
+    const action = draft.mode === "fail" ? "fail" : "publish";
+    const payload = action === "fail" ? { reason: draft.reason } : { externalUrl: draft.externalUrl, externalPostId: draft.externalPostId };
+    const guard = validateDistributionAction(action, draft.item.post, db, draft.item.run, payload, hoyISO(), new Date().toLocaleTimeString("en-GB", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit" }));
+    if (!guard.allowed) { toast("error", guard.reasons[0]); return; }
+    try {
+      await cerrarDistribucionPublicacion(draft.item.post.id, action === "fail" ? "Fallida" : "Publicada", draft.externalUrl, draft.externalPostId, action === "fail" ? draft.reason : draft.notes);
+      toast("ok", action === "fail" ? "Fallo registrado sin perder trazabilidad" : "Publicación cerrada con evidencia externa");
+      setDistributionDraft(null); await refrescar();
+    } catch (error) { toast("error", error.message); }
   }
 
   async function guardar() {
@@ -9246,6 +9295,8 @@ function Calendario({ db, refrescar }) {
 
   async function cambiarEstado(p, estado) {
     if (cambiosRef.current.has(p.id) || estado === p.estado) return;
+    if (db.distributionServerReady && estado === "Publicado") { toast("error", "Publicá y registrá la evidencia desde la pestaña Distribución."); return; }
+    if (db.distributionServerReady && estado === "No publicado" && db.content_distributions.some((run) => run.postId === p.id)) { toast("error", "La salida preparada debe cerrarse como fallo desde Distribución."); return; }
     const guard = calendarTransitionGuard(p, estado, db, hoyISO());
     if (!guard.allowed) { toast("error", guard.reasons[0]); return; }
     cambiosRef.current.add(p.id);
@@ -9311,14 +9362,14 @@ function Calendario({ db, refrescar }) {
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="momo-segmented-tabs inline-flex gap-1 p-1.5 rounded-2xl" role="tablist" aria-label="Bandejas del calendario">
-          {["Activas","Historial"].map((tab) => <button key={tab} type="button" role="tab" aria-selected={vista === tab} onClick={() => setVista(tab)} className="rounded-xl border-0 px-4 py-2 text-xs font-extrabold" style={{ background: vista === tab ? T.coral : "transparent", color: vista === tab ? "#fff" : T.choco2 }}>{tab} <span className="ml-1 opacity-75">{tab === "Activas" ? commercialCalendar.active.length : commercialCalendar.history.length}</span></button>)}
+          {["Activas","Distribución","Historial"].map((tab) => <button key={tab} type="button" role="tab" aria-selected={vista === tab} onClick={() => setVista(tab)} className="rounded-xl border-0 px-4 py-2 text-xs font-extrabold" style={{ background: vista === tab ? T.coral : "transparent", color: vista === tab ? "#fff" : T.choco2 }}>{tab} <span className="ml-1 opacity-75">{tab === "Activas" ? commercialCalendar.active.length : tab === "Distribución" ? distributionRoom.queue.length : commercialCalendar.history.length}</span></button>)}
         </div>
         <div className="flex gap-2"><Btn onClick={() => { setForm(vacio); setNueva(true); }}>＋ Nueva publicación</Btn>
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
         </div>
       </div>
 
-      <SectionTitle>{vista === "Activas" ? "Bandeja activa por día" : "Historial de publicaciones"}</SectionTitle>
+      <SectionTitle>{vista === "Activas" ? "Bandeja activa por día" : vista === "Distribución" ? "Sala de distribución comercial" : "Historial de publicaciones"}</SectionTitle>
       {vista === "Activas" ? <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
         {semana.map((dia) => {
           const delDia = pubs.filter((p) => p.fecha === dia);
@@ -9343,7 +9394,7 @@ function Calendario({ db, refrescar }) {
                       {cre && <div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>🎨 {cre.titulo}</div>}
                       <div className="mt-2 rounded-lg px-2 py-1.5 text-[10px] font-bold" style={{ background: p.preflight.ready ? "#E8F1E4" : "#F6D4CD", color: p.preflight.ready ? "#3F6B42" : "#A03B2A" }}>{p.preflight.ready ? "✓ Preflight completo" : `⛔ ${p.preflight.errors[0]?.message}`}</div>
                       <select value={estadoPendiente ?? p.estado} disabled={Boolean(estadoPendiente)} onChange={(e) => cambiarEstado(p, e.target.value)} className="mt-2 w-full rounded-lg px-1.5 py-1 text-[11px] border font-bold disabled:opacity-60" style={inputStyle}>
-                        {CAL_ESTADOS.map((s) => <option key={s}>{s}</option>)}
+                        {(db.distributionServerReady ? CAL_ESTADOS.filter((state) => state !== "Publicado") : CAL_ESTADOS).map((s) => <option key={s}>{s}</option>)}
                       </select>
                       {estadoPendiente && (
                         <div className="flex items-center justify-center gap-1.5 mt-1.5 text-[10px] font-bold" style={{ color: "#96690F" }} role="status">
@@ -9359,6 +9410,37 @@ function Calendario({ db, refrescar }) {
             </div>
           );
         })}
+      </div> : vista === "Distribución" ? <div>
+        {!db.distributionServerReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🛡️</span><div><div className="text-sm font-extrabold">Vista previa protegida</div><div className="text-xs mt-0.5">Aplicá la migración 19 para guardar checklist, aprobación humana y evidencia externa.</div></div></div>}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
+          <Stat icon="⏱️" label="Deben salir" value={distributionRoom.summary.due} tone={T.coral} />
+          <Stat icon="✓" label="Aprobadas" value={distributionRoom.summary.ready} tone="#3F6B42" />
+          <Stat icon="👀" label="Por aprobar" value={distributionRoom.summary.awaitingApproval} tone="#3E5C7E" />
+          <Stat icon="⛔" label="Bloqueadas" value={distributionRoom.summary.blocked} tone="#A03B2A" />
+          <Stat icon="📊" label="Sin métricas" value={distributionRoom.summary.needsMetrics} tone="#96690F" />
+        </div>
+        <div className="grid lg:grid-cols-2 gap-3">
+          {distributionRoom.queue.map((item) => <div key={item.post.id} className="rounded-[22px] border p-4" style={{ borderColor: item.blocked ? "#E8B7AD" : T.border, background: item.blocked ? "#FFF8F5" : "#fff", boxShadow: "0 8px 24px rgba(91,58,43,.06)" }}>
+            <div className="flex items-start justify-between gap-3"><div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: item.due ? T.coral : T.choco2 }}>{item.post.fecha} · {item.post.hora} · {item.post.canal}</div><div className="display font-semibold text-lg mt-1">{item.post.titulo}</div></div><Badge label={item.run?.status || item.post.estado} /></div>
+            <div className="mt-3 rounded-2xl p-3" style={{ background: T.soft }}>
+              <div className="flex justify-between gap-2 text-xs font-bold"><span>Checklist operativo</span><span style={{ color: item.readiness.checklistComplete ? "#3F6B42" : T.coral }}>{item.readiness.checked}/{item.readiness.total}</span></div>
+              <div className="h-1.5 rounded-full mt-2 overflow-hidden" style={{ background: "#E9DCCB" }}><div className="h-full rounded-full" style={{ width: `${item.readiness.total ? (item.readiness.checked / item.readiness.total) * 100 : 0}%`, background: item.readiness.checklistComplete ? "#5F8A61" : T.coral }} /></div>
+            </div>
+            <div className="mt-3 text-sm font-extrabold" style={{ color: item.blocked ? "#A03B2A" : T.choco }}>→ {item.action}</div>
+            {item.readiness.errors[0] && <div className="text-[11px] mt-1" style={{ color: "#A03B2A" }}>{item.readiness.errors[0]}</div>}
+            {item.run?.failureReason && <div className="text-xs mt-2 rounded-xl px-3 py-2" style={{ background: "#F6D4CD", color: "#8D3427" }}>Último fallo: {item.run.failureReason}</div>}
+            <div className="flex flex-wrap gap-2 mt-4">
+              {["Preparar salida","Completar checklist","Marcar lista"].includes(item.action) && <Btn small onClick={() => abrirPreparacion(item)} disabled={!item.readiness.readyToPrepare || !db.distributionServerReady}>Abrir checklist</Btn>}
+              {item.action === "Aprobar salida" && <BtnAsync small onClick={() => aprobarSalidaComercial(item)} disabled={!db.distributionServerReady} textoEnVuelo="Aprobando…">Aprobar salida</BtnAsync>}
+              {item.action === "Publicar y registrar evidencia" && <Btn small onClick={() => abrirCierre(item, "publish")} disabled={!db.distributionServerReady}>Registrar publicación</Btn>}
+              {item.action === "Esperar horario" && <span className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: "#E9F0F7", color: "#3E5C7E" }}>Programada · todavía no ejecutar</span>}
+              {item.action === "Revisar fallo" && <span className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Volvé a Pendiente y reprogramá para reintentar</span>}
+              {item.run && !["Publicada","Cancelada","Fallida"].includes(item.run.status) && <Btn small kind="ghost" onClick={() => abrirCierre(item, "fail")} disabled={!db.distributionServerReady}>Registrar fallo</Btn>}
+            </div>
+          </div>)}
+          {distributionRoom.queue.length === 0 && <Empty icon="🚀" text="No hay publicaciones pendientes de distribución." />}
+        </div>
+        {distributionRoom.needsMetrics.length > 0 && <div className="rounded-2xl px-4 py-3 mt-4" style={{ background: "#FFF5E4", color: "#7B5410" }}><b>{distributionRoom.needsMetrics.length} publicación(es)</b> ya salieron y esperan captura de métricas en Resultados.</div>}
       </div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
         {pubs.map((p) => {
           const cre = db.creatives.find((creativeItem) => creativeItem.id === p.creativeId);
@@ -9404,6 +9486,39 @@ function Calendario({ db, refrescar }) {
           </Field>
           <Field label="Notas"><Input value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></Field>
           <div className="flex gap-2 mt-2"><BtnAsync onClick={guardar} textoEnVuelo="Creando…">Crear publicación</BtnAsync><Btn kind="ghost" onClick={() => setNueva(false)}>Cancelar</Btn></div>
+        </Modal>
+      )}
+
+      {distributionDraft && distributionDraft.mode === "prepare" && (
+        <Modal title={`Preparar salida · ${distributionDraft.item.post.id}`} onClose={() => setDistributionDraft(null)} wide>
+          <div className="rounded-2xl p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF4EE,#F7E8D5)", border: `1px solid ${T.border}` }}>
+            <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{distributionDraft.item.post.canal} · {distributionDraft.item.post.fecha} {distributionDraft.item.post.hora}</div>
+            <div className="display text-xl font-semibold mt-1">{distributionDraft.item.post.titulo}</div>
+            <div className="text-xs mt-1" style={{ color: T.choco2 }}>Este checklist no publica nada: deja la salida lista para una aprobación humana separada.</div>
+          </div>
+          <div className="space-y-2 mb-4">
+            {distributionChecklistFor(distributionDraft.item.post, db).map((step) => <label key={step.key} className="flex items-start gap-3 rounded-2xl border px-4 py-3 cursor-pointer" style={{ borderColor: distributionDraft.checklist[step.key] ? "#A8C7A4" : T.border, background: distributionDraft.checklist[step.key] ? "#EFF6EC" : "#fff" }}>
+              <input type="checkbox" checked={distributionDraft.checklist[step.key] === true} onChange={(event) => setDistributionDraft({ ...distributionDraft, checklist: { ...distributionDraft.checklist, [step.key]: event.target.checked } })} className="mt-0.5 w-4 h-4" />
+              <span className="text-sm font-bold">{step.label}</span>
+            </label>)}
+          </div>
+          <Field label="Notas de preparación"><Input value={distributionDraft.notes} onChange={(event) => setDistributionDraft({ ...distributionDraft, notes: event.target.value })} placeholder="Decisiones, cambios o detalles para quien aprueba" /></Field>
+          <div className="flex gap-2 mt-3"><BtnAsync onClick={guardarPreparacionComercial} textoEnVuelo="Guardando…">Guardar preparación</BtnAsync><Btn kind="ghost" onClick={() => setDistributionDraft(null)}>Cancelar</Btn></div>
+        </Modal>
+      )}
+
+      {distributionDraft && ["publish","fail"].includes(distributionDraft.mode) && (
+        <Modal title={distributionDraft.mode === "publish" ? `Registrar publicación · ${distributionDraft.item.post.id}` : `Registrar fallo · ${distributionDraft.item.post.id}`} onClose={() => setDistributionDraft(null)} wide>
+          {distributionDraft.mode === "publish" ? <>
+            <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#E8F1E4", color: "#3F6B42" }}>✓ Salida aprobada. Confirmá la evidencia después de publicarla en {distributionDraft.item.post.canal}.</div>
+            <Field label="URL pública"><Input value={distributionDraft.externalUrl} onChange={(event) => setDistributionDraft({ ...distributionDraft, externalUrl: event.target.value })} placeholder="https://instagram.com/p/..." /></Field>
+            <Field label="ID externo (si la plataforma lo muestra)"><Input value={distributionDraft.externalPostId} onChange={(event) => setDistributionDraft({ ...distributionDraft, externalPostId: event.target.value })} placeholder="Ej: IG-123456" /></Field>
+            <Field label="Nota de ejecución"><Input value={distributionDraft.notes} onChange={(event) => setDistributionDraft({ ...distributionDraft, notes: event.target.value })} placeholder="Publicada sin cambios / ajuste realizado" /></Field>
+          </> : <>
+            <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: "#FFF1ED", color: "#A03B2A" }}><b>La publicación quedará “No publicada”.</b> El motivo se conserva para corregir y reprogramar sin ocultar el fallo.</div>
+            <Field label="Motivo obligatorio"><textarea rows={3} value={distributionDraft.reason} onChange={(event) => setDistributionDraft({ ...distributionDraft, reason: event.target.value })} className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none resize-y" style={{ ...inputStyle, fontFamily: "inherit" }} placeholder="Ej: la plataforma rechazó el formato del archivo" /></Field>
+          </>}
+          <div className="flex gap-2 mt-3"><BtnAsync onClick={cerrarSalidaComercial} textoEnVuelo="Registrando…">{distributionDraft.mode === "publish" ? "Confirmar publicación" : "Guardar fallo"}</BtnAsync><Btn kind="ghost" onClick={() => setDistributionDraft(null)}>Cancelar</Btn></div>
         </Modal>
       )}
     </div>
@@ -10802,6 +10917,7 @@ export default function MomosOps() {
     if (db.operationalControlReady) tables.push("order_stage_assignments", "order_line_progress", "order_incidents", "order_dispatch_handoffs");
     if (db.crmServerReady) tables.push("customers", "benefits", "customer_crm_profiles", "customer_contacts", "customer_activations");
     if (db.agencyServerReady) tables.push("campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks", "agency_settings", "agency_briefs", "agency_decisions", "agency_creative_versions");
+    if (db.distributionServerReady) tables.push("content_distributions");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = () => {
       if (timer) clearTimeout(timer);
@@ -10823,7 +10939,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -10865,6 +10981,8 @@ export default function MomosOps() {
       d.creatives = cat.creatives || []; // Marketing contenido v1: Creativos server-side
       d.content_calendar = cat.content_calendar || []; // Calendario → content_posts
       d.creative_results = cat.creative_results || []; // Resultados → metrics_daily (sin pedidos/ventas manuales)
+      d.distributionServerReady = Boolean(cat.distributionServerReady);
+      d.content_distributions = cat.content_distributions || [];
       d.agencyServerReady = Boolean(cat.agencyServerReady);
       d.agencySettings = cat.agencySettings || d.agencySettings || DEFAULT_AGENCY_SETTINGS;
       d.agencyBriefs = cat.agencyBriefs || [];

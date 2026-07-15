@@ -261,8 +261,28 @@ export async function fetchCatalogos() {
       responsable: nz(row.responsable), origen: row.origen, recommendationId: row.recommendation_id }));
   }
 
+  const distributionProbe = await supabase.rpc("distribucion_comercial_disponible");
+  const distributionProbeMissing = distributionProbe.error &&
+    (distributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(distributionProbe.error.message || ""));
+  if (distributionProbe.error && !distributionProbeMissing) throw new Error(distributionProbe.error.message);
+  const distributionServerReady = !distributionProbeMissing && distributionProbe.data === true;
+  let content_distributions = [];
+  if (distributionServerReady) {
+    const distributionResult = await supabase.from("content_distributions")
+      .select("id,post_id,channel,status,checklist,attempt,prepared_by,prepared_at,approved_by,approved_at,executed_by,published_at,external_url,external_post_id,failure_reason,notes,updated_at")
+      .order("updated_at", { ascending: false });
+    if (distributionResult.error) throw new Error(distributionResult.error.message);
+    content_distributions = (distributionResult.data || []).map((row) => ({
+      id: row.id, postId: row.post_id, channel: row.channel, status: row.status, checklist: row.checklist || {}, attempt: Number(row.attempt),
+      preparedBy: row.prepared_by, preparedAt: tsBogota(row.prepared_at), approvedBy: nz(row.approved_by), approvedAt: tsBogota(row.approved_at),
+      executedBy: nz(row.executed_by), publishedAt: tsBogota(row.published_at), externalUrl: nz(row.external_url),
+      externalPostId: nz(row.external_post_id), failureReason: nz(row.failure_reason), notes: nz(row.notes), updatedAt: tsBogota(row.updated_at),
+    }));
+  }
+
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
-    agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks };
+    agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
+    distributionServerReady, content_distributions };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
