@@ -1378,6 +1378,18 @@ test("Momobot despierta el dictado solo cuando inicia la frase", () => {
     splitKitchenWakeWord("Le dije oye a Momobot"),
     { text: "Le dije oye a Momobot", woke: false },
   );
+  assert.deepEqual(
+    splitKitchenWakeWord("Ya, hola Momo bot"),
+    { text: "", woke: true },
+  );
+  assert.deepEqual(
+    splitKitchenWakeWord("Bueno, hola Momobot, qué hay para hacer"),
+    { text: "qué hay para hacer", woke: true },
+  );
+  assert.deepEqual(
+    splitKitchenWakeWord("Ya le dije a Momobot"),
+    { text: "Ya le dije a Momobot", woke: false },
+  );
 });
 
 test("consume activaciones repetidas sin confundir Momobot con la figura Momo", () => {

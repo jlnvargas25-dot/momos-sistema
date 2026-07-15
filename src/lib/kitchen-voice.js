@@ -28,7 +28,7 @@ const KITCHEN_CORE_TERMS = [
   "pedido", "número de pedido", "pedido pagado", "preparar pedido", "pedido en producción",
   "pedido listo para empaque", "terminé el pedido", "entregar a empaque", "pasar a empaque",
   "qué pedido hay en cola", "qué pedidos hay en cola", "qué hay pendiente en cocina", "qué sigue en cocina", "qué tenemos para preparar",
-  "Momobot", "Oye Momobot", "Oye Momo bot", "Hola Momobot", "cierra", "confirmar", "sí", "dale", "dale sí dale", "hazlo", "hágale",
+  "Momobot", "Oye Momobot", "Oye Momo bot", "Hola Momobot", "Ya Momobot", "Ya hola Momobot", "Buenas Momobot", "cierra", "confirmar", "sí", "dale", "dale sí dale", "hazlo", "hágale",
   "confirmar y registra", "confirma y registra", "confirmar y registrar", "editar", "edita", "editar editar",
   "editar el comando", "quiero editar", "evitar el comando", "limpiar", "limpia", "limpiar el comando", "limpia el borrador",
   "borrar", "borra todo", "corregir", "corrige", "empezar de nuevo", "cancelar", "cancelar el comando",
@@ -178,7 +178,7 @@ export function kitchenTaskVocabularyPhrases() {
 
 const VOICE_CLOSE_CONTROL_PATTERN = /^(?:cierra|cerrar|termina|terminar|finaliza|finalizar)(?:\s+(?:comando|dictado|escucha|microfono))?$/;
 const VOICE_CLOSE_RAW_PATTERN = /(?:^|\s)(?:cierra|cerrar|termina|terminar|finaliza|finalizar)(?:\s+(?:comando|dictado|escucha|micr[oó]fono))?[\s.,;:!?]*$/iu;
-const VOICE_WAKE_RAW_PATTERN = /^(?:(?:oye|oiga|hey|ey|hola)[\s,;:.-]+)?(?:momobot|momo\s+bot|mono\s+bot|mam[aá]\s+bot|mambo\s+bot|momobots?)(?:[\s,;:.-]+|$)/iu;
+const VOICE_WAKE_RAW_PATTERN = /^(?:(?:oye|oiga|hey|ey|hola|ya|bueno|pues|listo|buenas|por\s+favor)[\s,;:.-]+){0,3}(?:momobot|momo\s+bot|mono\s+bot|mam[aá]\s+bot|mambo\s+bot|momobots?)(?:[\s,;:.-]+|$)/iu;
 
 export function splitKitchenWakeWord(value) {
   const raw = String(value || "").trim();
