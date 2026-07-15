@@ -124,6 +124,7 @@ const FONTS = `
 .momo-bar { transition: width 620ms var(--momo-spring), background 180ms ease; }
 .momo-busy-spinner { animation: momo-spin 650ms linear infinite; }
 .momo-kitchen-alert-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(5rem, calc(env(safe-area-inset-bottom) + 1rem)); z-index: 45; }
+.momo-momobot-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(9rem, calc(env(safe-area-inset-bottom) + 5rem)); z-index: 46; }
 .momo-voice-orb { position: relative; box-shadow: 0 10px 24px rgba(229,113,78,.24), 0 0 0 6px rgba(251,227,218,.82), 0 0 0 7px rgba(229,113,78,.12); transition: transform 180ms var(--momo-spring), box-shadow 180ms ease; }
 .momo-voice-orb[data-listening="true"] { animation: momo-listening 900ms ease-in-out infinite alternate; background: #A03B2A !important; box-shadow: 0 0 0 7px rgba(229,113,78,.14), 0 12px 30px rgba(160,59,42,.28); }
 .momo-voice-wave { display: inline-flex; align-items: center; gap: 2px; height: 16px; }
@@ -163,7 +164,7 @@ const FONTS = `
 @keyframes momo-spin { to { transform: rotate(360deg); } }
 @keyframes momo-listening { from { transform: scale(.98); } to { transform: scale(1.035); } }
 @keyframes momo-wave { from { transform: scaleY(.45); } to { transform: scaleY(1); } }
-@media (min-width: 768px) { .momo-kitchen-alert-fab { bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); } }
+@media (min-width: 768px) { .momo-kitchen-alert-fab { bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); } .momo-momobot-fab { bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem)); } }
 @media (prefers-reduced-motion: reduce) { .momos * { transition: none !important; animation: none !important; } }
 `;
 
@@ -4289,8 +4290,11 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
     try { window.speechSynthesis?.cancel(); } catch { /* degradación silenciosa */ }
   }, []);
 
+  const [abierto, setAbierto] = useState(false);
+
   useEffect(() => {
     if (!requestedOrder?.orderId) return undefined;
+    setAbierto(true);
     const command = `Preparar el pedido ${requestedOrder.orderId}`;
     stopVoiceSession({ abort: true, nextMode: "idle" });
     cancelSpeech();
@@ -5243,13 +5247,25 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
           : "● Micrófono activo · decí Momobot";
 
   return (
-    <Card id="momobot-cocina" className="p-4 mb-5 overflow-hidden">
+    <div className="momo-momobot-fab" data-open={abierto ? "true" : "false"}>
+      {!abierto ? (
+        <button type="button" onClick={() => setAbierto(true)} data-listening={listening}
+          className="momo-voice-orb w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl shadow-xl"
+          style={{ background: T.coral }} title="MomoBot · copiloto de cocina"
+          aria-label={listening ? "Momobot escuchando · abrir copiloto de cocina" : "Abrir Momobot copiloto de cocina"}>
+          {listening ? <span className="momo-voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> : "🎙️"}
+        </button>
+      ) : (
+      <Card id="momobot-cocina" className="momo-modal-sheet p-4 w-[min(92vw,440px)] max-h-[78vh] overflow-y-auto shadow-2xl">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-3 border-b" style={{ borderColor: T.border }}>
         <div className="flex items-center gap-2">
           <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0" style={{ background: T.coralSoft }} aria-hidden="true">✨</span>
           <div><div className="text-[9px] uppercase tracking-[.2em] font-extrabold" style={{ color: T.choco2 }}>Momo Ops Intelligence</div><div className="text-xs font-extrabold" style={{ color: T.choco }}>MOMOBOT · copiloto operativo de cocina</div></div>
         </div>
-        <span className="rounded-full px-2.5 py-1 text-[9px] uppercase tracking-wider font-extrabold" style={{ background: listening ? T.coralSoft : T.vainilla, color: listening ? "#A54830" : T.choco2 }}>{listening ? "● Escucha activa" : "Voz protegida · confirma antes de registrar"}</span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full px-2.5 py-1 text-[9px] uppercase tracking-wider font-extrabold" style={{ background: listening ? T.coralSoft : T.vainilla, color: listening ? "#A54830" : T.choco2 }}>{listening ? "● Escucha activa" : "Voz protegida · confirma antes de registrar"}</span>
+          <button type="button" onClick={() => setAbierto(false)} aria-label="Minimizar Momobot" title="Minimizar" className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold border shrink-0 transition" style={{ background: T.surface, borderColor: T.border, color: T.choco2 }}>✕</button>
+        </div>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start gap-4">
         <div className="flex sm:flex-col items-center gap-2 shrink-0">
@@ -5391,6 +5407,8 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
       )}
 
     </Card>
+      )}
+    </div>
   );
 }
 
