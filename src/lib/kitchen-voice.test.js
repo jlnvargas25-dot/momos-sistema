@@ -667,6 +667,29 @@ test("conserva un sabor oído sin cantidad y pregunta exactamente lo que falta",
   ]);
 });
 
+test("una respuesta completa reemplaza una transcripción previa contaminada", () => {
+  const previous = "Preparemos dos lisis de Momo. Oreo";
+  const combined = mergeKitchenConversation(previous, "Preparemos dos lisis de Oreo", catalogs);
+  const completed = parseKitchenVoice(combined, catalogs);
+
+  assert.equal(combined, "Preparemos dos lisis de Oreo");
+  assert.equal(completed.canExecute, true);
+  assert.equal(completed.production.figure, "Lizi");
+  assert.deepEqual(completed.production.runs, [{ flavor: "Oreo", quantity: 2 }]);
+});
+
+test("una cantidad corta completa el único sabor pendiente", () => {
+  const previous = "Preparemos Lizis de Oreo";
+  const first = parseKitchenVoice(previous, catalogs);
+  assert.match(first.errors.join(" "), /cantidad faltante por sabor: Oreo/i);
+
+  const combined = mergeKitchenConversation(previous, "son dos unidades", catalogs);
+  const completed = parseKitchenVoice(combined, catalogs);
+  assert.match(combined, /2 de Oreo$/);
+  assert.equal(completed.canExecute, true);
+  assert.deepEqual(completed.production.runs, [{ flavor: "Oreo", quantity: 2 }]);
+});
+
 test("no inventa por resta un sabor pendiente aunque haya un total anunciado", () => {
   const parsed = parseKitchenVoice("Producir 10 Max: Oreo y 5 de coco", catalogs);
   const prompt = kitchenConversationPrompt(parsed, catalogs);

@@ -1604,11 +1604,33 @@ export function kitchenConversationPrompt(parsed, catalogs = {}) {
   };
 }
 
-export function mergeKitchenConversation(previousTranscript, reply) {
+export function mergeKitchenConversation(previousTranscript, reply, catalogs = null) {
   const previous = String(previousTranscript || "").trim().replace(/[\s,;:.-]+$/u, "");
   const next = String(reply || "").trim().replace(/^(?:y|pues|bueno|serian|serán|son)\s+/iu, "");
   if (!previous) return next;
   if (!next) return previous;
+
+  if (catalogs) {
+    // Una corrección completa y autosuficiente reemplaza lo oído antes. Así un
+    // fragmento erróneo del navegador no contamina una repetición posterior.
+    const nextParsed = parseKitchenVoice(next, catalogs);
+    if (nextParsed.canExecute) return next;
+
+    // Si falta la cantidad de un único sabor, “dos” o “son dos unidades”
+    // pertenece inequívocamente al sabor que Momobot acaba de preguntar.
+    const normalizedNext = normalizeKitchenVoice(next);
+    const shortQuantity = normalizedNext.match(/^(\d+)(?:\s+unidades?)?$/);
+    if (shortQuantity) {
+      const previousParsed = parseKitchenVoice(previous, catalogs);
+      const missing = (previousParsed.errors || [])
+        .find((error) => /^cantidad faltante por sabor:/i.test(error));
+      const pending = missing
+        ? missing.replace(/^cantidad faltante por sabor:\s*/i, "").replace(/[.!?]+$/u, "")
+          .split(",").map((item) => item.trim()).filter(Boolean)
+        : [];
+      if (pending.length === 1) return `${previous}. ${shortQuantity[1]} de ${pending[0]}`;
+    }
+  }
   return `${previous}. ${next}`;
 }
 

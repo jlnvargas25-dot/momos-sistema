@@ -5198,7 +5198,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
       return;
     }
     stopVoiceSession({ nextMode: "processing" });
-    const combined = mergeKitchenConversation(conversationContextRef.current || transcriptRef.current, heard);
+    const combined = mergeKitchenConversation(conversationContextRef.current || transcriptRef.current, heard, voiceCatalogs);
     transcriptRef.current = combined;
     setTranscript(combined);
     setTimeout(() => interpretTranscriptRef.current?.(combined, { handsFree: true, continuation: true, spokenText: heard }), 100);
