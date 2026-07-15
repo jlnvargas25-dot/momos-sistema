@@ -12,7 +12,8 @@ begin
     '20260714_09_empaque_trazable','20260714_10_domicilio_empaque',
     '20260714_11_inventario_vencimientos','20260714_12_inventario_lotes',
     '20260714_13_productos_servidor','20260714_14_control_operativo',
-    '20260714_15_crm_clientes','20260714_16_agencia_comercial'
+    '20260714_15_crm_clientes','20260714_16_agencia_comercial',
+    '20260715_17_vencimiento_terminado','20260715_18_abastecimiento_interno'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -23,6 +24,16 @@ begin
   assert to_regclass('public.v_variantes_cuarentena') is not null, 'falta cuarentena de producto terminado';
   assert exists(select 1 from pg_trigger where tgname='orders_packing_verification_guard' and not tgisinternal), 'falta guard de Empaque';
   assert exists(select 1 from pg_trigger where tgname='orders_close_terminal_suggestions' and not tgisinternal), 'falta cierre de tareas terminales';
+  assert exists(select 1 from pg_trigger where tgname='production_batches_finished_expiry_guard' and not tgisinternal), 'falta guard de vencimiento terminado';
+  assert exists(select 1 from pg_trigger where tgname='inventory_lots_internal_purchase_guard' and not tgisinternal), 'falta guard de compra para elaboraciones internas';
+  assert exists(
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='production_batches' and column_name='desmoldado_en'
+  ), 'falta timestamp de desmolde';
+  assert exists(
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='inventory_items' and column_name='origen_abastecimiento'
+  ), 'falta origen de abastecimiento de inventario';
   assert not has_table_privilege('authenticated','public.packing_verifications','INSERT'), 'Empaque no inserta verificaciones directo';
   assert not has_table_privilege('authenticated','public.inventory_lots','INSERT'), 'staff no inserta lotes directo';
   assert has_function_privilege('authenticated','public.confirmar_verificacion_empaque(text,text[])','EXECUTE'), 'falta RPC de Empaque';
@@ -49,10 +60,24 @@ begin
   assert not exists(select 1 from public.v_inventory_lot_reconciliation where difference<>0), 'stock agregado y lotes no cuadran';
   assert not exists(select 1 from public.v_variantes_disponibles where vencimiento_proximo<current_date), 'FIFO terminado expone vencidos';
   assert not exists(
+    select 1 from public.production_batches
+    where desmoldado_en is not null
+      and (
+        vence is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + 3)
+        or vencimiento is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + 3)
+      )
+  ), 'producto terminado no respeta desmolde +3 días';
+  assert not exists(
+    select 1
+    from public.subrecetas sr
+    join public.inventory_items i on i.id=sr.item_id
+    where i.origen_abastecimiento<>'Producción interna'
+  ), 'una elaboración interna quedó clasificada como compra';
+  assert not exists(
     select 1 from public.production_suggestions ps join public.orders o on o.id=ps.order_id
     where ps.estado='Pendiente' and o.estado in ('Cancelado','Entregado')
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-16 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-18 PASS, rollback total' as resultado;
   rollback;

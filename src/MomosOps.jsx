@@ -6,6 +6,7 @@ import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineK
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderTransitionPermission } from "./lib/order-workflow";
 import { buildFinishedInventory } from "./lib/finished-inventory";
 import { buildIngredientLotSummary } from "./lib/ingredient-lots";
+import { inventorySupplyMode } from "./lib/inventory-supply-mode";
 import { evaluateComboVariantAvailability, evaluateExactVariantDemand } from "./lib/variant-availability";
 import { momobotContextAnswer, momobotContextSnapshot } from "./lib/momobot-context";
 import { canAutoStartMomobot, isCurrentMomobotAuthorization, momobotModeAfterExecution, momobotModeAfterReadOnly } from "./lib/momobot-session";
@@ -14,6 +15,7 @@ import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgres
 import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
+import { buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -21,7 +23,7 @@ import { buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS } from "./lib/agency-i
    Arquitectura: tablas normalizadas + persistencia (window.storage)
    ================================================================ */
 
-const DB_VERSION = 16;
+const DB_VERSION = 17;
 const DB_KEY = "momos-db-v2"; // clave estable; la versión interna migra los datos
 
 // Clonado seguro con fallback para navegadores sin structuredClone
@@ -175,6 +177,12 @@ const fechaISOEnBogota = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: 
 const hoyISO = () => fechaISOEnBogota(new Date());
 const ahoraHora = () => new Intl.DateTimeFormat("es-CO", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 const dISO = (nDias) => fechaISOEnBogota(new Date(Date.now() + nDias * 86400000));
+const sumarDiasISO = (fecha, nDias) => {
+  const match = String(fecha || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return "";
+  const date = new Date(Date.UTC(+match[1], +match[2] - 1, +match[3] + nDias, 12));
+  return date.toISOString().slice(0, 10);
+};
 const cumpleEn = (nDias) => dISO(nDias).slice(5); // MM-DD
 const diasEntre = (a, b) => Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000);
 
@@ -443,11 +451,11 @@ function seedDb() {
   ];
 
   const production_batches = [
-    { id: "L-018", fecha: hoyISO(), producto: "Momo Gatito 150 g", figura: "Gatito", sabor: "Maracuyá", relleno: "Cheesecake con ganache", salsa: "Frutos rojos", gramaje: "150 g", prod: 12, perfectas: 10, imperfectas: 1, descartadas: 1, destino: "Insumo para malteadas", resp: "Karen", vence: dISO(14), estado: "Congelando", stockContabilizado: false, horasCongelacion: 10, inicioCongelacion: selloHaceHoras(6), obs: "Molde nuevo, mejor definición de orejas." },
-    { id: "L-017", fecha: dISO(-1), producto: "Momo Perrito 150 g", figura: "Perrito", sabor: "Oreo", relleno: "Cheesecake con ganache", salsa: "Chocolate", gramaje: "150 g", prod: 10, perfectas: 9, imperfectas: 1, descartadas: 0, destino: "Prueba interna", resp: "Karen", vence: dISO(13), estado: "Listo", stockContabilizado: true, obs: "" },
-    { id: "L-016", fecha: dISO(-2), producto: "Momo premium 280 g", figura: "Corazón", sabor: "Caramelo salado", relleno: "Cheesecake con ganache", salsa: "Lechera", gramaje: "280 g", prod: 6, perfectas: 5, imperfectas: 0, descartadas: 1, destino: "—", resp: "Julián", vence: dISO(12), estado: "Listo", stockContabilizado: true, obs: "Una pieza se fracturó al desmoldar." },
-    { id: "L-015", fecha: dISO(-3), producto: "Cheesecake Momo cuchareable", figura: "Gatito horizontal", sabor: "Durazno", relleno: "Cheesecake con ganache", salsa: "Frutos rojos", gramaje: "160 g", prod: 15, perfectas: 15, imperfectas: 0, descartadas: 0, destino: "—", resp: "Karen", vence: dISO(7), estado: "Reservado", stockContabilizado: false, obs: "Reservado parcial para pedidos de Rappi." },
-    { id: "L-014", fecha: dISO(-4), producto: "Momo grande 190 g", figura: "Osito", sabor: "Milo", relleno: "Cheesecake con ganache", salsa: "Arequipe", gramaje: "190 g", prod: 8, perfectas: 6, imperfectas: 2, descartadas: 0, destino: "Insumo para crepas", resp: "Julián", vence: dISO(10), estado: "Vendido", stockContabilizado: false, obs: "" },
+    { id: "L-018", fecha: hoyISO(), producto: "Momo Gatito 150 g", figura: "Gatito", sabor: "Maracuyá", relleno: "Cheesecake con ganache", salsa: "Frutos rojos", gramaje: "150 g", prod: 12, perfectas: 10, imperfectas: 1, descartadas: 1, destino: "Insumo para malteadas", resp: "Karen", vence: "", desmoldadoEn: "", estado: "Congelando", stockContabilizado: false, horasCongelacion: 10, inicioCongelacion: selloHaceHoras(6), obs: "Molde nuevo, mejor definición de orejas." },
+    { id: "L-017", fecha: dISO(-1), producto: "Momo Perrito 150 g", figura: "Perrito", sabor: "Oreo", relleno: "Cheesecake con ganache", salsa: "Chocolate", gramaje: "150 g", prod: 10, perfectas: 9, imperfectas: 1, descartadas: 0, destino: "Prueba interna", resp: "Karen", vence: dISO(2), desmoldadoEn: dISO(-1) + " 10:00:00", estado: "Listo", stockContabilizado: true, obs: "" },
+    { id: "L-016", fecha: dISO(-2), producto: "Momo premium 280 g", figura: "Corazón", sabor: "Caramelo salado", relleno: "Cheesecake con ganache", salsa: "Lechera", gramaje: "280 g", prod: 6, perfectas: 5, imperfectas: 0, descartadas: 1, destino: "—", resp: "Julián", vence: dISO(1), desmoldadoEn: dISO(-2) + " 11:00:00", estado: "Listo", stockContabilizado: true, obs: "Una pieza se fracturó al desmoldar." },
+    { id: "L-015", fecha: dISO(-3), producto: "Cheesecake Momo cuchareable", figura: "Gatito horizontal", sabor: "Durazno", relleno: "Cheesecake con ganache", salsa: "Frutos rojos", gramaje: "160 g", prod: 15, perfectas: 15, imperfectas: 0, descartadas: 0, destino: "—", resp: "Karen", vence: dISO(0), desmoldadoEn: dISO(-3) + " 09:00:00", estado: "Reservado", stockContabilizado: false, obs: "Reservado parcial para pedidos de Rappi." },
+    { id: "L-014", fecha: dISO(-4), producto: "Momo grande 190 g", figura: "Osito", sabor: "Milo", relleno: "Cheesecake con ganache", salsa: "Arequipe", gramaje: "190 g", prod: 8, perfectas: 6, imperfectas: 2, descartadas: 0, destino: "Insumo para crepas", resp: "Julián", vence: dISO(-1), desmoldadoEn: dISO(-4) + " 09:30:00", estado: "Vendido", stockContabilizado: false, obs: "" },
   ];
 
   const inventory_items = [
@@ -977,6 +985,21 @@ function migrate(d) {
   if (d.version === 15) {
     // migración idempotente v3.1.3 (solo sella la versión)
     d.version = 16;
+  }
+  if (d.version === 16) {
+    // Producto terminado: la vida útil empieza al desmoldar y dura 3 días.
+    (d.production_batches || []).forEach((l) => {
+      const terminado = l.stockContabilizado || ["Listo", "Reservado", "Vendido", "Imperfecto", "Descartado"].includes(l.estado);
+      if (!terminado) {
+        l.desmoldadoEn = "";
+        l.vence = "";
+        return;
+      }
+      const audit = (d.audit_logs || []).find((a) => a.entidad === "Lote" && a.entidadId === l.id && /desmoldado/i.test(a.accion || ""));
+      l.desmoldadoEn = l.desmoldadoEn || (audit && audit.fecha) || `${l.fecha} 00:00:00`;
+      l.vence = sumarDiasISO(l.desmoldadoEn, 3);
+    });
+    d.version = 17;
   }
   return d;
 }
@@ -1789,6 +1812,29 @@ function SectionTitle({ children, action }) {
     <div className="flex items-center justify-between gap-3 mb-3 mt-6 first:mt-0">
       <h2 className="display text-lg font-semibold m-0">{children}</h2>
       {action}
+    </div>
+  );
+}
+
+function WorkScopeTabs({ value, onChange, activeCount, historyCount, activeLabel = "En curso" }) {
+  const options = [
+    { id: "active", label: activeLabel, count: activeCount, icon: "●" },
+    { id: "history", label: "Historial", count: historyCount, icon: "◷" },
+  ];
+  return (
+    <div className="inline-flex rounded-2xl border p-1" style={{ borderColor: T.border, background: T.vainilla }} role="tablist" aria-label="Vista de trabajo e historial">
+      {options.map((option) => {
+        const selected = value === option.id;
+        return (
+          <button key={option.id} type="button" role="tab" aria-selected={selected} onClick={() => onChange(option.id)}
+            className="rounded-xl px-3 py-2 text-xs font-extrabold transition flex items-center gap-2"
+            style={{ background: selected ? T.surface : "transparent", color: selected ? T.choco : T.choco2, boxShadow: selected ? "0 3px 10px rgba(84,56,43,.10)" : "none" }}>
+            <span aria-hidden="true" style={{ color: selected ? T.coral : T.choco2 }}>{option.icon}</span>
+            <span>{option.label}</span>
+            <span className="min-w-5 h-5 px-1 rounded-full inline-flex items-center justify-center text-[10px]" style={{ background: selected ? T.coralSoft : "rgba(255,255,255,.72)", color: selected ? "#A94D34" : T.choco2 }}>{option.count}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -2682,8 +2728,6 @@ function Dashboard({ db, go, user }) {
 
 /* ================= PEDIDOS ================= */
 
-const KANBAN_COLS = ["Nuevo","Confirmado","Pendiente de pago","Pagado","En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado"];
-
 /* Resumen de actividad por módulo (pedido del usuario 2026-07-12): últimas
    filas del rastro que YA viaja en el read-model (audit_logs / movements) —
    cada módulo arma sus filas {texto, meta} y esto solo las pinta. */
@@ -2704,9 +2748,83 @@ function UltimosMovimientos({ filas }) {
   );
 }
 
+function HistorialOperativo({ db }) {
+  const entries = useMemo(() => buildOperationalHistory(db), [db.audit_logs]);
+  const [q, setQ] = useState("");
+  const [area, setArea] = useState("");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [limit, setLimit] = useState(50);
+  const areas = useMemo(() => [...new Set(entries.map((entry) => entry.area))].sort((a, b) => a.localeCompare(b, "es")), [entries]);
+  const filtered = useMemo(() => {
+    const query = q.trim().toLocaleLowerCase("es");
+    return entries.filter((entry) => {
+      const haystack = [entry.area, entry.entity, entry.entityId, entry.action, entry.actor, entry.from, entry.to].join(" ").toLocaleLowerCase("es");
+      const day = entry.at.slice(0, 10);
+      return (!query || haystack.includes(query))
+        && (!area || entry.area === area)
+        && (!desde || day >= desde)
+        && (!hasta || day <= hasta);
+    });
+  }, [entries, q, area, desde, hasta]);
+  useEffect(() => { setLimit(50); }, [q, area, desde, hasta]);
+  const visible = filtered.slice(0, limit);
+  const today = hoyISO();
+  const todayCount = entries.filter((entry) => entry.at.startsWith(today)).length;
+  const actorCount = new Set(entries.map((entry) => entry.actor).filter(Boolean)).size;
+
+  function exportar() {
+    downloadCSV("historial-operativo", ["Fecha", "Área", "Entidad", "ID", "Acción", "Antes", "Después", "Responsable"], filtered.map((entry) => [entry.at, entry.area, entry.entity, entry.entityId, entry.action, entry.from, entry.to, entry.actor]));
+  }
+
+  return (
+    <div>
+      <Card className="p-5 mb-4 overflow-hidden relative" style={{ background: "linear-gradient(135deg,#FFF9F1 0%,#FFFFFF 55%,#FBE3DA 140%)", borderColor: "#E7C8B7" }}>
+        <div className="absolute right-5 top-3 text-6xl opacity-[.08]" aria-hidden="true">◷</div>
+        <div className="text-[10px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>Control central · solo lectura</div>
+        <div className="display text-2xl font-semibold mt-1">Historial operativo MOMOS</div>
+        <div className="text-sm font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>Consultá qué pasó, en qué área, sobre qué registro y quién lo ejecutó. Nada se borra al salir de una bandeja de trabajo.</div>
+      </Card>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Stat icon="◷" label="Movimientos" value={entries.length} sub="rastro disponible" tone={T.coral} />
+        <Stat icon="●" label="Hoy" value={todayCount} sub="acciones registradas" tone="#3F6B42" />
+        <Stat icon="▦" label="Áreas" value={areas.length} sub="fuentes conectadas" tone="#63518A" />
+        <Stat icon="♙" label="Responsables" value={actorCount} sub="usuarios en el rastro" tone="#96690F" />
+      </div>
+
+      <Card className="p-3 mb-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_150px_150px_auto] gap-2 items-center">
+          <input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Buscar pedido, lote, acción o responsable…" className="rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
+          <select value={area} onChange={(event) => setArea(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle}><option value="">Todas las áreas</option>{areas.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+          <input type="date" aria-label="Historial desde" value={desde} onChange={(event) => setDesde(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle} />
+          <input type="date" aria-label="Historial hasta" value={hasta} onChange={(event) => setHasta(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle} />
+          <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
+        </div>
+      </Card>
+
+      <div className="flex items-center justify-between gap-3 mb-3"><div><div className="display text-lg font-semibold">Bitácora consolidada</div><div className="text-xs font-semibold" style={{ color: T.choco2 }}>{filtered.length} movimiento{filtered.length === 1 ? "" : "s"} encontrado{filtered.length === 1 ? "" : "s"}</div></div>{(q || area || desde || hasta) && <button type="button" className="text-xs font-extrabold" style={{ color: T.coral }} onClick={() => { setQ(""); setArea(""); setDesde(""); setHasta(""); }}>Limpiar filtros</button>}</div>
+      <Card className="overflow-hidden">
+        <div className="divide-y" style={{ borderColor: T.border }}>
+          {visible.map((entry) => (
+            <div key={entry.id} className="p-3 sm:p-4 flex gap-3 items-start" style={{ borderColor: T.border }}>
+              <div className="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center text-sm font-black" style={{ background: entry.area === "Producción" ? "#DCE7F2" : entry.area === "Domicilios" ? "#DDEBD9" : entry.area === "Reclamos" ? "#F6D4CD" : T.vainilla, color: T.choco }}>↻</div>
+              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{entry.area}</span><span className="text-[10px] font-bold" style={{ color: T.choco2 }}>{entry.entity}{entry.entityId ? ` · ${entry.entityId}` : ""}</span></div><div className="font-bold text-sm mt-0.5">{entry.action}</div>{(entry.from || entry.to) && <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{entry.from || "—"} <span aria-hidden="true">→</span> <b style={{ color: T.choco }}>{entry.to || "—"}</b></div>}</div>
+              <div className="text-right shrink-0"><time className="text-[10px] font-bold block" style={{ color: T.choco2 }}>{entry.at || "Sin fecha"}</time><span className="text-[10px] font-extrabold block mt-1">{entry.actor}</span></div>
+            </div>
+          ))}
+          {!visible.length && <div className="p-10 text-center"><div className="text-3xl mb-2">⌕</div><div className="font-bold">No hay movimientos con esos filtros</div></div>}
+        </div>
+      </Card>
+      {visible.length < filtered.length && <div className="mt-3 text-center"><Btn kind="ghost" onClick={() => setLimit((value) => value + 50)}>Ver 50 movimientos más</Btn></div>}
+    </div>
+  );
+}
+
 function Empaque({ db, update, user, refrescar, perfil }) {
   const [selId, setSelId] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [scope, setScope] = useState("active");
   const verifications = db.packing_verifications || [];
   const pending = db.orders
     .filter((order) => order.estado === "Listo para empaque")
@@ -2714,6 +2832,9 @@ function Empaque({ db, update, user, refrescar, perfil }) {
   const packed = db.orders
     .filter((order) => order.estado === "Empacado")
     .sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
+  const history = db.orders
+    .filter((order) => isPackingHistoryOrder(order, db))
+    .sort((a, b) => `${b.fecha} ${b.hora}`.localeCompare(`${a.fecha} ${a.hora}`));
   const verifiedPending = pending.filter((order) => findPackingVerification(order.id, verifications)).length;
   const selected = selId ? db.orders.find((order) => order.id === selId) : null;
 
@@ -2798,11 +2919,15 @@ function Empaque({ db, update, user, refrescar, perfil }) {
         Compará cada producto, figura, sabor y cantidad. La verificación queda registrada con usuario y hora.
       </div>
 
+      <div className="mb-4"><WorkScopeTabs value={scope} onChange={setScope} activeCount={pending.length + packed.length} historyCount={history.length} activeLabel="Por atender" /></div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <Stat icon="📦" label="Por empacar" value={pending.length} sub="comandas que Cocina entregó" tone={T.coral} />
         <Stat icon="🚚" label="A despacho" value={packed.length} sub="empacadas, esperan Logística" tone="#63518A" />
+        <Stat icon="◷" label="Historial de Empaque" value={history.length} sub="pedidos que ya salieron del área" tone="#3F6B42" onClick={() => setScope("history")} active={scope === "history"} />
       </div>
 
+      {scope === "active" ? <>
       <div className="text-[11px] font-semibold mb-4 flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: T.choco2 }}>
         <span>Cocina entregó <b style={{ color: "#3F6B42" }}>{pending.length}</b></span>
         <span aria-hidden="true">→</span>
@@ -2820,6 +2945,22 @@ function Empaque({ db, update, user, refrescar, perfil }) {
       {packed.length > 0 && <>
         <SectionTitle>🚚 Empacados para entregar a Logística</SectionTitle>
         <div className="space-y-3">{packed.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}</div>
+      </>}
+      </> : <>
+        <SectionTitle>◷ Historial de Empaque</SectionTitle>
+        <div className="text-xs font-semibold mb-3 -mt-2" style={{ color: T.choco2 }}>Pedidos que ya fueron relevados a Logística o terminaron su recorrido. El historial es de consulta y no altera la operación.</div>
+        <div className="space-y-3">
+          {history.map((order) => {
+            const customer = customerOf(db, order.customerId);
+            const verification = findPackingVerification(order.id, verifications);
+            const evidenceCount = evidencesOf(db, order.id).filter((evidence) => evidence.tipo !== "Comprobante de pago").length;
+            return <Card key={order.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><div className="font-bold">Pedido {order.id}</div><Badge label={order.estado} /></div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{customer.nombre || "Cliente"} · {order.fecha} {order.hora}</div></div>
+              <div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: verification ? "#DDEBD9" : T.vainilla, color: verification ? "#3F6B42" : T.choco2 }}>{verification ? "Comanda verificada ✓" : "Sin verificación"}</span><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>{evidenceCount} evidencia{evidenceCount === 1 ? "" : "s"}</span><Btn small kind="ghost" onClick={() => setSelId(order.id)}>Consultar</Btn></div>
+            </Card>;
+          })}
+          {!history.length && <Empty icon="◷" text="Todavía no hay pedidos en el historial de Empaque." />}
+        </div>
       </>}
 
       {selected && <DetallePedido db={db} o={selected} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
@@ -2985,6 +3126,8 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
 
 function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [modo, setModo] = useState("kanban");
+  const orderBuckets = useMemo(() => partitionByActivity(db.orders, isActiveOrder), [db.orders]);
+  const [scope, setScope] = useState(() => (focus?.estado && !isActiveOrder({ estado: focus.estado }) ? "history" : "active"));
   const [selId, setSelId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
   const [aviso, setAviso] = useState(null);
@@ -2995,7 +3138,8 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
 
   const barrios = [...new Set(db.orders.map((o) => o.barrio))];
 
-  const filtrados = db.orders.filter((o) => {
+  const scopeOrders = scope === "active" ? orderBuckets.active : orderBuckets.history;
+  const filtrados = scopeOrders.filter((o) => {
     const c = customerOf(db, o.customerId);
     const items = itemsOf(db, o.id);
     const texto = (o.id + " " + (c.nombre || "") + " " + (c.telefono || "")).toLowerCase();
@@ -3010,6 +3154,9 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
       && (!f.desde || o.fecha >= f.desde)
       && (!f.hasta || o.fecha <= f.hasta);
   });
+  const columnasVisibles = scope === "active"
+    ? ORDER_STATES.filter((state) => isActiveOrder({ estado: state }))
+    : ["Entregado", "Cancelado"];
 
   // Fase 3: la transición vive en el SERVER (set_order_status con todas las gates). Luego re-fetch.
   async function cambiar(orderId, estado, opts) {
@@ -3073,6 +3220,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
       </Card>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {puedeCrearPedido && <Btn onClick={() => setNuevo(true)}>＋ Agendar pedido</Btn>}
+        <WorkScopeTabs value={scope} onChange={(next) => { setScope(next); setPendPago(false); }} activeCount={orderBuckets.active.length} historyCount={orderBuckets.history.length} activeLabel="En operación" />
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: T.border }}>
           {[{ id: "kanban", label: "Kanban" }, { id: "tabla", label: "Tabla" }, { id: "control", label: "Control y trazabilidad" }].map((option) => (
             <button key={option.id} onClick={() => setModo(option.id)} className="px-3 py-2 text-xs font-bold"
@@ -3095,7 +3243,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
           )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <MiniSelect placeholder="Canal: todos" options={CANALES} value={f.canal} onChange={(e) => setF({ ...f, canal: e.target.value })} />
-          <MiniSelect placeholder="Estado: todos" options={ORDER_STATES} value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value })} />
+          <MiniSelect placeholder="Estado: todos" options={ORDER_STATES} value={f.estado} onChange={(e) => { const estado = e.target.value; setF({ ...f, estado }); if (estado) setScope(isActiveOrder({ estado }) ? "active" : "history"); }} />
           <MiniSelect placeholder="Barrio: todos" options={barrios} value={f.barrio} onChange={(e) => setF({ ...f, barrio: e.target.value })} />
           <select value={f.producto} onChange={(e) => setF({ ...f, producto: e.target.value })} className="rounded-xl px-2 py-2 text-xs border font-semibold" style={inputStyle}>
             <option value="">Producto: todos</option>
@@ -3116,7 +3264,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
         <PanelTrazabilidadPedidos db={db} orders={filtrados} onOpen={setSelId} />
       ) : modo === "kanban" ? (
         <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
-          {KANBAN_COLS.map((col) => {
+          {columnasVisibles.map((col) => {
             const enCol = filtrados.filter((o) => o.estado === col);
             return (
               <div key={col} className="w-64 shrink-0">
@@ -5135,7 +5283,6 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
               relleno: filling,
               figuras: [{ figura: production.figure, cant: run.quantity }],
               resp_user_id: perfil?.id || null,
-              vence: dISO(14),
               horas_congelacion: db.settings.horasCongelacion || 10,
               obs: note,
               idempotency_key: `${key}-production-${productionIndex}-run-${runIndex}`,
@@ -5421,7 +5568,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
   );
 }
 
-function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
+function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focus }) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
   const [nuevo, setNuevo] = useState(false);
@@ -5440,7 +5587,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
   const formInicial = () => ({
     sabor: sabores[0], relleno: s.rellenos[0], // salsa NO: se aplica al despacho, a gusto del cliente
     figuras: Object.fromEntries(figurasProducibles.map((f) => [f.nombre, 0])), // nombreFigura → cantidad
-    resp: "", vence: dISO(14), horasCongelacion: s.horasCongelacion || 10, obs: "",
+    resp: "", horasCongelacion: s.horasCongelacion || 10, obs: "",
   });
   const [form, setForm] = useState(formInicial);
   const [msg, setMsg] = useState("");
@@ -5451,6 +5598,8 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
   const puedeIniciarPedidos = orderTransitionPermission(perfil?.rol, "Pagado", "En producción").allowed;
   const puedeEntregarEmpaque = orderTransitionPermission(perfil?.rol, "En producción", "Listo para empaque").allowed;
   const [queueBusyOrderId, setQueueBusyOrderId] = useState(null);
+  const batchBuckets = useMemo(() => partitionByActivity(db.production_batches, isActiveProductionBatch), [db.production_batches]);
+  const [scope, setScope] = useState("active");
 
   // ── Componentes + BOM (hito 2): preparar bases/subrecetas ──
   const [prepBase, setPrepBase] = useState(false);
@@ -5458,6 +5607,11 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
   const [prepForm, setPrepForm] = useState({ subrecetaId: "", nominal: 1000, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
   const [enviandoPrep, setEnviandoPrep] = useState(false);
   const subrecetasActivas = useMemo(() => (db.subrecetas || []).filter((sr) => sr.activo), [db.subrecetas]);
+  useEffect(() => {
+    const subrecipeId = focus?.subrecipeId;
+    if (!subrecipeId || !subrecetasActivas.some((subrecipe) => subrecipe.id === subrecipeId)) return;
+    abrirPrepararBase(subrecipeId);
+  }, [focus?.subrecipeId]);
   const itemDe = useMemo(() => { const m = {}; db.inventory_items.forEach((i) => { m[i.id] = i; }); return m; }, [db.inventory_items]);
   const prepSel = subrecetasActivas.find((sr) => sr.id === prepForm.subrecetaId) || null;
   // Derivado en vivo: consumo escalado (cantidad × nominal/1000) + costo estimado del batch.
@@ -5515,7 +5669,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
   // y si el grupo junta figuras distintas se muestra "varias".
   const enProceso = useMemo(() => {
     const map = {};
-    db.production_batches.filter((l) => ["En preparación","Congelando","Reservado"].includes(l.estado)).forEach((l) => {
+    db.production_batches.filter(isActiveProductionBatch).forEach((l) => {
       const k = `${l.producto} · ${l.sabor} · ${l.gramaje}`;
       const figuraLote = Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => f.figura).join("+") : l.figura;
       if (!map[k]) map[k] = { label: k, producto: l.producto, sabor: l.sabor, gramaje: l.gramaje, figura: figuraLote, cant: 0 };
@@ -5527,13 +5681,14 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
 
   // Foco de las cards → filtra la lista "Lotes" de abajo (panel accionable, no solo informativo).
   const [foco, setFoco] = useState(null); // {producto} (stock) | {combo:true, producto,sabor,figura,gramaje} (en proceso)
+  const lotesPorScope = scope === "active" ? batchBuckets.active : batchBuckets.history;
   const lotesFiltrados = useMemo(() => {
-    if (!foco) return db.production_batches;
+    if (!foco) return lotesPorScope;
     // foco.combo ya no incluye figura en la key (ver enProceso): agrupa por producto·sabor·gramaje.
-    return db.production_batches.filter((l) => foco.combo
+    return lotesPorScope.filter((l) => foco.combo
       ? l.producto === foco.producto && l.sabor === foco.sabor && l.gramaje === foco.gramaje
       : l.producto === foco.producto);
-  }, [db.production_batches, foco]);
+  }, [lotesPorScope, foco]);
   const focoLabel = foco ? (foco.combo ? `${foco.producto} · ${foco.sabor} · ${foco.figura} · ${foco.gramaje}` : foco.producto) : "";
   function enfocarLotes(next) { setFoco(next); setTimeout(() => { const el = document.getElementById("lotes-produccion"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }
 
@@ -5602,7 +5757,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
     if (!figurasElegidas.length) { setMsg("Elegí al menos una figura con cantidad mayor a 0."); return; }
     const payload = {
       sabor: form.sabor, relleno: form.relleno, figuras: figurasElegidas,
-      resp_user_id: respUserId(form.resp), vence: form.vence, horas_congelacion: +form.horasCongelacion || 10,
+      resp_user_id: respUserId(form.resp), horas_congelacion: +form.horasCongelacion || 10,
       obs: form.obs, sugerencia_id: pre ? pre.id : undefined,
       idempotency_key: corridaIdemKeyRef.current,
     };
@@ -5622,13 +5777,22 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
     await refrescarSilencioso(() => setMsg("La producción se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
     const faltantes = resultado && resultado.faltantes;
     if (Array.isArray(faltantes) && faltantes.length) {
-      setMsg(`Producción registrada, pero el inventario de insumos no alcanzó para: ${faltantes.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}. Registra la compra en Inventario.`);
+      const internos = faltantes.filter((f) => (db.subrecetas || []).some((subrecipe) => subrecipe.itemId === f.item_id));
+      const compras = faltantes.filter((f) => !internos.includes(f));
+      const acciones = [
+        internos.length ? `prepará en Cocina: ${internos.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}` : "",
+        compras.length ? `comprá en Inventario: ${compras.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}` : "",
+      ].filter(Boolean).join(" · ");
+      setMsg(`Producción registrada con faltantes: ${acciones}.`);
     }
   }
 
-  function abrirPrepararBase() {
+  function abrirPrepararBase(requestedSubrecipeId = "") {
+    const selectedId = typeof requestedSubrecipeId === "string" && subrecetasActivas.some((subrecipe) => subrecipe.id === requestedSubrecipeId)
+      ? requestedSubrecipeId
+      : (subrecetasActivas[0] ? subrecetasActivas[0].id : "");
     prepIdemKeyRef.current = "subprod-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
-    setPrepForm({ subrecetaId: subrecetasActivas[0] ? subrecetasActivas[0].id : "", nominal: 1000, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
+    setPrepForm({ subrecetaId: selectedId, nominal: 1000, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
     setPrepBase(true);
   }
 
@@ -5655,7 +5819,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
     setEnviandoPrep(false);
     setPrepBase(false);
     prepIdemKeyRef.current = null; // fuerza key nueva en la próxima apertura
-    toast("ok", "Base preparada — inventario actualizado");
+    toast("ok", `${prepSel.nombre} preparado · inventario actualizado`);
     await refrescarSilencioso(() => setMsg("La base se preparó correctamente, pero no se pudo actualizar la vista. Recargá la página para verla."));
     const faltantesPrep = resultado && resultado.faltantes;
     if (Array.isArray(faltantesPrep) && faltantesPrep.length) {
@@ -5718,7 +5882,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
     }
     setEnviandoDesmolde(false);
     setDesmolde(null);
-    toast("ok", "Lote desmoldado — stock actualizado");
+    toast("ok", `Lote desmoldado · stock actualizado · vence ${dISO(3)}`);
     await refrescarSilencioso(() => setMsg("El lote se desmoldó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
   }
 
@@ -5734,7 +5898,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
         busyOrderId={queueBusyOrderId}
       />
       <VoiceKitchenPanel db={db} perfil={perfil} flavors={sabores} figures={figurasProducibles} subrecipes={subrecetasActivas} refrescar={refrescar} serverDataReady={serverDataReady} requestedOrder={queueRequest} />
-      <div className="mb-4 flex gap-2 flex-wrap"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn>{subrecetasActivas.length > 0 && <Btn kind="soft" onClick={abrirPrepararBase}>🥣 Preparar base</Btn>}</div>
+      <div className="mb-4 flex gap-2 flex-wrap"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn>{subrecetasActivas.length > 0 && <Btn kind="soft" onClick={() => abrirPrepararBase()}>🥣 Preparar elaboración</Btn>}</div>
 
       {sugerencias.length > 0 && (
         <>
@@ -5800,8 +5964,8 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
 
       {subrecetasActivas.length > 0 && (
         <>
-          <SectionTitle>🥣 Bases preparadas (subrecetas)</SectionTitle>
-          <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Mousses, rellenos y salsas producidos en cocina. Las corridas de figuras descuentan de acá; el costo lo pone el WAC al preparar.</div>
+          <SectionTitle>🥣 Elaboraciones internas preparadas</SectionTitle>
+          <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Mousses por sabor, cheesecake, ganache y salsas se elaboran en Cocina: consumen su receta, registran rendimiento y alimentan este stock. Nunca entran como compra.</div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-2">
             {subrecetasActivas.map((sr) => {
               const it = itemDe[sr.itemId];
@@ -5823,7 +5987,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
       )}
 
       <SectionTitle>🧊 Lotes en proceso (aún no disponibles)</SectionTitle>
-      <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Congelando, en preparación o reservados. No suman al stock operativo hasta pasar a "Listo".</div>
+      <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Congelando o en preparación. No suman al stock operativo hasta pasar a "Listo".</div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-2">
         {enProceso.map((e) => (
           <Card key={e.label} className="p-3 flex items-center justify-between gap-2" onClick={() => enfocarLotes({ combo: true, producto: e.producto, sabor: e.sabor, figura: e.figura, gramaje: e.gramaje })}>
@@ -5835,11 +5999,14 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
       </div>
 
       <div id="lotes-produccion" />
-      <SectionTitle action={foco ? <button type="button" onClick={() => setFoco(null)} className="text-xs font-bold" style={{ color: T.coral }}>✕ Quitar filtro</button> : undefined}>Lotes</SectionTitle>
+      <SectionTitle action={<div className="flex flex-wrap items-center justify-end gap-2">{foco && <button type="button" onClick={() => setFoco(null)} className="text-xs font-bold" style={{ color: T.coral }}>✕ Quitar filtro</button>}<WorkScopeTabs value={scope} onChange={(next) => { setScope(next); setFoco(null); }} activeCount={batchBuckets.active.length} historyCount={batchBuckets.history.length} activeLabel="En proceso" /></div>}>{scope === "active" ? "Lotes en proceso" : "Historial de lotes"}</SectionTitle>
       {foco && <div className="text-xs font-bold mb-3 p-2 rounded-lg" style={{ background: T.vainilla, color: T.choco2 }}>Mostrando lotes de: {focoLabel} ({lotesFiltrados.length})</div>}
       <div className="grid lg:grid-cols-2 gap-3">
         {lotesFiltrados.map((l) => {
           const merma = l.prod > 0 ? (l.imperfectas + l.descartadas) / l.prod : 0;
+          const vencimientoTexto = !isActiveProductionBatch(l) && l.vence
+            ? `Vence ${l.vence} · 3 días desde desmolde`
+            : "Vence al desmoldar · +3 días";
           return (
             <Card key={l.id} className="momo-queue-item p-4">
               <div className="flex items-start justify-between gap-3">
@@ -5850,7 +6017,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
                     {l.corridaId && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: T.vainilla, color: "#63518A" }}>Corrida {l.corridaId}</span>}
                   </div>
                   <div className="text-sm font-bold leading-tight mt-0.5">{l.id} · {l.producto}</div>
-                  <div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{l.fecha} · Resp: {l.resp || "—"} · Vence {l.vence}</div>
+                  <div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{l.fecha} · Resp: {l.resp || "—"} · {vencimientoTexto}</div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="display text-2xl" style={{ color: T.coral }}>{l.prod || 0}</div>
@@ -5906,7 +6073,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
                   Merma: {pct(merma)} {merma > 0.15 && "· revisar proceso"}
                 </div>
                 <div className="flex gap-2">
-                  {l.estado === "En preparación" && (
+                  {scope === "active" && l.estado === "En preparación" && (
                     <BtnAsync small confirmar="❄️ ¿Empezar? Tocá de nuevo" textoEnVuelo="Empezando…" disabled={enviandoBatchId === l.id} onClick={async () => {
                       setEnviandoBatchId(l.id);
                       try {
@@ -5921,7 +6088,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
                       setEnviandoBatchId(null);
                     }}>❄️ Empezar congelamiento</BtnAsync>
                   )}
-                  {l.imperfectas > 0 && !String(l.destino).includes("Insumo") && (
+                  {scope === "active" && l.imperfectas > 0 && !String(l.destino).includes("Insumo") && (
                     <BtnAsync small kind="soft" confirmar="♻️ ¿Convertir a insumo? Tocá de nuevo" textoEnVuelo="Convirtiendo…" disabled={enviandoBatchId === l.id} onClick={async () => {
                       setEnviandoBatchId(l.id);
                       try {
@@ -5936,7 +6103,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
                       setEnviandoBatchId(null);
                     }}>♻️ Convertir imperfectas</BtnAsync>
                   )}
-                  <MiniSelect options={LOTE_ESTADOS} value={l.estado} disabled={enviandoBatchId === l.id} onChange={async (e) => {
+                  <MiniSelect options={LOTE_ESTADOS} value={l.estado} disabled={enviandoBatchId === l.id || scope === "history"} onChange={async (e) => {
                     const nuevoEstado = e.target.value;
                     // v2: pasar a 'Listo' desde acá reusa marcarListo — si los conteos ya
                     // cuadran con prod pasa directo (lotes viejos, re-transiciones post-reversa);
@@ -5961,7 +6128,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
             </Card>
           );
         })}
-        {lotesFiltrados.length === 0 && <div className="text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>No hay lotes para este filtro.</div>}
+        {lotesFiltrados.length === 0 && <div className="text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>{scope === "active" ? "No hay lotes activos para este filtro." : "Todavía no hay lotes en el historial para este filtro."}</div>}
       </div>
 
       {nuevo && (() => {
@@ -6019,8 +6186,10 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
 
             <div className="grid sm:grid-cols-2 gap-x-4">
               <Field label="Responsable"><Select options={db.users.filter((u) => u.activo).map((u) => u.nombre)} value={form.resp} onChange={(e) => setForm({ ...form, resp: e.target.value })} placeholder="Sin responsable" /></Field>
-              <Field label="Vencimiento interno"><Input type="date" value={form.vence} onChange={(e) => setForm({ ...form, vence: e.target.value })} /></Field>
               <Field label="Horas de congelación objetivo"><Input type="number" min="1" step="1" value={form.horasCongelacion} onChange={(e) => setForm({ ...form, horasCongelacion: +e.target.value })} /></Field>
+            </div>
+            <div className="rounded-xl px-3 py-2.5 mb-3 text-xs font-semibold" style={{ background: "#E8F1E5", color: "#315D36", border: "1px solid #C9DDC4" }}>
+              🗓️ El vencimiento no se digita: empieza al confirmar el desmolde y queda sellado automáticamente por 3 días.
             </div>
             <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
             <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los insumos de la receta (por la cantidad producida) y se crea un lote por cada figura elegida. Las piezas perfectas se suman al stock cuando cada lote pase a "Listo" (con desmolde).</div>
@@ -6033,7 +6202,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
       })()}
 
       {prepBase && (
-        <Modal title="🥣 Preparar base (subreceta)" onClose={() => setPrepBase(false)} wide>
+        <Modal title="🥣 Preparar elaboración interna" onClose={() => setPrepBase(false)} wide>
           <div className="grid sm:grid-cols-2 gap-x-4">
             <Field label="Base a preparar">
               <select value={prepForm.subrecetaId} onChange={(e) => setPrepForm({ ...prepForm, subrecetaId: e.target.value, obtenidos: "", obtenidosTocado: false })} className="w-full rounded-lg px-2 py-2 text-sm border" style={inputStyle}>
@@ -6089,7 +6258,8 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
           });
           return (
             <Modal title={`Desmolde ${desmolde.batchId} · lote mixto`} onClose={() => setDesmolde(null)}>
-              <div className="text-sm font-semibold mb-3" style={{ color: T.choco2 }}>Producidas: {desmolde.prod} · este lote combina {desmolde.figuras.length} figuras — contá cada una por separado.</div>
+              <div className="text-sm font-semibold mb-2" style={{ color: T.choco2 }}>Producidas: {desmolde.prod} · este lote combina {desmolde.figuras.length} figuras — contá cada una por separado.</div>
+              <div className="text-xs font-bold mb-3 rounded-xl px-3 py-2" style={{ background: "#E8F1E5", color: "#315D36" }}>Al confirmar, el producto terminado vencerá el {dISO(3)}.</div>
               {desmolde.figuras.map((f, i) => (
                 <div key={f.figura} className="mb-2 rounded-xl p-2.5" style={{ background: T.vainilla }}>
                   <div className="text-xs font-bold mb-1.5" style={{ color: filaCuadra(f) ? T.choco2 : "#A03B2A" }}>{f.figura} · {f.cant} producidas{filaCuadra(f) ? "" : ` — la suma debe dar ${f.cant}`}</div>
@@ -6111,7 +6281,8 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
         const cuadra = suma === desmolde.prod;
         return (
           <Modal title={`Desmolde ${desmolde.batchId}`} onClose={() => setDesmolde(null)}>
-            <div className="text-sm font-semibold mb-3" style={{ color: T.choco2 }}>Producidas: {desmolde.prod}</div>
+            <div className="text-sm font-semibold mb-2" style={{ color: T.choco2 }}>Producidas: {desmolde.prod}</div>
+            <div className="text-xs font-bold mb-3 rounded-xl px-3 py-2" style={{ background: "#E8F1E5", color: "#315D36" }}>Al confirmar, el producto terminado vencerá el {dISO(3)}.</div>
             <div className="grid sm:grid-cols-3 gap-x-3">
               <Field label="Perfectas"><Input type="number" min="0" value={desmolde.perfectas} onChange={(e) => setDesmolde({ ...desmolde, perfectas: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></Field>
               <Field label="Imperfectas"><Input type="number" min="0" value={desmolde.imperfectas} onChange={(e) => setDesmolde({ ...desmolde, imperfectas: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></Field>
@@ -6357,7 +6528,7 @@ function InventarioTerminado({ db, go }) {
 
 /* ================= INVENTARIO DE INSUMOS ================= */
 
-function Inventario({ db, update, user, focus, refrescar }) {
+function Inventario({ db, update, user, focus, refrescar, go }) {
   const [mov, setMov] = useState(false);
   const [desecharVencido, setDesecharVencido] = useState(null);
   const [motivoDesecho, setMotivoDesecho] = useState("");
@@ -6383,8 +6554,23 @@ function Inventario({ db, update, user, focus, refrescar }) {
   const ubicacionesInv = [...new Set(db.inventory_items.map((i) => i.ubicacion).filter(Boolean))].sort();
   const lista = db.inventory_items.filter((i) => !fCat || i.cat === fCat);
   const selMovIt = db.inventory_items.find((i) => i.nombre === form.item);
+  const selMovSupply = inventorySupplyMode(selMovIt, db.subrecetas || []);
+
+  function abrirPreparacion(item) {
+    const supply = inventorySupplyMode(item, db.subrecetas || []);
+    if (!supply.subrecipe) return;
+    if (!supply.canPrepare) {
+      setAvisoInv({ titulo: "Preparación inactiva", texto: `${supply.preparationName} está inactiva en el catálogo de subrecetas. Actívala antes de registrar una tanda.` });
+      return;
+    }
+    go?.("Producción", { subrecipeId: supply.subrecipe.id, itemId: item.id, source: "Inventario" });
+  }
 
   function abrirMovimiento(item, tipo = "Entrada") {
+    if (tipo === "Entrada" && inventorySupplyMode(item, db.subrecetas || []).kind === "prepared") {
+      abrirPreparacion(item);
+      return;
+    }
     setForm({
       tipo,
       item: item.nombre,
@@ -6426,14 +6612,20 @@ function Inventario({ db, update, user, focus, refrescar }) {
         if (compras.length === 0) return null;
         return (
           <div className="mb-4">
-            <SectionTitle>🛒 Compras sugeridas</SectionTitle>
+            <SectionTitle>🧭 Reposición sugerida</SectionTitle>
             <div className="grid sm:grid-cols-2 gap-2">
-              {compras.map((sg) => (
+              {compras.map((sg) => {
+                const item = db.inventory_items.find((candidate) => candidate.id === sg.itemId || candidate.nombre === sg.producto);
+                const supply = inventorySupplyMode(item, db.subrecetas || []);
+                return (
                 <Card key={sg.id} className="p-3 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-bold">{sg.cantidad}× {sg.producto}</div>
-                    <div className="text-xs" style={{ color: T.choco2 }}>Falta para {sg.orderId ? "pedido " + sg.orderId : "reponer stock"} · {sg.fecha}</div>
+                    <div className="text-xs" style={{ color: T.choco2 }}>{supply.kind === "prepared" ? "Preparar en Cocina" : "Comprar a proveedor"} · falta para {sg.orderId ? "pedido " + sg.orderId : "reponer stock"} · {sg.fecha}</div>
                   </div>
+                  {supply.kind === "prepared" ? (
+                    <Btn small kind="soft" onClick={() => item && abrirPreparacion(item)}>🥣 Preparar</Btn>
+                  ) : (
                   <BtnAsync small kind="soft" textoEnVuelo="Marcando…" disabled={enviandoSugId === sg.id} onClick={async () => {
                     setEnviandoSugId(sg.id);
                     try {
@@ -6446,9 +6638,11 @@ function Inventario({ db, update, user, focus, refrescar }) {
                     setEnviandoSugId(null);
                     toast("ok", `✓ ${sg.producto} · compra atendida`);
                     await refrescarSilencioso(() => toast("alert", "La sugerencia se marcó, pero no se pudo actualizar la vista. Recargá la página."));
-                  }}>Marcar atendida</BtnAsync>
+                  }}>Marcar compra atendida</BtnAsync>
+                  )}
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
@@ -6456,6 +6650,7 @@ function Inventario({ db, update, user, focus, refrescar }) {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {lista.map((i) => {
+          const supply = inventorySupplyMode(i, db.subrecetas || []);
           const bajo = i.stock < i.min;
           const lotesListos = Boolean(db.inventoryLotsReady);
           const lotSummary = buildIngredientLotSummary(i.id, db.inventory_lots || [], hoyISO());
@@ -6483,6 +6678,7 @@ function Inventario({ db, update, user, focus, refrescar }) {
                 {fmt(i.costo)}/{i.unidad} · {i.proveedor}<br />{i.ubicacion}{i.vence && ` · vence ${i.vence}`}
               </div>
               <div className="flex gap-1.5 mt-2 flex-wrap">
+                {supply.kind === "prepared" && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ background: "#E8E0F2", color: "#63518A" }}>🥣 Elaboración interna</span>}
                 {bajo && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Stock bajo</span>}
                 {todoVencido && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ background: "#A03B2A", color: "#fff" }}>Vencido · no usar</span>}
                 {lotesListos && vencido && !todoVencido && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>{lotSummary.expiredStock} {i.unidad} en cuarentena</span>}
@@ -6507,7 +6703,9 @@ function Inventario({ db, update, user, focus, refrescar }) {
                 </div>
               )}
               <div className="flex gap-2 mt-3 pt-3 border-t flex-wrap" style={{ borderColor: T.border }}>
-                <Btn small kind="soft" onClick={() => abrirMovimiento(i, "Entrada")}>＋ Registrar compra</Btn>
+                {supply.kind === "prepared"
+                  ? <Btn small kind="soft" disabled={!supply.canPrepare} onClick={() => abrirPreparacion(i)}>🥣 Preparar tanda</Btn>
+                  : <Btn small kind="soft" onClick={() => abrirMovimiento(i, "Entrada")}>＋ Registrar compra</Btn>}
                 <Btn small kind="ghost" onClick={() => abrirMovimiento(i, "Ajuste")}>Otro movimiento</Btn>
                 {!lotesListos && vencido && Number(i.stock) > 0 && ["Administrador","Cocina"].includes(user) && (
                   <Btn small kind="danger" onClick={() => {
@@ -6631,8 +6829,24 @@ function Inventario({ db, update, user, focus, refrescar }) {
 
       {mov && (
         <Modal title={selMovIt ? `Movimiento · ${selMovIt.nombre}` : "Registrar movimiento de inventario"} onClose={() => setMov(false)}>
-          <Field label="Tipo"><Select options={["Entrada","Salida","Ajuste","Merma","Uso en producción"]} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })} /></Field>
-          <Field label="Ítem"><Select placeholder="Elegir ítem…" options={db.inventory_items.map((i) => i.nombre)} value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} /></Field>
+          <Field label="Tipo"><Select options={["Entrada","Salida","Ajuste","Merma","Uso en producción"]} value={form.tipo} onChange={(e) => {
+            const nextType = e.target.value;
+            if (nextType === "Entrada" && selMovSupply.kind === "prepared") {
+              setMov(false);
+              abrirPreparacion(selMovIt);
+              return;
+            }
+            setForm({ ...form, tipo: nextType });
+          }} /></Field>
+          <Field label="Ítem"><Select placeholder="Elegir ítem…" options={db.inventory_items.map((i) => i.nombre)} value={form.item} onChange={(e) => {
+            const nextItem = db.inventory_items.find((item) => item.nombre === e.target.value);
+            if (form.tipo === "Entrada" && inventorySupplyMode(nextItem, db.subrecetas || []).kind === "prepared") {
+              setMov(false);
+              abrirPreparacion(nextItem);
+              return;
+            }
+            setForm({ ...form, item: e.target.value });
+          }} /></Field>
           {form.tipo === "Entrada" ? (
             <>
               <Field label={"Cantidad comprada" + (selMovIt ? " (en " + selMovIt.unidad + ")" : "")}>
@@ -6674,6 +6888,11 @@ function Inventario({ db, update, user, focus, refrescar }) {
               if (form.tipo === "Entrada" && (!(cantidadMovimiento > 0) || form.precio === "" || !Number.isFinite(Number(form.precio)) || +form.precio < 0)) { setAvisoInv({ titulo: "Entrada inválida", texto: "La cantidad debe ser mayor que cero y el costo total no puede ser negativo." }); return; }
               const it = db.inventory_items.find((i) => i.nombre === form.item);
               if (!it) return;
+              if (form.tipo === "Entrada" && inventorySupplyMode(it, db.subrecetas || []).kind === "prepared") {
+                setMov(false);
+                abrirPreparacion(it);
+                return;
+              }
               const itemVencido = it.vence && diasEntre(hoyISO(), it.vence) < 0;
               if (itemVencido && ["Salida", "Uso en producción"].includes(form.tipo)) { setAvisoInv({ titulo: "Insumo vencido", texto: `${it.nombre} venció el ${it.vence}. Registrá una Merma para retirarlo; no puede usarse ni salir como inventario válido.` }); return; }
               const tipoMov = form.tipo, nombreMov = it.nombre;
@@ -7109,7 +7328,9 @@ function Domicilios({ db, update, user, refrescar }) {
   const [enviando, setEnviando] = useState(false);
   const s = db.settings;
   const [form, setForm] = useState({ orderId: "", proveedor: s.proveedores[0], costoReal: "", zona: s.zonas[0].nombre, obs: "" });
-  const [soloActivos, setSoloActivos] = useState(false); // click en "Domicilios activos" → filtra la lista
+  const [scope, setScope] = useState("active");
+  const deliveryBuckets = useMemo(() => partitionByActivity(db.deliveries, isActiveDelivery), [db.deliveries]);
+  const listaDomicilios = scope === "active" ? deliveryBuckets.active : deliveryBuckets.history;
 
   const subsidio = db.deliveries.reduce((sm, d) => sm + Math.max(0, d.costoReal - d.cobrado), 0);
   const excedente = db.deliveries.reduce((sm, d) => sm + Math.max(0, d.cobrado - d.costoReal), 0);
@@ -7122,20 +7343,21 @@ function Domicilios({ db, update, user, refrescar }) {
   function exportar() {
     downloadCSV("domicilios",
       ["ID","Pedido","Proveedor","Zona","Cobrado","Costo real","Diferencia","Solicitud","Salida","Entrega","Código","Estado"],
-      db.deliveries.map((d) => [d.id, d.orderId, d.proveedor, d.zona, d.cobrado, d.costoReal, d.cobrado - d.costoReal, d.hSolicitud, d.hSalida, d.hEntrega, d.codigo, d.estado]));
+      listaDomicilios.map((d) => [d.id, d.orderId, d.proveedor, d.zona, d.cobrado, d.costoReal, d.cobrado - d.costoReal, d.hSolicitud, d.hSalida, d.hEntrega, d.codigo, d.estado]));
   }
 
   return (
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat icon="🛵" label="Domicilios activos" value={db.deliveries.filter((d) => !["Entregado","Cancelado"].includes(d.estado)).length} onClick={() => { setSoloActivos((v) => !v); setTimeout(() => { const el = document.getElementById("lista-domicilios"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }} />
+        <Stat icon="🛵" label="Domicilios activos" value={deliveryBuckets.active.length} onClick={() => { setScope("active"); setTimeout(() => { const el = document.getElementById("lista-domicilios"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }} active={scope === "active"} />
         <Stat icon="🧾" label="Subsidio acumulado" value={fmt(subsidio)} sub="cobramos menos que el costo" tone="#A03B2A" />
         <Stat icon="💰" label="Excedente cobrado" value={fmt(excedente)} sub="cobramos más que el costo" tone="#3F6B42" />
         <Stat icon="📦" label="Listos sin domicilio" value={pendientes.length} sub="pedidos por solicitar" tone={pendientes.length ? "#96690F" : undefined} />
       </div>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         <Btn onClick={() => { setForm((actual) => ({ ...actual, orderId: "" })); setNuevo(true); }}>＋ Solicitar domicilio</Btn>
+        <WorkScopeTabs value={scope} onChange={setScope} activeCount={deliveryBuckets.active.length} historyCount={deliveryBuckets.history.length} activeLabel="En seguimiento" />
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
       </div>
 
@@ -7146,9 +7368,9 @@ function Domicilios({ db, update, user, refrescar }) {
       )}
 
       <div id="lista-domicilios" />
-      {soloActivos && <div className="text-xs font-bold mb-3 p-2 rounded-lg flex items-center justify-between" style={{ background: T.vainilla, color: T.choco2 }}><span>Mostrando solo domicilios activos</span><button type="button" onClick={() => setSoloActivos(false)} className="font-bold" style={{ color: T.coral }}>✕ ver todos</button></div>}
+      <SectionTitle>{scope === "active" ? "Entregas en seguimiento" : "Historial de domicilios"}</SectionTitle>
       <div className="grid lg:grid-cols-2 gap-3">
-        {(soloActivos ? db.deliveries.filter((d) => !["Entregado","Cancelado"].includes(d.estado)) : db.deliveries).map((d) => {
+        {listaDomicilios.map((d) => {
           const dif = d.cobrado - d.costoReal;
           return (
             <Card key={d.id} className="p-4">
@@ -7172,7 +7394,7 @@ function Domicilios({ db, update, user, refrescar }) {
                   Cobrado {fmt(d.cobrado)} · Costo {fmt(d.costoReal)} ·{" "}
                   <b style={{ color: dif < 0 ? "#A03B2A" : "#3F6B42" }}>{dif < 0 ? `subsidio ${fmt(-dif)}` : dif > 0 ? `excedente ${fmt(dif)}` : "sin diferencia"}</b>
                 </div>
-                <MiniSelect options={DOM_ESTADOS} value={d.estado} disabled={enviando} onChange={async (e) => {
+                <MiniSelect options={DOM_ESTADOS} value={d.estado} disabled={enviando || scope === "history"} onChange={async (e) => {
                   const nuevo = e.target.value;
                   setEnviando(true);
                   // "En ruta"/"Entregado" son dominio del PEDIDO: set_order_status sincroniza pedido+domicilio+sellos server-side.
@@ -7211,6 +7433,7 @@ function Domicilios({ db, update, user, refrescar }) {
             </Card>
           );
         })}
+        {!listaDomicilios.length && <Empty icon={scope === "active" ? "🛵" : "◷"} text={scope === "active" ? "No hay domicilios activos." : "Todavía no hay domicilios entregados o cancelados."} />}
       </div>
 
       {nuevo && (
@@ -7285,6 +7508,12 @@ function Reclamos({ db, update, user, focus, refrescar }) {
   const [sel, setSel] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const claimBuckets = useMemo(() => partitionByActivity(db.claims, isActiveClaim), [db.claims]);
+  const [scope, setScope] = useState(() => {
+    const highlighted = focus?.claimId && db.claims.find((claim) => claim.id === focus.claimId);
+    return highlighted && !isActiveClaim(highlighted) ? "history" : "active";
+  });
+  const listaReclamos = scope === "active" ? claimBuckets.active : claimBuckets.history;
   const highlightId = focus && focus.claimId;
   const highlightRef = useRef(null);
   useEffect(() => {
@@ -7295,8 +7524,10 @@ function Reclamos({ db, update, user, focus, refrescar }) {
       <div className="text-xs font-bold p-2.5 rounded-xl mb-4" style={{ background: T.vainilla, color: T.choco2 }}>
         📋 Política: reclamos por estado del producto se aceptan máximo 20 minutos después de recibido, salvo calidad o inocuidad.
       </div>
+      <div className="mb-4"><WorkScopeTabs value={scope} onChange={setScope} activeCount={claimBuckets.active.length} historyCount={claimBuckets.history.length} activeLabel="Casos activos" /></div>
+      <SectionTitle>{scope === "active" ? "Casos por resolver" : "Historial de reclamos"}</SectionTitle>
       <div className="grid lg:grid-cols-2 gap-3">
-        {db.claims.map((r) => {
+        {listaReclamos.map((r) => {
           const c = customerOf(db, r.customerId);
           const min = minutosReclamo(r);
           const previos = db.claims.filter((x) => x.customerId === r.customerId && x.id !== r.id).length;
@@ -7325,7 +7556,7 @@ function Reclamos({ db, update, user, focus, refrescar }) {
               {r.decision && <div className="text-xs mt-2"><b>Decisión:</b> {r.decision}</div>}
               {r.solucion && <div className="text-xs mt-1"><b>Solución:</b> {r.solucion} {r.costo > 0 && `(costo ${fmt(r.costo)})`}</div>}
               <div className="flex gap-2 mt-3 items-center flex-wrap">
-                <MiniSelect options={["Abierto","En revisión","Aprobado","Rechazado","Compensado","Cerrado"]} value={r.estado} disabled={enviando} onChange={async (e) => {
+                <MiniSelect options={["Abierto","En revisión","Aprobado","Rechazado","Compensado","Cerrado"]} value={r.estado} disabled={enviando || scope === "history"} onChange={async (e) => {
                   const estado = e.target.value;
                   setEnviando(true);
                   try {
@@ -7342,13 +7573,13 @@ function Reclamos({ db, update, user, focus, refrescar }) {
                   }
                   setEnviando(false);
                 }} />
-                <Btn small kind="ghost" onClick={() => setSel({ ...r })}>Editar caso</Btn>
+                {scope === "active" ? <Btn small kind="ghost" onClick={() => setSel({ ...r })}>Editar caso</Btn> : <span className="text-[10px] font-bold" style={{ color: T.choco2 }}>Caso cerrado · solo consulta</span>}
               </div>
             </Card>
             </div>
           );
         })}
-        {db.claims.length === 0 && <Empty icon="🎉" text="Sin reclamos registrados." />}
+        {listaReclamos.length === 0 && <Empty icon={scope === "active" ? "🎉" : "◷"} text={scope === "active" ? "Sin reclamos activos." : "Todavía no hay reclamos cerrados."} />}
       </div>
 
       {sel && (
@@ -8444,8 +8675,8 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
                 db.claims.map((r) => [r.id, r.fecha || "", r.orderId, r.customerId, r.tipo, r.hEntrega, r.hReclamo, r.entregadoEn || "", r.reclamoEn || "", r.decision, r.solucion, r.costo, r.estado, r.desc || "", r.evidencia || ""])],
               ["beneficios", ["Id","ClienteId","Beneficio","Tipo","Valor","Producto gratis","Mínimo","Activación","Vence","Estado","Pedido"],
                 db.benefits.map((b) => [b.id, b.customerId, b.beneficio, b.tipoBeneficio, b.valor, b.productoGratisId, b.minimo, b.activacion, b.vence, b.estado, b.pedidoUso])],
-              ["produccion", ["Lote","Fecha","Producto","Figura","Sabor","Gramaje","Producidas","Perfectas","Imperfectas","Descartadas","Destino","Resp","Vence","Estado","Horas congelación","Inicio congelación","Stock contabilizado"],
-                db.production_batches.map((l) => [l.id, l.fecha, l.producto, l.figura, l.sabor, l.gramaje, l.prod, l.perfectas, l.imperfectas, l.descartadas, l.destino, l.resp, l.vence, l.estado, l.horasCongelacion || "", l.inicioCongelacion || "", l.stockContabilizado ? "Sí" : "No"])],
+              ["produccion", ["Lote","Fecha","Producto","Figura","Sabor","Gramaje","Producidas","Perfectas","Imperfectas","Descartadas","Destino","Resp","Desmoldado","Vence","Estado","Horas congelación","Inicio congelación","Stock contabilizado"],
+                db.production_batches.map((l) => [l.id, l.fecha, l.producto, l.figura, l.sabor, l.gramaje, l.prod, l.perfectas, l.imperfectas, l.descartadas, l.destino, l.resp, l.desmoldadoEn || "", l.vence, l.estado, l.horasCongelacion || "", l.inicioCongelacion || "", l.stockContabilizado ? "Sí" : "No"])],
               ["reservas", ["Id","Pedido","Tipo","Referencia","Cantidad","Fecha","Estado"],
                 db.inventory_reservations.map((r) => [r.id, r.orderId, r.tipo, r.nombre, r.cantidad, r.fecha, r.estado])],
               ["campanas", ["Id","Nombre","Canal","Objetivo","Producto","Oferta","Inicio","Fin","Presupuesto","Gasto real","Estado","Responsable"],
@@ -10144,6 +10375,7 @@ const MODULOS = [
   { id: "Productos", icon: "🍰", hint: "Definí qué vendemos, cuánto cuesta y cómo se prepara.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Domicilios", icon: "🛵", hint: "Asigná, despachá y seguí cada entrega hasta cerrar.", roles: ["Administrador","Logística","Mensajero"] },
   { id: "Reclamos", icon: "⚠️", hint: "Investigá, decidí y resolvé cada caso con evidencia.", roles: ["Administrador","Coordinador de pedidos","Empaque","Logística","Marketing/CRM"] },
+  { id: "Historial operativo", label: "Historial", icon: "◷", hint: "Auditá en un solo lugar qué pasó, cuándo, dónde y quién lo hizo.", roles: ["Administrador","Coordinador de pedidos"] },
   { id: "Clientes", icon: "💗", hint: "Reconocé a cada persona y prepará el siguiente contacto.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Beneficios", icon: "🎁", hint: "Creá motivos claros para volver, regalar y recomendar.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Crecimiento", label: "Agencia MOMOS", title: "Agencia Comercial MOMOS", icon: "✦", hint: "Convertí datos reales en decisiones, creativos y crecimiento protegido.", roles: ["Administrador","Marketing/CRM"] },
@@ -10234,6 +10466,13 @@ export default function MomosOps() {
   const dbRef = useRef(null);
   useEffect(() => { syncRef.current = sync; }, [sync]);
   useEffect(() => { dbRef.current = db; }, [db]);
+  // Durante desarrollo, React Refresh conserva el estado del componente. Si
+  // una versión nueva del frontend ya alcanzó la versión de los datos que
+  // había activado el bloqueo, recargamos una sola vez para rehidratar sin
+  // borrar ni restaurar nada. En una carga normal `incompat` permanece null.
+  useEffect(() => {
+    if (incompat && incompat <= DB_VERSION) window.location.reload();
+  }, [incompat]);
 
   // ── Fase 3 · slice 1: sesión Supabase = fuente de verdad de la identidad ──
   useEffect(() => {
@@ -10563,18 +10802,24 @@ export default function MomosOps() {
   }
 
   if (incompat) {
+    const actualizacionLista = incompat <= DB_VERSION;
     return (
       <div className="momos min-h-screen flex items-center justify-center p-6" style={{ background: T.bg }}>
         <style>{FONTS}</style>
         <div className="text-center max-w-sm">
           <div className="text-4xl mb-2" aria-hidden="true">⚠️</div>
-          <div className="display text-lg font-semibold mb-2">Datos de una versión más nueva</div>
+          <div className="display text-lg font-semibold mb-2">{actualizacionLista ? "Actualización lista" : "Datos de una versión más nueva"}</div>
           <div className="text-sm" style={{ color: T.choco2 }}>
-            Los datos guardados en este dispositivo son de MOMOS OPS versión {incompat}, más nueva que esta app (versión {DB_VERSION}). Para no dañar tu información, no se cargó nada.
+            {actualizacionLista
+              ? `Los datos y esta app ya son compatibles con MOMOS OPS versión ${DB_VERSION}. Recarga para continuar sin modificar tu información.`
+              : `Los datos guardados en este dispositivo son de MOMOS OPS versión ${incompat}, más nueva que esta app (versión ${DB_VERSION}). Para no dañar tu información, no se cargó nada.`}
           </div>
           <div className="text-sm mt-3" style={{ color: T.choco2 }}>
-            Abre la versión más reciente de la app, o restaura un respaldo compatible. Si necesitas ayuda, contacta a soporte antes de continuar.
+            {actualizacionLista
+              ? "No necesitas restaurar un respaldo ni borrar los datos del navegador."
+              : "Recarga para buscar la versión más reciente de la app. Restaura un respaldo compatible solo si el problema continúa."}
           </div>
+          <button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-xl px-4 py-2.5 text-sm font-bold" style={{ background: T.coral, color: "#fff" }}>Recargar MOMOS OPS</button>
           <div className="mt-4 p-3 rounded-2xl" style={{ background: "#fff", border: "1px solid " + T.border }}>
             <div className="text-xs font-bold mb-1.5" style={{ color: T.choco2 }}>♻️ Restaurar respaldo JSON compatible</div>
             <input type="file" accept="application/json" className="text-xs" onChange={(e) => { const f = e.target.files && e.target.files[0]; handleRestoreFile(f); e.target.value = ""; }} />
@@ -10639,13 +10884,14 @@ export default function MomosOps() {
     switch (activa) {
       case "Dashboard": return <Dashboard db={db} go={go} user={user} />;
       case "Pedidos": return <Pedidos {...p} focus={focus} />;
-      case "Producción": return <Produccion {...p} />;
+      case "Producción": return <Produccion {...p} focus={focus} />;
       case "Empaque": return <Empaque {...p} />;
       case "Inventario terminado": return <InventarioTerminado {...p} go={go} />;
-      case "Inventario": return <Inventario {...p} focus={focus} />;
+      case "Inventario": return <Inventario {...p} focus={focus} go={go} />;
       case "Productos": return <Productos {...p} />;
       case "Domicilios": return <Domicilios {...p} />;
       case "Reclamos": return <Reclamos {...p} focus={focus} />;
+      case "Historial operativo": return <HistorialOperativo db={db} />;
       case "Clientes": return <Clientes {...p} />;
       case "Beneficios": return <Beneficios {...p} />;
       case "Crecimiento": return <Crecimiento {...p} go={go} />;

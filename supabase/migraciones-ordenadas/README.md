@@ -18,7 +18,16 @@ un advisory lock; un error hace rollback completo del paso actual.
 10. `../empaque-trazable-v1.sql` — registra la verificación línea por línea antes de Empacado.
 11. `../domicilio-empaque-v1.sql` — habilita copia/etiqueta y sella la solicitud al relevo Empaque–Logística.
 12. `../inventario-vencimientos-v1.sql` — cuarentena vencidos, FIFO vigente y constraints de stock.
-13. `../tests/test-migraciones-ordenadas.sql` — aceptación; devuelve `TESTS_OK` y hace rollback explícito.
+13. `../inventario-lotes-v1.sql` — registra compras y consumos FIFO por lote de insumo.
+14. `../productos-servidor-v1.sql` — sella productos, combos y recetas en servidor.
+15. `../control-operativo-pedidos-v1.sql` — responsables, progreso, incidentes y relevo físico.
+16. `../crm-clientes-v2.sql` — historial, activaciones y contactos CRM.
+17. `../agencia-comercial-v1.sql` — agencia comercial y decisiones protegidas.
+18. `../vencimiento-producto-terminado-v1.sql` — sella desmolde y vencimiento automático a 3 días.
+19. `../abastecimiento-elaboraciones-internas-v1.sql` — separa compra de preparación y bloquea comprar mousses, cheesecake, ganache y salsas internas.
+20. `../tests/test-vencimiento-producto-terminado.sql` — prueba adversarial específica; siempre hace rollback.
+21. `../tests/test-abastecimiento-elaboraciones-internas.sql` — prueba que las elaboraciones solo entren por producción y las compras externas sigan funcionando.
+22. `../tests/test-migraciones-ordenadas.sql` — aceptación completa; devuelve `TESTS_OK` y hace rollback explícito.
 
 Después de cada paso ejecutá:
 
