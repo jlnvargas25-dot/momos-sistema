@@ -101,7 +101,11 @@ const FONTS = `
 .momo-mobile-nav[data-active="true"] > span { animation: momo-icon-pop 380ms var(--momo-spring); }
 .momo-page-enter { animation: momo-page-in 360ms var(--momo-spring); }
 .momo-trace-open { animation: momo-page-in 320ms var(--momo-spring) both; }
+.momo-trace-card { transition: transform 200ms var(--momo-spring), box-shadow 200ms ease, border-color 200ms ease; }
+.momo-trace-card:not([data-open="true"]):hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(84,56,43,.1); border-color: #E9A18C; }
 .momo-trace-chevron { transition: transform 220ms var(--momo-spring); }
+.momo-trace-chevron[data-open="true"] { transform: rotate(90deg); }
+.momo-trace-card:not([data-open="true"]):hover .momo-trace-chevron { transform: translateX(3px); }
 .momo-module-icon { box-shadow: inset 0 0 0 1px rgba(196,128,142,.18), 0 8px 20px rgba(196,128,142,.12); animation: momo-icon-pop 420ms var(--momo-spring) both; }
 .momo-field { transition: color 160ms ease; }
 .momo-field:focus-within > span { color: ${T.coral} !important; }
@@ -1765,9 +1769,11 @@ function Card({ children, className = "", onClick, style, ...props }) {
   );
 }
 
-function Stat({ icon, label, value, sub, tone, onClick }) {
+function Stat({ icon, label, value, sub, tone, onClick, active }) {
   return (
-    <Card className="p-4 flex flex-col gap-1 min-w-0" onClick={onClick}>
+    <Card className="p-4 flex flex-col gap-1 min-w-0 transition" onClick={onClick}
+      aria-pressed={active === undefined ? undefined : !!active}
+      style={active ? { borderColor: tone || T.coral, background: "#FFFBF7", boxShadow: `0 0 0 2px ${tone || T.coral}33, 0 10px 22px rgba(84,56,43,.08)` } : undefined}>
       <div className="flex items-center gap-2 text-xs font-bold" style={{ color: T.choco2 }}>
         <span aria-hidden="true">{icon}</span><span className="truncate">{label}</span>
       </div>
@@ -2876,12 +2882,21 @@ function DetalleTrazabilidad({ trace, db, onOpen, labelledBy }) {
   );
 }
 
+// Buckets accionables de la cabecera: fuente única para conteo, filtro y etiqueta.
+const PEDIDO_FOCOS = [
+  { key: "seguimiento", icon: "🧾", label: "En seguimiento", sub: "pedidos no terminales", tone: T.coral, match: (t) => !["Entregado", "Cancelado"].includes(t.order.estado) },
+  { key: "bloqueados", icon: "⚠️", label: "Bloqueados", sub: "novedades por resolver", tone: "#A03B2A", match: (t) => traceabilityHealth(t) === "blocked" },
+  { key: "relevo", icon: "🤝", label: "En relevo", sub: "Empaque → Logística", tone: "#63518A", match: (t) => t.order.estado === "Listo para despacho" },
+  { key: "ruta", icon: "🛵", label: "En ruta", sub: "esperan entrega", tone: "#3F6B42", match: (t) => t.order.estado === "En ruta" },
+];
+
 // Acordeón de pedidos: fila colapsada con lo esencial; click → despliega el detalle inline.
 // Modo normal abre uno a la vez; "Comparar" permite varios abiertos en paralelo.
 function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
   const traces = useMemo(() => orders.map((order) => buildOrderTraceability(db, order)).filter(Boolean), [db, orders]);
   const [abiertos, setAbiertos] = useState(() => new Set());
   const [comparar, setComparar] = useState(false);
+  const [foco, setFoco] = useState(null);
 
   // Purga ids abiertos que ya no existen tras un cambio de filtros/pedidos.
   useEffect(() => {
@@ -2900,24 +2915,27 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
     });
   }
 
-  const active = traces.filter((trace) => !["Entregado", "Cancelado"].includes(trace.order.estado)).length;
-  const blocked = traces.filter((trace) => traceabilityHealth(trace) === "blocked").length;
-  const handoffs = traces.filter((trace) => trace.order.estado === "Listo para despacho").length;
-  const inRoute = traces.filter((trace) => trace.order.estado === "En ruta").length;
+  const conteos = PEDIDO_FOCOS.map((f) => traces.filter(f.match).length);
+  const focoActivo = PEDIDO_FOCOS.find((f) => f.key === foco) || null;
+  const mostrados = focoActivo ? traces.filter(focoActivo.match) : traces;
 
   if (!traces.length) return <Card className="p-8 text-center"><div className="text-3xl mb-2">🔎</div><div className="font-bold">No hay pedidos que coincidan con la búsqueda</div></Card>;
 
   return (
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat icon="🧾" label="En seguimiento" value={active} sub="pedidos no terminales" tone={T.coral} />
-        <Stat icon="⚠️" label="Bloqueados" value={blocked} sub="novedades por resolver" tone="#A03B2A" />
-        <Stat icon="🤝" label="En relevo" value={handoffs} sub="Empaque → Logística" tone="#63518A" />
-        <Stat icon="🛵" label="En ruta" value={inRoute} sub="esperan entrega" tone="#3F6B42" />
+        {PEDIDO_FOCOS.map((f, i) => (
+          <Stat key={f.key} icon={f.icon} label={f.label} value={conteos[i]} sub={f.sub} tone={f.tone}
+            active={foco === f.key}
+            onClick={(conteos[i] > 0 || foco === f.key) ? () => setFoco((prev) => (prev === f.key ? null : f.key)) : undefined} />
+        ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>Pedidos encontrados · {traces.length}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>{focoActivo ? `${focoActivo.label} · ${mostrados.length} de ${traces.length}` : `Pedidos encontrados · ${traces.length}`}</div>
+          {focoActivo && <button type="button" onClick={() => setFoco(null)} className="rounded-full px-2.5 py-0.5 text-[10px] font-extrabold border transition" style={{ borderColor: T.border, color: T.choco2, background: T.surface }}>✕ Quitar filtro</button>}
+        </div>
         <button type="button" onClick={() => setComparar((v) => !v)} aria-pressed={comparar}
           className="rounded-full px-3 py-1.5 text-[11px] font-extrabold border transition"
           style={{ background: comparar ? T.coral : T.surface, color: comparar ? "#fff" : T.choco2, borderColor: comparar ? T.coral : T.border }}>
@@ -2926,18 +2944,18 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
       </div>
 
       <div className="space-y-2">
-        {traces.map((trace) => {
+        {mostrados.map((trace) => {
           const id = trace.order.id;
           const open = abiertos.has(id);
           const traceHealth = TRACE_HEALTH_STYLE[traceabilityHealth(trace)] || TRACE_HEALTH_STYLE.active;
           const traceCustomer = customerOf(db, trace.order.customerId);
           const headerId = `trace-head-${id}`;
           return (
-            <Card key={id} className="p-0 overflow-hidden" style={{ borderColor: open ? "#E9A18C" : T.border }}>
+            <Card key={id} data-open={open ? "true" : "false"} className="momo-trace-card p-0 overflow-hidden" style={{ borderColor: open ? "#E9A18C" : T.border }}>
               <button id={headerId} type="button" onClick={() => toggle(id)} aria-expanded={open}
                 className="w-full text-left p-3 sm:p-4 flex items-start gap-3 transition"
                 style={{ background: open ? T.coralSoft : T.surface }}>
-                <span className="momo-trace-chevron shrink-0 mt-0.5 text-lg font-bold leading-none" style={{ color: traceHealth.color, transform: open ? "rotate(90deg)" : "none" }} aria-hidden="true">›</span>
+                <span className="momo-trace-chevron shrink-0 mt-0.5 text-lg font-bold leading-none" data-open={open ? "true" : "false"} style={{ color: traceHealth.color }} aria-hidden="true">›</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2"><b className="text-sm">{id}</b><span className="rounded-full px-2 py-0.5 text-[9px] font-extrabold shrink-0" style={{ background: traceHealth.bg, color: traceHealth.color }}>{traceHealth.label}</span></div>
                   <div className="flex items-center justify-between gap-2 mt-1"><span className="text-xs font-bold truncate">{traceCustomer.nombre || "Cliente sin nombre"}</span><Badge label={trace.order.estado} /></div>
@@ -2949,6 +2967,7 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
             </Card>
           );
         })}
+        {focoActivo && !mostrados.length && <Card className="p-6 text-center"><div className="text-2xl mb-1">🫙</div><div className="text-sm font-bold">No hay pedidos en «{focoActivo.label}» ahora mismo</div></Card>}
       </div>
     </div>
   );
@@ -4163,7 +4182,8 @@ function voiceSummary(draft) {
   const parts = [];
   const preparations = draft.preparations?.length ? draft.preparations : (draft.preparation ? [draft.preparation] : []);
   preparations.forEach((preparation) => parts.push(`preparar ${preparation.nominalGrams} gramos de ${preparation.subrecipeName}${preparation.usage ? `, ${preparation.usage.toLowerCase()}` : ""}`));
-  if (draft.production) parts.push(`producir ${draft.production.calculatedTotal} ${draft.production.figure}: ${draft.production.runs.map((run) => `${run.quantity} de ${run.flavor}`).join(", ")}`);
+  const productions = draft.productions?.length ? draft.productions : (draft.production ? [draft.production] : []);
+  productions.forEach((production) => parts.push(`producir ${production.calculatedTotal} ${production.figure}: ${production.runs.map((run) => `${run.quantity} de ${run.flavor}`).join(", ")}`));
   if (draft.madeToOrder) parts.push(`iniciar el pedido ${draft.madeToOrder.orderId}${draft.madeToOrder.customerName ? ` de ${draft.madeToOrder.customerName}` : ""}. La comanda contiene ${draft.madeToOrder.orderContent || voiceOrderItems(draft.madeToOrder)}`);
   if (draft.orderHandoff) parts.push(`marcar el pedido ${draft.orderHandoff.orderId}${draft.orderHandoff.customerName ? ` de ${draft.orderHandoff.customerName}` : ""} como Listo para empaque`);
   if (draft.unmolding) parts.push(`desmoldar el lote ${draft.unmolding.batchId}: ${voiceOutcomeCount(draft.unmolding.perfectas, "perfecta", "perfectas")}, ${voiceOutcomeCount(draft.unmolding.imperfectas, "imperfecta", "imperfectas")} y ${voiceOutcomeCount(draft.unmolding.descartadas, "descartada", "descartadas")}`);
@@ -5086,31 +5106,36 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
         if (Array.isArray(response?.faltantes) && response.faltantes.length) operationWarnings.push(...response.faltantes.map((x) => `${x.insumo}: faltan ${x.faltan} ${x.unidad}`));
       }
 
-      if (currentDraft.production) {
+      const productions = currentDraft.productions?.length ? currentDraft.productions : (currentDraft.production ? [currentDraft.production] : []);
+      if (productions.length) {
         const filling = db.settings.rellenos?.[0];
         if (!filling) throw new Error("No hay un relleno predeterminado configurado para crear las corridas.");
-        for (let i = 0; i < currentDraft.production.runs.length; i += 1) {
-          if (progress.runs.has(i)) continue;
-          const run = currentDraft.production.runs[i];
-          setExecutionLabel(`Creando ${run.quantity} ${currentDraft.production.figure} de ${run.flavor}…`);
-          const response = await crearCorrida({
-            sabor: run.flavor,
-            relleno: filling,
-            figuras: [{ figura: currentDraft.production.figure, cant: run.quantity }],
-            resp_user_id: perfil?.id || null,
-            vence: dISO(14),
-            horas_congelacion: db.settings.horasCongelacion || 10,
-            obs: note,
-            idempotency_key: key + "-run-" + i,
-          });
-          progress.runs.add(i);
-          applied.push(`${run.quantity} ${currentDraft.production.figure} de ${run.flavor}`);
-          const lots = Array.isArray(response?.lotes) ? response.lotes : [];
-          lots.forEach((lot) => {
-            const id = lot.batch_id || lot.id;
-            if (id && !progress.batchIds.includes(id)) progress.batchIds.push(id);
-          });
-          if (Array.isArray(response?.faltantes) && response.faltantes.length) operationWarnings.push(...response.faltantes.map((x) => `${x.insumo}: faltan ${x.faltan} ${x.unidad}`));
+        for (let productionIndex = 0; productionIndex < productions.length; productionIndex += 1) {
+          const production = productions[productionIndex];
+          for (let runIndex = 0; runIndex < production.runs.length; runIndex += 1) {
+            const runKey = `${productionIndex}:${runIndex}`;
+            if (progress.runs.has(runKey)) continue;
+            const run = production.runs[runIndex];
+            setExecutionLabel(`Creando ${run.quantity} ${production.figure} de ${run.flavor}…`);
+            const response = await crearCorrida({
+              sabor: run.flavor,
+              relleno: filling,
+              figuras: [{ figura: production.figure, cant: run.quantity }],
+              resp_user_id: perfil?.id || null,
+              vence: dISO(14),
+              horas_congelacion: db.settings.horasCongelacion || 10,
+              obs: note,
+              idempotency_key: `${key}-production-${productionIndex}-run-${runIndex}`,
+            });
+            progress.runs.add(runKey);
+            applied.push(`${run.quantity} ${production.figure} de ${run.flavor}`);
+            const lots = Array.isArray(response?.lotes) ? response.lotes : [];
+            lots.forEach((lot) => {
+              const id = lot.batch_id || lot.id;
+              if (id && !progress.batchIds.includes(id)) progress.batchIds.push(id);
+            });
+            if (Array.isArray(response?.faltantes) && response.faltantes.length) operationWarnings.push(...response.faltantes.map((x) => `${x.insumo}: faltan ${x.faltan} ${x.unidad}`));
+          }
         }
       }
 
@@ -5305,13 +5330,13 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
                 {preparation.usage && <div className="text-[10px] font-extrabold mt-1" style={{ color: preparation.usage.includes("Relleno") ? "#8E4B5A" : T.choco2 }}>↳ {preparation.usage}</div>}
               </div>
             ))}
-            {draft.production && (
-              <div className="rounded-2xl p-3" style={{ background: "#F3D7DC" }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#8E4B5A" }}>Producción · {draft.production.calculatedTotal} total</div>
-                <div className="font-bold text-sm mt-1">{draft.production.figure}</div>
-                <div className="text-xs mt-1">{draft.production.runs.map((run) => `${run.quantity} ${run.flavor}`).join(" · ")}</div>
+            {(draft.productions?.length ? draft.productions : (draft.production ? [draft.production] : [])).map((production, productionIndex) => (
+              <div key={`${production.figure}-${productionIndex}`} className="rounded-2xl p-3" style={{ background: "#F3D7DC" }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#8E4B5A" }}>Producción · {production.calculatedTotal} total</div>
+                <div className="font-bold text-sm mt-1">{production.figure}</div>
+                <div className="text-xs mt-1">{production.runs.map((run) => `${run.quantity} ${run.flavor}`).join(" · ")}</div>
               </div>
-            )}
+            ))}
             {draft.madeToOrder && (
               <div className="rounded-2xl p-3" style={{ background: "#F7ECD9" }}>
                 <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#96690F" }}>Preparación bajo pedido</div>
