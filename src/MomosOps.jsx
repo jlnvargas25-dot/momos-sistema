@@ -2775,6 +2775,7 @@ function HistorialOperativo({ db }) {
   const today = hoyISO();
   const todayCount = entries.filter((entry) => entry.at.startsWith(today)).length;
   const actorCount = new Set(entries.map((entry) => entry.actor).filter(Boolean)).size;
+  const primerRegistro = entries.reduce((min, e) => (min == null || (e.at && e.at < min) ? e.at : min), null);
 
   function exportar() {
     downloadCSV("historial-operativo", ["Fecha", "Área", "Entidad", "ID", "Acción", "Antes", "Después", "Responsable"], filtered.map((entry) => [entry.at, entry.area, entry.entity, entry.entityId, entry.action, entry.from, entry.to, entry.actor]));
@@ -2782,12 +2783,10 @@ function HistorialOperativo({ db }) {
 
   return (
     <div>
-      <Card className="p-5 mb-4 overflow-hidden relative" style={{ background: "linear-gradient(135deg,#FFF9F1 0%,#FFFFFF 55%,#FBE3DA 140%)", borderColor: "#E7C8B7" }}>
-        <div className="absolute right-5 top-3 text-6xl opacity-[.08]" aria-hidden="true">◷</div>
-        <div className="text-[10px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>Control central · solo lectura</div>
-        <div className="display text-2xl font-semibold mt-1">Historial operativo MOMOS</div>
-        <div className="text-sm font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>Consultá qué pasó, en qué área, sobre qué registro y quién lo ejecutó. Nada se borra al salir de una bandeja de trabajo.</div>
-      </Card>
+      <SectionTitle>Historial operativo</SectionTitle>
+      <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
+        Consultá qué pasó, en qué área, sobre qué registro y quién lo ejecutó. Nada se borra al salir de una bandeja de trabajo.
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <Stat icon="◷" label="Movimientos" value={entries.length} sub="rastro disponible" tone={T.coral} />
@@ -2796,10 +2795,27 @@ function HistorialOperativo({ db }) {
         <Stat icon="♙" label="Responsables" value={actorCount} sub="usuarios en el rastro" tone="#96690F" />
       </div>
 
+      <div className="text-[11px] font-semibold mt-2 mb-3" style={{ color: T.choco2 }}>
+        Rastro registrado desde <b style={{ color: T.coral }}>{primerRegistro ? primerRegistro.slice(0, 10) : "—"}</b> hasta hoy.
+      </div>
+
+      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-4 rounded-2xl" role="tablist" aria-label="Áreas del historial">
+        {[["Todas", ""], ...areas.map((a) => [a, a])].map(([label, value]) => {
+          const count = value ? entries.filter((e) => e.area === value).length : entries.length;
+          const activo = area === value;
+          return (
+            <button key={label} type="button" role="tab" aria-selected={activo} onClick={() => setArea(value)}
+              className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
+              style={activo ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
+              {label} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: activo ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <Card className="p-3 mb-4">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_150px_150px_auto] gap-2 items-center">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_150px_150px_auto] gap-2 items-center">
           <input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Buscar pedido, lote, acción o responsable…" className="rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
-          <select value={area} onChange={(event) => setArea(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle}><option value="">Todas las áreas</option>{areas.map((name) => <option key={name} value={name}>{name}</option>)}</select>
           <input type="date" aria-label="Historial desde" value={desde} onChange={(event) => setDesde(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle} />
           <input type="date" aria-label="Historial hasta" value={hasta} onChange={(event) => setHasta(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle} />
           <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
@@ -2976,7 +2992,7 @@ const TRACE_HEALTH_STYLE = {
   blocked: { bg: "#F6D4CD", color: "#A03B2A", label: "Bloqueado" },
   attention: { bg: "#FBE8C8", color: "#96690F", label: "Requiere atención" },
   complete: { bg: "#DDEBD9", color: "#3F6B42", label: "Finalizado" },
-  active: { bg: "#DCE7F2", color: "#3E5C7E", label: "En curso" },
+  active: { bg: "#FBE3DA", color: "#E5714E", label: "En curso" },
 };
 const TRACE_EVENT_ICON = { created: "🧾", audit: "↻", evidence: "📷", assignment: "👤", incident: "⚠", packing: "🎁", delivery: "🛵", handoff: "🤝", claim: "💬", inventory: "📦" };
 
@@ -3304,7 +3320,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
                           {itemsOf(db, o.id).map((i) => `${i.cant}× ${i.nombre.split(" ").slice(0, 2).join(" ")}`).join(", ")}
                         </div>
                         <div className="flex justify-between items-center mt-2">
-                          <span className="display font-semibold">{fmt(orderTotal(db, o))}</span>
+                          <span className="display font-semibold" style={{ color: T.coral }}>{fmt(orderTotal(db, o))}</span>
                           {tieneSelloEmpaque(db, o.id) && <span title="Con sello de empaque" className="text-xs">📸</span>}
                         </div>
                       </Card>
@@ -3331,7 +3347,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
                     <td className="px-3 py-2.5">{c.nombre}<div className="text-xs" style={{ color: T.choco2 }}>{c.telefono}</div></td>
                     <td className="px-3 py-2.5"><Badge label={o.canal} map={CANAL_STYLE} /></td>
                     <td className="px-3 py-2.5">{o.barrio}</td>
-                    <td className="px-3 py-2.5 font-bold">{fmt(orderTotal(db, o))}</td>
+                    <td className="px-3 py-2.5 font-bold" style={{ color: T.coral }}>{fmt(orderTotal(db, o))}</td>
                     <td className="px-3 py-2.5 text-xs font-semibold">{o.pago}{o.comprobante ? " ✓" : ""}</td>
                     <td className="px-3 py-2.5"><Badge label={o.estado} /></td>
                     <td className="px-3 py-2.5"><Btn small kind="ghost" onClick={() => setSelId(o.id)}>Abrir</Btn></td>
