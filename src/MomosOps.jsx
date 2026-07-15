@@ -15,7 +15,8 @@ import { buildPackingChecklistLines, findPackingVerification, packingStationProg
 import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgressFor, openOrderIncidents, operationalStageForOrder, STAGE_LINE_STATUSES } from "./lib/operational-control";
 import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
-import { buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
+import { agencyDecisionType, buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS, guardAgencyAction } from "./lib/agency-intelligence";
+import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
 import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "./lib/commercial-distribution";
@@ -9751,6 +9752,7 @@ function AgenciaControl({ db, user, refrescar }) {
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
   const intelligence = useMemo(() => buildAgencyIntelligence(db, settings, hoyISO()), [db, settings]);
+  const learning = useMemo(() => buildCommercialLearning(db, hoyISO()), [db]);
   const [briefSource, setBriefSource] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [creativeOpen, setCreativeOpen] = useState(false);
@@ -9802,7 +9804,7 @@ function AgenciaControl({ db, user, refrescar }) {
     });
     await crearDecisionAgencia({
       brief_id: created.brief_id, campaign_id: briefSource.campaignId || null, creative_id: briefSource.creativeId || null,
-      type: briefSource.type, title: briefSource.title, rationale: briefSource.rationale,
+      type: agencyDecisionType(briefSource.type), title: briefSource.title, rationale: briefSource.rationale,
       evidence: briefSource.evidence || {}, risk_level: briefSource.risk, author: "reglas",
       proposed_action: {
         product_id: briefSource.productId || null, creative_id: briefSource.creativeId || null,
@@ -9915,6 +9917,16 @@ function AgenciaControl({ db, user, refrescar }) {
 
   const money = (value) => fmt(Math.round(Number(value || 0)));
   const riskStyle = (risk) => risk === "Alto" ? { bg: "#F6D4CD", fg: "#A03B2A" } : risk === "Medio" ? { bg: "#FBE8C8", fg: "#96690F" } : { bg: "#DDEBD9", fg: "#3F6B42" };
+  const learningStyle = (stage) => ({
+    winner: { bg: "#DDEBD9", fg: "#315B35", border: "#B8D3B2" },
+    funnel: { bg: "#FBE8C8", fg: "#8B5A08", border: "#EACB92" },
+    spend: { bg: "#F6D4CD", fg: "#A03B2A", border: "#E6B7AE" },
+    ambiguous: { bg: "#FFF2D8", fg: "#7A5410", border: "#E8C98B" },
+    collecting: { bg: "#E5EEF7", fg: "#315A7D", border: "#C7D8E8" },
+    promising: { bg: "#E9E4F4", fg: "#5C4C7D", border: "#D4C9E7" },
+    missing: { bg: "#F5E9D8", fg: T.choco2, border: T.border },
+    inconclusive: { bg: "#F3EEE8", fg: T.choco2, border: T.border },
+  }[stage] || { bg: "#F3EEE8", fg: T.choco2, border: T.border });
   const pillarIcon = { Inventario: "📦", Pauta: "📣", CRM: "💗", Producto: "🍨", Contenido: "🎨", Marca: "✦", General: "◎" };
   const evidenceValue = (value) => {
     if (Array.isArray(value)) return `${value.length} registro(s)`;
@@ -9928,7 +9940,7 @@ function AgenciaControl({ db, user, refrescar }) {
     ["Aprobaciones", intelligence.pipeline.approvals, "Humanas"],
     ["Creativo", intelligence.pipeline.creativeReview, "En revisión"],
     ["Programado", intelligence.pipeline.scheduled, "Próx. 7 días"],
-    ["Aprendizaje", intelligence.pipeline.learning, "Resultados"],
+    ["Aprendizaje", learning.summary.conclusive, "Lecturas concluyentes"],
   ];
 
   return (
@@ -10018,6 +10030,59 @@ function AgenciaControl({ db, user, refrescar }) {
             })}
           </div>
           {visibleRecommendations.length === 0 && <Empty icon="✦" text="No hay oportunidades en este frente hoy. El radar seguirá cruzando operación, clientes y campañas." />}
+
+          <div className="mt-7 mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Sala de aprendizaje</div>
+              <div className="display text-xl font-semibold">Qué aprendimos de lo publicado</div>
+              <div className="text-sm max-w-3xl" style={{ color: T.choco2 }}>Cruza la publicación exacta, métricas de plataforma, gasto y pedidos pagados. Si la atribución es dudosa, MOMO OPS espera y no inventa un ganador.</div>
+            </div>
+            <span className="self-start sm:self-auto rounded-full px-3 py-2 text-[10px] font-extrabold uppercase tracking-wider" style={{ background: T.vainilla, color: T.choco }}>Decisiones con evidencia</span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-4">
+            {[
+              ["Publicadas", learning.summary.published],
+              ["Sin métricas", learning.summary.missingMetrics],
+              ["Conclusiones", learning.summary.conclusive],
+              ["Ganadoras", learning.summary.winners],
+              ["Atribución pendiente", learning.summary.ambiguousAttribution],
+            ].map(([label, value]) => <div key={label} className="rounded-2xl border px-3 py-3" style={{ borderColor: T.border, background: "#FFF9F1" }}>
+              <div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div>
+              <div className="display text-2xl font-semibold" style={{ color: T.coral }}>{value}</div>
+            </div>)}
+          </div>
+          {learning.items.length > 0 ? <div className="grid lg:grid-cols-2 gap-3 mb-6">
+            {learning.items.slice(0, 6).map((item) => {
+              const stageStyle = learningStyle(item.stage.key);
+              const recommendation = item.recommendation;
+              const guard = recommendation ? guardAgencyAction({ ...recommendation, today: hoyISO(), execute: false }, db, settings) : null;
+              const created = recommendation ? existingKeys.has(recommendation.id) : false;
+              return <article key={item.post.id} className="rounded-3xl border p-4 flex flex-col shadow-sm" style={{ borderColor: stageStyle.border, background: "linear-gradient(145deg,#FFF,#FFF9F2)" }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>{item.post.canal || "Canal"} · {item.post.fecha} · {item.post.id}</div>
+                    <h3 className="display text-lg font-semibold mt-1 mb-0">{item.creative?.titulo || item.post.titulo || "Publicación MOMOS"}</h3>
+                  </div>
+                  <span className="shrink-0 rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase" style={{ background: stageStyle.bg, color: stageStyle.fg }}>{item.stage.label}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-3">
+                  {[
+                    ["Pedidos", item.metrics.orders],
+                    ["Ventas", money(item.metrics.revenue)],
+                    ["Gasto", money(item.metrics.spend)],
+                    ["ROAS", item.metrics.roas == null ? "Orgánico / —" : `${item.metrics.roas.toFixed(1)}×`],
+                  ].map(([label, value]) => <div key={label} className="rounded-xl px-2.5 py-2" style={{ background: "#F8EFE4" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-xs font-extrabold">{value}</div></div>)}
+                </div>
+                <p className="text-xs leading-relaxed mb-2" style={{ color: T.choco2 }}>{item.stage.insight}</p>
+                <div className="rounded-2xl px-3 py-2.5 mb-3" style={{ background: stageStyle.bg, color: stageStyle.fg }}><div className="text-[9px] uppercase tracking-wider font-extrabold">Siguiente paso</div><div className="text-[11px] leading-relaxed font-semibold">{item.stage.nextStep}</div></div>
+                {item.attribution.ambiguous > 0 && <div className="text-[10px] font-bold mb-3" style={{ color: "#7A5410" }}>Hay {item.attribution.ambiguous} pedido(s) sin publicación exacta. No se usaron para decidir.</div>}
+                {recommendation && <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[10px] font-bold" style={{ color: guard?.allowed ? "#3F6B42" : "#A03B2A" }}>{guard?.allowed ? "✓ Aprendizaje listo para brief humano" : `Protegido: ${guard?.reasons?.[0] || "requiere revisión"}`}</div>
+                  <Btn small kind={created ? "ghost" : "primary"} disabled={created || !serverReady || !guard?.allowed} onClick={() => openBrief(recommendation)}>{created ? "Brief creado ✓" : "Convertir aprendizaje en brief"}</Btn>
+                </div>}
+              </article>;
+            })}
+          </div> : <div className="mb-6"><Empty icon="◎" text="Cuando una publicación salga al aire, aparecerá aquí para medirla sin mezclar sus pedidos con otras piezas." /></div>}
 
           {(db.agencyBriefs || []).length > 0 && <>
             <SectionTitle>Flujo de briefs</SectionTitle>

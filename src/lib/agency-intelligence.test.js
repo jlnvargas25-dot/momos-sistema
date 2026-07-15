@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgencyIntelligence, guardAgencyAction, normalizeAgencySettings } from "./agency-intelligence.js";
+import { agencyDecisionType, buildAgencyIntelligence, guardAgencyAction, normalizeAgencySettings } from "./agency-intelligence.js";
+
+test("traduce tipos amigables al contrato cerrado del servidor", () => {
+  assert.equal(agencyDecisionType("Repetir creativo"), "Crear contenido");
+  assert.equal(agencyDecisionType("Impulsar producto"), "Crear contenido");
+  assert.equal(agencyDecisionType("Activar cumpleaños"), "Contactar segmento");
+  assert.equal(agencyDecisionType("Pausar campaña"), "Pausar campaña");
+  assert.equal(agencyDecisionType("Idea desconocida"), "Otro");
+});
 
 test("bloquea pauta activa cuando el producto no tiene stock", () => {
   const db = {

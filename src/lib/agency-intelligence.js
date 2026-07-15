@@ -27,6 +27,19 @@ export const DEFAULT_AGENCY_SETTINGS = Object.freeze({
   paused: false,
 });
 
+const SERVER_DECISION_TYPES = new Set([
+  "Crear contenido", "Contactar segmento", "Activar campaña", "Pausar campaña",
+  "Escalar presupuesto", "Reponer stock", "Revisar creativo", "Revisar oferta", "Otro",
+]);
+
+export function agencyDecisionType(value) {
+  const type = String(value || "").trim();
+  if (SERVER_DECISION_TYPES.has(type)) return type;
+  if (type === "Activar cumpleaños") return "Contactar segmento";
+  if (["Impulsar producto", "Mover inventario", "Repetir creativo"].includes(type)) return "Crear contenido";
+  return "Otro";
+}
+
 export function normalizeAgencySettings(settings = {}) {
   return {
     ...DEFAULT_AGENCY_SETTINGS,
