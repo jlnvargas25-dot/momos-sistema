@@ -20,6 +20,7 @@ const KITCHEN_CORE_TERMS = [
   "Lizi", "Momo", "Max", "Rocco", "Teo", "Toby", "Danna",
   "M&M", "Oreo", "Nutella", "Milo", "Mango biche", "Coco", "Maracuyá",
   "Limón", "Banano", "Durazno", "Caramelo salado", "malteada", "granizado",
+  "postre", "postres", "unidad", "unidades", "pieza", "piezas", "figura", "figuras",
   "cheesecake", "ganache", "mousse", "mezcla secreta", "base secreta", "crocante", "relleno", "salsa",
   "ganache de chocolate", "relleno de ganache", "ganache para rellenos", "relleno de chocolate para figuras",
   "congelación", "cronómetro", "desmoldar", "producción", "preparar",
@@ -35,7 +36,7 @@ const KITCHEN_CORE_TERMS = [
 ];
 
 const KITCHEN_TASK_GROUPS = [
-  { canonical: "preparar", aliases: ["prepara", "preparando", "preparación", "prepare", "prepárame", "hacer"] },
+  { canonical: "preparar", aliases: ["prepara", "preparando", "preparación", "prepare", "prepárame", "hacer", "alistar", "alista", "alistando", "alistemos", "dejar listo", "dejar lista", "dejar listos", "dejar listas"] },
   { canonical: "producir", aliases: ["produce", "produciendo", "producción", "fabricar", "fabrica", "fabricando"] },
   { canonical: "registrar", aliases: ["registra", "registrando", "registro", "anotar", "anota"] },
   { canonical: "ingresar", aliases: ["ingresa", "ingresando", "ingreso", "entrar", "entra"] },
@@ -89,8 +90,9 @@ const KITCHEN_ALIAS_GROUPS = [
   { canonical: "Caramelo salado", aliases: ["caramelo saldo"] },
   { canonical: "malteada", aliases: ["maltada", "malteado", "malteadas"] },
   { canonical: "granizado", aliases: ["granisado", "granizados"] },
-  { canonical: "cheesecake", aliases: ["cheese cake", "chesecake", "chiz cake", "chis cake"] },
-  { canonical: "ganache", aliases: ["ganash", "ganasch", "ganachi", "gana de chocolate", "ganas de chocolate", "ganaste chocolate"] },
+  { canonical: "cheesecake", aliases: ["cheese cake", "chees cake", "cheescake", "chesecake", "chiz cake", "chis cake", "cheesecakes"] },
+  { canonical: "ganache", aliases: ["ganaches", "ganash", "ganasch", "ganachi", "gana de chocolate", "ganas de chocolate", "ganaste chocolate"] },
+  { canonical: "salsa", aliases: ["salsas"] },
   { canonical: "mousse", aliases: ["mezcla secreta", "mezclas secretas", "base secreta", "mus", "muss", "musse", "mous", "mouse", "muse", "mousse"] },
 ];
 
@@ -667,6 +669,19 @@ function applyKnownAliases(text, corrections) {
   return corrected;
 }
 
+function applyContextualMousseAliases(text, corrections) {
+  if (!/(?:^|\s)mousse(?=\s|$)/.test(text)) return text;
+
+  // El reconocimiento de voz convierte con frecuencia "Milo"/"de Milo" en
+  // "mil" o "de 1000". Solo lo corregimos dentro de una conversación sobre
+  // mousse y cuando 1000 NO lleva una unidad de peso; así "1000 gramos de
+  // mousse" conserva intacta su cantidad real.
+  return text.replace(/(^|\s)de\s+1000(?!\s*(?:g|gr|grs|gramos?|kg|kilos?|kilogramos?)\b)(?=\s|$)/g, (match, prefix) => {
+    correctionRecord(corrections, "1000", "Milo", "context");
+    return `${prefix}de milo`;
+  });
+}
+
 function editDistance(left, right) {
   const a = String(left || "");
   const b = String(right || "");
@@ -750,7 +765,8 @@ export function correctKitchenVocabulary(transcript, catalogs = {}) {
   const corrections = [];
   const withFigureContext = applyContextualFigureAliases(heardNormalized, corrections);
   const withAliases = applyKnownAliases(withFigureContext, corrections);
-  const correctedTranscript = applyFuzzyCatalog(withAliases, catalogs, corrections);
+  const withMousseContext = applyContextualMousseAliases(withAliases, corrections);
+  const correctedTranscript = applyFuzzyCatalog(withMousseContext, catalogs, corrections);
   return { heardNormalized, correctedTranscript, corrections: corrections.map(({ key, ...item }) => item) };
 }
 
@@ -875,7 +891,8 @@ function parsePreparations(text, catalogs, warnings, errors) {
         : mention.end < amount.index ? text.slice(mention.end, amount.index)
         : "";
       const clausePenalty = /(?:^|\s)(?:y|luego|despues|ademas|tambien)(?=\s|$)/.test(between) ? 1000 : 0;
-      const distance = rawDistance + clausePenalty;
+      const amountIntroducesFollowingBase = amount.end <= mention.index && /^\s*de\s*$/.test(between);
+      const distance = rawDistance + clausePenalty - (amountIntroducesFollowingBase ? 100 : 0);
       return !best || distance < best.distance ? { mention, distance } : best;
     }, null);
     if (!closest) return;
@@ -954,16 +971,31 @@ function mentionedFlavors(text, flavors) {
   return flavors.map(catalogEntry).filter((flavor) => includesName(text, flavor.name, true));
 }
 
+function declaredProductionTotal(text, figure) {
+  if (!figure) return null;
+  const figurePattern = `${escapeRegExp(normalizeKitchenVoice(figure.name))}(?:s|es)?`;
+  const directFigure = text.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s+(?:unidades?\\s+)?(?:de\\s+)?${figurePattern}(?=\\s|$)`));
+  if (directFigure) return Number(directFigure[1]);
+
+  // Forma natural frecuente en cocina: "quiero 20 postres de coco de Momo".
+  // El sustantivo genérico separa el número tanto del sabor como de la figura,
+  // por eso no lo capturan los patrones directos de "20 Momo" o "20 de coco".
+  const genericProduct = text.match(
+    /(?:^|\s)(?:quiero|queremos|necesito|necesitamos|preparar|producir|fabricar|moldear)(?:\s+(?:preparar|producir|fabricar|moldear))?\s+(?:unos?\s+)?(\d+(?:\.\d+)?)\s+(?:unidades?|piezas?|postres?|figuras?|momos?)(?=\s|$)/,
+  );
+  if (genericProduct) return Number(genericProduct[1]);
+
+  const announced = text.match(/(?:en total|total de|van a ser|serian|seran)\s+(\d+(?:\.\d+)?)(?=\s|$)/);
+  return announced ? Number(announced[1]) : null;
+}
+
 function parseProduction(text, figures, flavors, warnings, errors) {
   const figure = findFigure(text, figures);
   const hasProductionVerb = /(?:produc|fabric|corrida|moldear)/.test(text);
   if (!figure && !hasProductionVerb) return null;
   if (!figure) { errors.push("Escuché una producción, pero no reconocí la figura."); return null; }
 
-  const figurePattern = `${escapeRegExp(normalizeKitchenVoice(figure.name))}(?:s|es)?`;
-  const declaredMatch = text.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s+(?:unidades?\\s+)?(?:de\\s+)?${figurePattern}(?=\\s|$)`))
-    || text.match(/(?:en total|total de|van a ser|serian|seran)\s+(\d+(?:\.\d+)?)(?=\s|$)/);
-  const declaredTotal = declaredMatch ? Number(declaredMatch[1]) : null;
+  const declaredTotal = declaredProductionTotal(text, figure);
   const mentioned = mentionedFlavors(text, flavors);
   let runs = flavorRuns(text, flavors);
   if (!runs.length && declaredTotal) {
@@ -987,6 +1019,46 @@ function parseProduction(text, figures, flavors, warnings, errors) {
   }
   if (declaredTotal === null) warnings.push(`No escuché un total general; usaré la suma por sabores: ${calculatedTotal}.`);
   return { figure: figure.name, declaredTotal, calculatedTotal, runs };
+}
+
+function figureMentions(text, figures) {
+  const mentions = [];
+  figures.map(catalogEntry).forEach((entry) => {
+    const label = normalizeKitchenVoice(entry.name);
+    if (!label) return;
+    const regex = new RegExp(`(?:^|\\s)${escapeRegExp(label)}(?:s|es)?(?=\\s|$)`, "g");
+    let match;
+    while ((match = regex.exec(text))) {
+      const index = match.index + (match[0].startsWith(" ") ? 1 : 0);
+      mentions.push({ entry, index, end: index + match[0].trim().length, start: index });
+    }
+  });
+
+  mentions.sort((left, right) => left.index - right.index || right.end - right.index - (left.end - left.index));
+  for (let i = 0; i < mentions.length; i += 1) {
+    const previousEnd = i > 0 ? mentions[i - 1].end : 0;
+    const prefix = text.slice(previousEnd, mentions[i].index);
+    const amountBefore = prefix.match(/(?:^|\s)(\d+(?:\.\d+)?)\s+(?:unidades?\s+(?:de\s+)?)?$/);
+    if (!amountBefore) continue;
+    const offset = (amountBefore.index || 0) + (amountBefore[0].startsWith(" ") ? 1 : 0);
+    mentions[i].start = previousEnd + offset;
+  }
+  return mentions;
+}
+
+function parseProductions(text, figures, flavors, warnings, errors) {
+  const mentions = figureMentions(text, figures);
+  const distinctFigures = new Set(mentions.map((mention) => mention.entry.id));
+  if (mentions.length <= 1 || distinctFigures.size <= 1) {
+    const production = parseProduction(text, figures, flavors, warnings, errors);
+    return production ? [production] : [];
+  }
+
+  return mentions.map((mention, index) => {
+    const nextStart = mentions[index + 1]?.start ?? text.length;
+    const segment = text.slice(mention.start, nextStart).trim();
+    return parseProduction(segment, [mention.entry.raw || mention.entry], flavors, warnings, errors);
+  }).filter(Boolean);
 }
 
 function batchNumericId(value) {
@@ -1336,9 +1408,10 @@ export function parseKitchenVoice(transcript, catalogs = {}) {
   const orderHandoffIntent = orderHandoffResult.intent;
   const orderHandoff = orderHandoffResult.action;
   const explicitProduction = /(?:produc|fabric|corrida|moldear)/.test(normalized);
-  const production = (batchMentioned && !explicitProduction) || madeToOrderIntent
-    ? null
-    : parseProduction(normalized, catalogs.figures || [], catalogs.flavors || [], warnings, errors);
+  const productions = (batchMentioned && !explicitProduction) || madeToOrderIntent
+    ? []
+    : parseProductions(normalized, catalogs.figures || [], catalogs.flavors || [], warnings, errors);
+  const production = productions[0] || null;
   const freezingMentioned = /(?:congel|cronomet|temporizador)/.test(normalized);
   const readyForSaleIntent = batchMentioned && /(?:^|\s)listo(?=\s|$)/.test(normalized);
   const unmoldingIntent = batchMentioned && !/(?:convertir|aprovechar|reprocesar)\s+imperfectas/.test(normalized)
@@ -1366,6 +1439,7 @@ export function parseKitchenVoice(transcript, catalogs = {}) {
     preparation,
     preparations,
     production,
+    productions,
     madeToOrderIntent,
     madeToOrderRequest,
     madeToOrder,
@@ -1379,7 +1453,7 @@ export function parseKitchenVoice(transcript, catalogs = {}) {
     freezeBatchIds,
     warnings,
     errors,
-    canExecute: errors.length === 0 && Boolean(preparations.length || production || madeToOrder || orderHandoff || unmolding || freezeBatchIds.length),
+    canExecute: errors.length === 0 && Boolean(preparations.length || productions.length || madeToOrder || orderHandoff || unmolding || freezeBatchIds.length),
   };
 }
 
@@ -1394,9 +1468,7 @@ export function kitchenConversationPrompt(parsed, catalogs = {}) {
   const flavors = catalogs.flavors || [];
   const subrecipes = catalogs.subrecipes || [];
   const figure = findFigure(normalized, figures);
-  const figureQuantity = figure
-    ? normalized.match(new RegExp(`(?:^|\\s)(\\d+(?:\\.\\d+)?)\\s+(?:unidades?\\s+(?:de\\s+)?)?${escapeRegExp(normalizeKitchenVoice(figure.name))}(?:s|es)?(?=\\s|$)`))?.[1]
-    : null;
+  const figureQuantity = declaredProductionTotal(normalized, figure);
   const flavorMentions = mentionedFlavors(normalized, flavors);
   const grams = extractGramAmounts(normalized);
   const preparationMentioned = /(?:prepar|hacer|registr|ingres|ganache|mousse|salsa|relleno|crocante|cheesecake)/.test(normalized);
@@ -1445,15 +1517,24 @@ export function kitchenConversationPrompt(parsed, catalogs = {}) {
   }
   if (ambiguousPreparation) {
     const isSecretMix = /(?:^|\s)mousse(?=\s|$)/.test(normalized);
-    const mousseFlavors = [...new Set(subrecipes
+    const mousseEntries = subrecipes
       .map(catalogEntry)
-      .filter((entry) => String(entry.type).startsWith("mousse") && entry.sabor)
+      .filter((entry) => String(entry.type).startsWith("mousse") && entry.sabor);
+    const fruitFlavors = [...new Set(mousseEntries
+      .filter((entry) => entry.type === "mousse_frutal")
       .map((entry) => entry.sabor))];
+    const creamyFlavors = [...new Set(mousseEntries
+      .filter((entry) => entry.type === "mousse_cremosa")
+      .map((entry) => entry.sabor))];
+    const mousseFlavors = [...new Set(mousseEntries.map((entry) => entry.sabor))];
     if (isSecretMix && mousseFlavors.length) {
+      const flavorHelp = fruitFlavors.length && creamyFlavors.length
+        ? `frutales como ${fruitFlavors.join(", ")}; o cremosos como ${creamyFlavors.join(", ")}`
+        : mousseFlavors.join(", ");
       return {
         kind: "base-flavor",
         recoverable: true,
-        text: `Entendí mezcla secreta. ¿De qué sabor es? Podés decir ${mousseFlavors.slice(0, 6).join(", ")}.`,
+        text: `Entendí mezcla secreta. ¿De qué sabor es? Podés decir ${flavorHelp}.`,
       };
     }
     return { kind: "base", recoverable: true, text: ambiguousPreparation };

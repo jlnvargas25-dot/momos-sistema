@@ -36,6 +36,9 @@ const catalogs = {
     { id: "SR-SALSA-MAR", nombre: "Salsa maracuyá", tipo: "salsa", sabor: "Maracuyá", mermaPct: 5 },
     { id: "SR-MOUSSE-COCO", nombre: "Mousse coco", tipo: "mousse_frutal", sabor: "Coco", mermaPct: 8 },
     { id: "SR-MOUSSE-OREO", nombre: "Mousse Oreo", tipo: "mousse_cremosa", sabor: "Oreo", mermaPct: 6 },
+    { id: "SR-MOUSSE-NUTELLA", nombre: "Mousse Nutella", tipo: "mousse_cremosa", sabor: "Nutella", mermaPct: 6 },
+    { id: "SR-MOUSSE-MYM", nombre: "Mousse M&M", tipo: "mousse_cremosa", sabor: "M&M", mermaPct: 6 },
+    { id: "SR-MOUSSE-MILO", nombre: "Mousse Milo", tipo: "mousse_cremosa", sabor: "Milo", mermaPct: 6 },
   ],
   figureFillings: [{ id: "FR-GAN", subrecetaId: "SR-GAN", gramosPorUnidad: 15, activo: true }],
   batches: [
@@ -377,6 +380,29 @@ test("acepta una sola cantidad y un sabor", () => {
   assert.deepEqual(parsed.production.runs, [{ flavor: "Limón", quantity: 10 }]);
 });
 
+test("entiende una cantidad expresada como postres de sabor y figura", () => {
+  const cases = [
+    "Mambo bot quiero 20 postres de coco de Momo",
+    "Momobot quiero veinte piezas de coco de Momo",
+    "Quiero preparar 20 figuras sabor coco de Momo",
+  ];
+  cases.forEach((transcript) => {
+    const parsed = parseKitchenVoice(transcript, catalogs);
+    assert.equal(parsed.canExecute, true, transcript);
+    assert.equal(parsed.production.figure, "Momo", transcript);
+    assert.equal(parsed.production.declaredTotal, 20, transcript);
+    assert.deepEqual(parsed.production.runs, [{ flavor: "Coco", quantity: 20 }], transcript);
+  });
+});
+
+test("conserva el total de postres cuando debe preguntar solamente el sabor", () => {
+  const parsed = parseKitchenVoice("Momobot quiero 20 postres de Momo", catalogs);
+  const prompt = kitchenConversationPrompt(parsed, catalogs);
+  assert.equal(parsed.canExecute, false);
+  assert.equal(prompt.kind, "flavors");
+  assert.match(prompt.text, /entend[ií] 20 de la figura Momo/i);
+});
+
 test("no inicia cronómetros sin lotes del mismo comando", () => {
   const parsed = parseKitchenVoice("Inicia el cronómetro de congelación", catalogs);
   assert.equal(parsed.canExecute, false);
@@ -709,6 +735,134 @@ test("pregunta el sabor cuando solo escucha mezcla secreta", () => {
   const completed = parseKitchenVoice(mergeKitchenConversation(first.transcript, "de coco"), catalogs);
   assert.equal(completed.canExecute, true);
   assert.equal(completed.preparation.subrecipeName, "Mousse coco");
+});
+
+test("recupera Milo cuando la voz devuelve 1000 y acepta la corrección acumulada", () => {
+  const first = parseKitchenVoice("Voy a preparar 200 g de mezcla secreta", catalogs);
+  const heardAsNumber = parseKitchenVoice(mergeKitchenConversation(first.transcript, "de 1000"), catalogs);
+  assert.equal(heardAsNumber.canExecute, true);
+  assert.equal(heardAsNumber.preparation.subrecipeName, "Mousse Milo");
+  assert.equal(heardAsNumber.preparation.nominalGrams, 200);
+  assert.ok(heardAsNumber.corrections.some((item) => item.heard === "1000" && item.understoodAs === "Milo"));
+
+  const correctedLater = parseKitchenVoice(
+    mergeKitchenConversation(mergeKitchenConversation(first.transcript, "de 1000"), "De Milo"),
+    catalogs,
+  );
+  assert.equal(correctedLater.canExecute, true);
+  assert.equal(correctedLater.preparation.subrecipeName, "Mousse Milo");
+  assert.equal(correctedLater.preparation.nominalGrams, 200);
+});
+
+test("la ayuda de mezcla secreta incluye mousses frutales y cremosas", () => {
+  const parsed = parseKitchenVoice("Preparar 200 gramos de mezcla secreta", catalogs);
+  const prompt = kitchenConversationPrompt(parsed, catalogs);
+  assert.equal(prompt.kind, "base-flavor");
+  assert.match(prompt.text, /frutales/i);
+  assert.match(prompt.text, /cremosos/i);
+  assert.match(prompt.text, /Milo/);
+  assert.match(prompt.text, /Oreo/);
+  assert.match(prompt.text, /Nutella/);
+  assert.match(prompt.text, /M&M/);
+});
+
+test("no confunde una tanda real de 1000 gramos con el sabor Milo", () => {
+  const parsed = parseKitchenVoice("Preparar 1000 gramos de mezcla secreta de Oreo", catalogs);
+  assert.equal(parsed.canExecute, true);
+  assert.equal(parsed.preparation.subrecipeName, "Mousse Oreo");
+  assert.equal(parsed.preparation.nominalGrams, 1000);
+  assert.equal(parsed.corrections.some((item) => item.heard === "1000" && item.understoodAs === "Milo"), false);
+});
+
+test("alista varias mezclas, salsas, ganache y cheesecake en una sola orden", () => {
+  const multiBaseCatalogs = {
+    ...catalogs,
+    subrecipes: [
+      ...catalogs.subrecipes,
+      { id: "SR-CHEESECAKE", nombre: "Cheesecake base", tipo: "cheesecake", mermaPct: 5 },
+    ],
+  };
+  const parsed = parseKitchenVoice(
+    "Alistar 200 gramos de mezcla secreta de Milo, 300 gramos de salsa maracuyá, 400 gramos de ganache de chocolate y 500 gramos de cheesecake",
+    multiBaseCatalogs,
+  );
+  assert.equal(parsed.canExecute, true);
+  assert.deepEqual(
+    parsed.preparations.map((item) => [item.subrecipeName, item.nominalGrams]),
+    [
+      ["Mousse Milo", 200],
+      ["Salsa maracuyá", 300],
+      ["Ganache de chocolate", 400],
+      ["Cheesecake base", 500],
+    ],
+  );
+});
+
+test("alista dos o más figuras y conserva cantidad y sabor de cada una", () => {
+  const parsed = parseKitchenVoice("Alistar 3 Lizis de coco, 4 Max de Oreo y 2 Dannas de Milo", catalogs);
+  assert.equal(parsed.canExecute, true);
+  assert.deepEqual(parsed.productions.map((item) => ({
+    figure: item.figure,
+    total: item.calculatedTotal,
+    runs: item.runs,
+  })), [
+    { figure: "Lizi", total: 3, runs: [{ flavor: "Coco", quantity: 3 }] },
+    { figure: "Max", total: 4, runs: [{ flavor: "Oreo", quantity: 4 }] },
+    { figure: "Danna", total: 2, runs: [{ flavor: "Milo", quantity: 2 }] },
+  ]);
+});
+
+test("separa distribuciones de sabores para varias figuras", () => {
+  const parsed = parseKitchenVoice(
+    "Producir 5 Lizis: 2 de coco y 3 de Oreo; y 4 Max: 1 de Milo y 3 de Nutella",
+    catalogs,
+  );
+  assert.equal(parsed.canExecute, true);
+  assert.deepEqual(parsed.productions.map((item) => ({ figure: item.figure, total: item.calculatedTotal, runs: item.runs })), [
+    { figure: "Lizi", total: 5, runs: [{ flavor: "Coco", quantity: 2 }, { flavor: "Oreo", quantity: 3 }] },
+    { figure: "Max", total: 4, runs: [{ flavor: "Milo", quantity: 1 }, { flavor: "Nutella", quantity: 3 }] },
+  ]);
+});
+
+test("bloquea todo el comando si una de varias figuras quedó sin sabor o cantidad", () => {
+  const missingFlavor = parseKitchenVoice("Alistar 3 Lizis de coco y 4 Max", catalogs);
+  assert.equal(missingFlavor.canExecute, false);
+  assert.match(missingFlavor.errors.join(" "), /cantidades por sabor/i);
+
+  const missingQuantity = parseKitchenVoice("Alistar 3 Lizis de coco y Max de Oreo", catalogs);
+  assert.equal(missingQuantity.canExecute, false);
+  assert.match(missingQuantity.errors.join(" "), /cantidad faltante|cantidades por sabor/i);
+});
+
+test("combina varias bases y varias figuras sin cruzar cantidades", () => {
+  const parsed = parseKitchenVoice(
+    "Alistemos 200 gramos de mezcla secreta de Milo y 300 gramos de salsa maracuyá; además 3 Lizis de coco y 4 Max de Oreo",
+    catalogs,
+  );
+  assert.equal(parsed.canExecute, true);
+  assert.deepEqual(parsed.preparations.map((item) => [item.subrecipeName, item.nominalGrams]), [
+    ["Mousse Milo", 200],
+    ["Salsa maracuyá", 300],
+  ]);
+  assert.deepEqual(parsed.productions.map((item) => [item.figure, item.calculatedTotal, item.runs]), [
+    ["Lizi", 3, [{ flavor: "Coco", quantity: 3 }]],
+    ["Max", 4, [{ flavor: "Oreo", quantity: 4 }]],
+  ]);
+});
+
+test("refuerza plurales y pronunciaciones de las preparaciones de cocina", () => {
+  const parsed = parseKitchenVoice("Dejar listas 200 gramos de ganaches y 300 gramos de cheescake", {
+    ...catalogs,
+    subrecipes: [
+      ...catalogs.subrecipes,
+      { id: "SR-CHEESE-NATURAL", nombre: "Relleno cheesecake", tipo: "cheesecake", mermaPct: 5 },
+    ],
+  });
+  assert.equal(parsed.canExecute, true);
+  assert.deepEqual(parsed.preparations.map((item) => [item.subrecipeName, item.nominalGrams]), [
+    ["Ganache de chocolate", 200],
+    ["Relleno cheesecake", 300],
+  ]);
 });
 
 test("cruza la preparación con la única orden pagada y especifica cuál es", () => {
