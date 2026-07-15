@@ -11,7 +11,8 @@ begin
     '20260714_07_listo_para_empaque','20260714_08_sello_rbac',
     '20260714_09_empaque_trazable','20260714_10_domicilio_empaque',
     '20260714_11_inventario_vencimientos','20260714_12_inventario_lotes',
-    '20260714_13_productos_servidor'
+    '20260714_13_productos_servidor','20260714_14_control_operativo',
+    '20260714_15_crm_clientes'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -30,6 +31,16 @@ begin
   assert has_function_privilege('authenticated','public.crear_producto(jsonb)','EXECUTE'), 'falta RPC de Productos';
   assert has_function_privilege('authenticated','public.productos_servidor_disponible()','EXECUTE'), 'falta sonda de Productos';
   assert has_function_privilege('authenticated','public.guardar_receta_producto(text,jsonb)','EXECUTE'), 'falta RPC de recetas';
+  assert has_function_privilege('authenticated','public.tomar_etapa_pedido(text,text)','EXECUTE'), 'falta RPC de responsables';
+  assert has_function_privilege('authenticated','public.aceptar_relevo_despacho(text)','EXECUTE'), 'falta RPC de relevo físico';
+  assert has_function_privilege('authenticated','public.registrar_contacto_cliente(jsonb)','EXECUTE'), 'falta RPC de contactos CRM';
+  assert has_function_privilege('authenticated','public.activar_beneficio_cliente(jsonb)','EXECUTE'), 'falta RPC de beneficios CRM';
+  assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
+  assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
+  if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='orders'), 'orders no publica cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='order_line_progress'), 'progreso no publica cambios en tiempo real';
+  end if;
   assert not has_table_privilege('authenticated','public.products','UPDATE'), 'products conserva escritura directa';
   assert not has_table_privilege('authenticated','public.recipes','INSERT'), 'recipes conserva escritura directa';
   assert not exists(select 1 from public.v_inventory_lot_reconciliation where difference<>0), 'stock agregado y lotes no cuadran';
@@ -40,5 +51,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-13 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-15 PASS, rollback total' as resultado;
 rollback;
