@@ -174,6 +174,10 @@ const FONTS = `
 .momo-delay-ticket::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--delay-tone, #E7C078); }
 .momo-stock-meter { height: 7px; overflow: hidden; border-radius: 999px; background: #F2E8DB; }
 .momo-stock-meter > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6A9B69, #E5714E); transition: width 520ms var(--momo-spring); }
+.momo-crm-tile { transition: transform 180ms var(--momo-spring), box-shadow 180ms ease; }
+.momo-crm-tile:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(84,56,43,.08); }
+.momo-crm-row { transition: background 160ms ease; border-radius: 10px; }
+.momo-crm-row:hover { background: rgba(247,236,217,.6); }
 @keyframes momo-page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes momo-sheet-in { from { opacity: 0; transform: translateY(28px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes momo-toast-in { 0% { opacity: 0; transform: translateY(18px) scale(.94); } 65% { transform: translateY(-2px) scale(1.01); } 100% { opacity: 1; transform: none; } }
@@ -1811,6 +1815,29 @@ function Card({ children, className = "", onClick, style, ...props }) {
       {children}
     </div>
   );
+}
+
+function CountUp({ value, format }) {
+  const target = Number(value) || 0;
+  const reduce = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const [shown, setShown] = useState(reduce ? target : 0);
+  const rafRef = useRef(0);
+  useEffect(() => {
+    if (reduce) { setShown(target); return; }
+    const t0 = performance.now();
+    const dur = 640;
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      setShown(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    setShown(0);
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+  const n = Math.round(shown);
+  return <>{format ? format(n) : n}</>;
 }
 
 function Stat({ icon, label, value, sub, tone, onClick, active }) {
@@ -7866,29 +7893,45 @@ function Clientes({ db, update, user, refrescar }) {
       {sel && (
         <Modal title={sel.nombre} onClose={() => setSel(null)}>
           {!db.crmServerReady && <div className="text-xs font-bold p-2.5 rounded-xl mb-3" style={{ background: "#FBE8C8", color: "#96690F" }}>CRM en modo consulta. Aplicá la migración 15 para registrar contactos, activaciones y preferencias.</div>}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            {[["Compras", crm.purchases], ["Valor cliente", fmt(crm.spend)], ["Ticket", fmt(crm.averageTicket)], ["Ficha", `${crmCompleteness(crm)}%`]].map(([label, value]) => <div key={label} className="rounded-xl p-2 text-center" style={{ background: T.vainilla }}><div className="font-extrabold text-sm">{value}</div><div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{label}</div></div>)}
+          {/* Tira de identidad — plana, dentro de la paleta */}
+          <div className="momo-trace-open flex items-center gap-3 rounded-2xl p-3 mb-3" style={{ background: T.soft, border: `1px solid ${T.border}`, animationDelay: "20ms" }}>
+            <div className="w-11 h-11 rounded-full flex items-center justify-center display text-lg shrink-0" style={{ background: T.vainilla, color: T.rosaDeep, boxShadow: "inset 0 0 0 1px rgba(196,128,142,.2)" }}>
+              {(sel.nombre || "·").split(" ").map((w) => w[0]).slice(0, 2).join("")}
+            </div>
+            <div className="min-w-0">
+              <div className="flex gap-1.5 flex-wrap"><Badge label={sel.estado} /><Badge label={sel.canal} map={CANAL_STYLE} /></div>
+              {(sel.telefono || sel.barrio) && <div className="text-xs font-semibold mt-1 truncate" style={{ color: T.choco2, fontVariantNumeric: "tabular-nums" }}>{sel.telefono}{sel.telefono && sel.barrio ? " · " : ""}{sel.barrio}</div>}
+            </div>
           </div>
-          <div className="p-3 rounded-2xl mb-3" style={{ background: crm.nextAction.type === "blocked" ? "#F6D4CD" : "#E6F1E3", border: `1px solid ${crm.nextAction.type === "blocked" ? "#E8A697" : "#B8D2B2"}` }}>
+          {/* Métricas — tiles planos vainilla con count-up */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            {[["Compras", <CountUp value={crm.purchases} />], ["Valor cliente", <CountUp value={crm.spend} format={fmt} />], ["Ticket", <CountUp value={crm.averageTicket} format={fmt} />], ["Ficha", <CountUp value={crmCompleteness(crm)} format={(v) => `${v}%`} />]].map(([label, node], i) => (
+              <div key={label} className="momo-crm-tile momo-trace-open rounded-xl p-2 text-center" style={{ background: T.vainilla, animationDelay: `${70 + i * 55}ms` }}>
+                <div className="display font-semibold text-base" style={{ fontVariantNumeric: "tabular-nums" }}>{node}</div>
+                <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          {/* Siguiente mejor acción — colores originales, sin cambios */}
+          <div className="momo-trace-open p-3 rounded-2xl mb-3" style={{ background: crm.nextAction.type === "blocked" ? "#F6D4CD" : "#E6F1E3", border: `1px solid ${crm.nextAction.type === "blocked" ? "#E8A697" : "#B8D2B2"}`, animationDelay: "290ms" }}>
             <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: crm.nextAction.type === "blocked" ? "#A03B2A" : "#3F6B42" }}>Siguiente mejor acción</div>
             <div className="font-bold text-sm mt-0.5">{crm.nextAction.label}</div><div className="text-xs mt-0.5">{crm.nextAction.detail}</div>
           </div>
-          <div className="flex gap-2 mb-3 flex-wrap"><Badge label={sel.estado} /><Badge label={sel.canal} map={CANAL_STYLE} /></div>
-          <div className="text-sm space-y-1.5">
-            <div>📞 {sel.telefono} {sel.instagram && <span>· {sel.instagram}</span>}</div>
+          {/* Contacto — sin duplicar métricas (tel movido a la tira; total/ticket ya en métricas) */}
+          <div className="momo-trace-open text-sm space-y-1.5 rounded-2xl p-3 mb-3" style={{ background: T.soft, border: `1px solid ${T.border}`, animationDelay: "330ms" }}>
             <div>📍 {sel.direccion} ({sel.barrio})</div>
-            <div>🗓️ {crm.firstPurchase ? <>Primera compra {crm.firstPurchase} · última {crm.lastPurchase}</> : <span style={{ color: T.choco2 }}>Sin compras entregadas aún (lead)</span>}</div>
+            <div style={{ fontVariantNumeric: "tabular-nums" }}>🗓️ {crm.firstPurchase ? <>Primera compra <b>{crm.firstPurchase}</b> · última <b>{crm.lastPurchase}</b></> : <span style={{ color: T.choco2 }}>Sin compras entregadas aún (lead)</span>}</div>
+            {sel.instagram && <div>📸 {sel.instagram}</div>}
             {sel.cumple && <div>🎂 Cumpleaños: {sel.cumple}</div>}
-            <div>💗 Favoritos: {sel.favoritos || "—"}</div>
-            <div>💰 Total: <b>{fmt(crm.spend)}</b> en {crm.purchases} pedidos (ticket {fmt(crm.averageTicket)})</div>
+            {sel.favoritos && <div>💗 {sel.favoritos}</div>}
           </div>
-          <div className="mt-3">
+          <div className="momo-trace-open mt-3" style={{ animationDelay: "370ms" }}>
             <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>GUSTOS REALES SEGÚN COMPRAS</div>
-            {crm.automaticFavorites.length ? <div className="flex flex-wrap gap-1.5">{crm.automaticFavorites.map((favorite) => <span key={favorite.label} className="text-xs font-bold px-2 py-1 rounded-full" style={{ background: T.rosa }}>{favorite.label} · {favorite.quantity}</span>)}</div> : <div className="text-sm" style={{ color: T.choco2 }}>Aún no hay compras entregadas para aprender sus gustos.</div>}
+            {crm.automaticFavorites.length ? <div className="flex flex-wrap gap-1.5">{crm.automaticFavorites.map((favorite) => <span key={favorite.label} className="text-xs font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1.5" style={{ background: T.rosa, color: "#8E4B5A" }}>{favorite.label} <span style={{ background: "rgba(255,255,255,.6)", borderRadius: "999px", padding: "0 6px", fontVariantNumeric: "tabular-nums" }}>{favorite.quantity}</span></span>)}</div> : <div className="text-sm" style={{ color: T.choco2 }}>Aún no hay compras entregadas para aprender sus gustos.</div>}
           </div>
-          <div className="mt-3">
+          <div className="momo-trace-open mt-3" style={{ animationDelay: "410ms" }}>
             <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>HISTORIAL DE PEDIDOS</div>
-            {crm.orders.slice(0, 8).map((order) => <div key={order.id} className="flex justify-between gap-3 text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div><b>{order.id}</b> · {order.fecha}<div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1">{fmt(order.totalCrm)}</div></div></div>)}
+            {crm.orders.slice(0, 8).map((order) => <div key={order.id} className="momo-crm-row flex justify-between gap-3 text-sm px-2 py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="min-w-0"><b>{order.id}</b> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{order.fecha}</span><div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(order.totalCrm)}</div></div></div>)}
             {!crm.orders.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin pedidos todavía.</div>}
           </div>
           <div className="mt-3">
