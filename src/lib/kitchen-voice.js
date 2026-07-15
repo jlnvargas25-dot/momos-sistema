@@ -33,24 +33,26 @@ const KITCHEN_CORE_TERMS = [
   "editar el comando", "quiero editar", "evitar el comando", "limpiar", "limpia", "limpiar el comando", "limpia el borrador",
   "borrar", "borra todo", "corregir", "corrige", "empezar de nuevo", "cancelar", "cancelar el comando",
   "cancela el borrador", "cancelar cancelar", "canselar", "no lo hagas", "no registres", "repetir", "nuevo comando",
+  "insumo", "insumos", "materia prima", "inventario", "existencias", "stock bajo", "por vencer", "vencido",
+  "cuánto queda", "qué hace falta", "qué se está venciendo", "qué insumos están bajos",
 ];
 
 const KITCHEN_TASK_GROUPS = [
-  { canonical: "preparar", aliases: ["prepara", "preparando", "preparación", "prepare", "prepárame", "hacer", "alistar", "alista", "alistando", "alistemos", "dejar listo", "dejar lista", "dejar listos", "dejar listas"] },
-  { canonical: "producir", aliases: ["produce", "produciendo", "producción", "fabricar", "fabrica", "fabricando"] },
+  { canonical: "preparar", aliases: ["prepara", "preparando", "preparación", "prepare", "prepárame", "hacer", "hagamos", "hacemos", "alistar", "alista", "alistando", "alistemos", "cocinar", "cocinamos", "cocinando", "mezclar", "mezclamos", "armar", "arma", "armamos", "vamos con", "poner en cocina", "pon en cocina", "pone en cocina", "dejar listo", "dejar lista", "dejar listos", "dejar listas"] },
+  { canonical: "producir", aliases: ["produce", "produciendo", "producción", "fabricar", "fabrica", "fabricando", "sacar figuras", "hacer figuras", "armar figuras"] },
   { canonical: "registrar", aliases: ["registra", "registrando", "registro", "anotar", "anota"] },
   { canonical: "ingresar", aliases: ["ingresa", "ingresando", "ingreso", "entrar", "entra"] },
   { canonical: "desmoldar", aliases: ["desmolda", "desmoldando", "desmolde", "descongelar", "descongela", "descongelando", "descongelado", "descongelada", "sacar del molde", "sacar de los moldes", "sacar del congelador", "retirar del congelador"] },
   { canonical: "congelación", aliases: ["congelar", "congela", "congelando", "congelamiento", "meter al congelador", "pasar a congelación"] },
   { canonical: "iniciar", aliases: ["inicia", "iniciando", "empieza", "empezar", "arranca", "arrancar", "comienza", "comenzar"] },
-  { canonical: "cronómetro", aliases: ["crono metro", "cronometros", "temporizador", "timer", "reloj de congelación"] },
+  { canonical: "cronómetro", aliases: ["crono metro", "cronometros", "temporizador", "timer", "reloj", "reloj de congelación", "cuenta tiempo", "contar tiempo"] },
   { canonical: "moldear", aliases: ["moldea", "moldeando", "llenar el molde", "llenar los moldes"] },
   { canonical: "corrida", aliases: ["corridas", "tanda", "tandas", "lote de producción"] },
   { canonical: "obtenidos", aliases: ["obtenido", "obtuve", "obtuvimos", "salieron", "resultado obtenido"] },
   { canonical: "rindieron", aliases: ["rindió", "rindio", "rindieron", "rendimiento real"] },
-  { canonical: "perfectas", aliases: ["perfecta", "perfecto", "perfectos", "unidades perfectas", "piezas perfectas"] },
-  { canonical: "imperfectas", aliases: ["imperfecta", "imperfecto", "imperfectos", "unidades imperfectas", "piezas imperfectas", "defectuosas", "quebradas"] },
-  { canonical: "descartar", aliases: ["descartado", "descartada", "descartadas", "descarte", "desechar", "desechadas"] },
+  { canonical: "perfectas", aliases: ["perfecta", "perfecto", "perfectos", "buenas", "buenos", "salieron bien", "unidades buenas", "piezas buenas", "unidades perfectas", "piezas perfectas"] },
+  { canonical: "imperfectas", aliases: ["imperfecta", "imperfecto", "imperfectos", "mala", "malas", "dañada", "dañadas", "dañado", "dañados", "defectuosa", "defectuosas", "defectuoso", "defectuosos", "quebrada", "quebradas", "quebrado", "quebrados", "unidades imperfectas", "piezas imperfectas"] },
+  { canonical: "descartar", aliases: ["descartado", "descartada", "descartadas", "descarte", "desechar", "desechada", "desechadas", "botada", "botadas", "botado", "botados", "para botar", "no sirve", "no sirven"] },
   { canonical: "convertir imperfectas", aliases: ["aprovechar imperfectas", "reprocesar imperfectas", "pasar imperfectas a insumo"] },
   { canonical: "listo", aliases: [
     "lista", "marcar listo", "marcar como listo", "pasar a listo", "lote listo",
@@ -153,6 +155,15 @@ function replaceNumberWords(value) {
   return output.join(" ");
 }
 
+function replaceMeasuredFractions(value) {
+  return String(value || "")
+    .replace(/(?:^|\s)(?:un\s+)?kilo\s+y\s+medio(?=\s|$)/g, (match) => `${match.startsWith(" ") ? " " : ""}1.5 kilos`)
+    .replace(/(?:^|\s)(?:un\s+)?kilo\s+y\s+cuarto(?=\s|$)/g, (match) => `${match.startsWith(" ") ? " " : ""}1.25 kilos`)
+    .replace(/(?:^|\s)(?:un\s+)?medio\s+kilo(?=\s|$)/g, (match) => `${match.startsWith(" ") ? " " : ""}0.5 kilos`)
+    .replace(/(?:^|\s)(?:un\s+)?cuarto\s+de\s+kilo(?=\s|$)/g, (match) => `${match.startsWith(" ") ? " " : ""}0.25 kilos`)
+    .replace(/(?:^|\s)tres\s+cuartos\s+de\s+kilo(?=\s|$)/g, (match) => `${match.startsWith(" ") ? " " : ""}0.75 kilos`);
+}
+
 export function normalizeKitchenVoice(value) {
   const base = stripAccents(value)
     .toLowerCase()
@@ -163,7 +174,7 @@ export function normalizeKitchenVoice(value) {
     .replace(/zzdecimalzz/g, ".")
     .replace(/\s+/g, " ")
     .trim();
-  return replaceNumberWords(base);
+  return replaceNumberWords(replaceMeasuredFractions(base));
 }
 
 export function kitchenTaskVocabularyPhrases() {
@@ -636,7 +647,21 @@ function catalogNames(catalogs = {}) {
     const number = id.match(/(\d+)$/)?.[1];
     return number ? [id, `lote ${Number(number)}`, `lote ${number}`] : [id];
   });
-  return [...kitchenTaskVocabularyPhrases(), ...KITCHEN_CORE_TERMS, ...KITCHEN_ALIAS_GROUPS.map((group) => group.canonical), ...dynamic.map((entry) => entry.name), ...subrecipeTypes, ...subrecipeVariants, ...batchVariants]
+  const inventoryShortNames = (catalogs.inventory || []).map(catalogEntry).map((entry) => normalizeKitchenVoice(entry.name)
+    .replace(/\s+\d+(?:\.\d+)?\s*(?:ml|l|g|kg|und|unidad|unidades)\s*$/u, "").trim()).filter(Boolean);
+  const taskCanonicals = KITCHEN_TASK_GROUPS.map((group) => group.canonical);
+  return [
+    "Momobot", "Oye Momobot", "confirmar", "confirmar y registrar", "editar", "limpiar", "cancelar", "repetir", "cierra",
+    ...taskCanonicals,
+    ...dynamic.map((entry) => entry.name),
+    ...inventoryShortNames,
+    ...subrecipeTypes,
+    ...subrecipeVariants,
+    ...batchVariants,
+    ...KITCHEN_CORE_TERMS,
+    ...kitchenTaskVocabularyPhrases(),
+    ...KITCHEN_ALIAS_GROUPS.map((group) => group.canonical),
+  ]
     .map((name) => String(name || "").trim())
     .filter(Boolean);
 }
@@ -849,7 +874,7 @@ function subrecipeMentions(text, subrecipes) {
     // puede quedar entre la palabra mousse y el sabor sin perder la subreceta.
     if (entry.sabor && type.startsWith("mousse")) {
       const flavor = normalizeKitchenVoice(entry.sabor);
-      const contextual = new RegExp(`(?:^|\\s)mousse(?:\\s+\\d+(?:\\.\\d+)?\\s*(?:kilogramos?|kilos?|kg|gramos?|grs?|gr|g))?\\s+(?:de\\s+)?${escapeRegExp(flavor)}(?=\\s|$)`, "g");
+      const contextual = new RegExp(`(?:^|\\s)mousse(?:\\s+\\d+(?:\\.\\d+)?\\s*(?:kilogramos?|kilos?|kg|gramos?|grs?|gr|g))?\\s+(?:(?:de|sabor)\\s+)?${escapeRegExp(flavor)}(?=\\s|$)`, "g");
       let match;
       while ((match = contextual.exec(text))) {
         const index = match.index + (match[0].startsWith(" ") ? 1 : 0);
@@ -880,7 +905,7 @@ function parsePreparations(text, catalogs, warnings, errors) {
   const subrecipes = catalogs.subrecipes || [];
   const amounts = extractGramAmountsDetailed(text);
   const mentions = subrecipeMentions(text, subrecipes);
-  const trigger = /(?:prepar|hicimos|hizo|hacer|registr|ingres|produj|salieron|obtu)/.test(text);
+  const trigger = /(?:prepar|hicimos|hizo|hacer|hagamos|registr|ingres|produj|salieron|obtu|cocin|mezcl|alist|dejemos|necesit|vamos)/.test(text);
   if (!trigger) return [];
   if (!amounts.length) {
     if (mentions.length) {
@@ -989,7 +1014,7 @@ function mentionedFlavors(text, flavors) {
 function declaredProductionTotal(text, figure) {
   if (!figure) return null;
   const figurePattern = `${escapeRegExp(normalizeKitchenVoice(figure.name))}(?:s|es)?`;
-  const directFigure = text.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s+(?:unidades?\\s+)?(?:de\\s+)?${figurePattern}(?=\\s|$)`));
+  const directFigure = text.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s+(?:(?:unidades?|piezas?|postres?|figuras?|momos?)\\s+(?:de\\s+)?)?(?:de\\s+)?${figurePattern}(?=\\s|$)`));
   if (directFigure) return Number(directFigure[1]);
 
   // Forma natural frecuente en cocina: "quiero 20 postres de coco de Momo".
@@ -1378,7 +1403,8 @@ function parseMadeToOrder(text, catalogs, errors, warnings) {
 
 function parseOrderHandoff(text, catalogs, errors) {
   const orderMatch = text.match(/(?:^|\s)(?:pedido|orden)(?:\s+(?:numero|ps|pe|p|n))?\s+(\d+)(?=\s|$)/);
-  const handoffIntent = /(?:^|\s)(?:listo(?:\s+para\s+empaque)?|entregar\s+(?:a|al)\s+empaque|pasar\s+(?:a|al)\s+empaque|termine|terminamos|terminado|finalice|finalizamos|finalizado|acabe|acabamos|acabado)(?=\s|$)/.test(text);
+  const handoffIntent = /(?:^|\s)(?:listo|termine|terminamos|terminado|finalice|finalizamos|finalizado|acabe|acabamos|acabado|quedo\s+listo)(?=\s|$)/.test(text)
+    || (/(?:^|\s)(?:entreg|pas|mand|envi|llev)/.test(text) && /(?:^|\s)empaque(?=\s|$)/.test(text));
   if (!orderMatch || !handoffIntent) return { intent: false, action: null };
 
   const spokenOrderNumber = Number(orderMatch[1]);
@@ -1432,6 +1458,7 @@ export function parseKitchenVoice(transcript, catalogs = {}) {
   const unmoldingIntent = batchMentioned && !/(?:convertir|aprovechar|reprocesar)\s+imperfectas/.test(normalized)
     && (readyForSaleIntent
       || /(?:desmold)/.test(normalized)
+      || /(?:sac|retir)[^.!?]*(?:molde|congelador)/.test(normalized)
       || /(?:registrar|anotar|ingresar)[^.!?]*(?:perfectas|imperfectas|descartar)/.test(normalized)
       || /\d+\s+(?:perfectas|imperfectas|descartar)/.test(normalized));
   const unmolding = unmoldingIntent ? parseExistingUnmolding(normalized, catalogs, errors, { readyForSaleIntent }) : null;

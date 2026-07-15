@@ -4459,6 +4459,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
     figureFillings: db.figura_relleno || [],
     products: db.products || [],
     inventory: db.inventory_items || [],
+    inventoryLots: db.inventory_lots || [],
     batches: db.production_batches || [],
     orders: db.orders || [],
     orderItems: db.order_items || [],

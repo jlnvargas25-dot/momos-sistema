@@ -1,4 +1,5 @@
 import {
+  correctKitchenVocabulary,
   kitchenDelayedOrderReminders,
   kitchenOrderAlert,
   normalizeKitchenVoice,
@@ -106,8 +107,13 @@ function describeBatch(batch, now) {
 
 function matchedCatalogName(query, entries = []) {
   return entries
-    .map((entry) => ({ entry, name: entityName(entry), normalized: normalizeKitchenVoice(entityName(entry)) }))
-    .filter((candidate) => candidate.normalized && (` ${query} `).includes(` ${candidate.normalized} `))
+    .flatMap((entry) => {
+      const name = entityName(entry);
+      const normalized = normalizeKitchenVoice(name);
+      const short = normalized.replace(/\s+\d+(?:\.\d+)?\s*(?:ml|l|g|kg|und|unidad|unidades)\s*$/u, "").trim();
+      return [...new Set([normalized, short].filter(Boolean))].map((label) => ({ entry, name, normalized: label }));
+    })
+    .filter((candidate) => (` ${query} `).includes(` ${candidate.normalized} `))
     .sort((left, right) => right.normalized.length - left.normalized.length)[0]?.entry || null;
 }
 
@@ -213,6 +219,47 @@ function activeLotsAnswer(catalogs, now) {
   };
 }
 
+function lowInventoryAnswer(catalogs) {
+  const low = (catalogs.inventory || []).filter((item) => number(item.stock) <= number(item.min ?? item.minimo));
+  if (!low.length) return { text: "No hay insumos en mínimo ni por debajo del mínimo configurado.", memoryPatch: { lastTopic: "inventory" } };
+  const visible = low.slice(0, 6).map((item) => `${entityName(item)}: ${number(item.stock)} ${item.unidad || "unidades"}, mínimo ${number(item.min ?? item.minimo)}`);
+  return {
+    text: `Hay ${low.length} insumo${low.length === 1 ? "" : "s"} para reponer: ${naturalList(visible)}${low.length > 6 ? `, y ${low.length - 6} más` : ""}.`,
+    memoryPatch: { lastTopic: "inventory" },
+  };
+}
+
+function inventoryExpiryAnswer(catalogs, now, expiredOnly = false) {
+  const today = new Date(now);
+  const todayIso = Number.isNaN(today.getTime()) ? "" : [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+  const lots = (catalogs.inventoryLots || []).map((lot) => ({
+    itemId: lot.itemId ?? lot.item_id ?? null,
+    name: lot.itemName || lot.nombre || entityName((catalogs.inventory || []).find((item) => item.id === (lot.itemId ?? lot.item_id))) || "insumo",
+    available: number(lot.available ?? lot.disponible ?? lot.cantidad),
+    unit: lot.unit || lot.unidad || "unidades",
+    expiry: text(lot.expiresAt ?? lot.expires_at ?? lot.vence),
+  })).filter((lot) => lot.available > 0 && lot.expiry);
+  const itemsWithLots = new Set(lots.map((lot) => lot.itemId).filter(Boolean));
+  const legacy = (catalogs.inventory || []).filter((item) => !itemsWithLots.has(item.id)).map((item) => ({
+    name: entityName(item), available: number(item.stock), unit: item.unidad || "unidades", expiry: text(item.vence),
+  })).filter((item) => item.available > 0 && item.expiry);
+  const dated = [...lots, ...legacy].map((item) => ({ ...item, days: todayIso ? Math.ceil((Date.parse(`${item.expiry}T00:00:00`) - Date.parse(`${todayIso}T00:00:00`)) / 86400000) : 9999 }));
+  const matches = dated.filter((item) => expiredOnly ? item.days < 0 : item.days >= 0 && item.days <= 5).sort((a, b) => a.days - b.days);
+  if (!matches.length) return {
+    text: expiredOnly ? "No hay lotes de insumos vencidos con saldo disponible." : "No hay lotes de insumos que venzan en los próximos cinco días.",
+    memoryPatch: { lastTopic: "inventory" },
+  };
+  const visible = matches.slice(0, 6).map((item) => `${item.name}, ${item.available} ${item.unit}, vence ${item.expiry}`);
+  return {
+    text: `${expiredOnly ? "Insumos vencidos" : "Insumos próximos a vencer"}: ${naturalList(visible)}${matches.length > 6 ? `, y ${matches.length - 6} más` : ""}.`,
+    memoryPatch: { lastTopic: "inventory" },
+  };
+}
+
 export function momobotContextSnapshot(catalogs = {}, now = Date.now()) {
   return {
     paid: sortedOrders(catalogs, "Pagado").length,
@@ -225,7 +272,7 @@ export function momobotContextSnapshot(catalogs = {}, now = Date.now()) {
 }
 
 export function momobotContextAnswer(value, catalogs = {}, memory = {}, now = Date.now()) {
-  const query = normalizeKitchenVoice(value);
+  const query = correctKitchenVocabulary(value, catalogs).correctedTranscript;
   if (!query) return null;
 
   const order = findOrder(catalogs, query, memory);
@@ -256,10 +303,19 @@ export function momobotContextAnswer(value, catalogs = {}, memory = {}, now = Da
   const asksShortages = /(?:que|cuales|cuantos|hay|tenemos|muestra|dime).*(?:faltante|faltantes|por producir|por comprar)|(?:falta|necesitamos) (?:producir|comprar|reponer)/.test(query);
   if (asksShortages) return { matched: true, topic: "shortages", ...shortagesAnswer(catalogs) };
 
+  const asksExpiredInventory = /(?:que|cuales|hay|tenemos|muestra|dime).*(?:insumo|materia prima|inventario).*(?:vencido|caducado)|(?:que|cual).*(?:se vencio|esta vencido|ya vencio)/.test(query);
+  if (asksExpiredInventory) return { matched: true, topic: "inventory", ...inventoryExpiryAnswer(catalogs, now, true) };
+
+  const asksExpiringInventory = /(?:que|cuales|hay|tenemos|muestra|dime).*(?:se esta venciendo|por vencer|vence pronto|proximo a vencer)|(?:que|cual).*(?:vence|vencimiento).*(?:primero|proximo)|^que se esta venciendo/.test(query);
+  if (asksExpiringInventory) return { matched: true, topic: "inventory", ...inventoryExpiryAnswer(catalogs, now, false) };
+
+  const asksLowInventory = /(?:que|cuales|hay|tenemos|muestra|dime).*(?:insumo|materia prima|inventario|stock).*(?:bajo|bajos|minimo|reponer|comprar)|(?:que|cual).*(?:hace falta|falta).*(?:insumo|inventario|comprar)/.test(query);
+  if (asksLowInventory) return { matched: true, topic: "inventory", ...lowInventoryAnswer(catalogs) };
+
   const asksLots = /(?:que|cuales|cuantos|hay|tenemos|muestra|dime).*(?:lote|lotes).*(?:activo|preparacion|congelando|produccion)?|(?:como|que tal).*lotes/.test(query);
   if (asksLots) return { matched: true, topic: "batch", ...activeLotsAnswer(catalogs, now) };
 
-  const asksStock = /(?:cuanto|cuantos|cuantas|stock|disponible|disponibles|tenemos|queda|quedan|hay)(?:\s|$)/.test(query);
+  const asksStock = /(?:cuanto|cuanta|cuantos|cuantas|stock|existencias|disponible|disponibles|tenemos|queda|quedan|hay|alcanza|suficiente)(?:\s|$)/.test(query);
   if (asksStock) {
     const answer = stockAnswer(query, catalogs);
     if (answer) return { matched: true, topic: "inventory", ...answer };
