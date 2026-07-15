@@ -12,7 +12,7 @@ begin
     '20260714_09_empaque_trazable','20260714_10_domicilio_empaque',
     '20260714_11_inventario_vencimientos','20260714_12_inventario_lotes',
     '20260714_13_productos_servidor','20260714_14_control_operativo',
-    '20260714_15_crm_clientes'
+    '20260714_15_crm_clientes','20260714_16_agencia_comercial'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -35,6 +35,9 @@ begin
   assert has_function_privilege('authenticated','public.aceptar_relevo_despacho(text)','EXECUTE'), 'falta RPC de relevo físico';
   assert has_function_privilege('authenticated','public.registrar_contacto_cliente(jsonb)','EXECUTE'), 'falta RPC de contactos CRM';
   assert has_function_privilege('authenticated','public.activar_beneficio_cliente(jsonb)','EXECUTE'), 'falta RPC de beneficios CRM';
+  assert has_function_privilege('authenticated','public.crear_brief_agencia(jsonb)','EXECUTE'), 'falta RPC de briefs comerciales';
+  assert has_function_privilege('authenticated','public.resolver_decision_agencia(bigint,text,text)','EXECUTE'), 'falta RPC de decisiones comerciales';
+  assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
   if exists(select 1 from pg_publication where pubname='supabase_realtime') then
@@ -51,5 +54,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-15 PASS, rollback total' as resultado;
-rollback;
+select 'TESTS_OK — migraciones ordenadas 01-16 PASS, rollback total' as resultado;
+  rollback;
