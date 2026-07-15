@@ -130,6 +130,19 @@ const FONTS = `
 .momo-busy-spinner { animation: momo-spin 650ms linear infinite; }
 .momo-kitchen-alert-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(5rem, calc(env(safe-area-inset-bottom) + 1rem)); z-index: 45; }
 .momo-momobot-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(9rem, calc(env(safe-area-inset-bottom) + 5rem)); z-index: 46; }
+.momo-momobot-panel { container-type: inline-size; }
+.momo-momobot-layout { display: flex; flex-direction: column; align-items: stretch; gap: 1rem; }
+.momo-momobot-rail { display: flex; align-items: center; gap: .75rem; flex-shrink: 0; }
+.momo-momobot-status { text-align: left; line-height: 1.25; }
+.momo-momobot-title { font-size: 1.25rem; line-height: 1.75rem; }
+.momo-momobot-voice-orb { width: 4rem; height: 4rem; font-size: 1.25rem; flex-shrink: 0; }
+@container (min-width: 620px) {
+  .momo-momobot-layout { flex-direction: row; align-items: flex-start; gap: 1.25rem; }
+  .momo-momobot-rail { width: 7rem; flex-direction: column; gap: .5rem; }
+  .momo-momobot-status { text-align: center; }
+  .momo-momobot-title { font-size: 1.5rem; line-height: 2rem; }
+  .momo-momobot-voice-orb { width: 5rem; height: 5rem; font-size: 1.5rem; }
+}
 .momo-voice-orb { position: relative; box-shadow: 0 10px 24px rgba(229,113,78,.24), 0 0 0 6px rgba(251,227,218,.82), 0 0 0 7px rgba(229,113,78,.12); transition: transform 180ms var(--momo-spring), box-shadow 180ms ease; }
 .momo-voice-orb[data-listening="true"] { animation: momo-listening 900ms ease-in-out infinite alternate; background: #A03B2A !important; box-shadow: 0 0 0 7px rgba(229,113,78,.14), 0 12px 30px rgba(160,59,42,.28); }
 .momo-voice-wave { display: inline-flex; align-items: center; gap: 2px; height: 16px; }
@@ -5457,14 +5470,14 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
           <button type="button" onClick={() => setAbierto(false)} aria-label="Minimizar Momobot" title="Minimizar" className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold border shrink-0 transition" style={{ background: T.surface, borderColor: T.border, color: T.choco2 }}>✕</button>
         </div>
       </div>
-      <div data-testid="momobot-layout" className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-5">
-        <div className="flex sm:w-28 sm:flex-col items-center gap-3 sm:gap-2 shrink-0">
+      <div data-testid="momobot-layout" className="momo-momobot-layout">
+        <div className="momo-momobot-rail">
           <button type="button" onClick={toggleListening} disabled={voiceMode === "authorizing"} data-listening={listening} aria-pressed={listening}
-            className="momo-voice-orb w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl font-bold shrink-0"
+            className="momo-voice-orb momo-momobot-voice-orb rounded-full flex items-center justify-center text-white font-bold"
             style={{ background: T.coral }} aria-label={listening ? voiceMode === "standby" ? "Desactivar Momobot" : "Cerrar micrófono" : draft && !executed ? "Escuchar una orden de voz" : "Empezar dictado continuo"}>
             {listening ? <span className="momo-voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> : "🎙️"}
           </button>
-          <span className="text-[10px] font-extrabold uppercase tracking-[.1em] text-left sm:text-center leading-snug" style={{ color: listening ? "#A03B2A" : T.choco2 }}>
+          <span className="momo-momobot-status text-[10px] font-extrabold uppercase tracking-[.1em]" style={{ color: listening ? "#A03B2A" : T.choco2 }}>
             {voiceStatusLabel}
           </span>
         </div>
@@ -5472,7 +5485,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
           <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <div>
               <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Asistente manos libres de Momo Ops</div>
-              <div className="display text-xl sm:text-2xl font-semibold">🎙️ Copiloto de cocina</div>
+              <div className="display momo-momobot-title font-semibold">🎙️ Copiloto de cocina</div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Decí “Momobot” u “Oye Momobot” y hablá natural. Te responde, completa lo que falte y nunca registra sin tu confirmación.</div>
               <div className="inline-flex mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>Modo conversación · hasta 4 preguntas</div>
               <div className="inline-flex ml-1 mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#E3EFE0", color: "#3F6B42" }}>Vocabulario MOMOS activo · {voicePhrases.length} términos</div>
