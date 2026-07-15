@@ -87,7 +87,7 @@ const KITCHEN_ALIAS_GROUPS = [
   { canonical: "Limón", aliases: ["limones"] },
   { canonical: "Banano", aliases: ["banana", "bananas", "bananos"] },
   { canonical: "Durazno", aliases: ["duraznos"] },
-  { canonical: "Caramelo salado", aliases: ["caramelo saldo"] },
+  { canonical: "Caramelo salado", aliases: ["caramelo saldo", "caramelos salado", "caramelos salados", "caramelo salados"] },
   { canonical: "malteada", aliases: ["maltada", "malteado", "malteadas"] },
   { canonical: "granizado", aliases: ["granisado", "granizados"] },
   { canonical: "cheesecake", aliases: ["cheese cake", "chees cake", "cheescake", "chesecake", "chiz cake", "chis cake", "cheesecakes"] },
@@ -844,6 +844,21 @@ function subrecipeMentions(text, subrecipes) {
         mentions.push({ entry, index, end: index + label.length });
       }
     });
+
+    // En cocina es natural decir “mezcla secreta 300 g de coco”. La cantidad
+    // puede quedar entre la palabra mousse y el sabor sin perder la subreceta.
+    if (entry.sabor && type.startsWith("mousse")) {
+      const flavor = normalizeKitchenVoice(entry.sabor);
+      const contextual = new RegExp(`(?:^|\\s)mousse(?:\\s+\\d+(?:\\.\\d+)?\\s*(?:kilogramos?|kilos?|kg|gramos?|grs?|gr|g))?\\s+(?:de\\s+)?${escapeRegExp(flavor)}(?=\\s|$)`, "g");
+      let match;
+      while ((match = contextual.exec(text))) {
+        const index = match.index + (match[0].startsWith(" ") ? 1 : 0);
+        const key = `${entry.id}:${index}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        mentions.push({ entry, index, end: index + match[0].trim().length });
+      }
+    }
   });
   return mentions.sort((a, b) => a.index - b.index || b.end - b.index - (a.end - a.index));
 }

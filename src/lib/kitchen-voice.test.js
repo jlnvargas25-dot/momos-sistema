@@ -39,6 +39,7 @@ const catalogs = {
     { id: "SR-MOUSSE-NUTELLA", nombre: "Mousse Nutella", tipo: "mousse_cremosa", sabor: "Nutella", mermaPct: 6 },
     { id: "SR-MOUSSE-MYM", nombre: "Mousse M&M", tipo: "mousse_cremosa", sabor: "M&M", mermaPct: 6 },
     { id: "SR-MOUSSE-MILO", nombre: "Mousse Milo", tipo: "mousse_cremosa", sabor: "Milo", mermaPct: 6 },
+    { id: "SR-MOUSSE-CAR", nombre: "Mousse Caramelo salado", tipo: "mousse_cremosa", sabor: "Caramelo salado", mermaPct: 6 },
   ],
   figureFillings: [{ id: "FR-GAN", subrecetaId: "SR-GAN", gramosPorUnidad: 15, activo: true }],
   batches: [
@@ -746,6 +747,15 @@ test("reconoce mezcla secreta y variantes fonéticas como mousse del sabor indic
   const oreo = parseKitchenVoice("Preparar 300 gramos de mezcla secreta de Oreo", catalogs);
   assert.equal(oreo.canExecute, true);
   assert.equal(oreo.preparation.subrecipeName, "Mousse Oreo");
+});
+
+test("reconoce el sabor cuando la cantidad queda entre mezcla secreta y sabor", () => {
+  const parsed = parseKitchenVoice("Preparamos la mezcla secreta 300 g de caramelos salado", catalogs);
+  assert.equal(parsed.canExecute, true);
+  assert.equal(parsed.preparation.subrecipeName, "Mousse Caramelo salado");
+  assert.equal(parsed.preparation.nominalGrams, 300);
+  assert.equal(parsed.preparation.obtainedGrams, 282);
+  assert.ok(parsed.corrections.some((item) => item.understoodAs === "Caramelo salado"));
 });
 
 test("pregunta el sabor cuando solo escucha mezcla secreta", () => {
