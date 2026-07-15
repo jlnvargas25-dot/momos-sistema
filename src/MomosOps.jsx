@@ -1,7 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, setColchonProduccion, crearUsuarioStaff, setUserActivo, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo } from "./lib/rpc";
+import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
+import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderTransitionPermission } from "./lib/order-workflow";
+import { buildFinishedInventory } from "./lib/finished-inventory";
+import { buildIngredientLotSummary } from "./lib/ingredient-lots";
+import { evaluateComboVariantAvailability, evaluateExactVariantDemand } from "./lib/variant-availability";
+import { momobotContextAnswer, momobotContextSnapshot } from "./lib/momobot-context";
+import { canAutoStartMomobot, isCurrentMomobotAuthorization, momobotModeAfterExecution, momobotModeAfterReadOnly } from "./lib/momobot-session";
+import { buildPackingChecklistLines, findPackingVerification, packingStationProgress, packingVerificationMatchesLines } from "./lib/packing-workflow";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -71,6 +79,18 @@ const FONTS = `
 .momo-nav-item { position: relative; transition: color 160ms ease, background 180ms ease, transform 160ms var(--momo-ease); }
 .momo-nav-item::before { content: ""; position: absolute; left: 0; top: 25%; bottom: 25%; width: 3px; border-radius: 0 4px 4px 0; background: ${T.coral}; transform: scaleY(0); transition: transform 220ms var(--momo-spring); }
 .momo-nav-item[data-active="true"]::before { transform: scaleY(1); }
+@media print {
+  body * { visibility: hidden !important; }
+  .momo-shipping-label, .momo-shipping-label * { visibility: visible !important; }
+  .momo-shipping-label {
+    position: fixed !important; inset: 0 auto auto 0 !important;
+    width: 100mm !important; min-height: 70mm !important; margin: 0 !important;
+    padding: 8mm !important; color: #2F211B !important; background: #fff !important;
+    border: 1.5px solid #2F211B !important; border-radius: 0 !important;
+    box-shadow: none !important; font-family: Arial, sans-serif !important;
+  }
+  .momo-no-print { display: none !important; }
+}
 .momo-nav-item:not([data-active="true"]):hover { background: rgba(243,215,220,.42) !important; transform: translateX(2px); }
 .momo-mobile-nav { transition: color 160ms ease, background 160ms ease, transform 160ms var(--momo-ease); }
 .momo-mobile-nav[data-active="true"] { background: linear-gradient(180deg, rgba(243,215,220,.22), rgba(243,215,220,0)); }
@@ -93,6 +113,35 @@ const FONTS = `
 .momo-sync[data-state="guardado"] .momo-sync-dot { animation: momo-icon-pop 360ms var(--momo-spring); }
 .momo-bar { transition: width 620ms var(--momo-spring), background 180ms ease; }
 .momo-busy-spinner { animation: momo-spin 650ms linear infinite; }
+.momo-kitchen-alert-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(5rem, calc(env(safe-area-inset-bottom) + 1rem)); z-index: 45; }
+.momo-voice-orb { position: relative; box-shadow: 0 10px 24px rgba(229,113,78,.24), 0 0 0 6px rgba(251,227,218,.82), 0 0 0 7px rgba(229,113,78,.12); transition: transform 180ms var(--momo-spring), box-shadow 180ms ease; }
+.momo-voice-orb[data-listening="true"] { animation: momo-listening 900ms ease-in-out infinite alternate; background: #A03B2A !important; box-shadow: 0 0 0 7px rgba(229,113,78,.14), 0 12px 30px rgba(160,59,42,.28); }
+.momo-voice-wave { display: inline-flex; align-items: center; gap: 2px; height: 16px; }
+.momo-voice-wave > i { display: block; width: 2px; height: 35%; border-radius: 3px; background: currentColor; animation: momo-wave 650ms ease-in-out infinite alternate; }
+.momo-voice-wave > i:nth-child(2) { animation-delay: -420ms; height: 75%; }
+.momo-voice-wave > i:nth-child(3) { animation-delay: -210ms; height: 100%; }
+.momo-voice-wave > i:nth-child(4) { animation-delay: -520ms; height: 60%; }
+.momo-operational-hero { position: relative; isolation: isolate; overflow: hidden; }
+.momo-operational-hero::after { content: ""; position: absolute; z-index: -1; width: 210px; height: 210px; right: -70px; top: -105px; border-radius: 999px; background: rgba(243,215,220,.7); }
+.momo-queue-item { transition: transform 180ms var(--momo-spring), box-shadow 180ms ease, border-color 180ms ease; }
+.momo-queue-item:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(84,56,43,.07); }
+.momo-command-ticket { position: relative; overflow: hidden; }
+.momo-command-ticket::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: linear-gradient(180deg, #E5714E, #C4808E); }
+.momo-command-ticket::before { content: ""; position: absolute; width: 84px; height: 84px; right: -38px; top: -44px; border-radius: 999px; background: rgba(243,215,220,.35); pointer-events: none; }
+.momo-metric-card { position: relative; overflow: hidden; }
+.momo-metric-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: var(--metric-tone, #E5714E); }
+.momo-metric-card::after { content: ""; position: absolute; width: 88px; height: 88px; right: -38px; bottom: -46px; border-radius: 999px; background: var(--metric-wash, rgba(229,113,78,.1)); pointer-events: none; }
+.momo-segmented-tabs { background: rgba(247,236,217,.72); border: 1px solid #EEDFCE; box-shadow: inset 0 1px 0 rgba(255,255,255,.8); }
+.momo-segmented-tab { transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms var(--momo-spring); }
+.momo-segmented-tab[aria-selected="true"] { box-shadow: 0 5px 12px rgba(229,113,78,.2); transform: translateY(-1px); }
+.momo-copilot-card { position: relative; isolation: isolate; box-shadow: 0 12px 34px rgba(84,56,43,.08); }
+.momo-copilot-card::before { content: ""; position: absolute; z-index: -1; width: 170px; height: 170px; left: -82px; top: -86px; border-radius: 999px; background: rgba(251,227,218,.72); }
+.momo-copilot-card::after { content: ""; position: absolute; z-index: -1; width: 150px; height: 150px; right: -70px; bottom: -88px; border-radius: 999px; background: rgba(243,215,220,.45); }
+.momo-copilot-ribbon { margin: -1rem -1rem 1rem; background: linear-gradient(90deg, #5B3529, #744333 64%, #A54830); color: #fff; box-shadow: inset 0 -1px 0 rgba(255,255,255,.12); }
+.momo-delay-ticket { position: relative; overflow: hidden; box-shadow: 0 8px 24px rgba(84,56,43,.06); }
+.momo-delay-ticket::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--delay-tone, #E7C078); }
+.momo-stock-meter { height: 7px; overflow: hidden; border-radius: 999px; background: #F2E8DB; }
+.momo-stock-meter > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6A9B69, #E5714E); transition: width 520ms var(--momo-spring); }
 @keyframes momo-page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes momo-sheet-in { from { opacity: 0; transform: translateY(28px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes momo-toast-in { 0% { opacity: 0; transform: translateY(18px) scale(.94); } 65% { transform: translateY(-2px) scale(1.01); } 100% { opacity: 1; transform: none; } }
@@ -102,6 +151,9 @@ const FONTS = `
 @keyframes momo-breathe { from { opacity: .35; transform: scale(.7); } to { opacity: 1; transform: scale(1.25); } }
 @keyframes momo-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes momo-spin { to { transform: rotate(360deg); } }
+@keyframes momo-listening { from { transform: scale(.98); } to { transform: scale(1.035); } }
+@keyframes momo-wave { from { transform: scaleY(.45); } to { transform: scaleY(1); } }
+@media (min-width: 768px) { .momo-kitchen-alert-fab { bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); } }
 @media (prefers-reduced-motion: reduce) { .momos * { transition: none !important; animation: none !important; } }
 `;
 
@@ -162,7 +214,7 @@ const CANAL_STYLE = {
   Rappi: { bg: "#FBE3DA", fg: "#B0522F" }, Directo: { bg: "#F7ECD9", fg: "#8A6520" },
 };
 
-const ORDER_STATES = ["Nuevo","Confirmado","Pendiente de pago","Pagado","En producción","Empacado","Listo para despacho","En ruta","Entregado","Cancelado","Reclamo"];
+const ORDER_STATES = ["Nuevo","Confirmado","Pendiente de pago","Pagado","En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado","Cancelado","Reclamo"];
 const EV_SELLO = ["Caja cerrada con sello","Bolsa sellada"];
 const EV_TIPOS = ["Pedido armado","Caja abierta","Caja cerrada con sello","Bolsa sellada","Comprobante de pago","Entrega"];
 
@@ -186,7 +238,7 @@ function reqFotosPaso(o, estado) {
 const STATE_STYLE = {
   "Nuevo": { bg: "#F3D7DC", fg: "#8E4B5A" }, "Confirmado": { bg: "#F7ECD9", fg: "#8A6520" },
   "Pendiente de pago": { bg: "#FBE8C8", fg: "#96690F" }, "Pagado": { bg: "#DDEBD9", fg: "#3F6B42" },
-  "En producción": { bg: "#DCE7F2", fg: "#3E5C7E" }, "Empacado": { bg: "#E8E0F2", fg: "#63518A" },
+  "En producción": { bg: "#DCE7F2", fg: "#3E5C7E" }, "Listo para empaque": { bg: "#FBE3DA", fg: "#A54830" }, "Empacado": { bg: "#E8E0F2", fg: "#63518A" },
   "Listo para despacho": { bg: "#D8ECE8", fg: "#2F6B60" }, "En ruta": { bg: "#FBE3DA", fg: "#B0522F" },
   "Entregado": { bg: "#CFE6CB", fg: "#2E5A31" }, "Cancelado": { bg: "#EBE6E0", fg: "#7A6E63" },
   "Reclamo": { bg: "#F6D4CD", fg: "#A03B2A" },
@@ -268,13 +320,7 @@ const DIFICULTAD = ["Fácil","Medio","Avanzado"];
    ================================================================ */
 
 // users / roles / permissions: estructura lista para login real con backend
-const PERMISOS_POR_ROL = {
-  "Administrador": "todos los módulos",
-  "Cocina": "Dashboard, Pedidos, Producción, Inventario",
-  "Empaque": "Dashboard, Pedidos, Reclamos",
-  "Logística": "Dashboard, Pedidos, Domicilios, Reclamos",
-  "Marketing/CRM": "Dashboard, Productos, Reclamos, Clientes, Beneficios, Reportes",
-};
+const PERMISOS_POR_ROL = ORDER_ROLE_SUMMARY;
 function seedUsers() {
   return [
     { id: "U01", nombre: "Dueña / Admin", email: "admin@dmomos.co", rol: "Administrador", activo: true },
@@ -312,6 +358,11 @@ function seedDb() {
     proveedores: ["Picap","Pibox","Mensajeros Urbanos","Propio","Rappi"],
     pautaMensual: 350000,
     horasCongelacion: 10, // objetivo por defecto (rango operativo 8–12 h)
+    demoraCocinaMin: 15,
+    demoraCocinaUrgenteMin: 30,
+    demoraEmpaqueMin: 10,
+    demoraEmpaqueUrgenteMin: 20,
+    demoraRepeticionMin: 5,
     politicas: "MOMOS no despacha ningún pedido sin pago confirmado: se requiere comprobante de transferencia (Nequi, Daviplata o Bancolombia) o el pago dentro de la app de Rappi. No se aceptan pagos en efectivo contra entrega. Reclamos por estado del producto: máximo 20 minutos después de recibido, salvo calidad o inocuidad. Un beneficio por pedido, no acumulable, no aplica sobre domicilio.",
   };
 
@@ -436,7 +487,8 @@ function seedDb() {
   const audit_logs = [
     { id: "A05", fecha: hoyISO() + " 10:20", user: "Cocina", entidad: "Pedido", entidadId: "P-1041", accion: "Cambio de estado", de: "Pagado", a: "En producción" },
     { id: "A04", fecha: hoyISO() + " 09:42", user: "Logística", entidad: "Pedido", entidadId: "P-1043", accion: "Cambio de estado", de: "Listo para despacho", a: "En ruta" },
-    { id: "A03", fecha: hoyISO() + " 11:06", user: "Empaque", entidad: "Pedido", entidadId: "P-1042", accion: "Cambio de estado", de: "En producción", a: "Empacado" },
+    { id: "A03B", fecha: hoyISO() + " 11:04", user: "Cocina", entidad: "Pedido", entidadId: "P-1042", accion: "Cambio de estado", de: "En producción", a: "Listo para empaque" },
+    { id: "A03", fecha: hoyISO() + " 11:06", user: "Empaque", entidad: "Pedido", entidadId: "P-1042", accion: "Cambio de estado", de: "Listo para empaque", a: "Empacado" },
     { id: "A02", fecha: dISO(-1) + " 16:06", user: "Logística", entidad: "Pedido", entidadId: "P-1039", accion: "Cambio de estado", de: "En ruta", a: "Entregado" },
     { id: "A01", fecha: dISO(-1) + " 19:05", user: "Administrador", entidad: "Reclamo", entidadId: "R-032", accion: "Caso creado", de: "", a: "Abierto" },
   ];
@@ -612,7 +664,7 @@ function normalizeDbShape(d) {
   const s = seedDb();
   const arrayTables = [
     "orders", "order_items", "customers", "products", "production_batches",
-    "inventory_items", "inventory_movements", "deliveries", "evidences", "claims",
+    "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
     "users", "campaigns", "creatives", "content_calendar", "creative_results",
     "marketing_ideas", "marketing_guiones", "marketing_mensajes", "marketing_tasks",
@@ -674,6 +726,7 @@ function normalizeDbShape(d) {
   if (typeof d.settings.pedidoMinimo !== "number") d.settings.pedidoMinimo = s.settings.pedidoMinimo;
   if (typeof d.settings.pautaMensual !== "number") d.settings.pautaMensual = s.settings.pautaMensual;
   if (typeof d.settings.horasCongelacion !== "number") d.settings.horasCongelacion = s.settings.horasCongelacion;
+  Object.assign(d.settings, normalizeKitchenDelaySettings(d.settings));
   if (typeof d.settings.politicas !== "string") d.settings.politicas = s.settings.politicas;
   return d;
 }
@@ -1454,8 +1507,9 @@ const TRANSICIONES = {
   "Confirmado": ["Pendiente de pago", "Pagado", "Nuevo"],
   "Pendiente de pago": ["Pagado", "Confirmado"],
   "Pagado": ["En producción", "Pendiente de pago"],
-  "En producción": ["Empacado", "Pagado"],
-  "Empacado": ["Listo para despacho", "En ruta", "En producción"],
+  "En producción": ["Listo para empaque", "Pagado"],
+  "Listo para empaque": ["Empacado", "En producción"],
+  "Empacado": ["Listo para despacho", "En ruta", "Listo para empaque"],
   "Listo para despacho": ["En ruta", "Empacado"],
   "En ruta": ["Entregado", "Listo para despacho"],
   "Entregado": [],
@@ -1479,7 +1533,7 @@ function setOrderStatus(db, orderId, estado, user, opts = {}) {
   }
 
   // Ningún estado operativo sin pago confirmado
-  if (["En producción","Empacado","Listo para despacho","En ruta","Entregado"].includes(estado) && !o.pagadoEn) {
+  if (["En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado"].includes(estado) && !o.pagadoEn) {
     return { ok: false, error: "MOMOS no produce ni despacha pedidos sin pago confirmado." };
   }
 
@@ -1552,7 +1606,7 @@ function setOrderStatus(db, orderId, estado, user, opts = {}) {
 
   // #7: reservar inventario UNA sola vez si el pedido entra a producción/despacho con pago pero sin reserva previa
   // (cubre pedidos que obtuvieron pagadoEn sin pasar por el handler de "Pagado": semilla, migración, retroceso de estado)
-  if (["En producción","Empacado","Listo para despacho","En ruta","Entregado"].includes(estado) && o.pagadoEn && !o.inventarioReservado) {
+  if (["En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado"].includes(estado) && o.pagadoEn && !o.inventarioReservado) {
     faltantes = reserveInventory(db, o, user);
     o.inventarioReservado = true;
   }
@@ -1598,7 +1652,7 @@ function setOrderStatus(db, orderId, estado, user, opts = {}) {
     // beneficio: si se cancela antes de En producción, devolverlo a Activo aunque ya estuviera Usado por el pago
     if (o.benefitId) {
       const b = db.benefits.find((x) => x.id === o.benefitId);
-      const antesDeProduccion = !["En producción","Empacado","Listo para despacho","En ruta","Entregado"].includes(prev);
+      const antesDeProduccion = !["En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado"].includes(prev);
       if (b && (b.estado === "Reservado" || (b.estado === "Usado" && antesDeProduccion))) {
         const antes = b.estado;
         b.estado = "Activo"; b.pedidoUso = "";
@@ -1689,7 +1743,7 @@ function Badge({ label, map }) {
   return <span style={{ background: s.bg, color: s.fg }} className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors">{label}</span>;
 }
 
-function Card({ children, className = "", onClick }) {
+function Card({ children, className = "", onClick, style, ...props }) {
   function keyDown(e) {
     if (!onClick || !["Enter", " "].includes(e.key)) return;
     e.preventDefault();
@@ -1697,8 +1751,8 @@ function Card({ children, className = "", onClick }) {
     onClick(e);
   }
   return (
-    <div onClick={onClick} onKeyDown={keyDown} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined}
-      style={{ background: T.surface, borderColor: T.border }}
+    <div {...props} onClick={onClick} onKeyDown={keyDown} role={onClick ? "button" : props.role} tabIndex={onClick ? 0 : props.tabIndex}
+      style={{ background: T.surface, borderColor: T.border, ...style }}
       className={`rounded-2xl border shadow-sm ${onClick ? "momo-card-action" : ""} ${className}`}>
       {children}
     </div>
@@ -1787,7 +1841,7 @@ function Btn({ children, onClick, kind = "primary", small, disabled, type = "but
 function vibrar(tipo) {
   try {
     if (!("vibrate" in navigator)) return;
-    navigator.vibrate(tipo === "ok" ? [30, 60, 30] : tipo === "error" ? 120 : 30);
+    navigator.vibrate(tipo === "ok" ? [30, 60, 30] : tipo === "alert" ? [45, 70, 45] : tipo === "error" ? 120 : 30);
   } catch { /* nunca romper por vibrar */ }
 }
 
@@ -1806,7 +1860,7 @@ function Toasts() {
     _pushToast = (t) => {
       const id = ++idRef.current;
       setItems((xs) => [...xs.slice(-2), { ...t, id }]);
-      setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), t.tipo === "error" ? 6000 : 3500);
+      setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), t.tipo === "error" || t.tipo === "alert" ? 6000 : 3500);
     };
     return () => { _pushToast = null; };
   }, []);
@@ -1815,13 +1869,15 @@ function Toasts() {
     <div className="fixed left-1/2 -translate-x-1/2 bottom-20 md:bottom-6 z-[60] flex flex-col gap-2 items-center w-[calc(100%-2rem)] max-w-md pointer-events-none" aria-live="polite" aria-atomic="false">
       {items.map((t) => (
         <div key={t.id} className="momo-toast w-full rounded-2xl px-4 py-3 border flex items-center gap-3" role={t.tipo === "error" ? "alert" : "status"}
-          style={{ "--toast-life": t.tipo === "error" ? "6000ms" : "3500ms", ...(t.tipo === "error"
+          style={{ "--toast-life": t.tipo === "error" || t.tipo === "alert" ? "6000ms" : "3500ms", ...(t.tipo === "error"
             ? { background: "#F6D4CD", color: "#A03B2A", borderColor: "#ECBBB1" }
+            : t.tipo === "alert"
+              ? { background: "#FFF4E0", color: "#7A5410", borderColor: "#E7C078" }
             : { background: "#E3EFE0", color: "#3F6B42", borderColor: "#BFD8BE" }) }}>
           <span className="momo-toast-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-base font-black"
-            style={{ background: t.tipo === "error" ? "#fff7f5" : "#fff" }} aria-hidden="true">{t.tipo === "error" ? "!" : "✓"}</span>
+            style={{ background: t.tipo === "error" ? "#fff7f5" : "#fff" }} aria-hidden="true">{t.tipo === "error" ? "!" : t.tipo === "alert" ? "🔔" : "✓"}</span>
           <span className="min-w-0">
-            <span className="block text-[10px] uppercase tracking-[.12em] font-extrabold opacity-70">{t.tipo === "error" ? "Revisá esto" : "Acción completada"}</span>
+            <span className="block text-[10px] uppercase tracking-[.12em] font-extrabold opacity-70">{t.tipo === "error" ? "Revisá esto" : t.tipo === "alert" ? "Aviso de cocina" : "Acción completada"}</span>
             <span className="block text-sm font-bold leading-snug">{t.texto}</span>
           </span>
           <span className="momo-toast-progress" aria-hidden="true" />
@@ -1870,14 +1926,27 @@ function BtnAsync({ children, onClick, kind, small, disabled, confirmar, textoEn
   );
 }
 
-function Modal({ title, onClose, children, wide }) {
+const modalStack = [];
+
+function Modal({ title, onClose, children, wide, topLayer = false }) {
+  const modalIdRef = useRef(Symbol("momo-modal"));
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    function cerrarConEscape(e) { if (e.key === "Escape") onClose(); }
+    const modalId = modalIdRef.current;
+    modalStack.push(modalId);
+    function cerrarConEscape(e) {
+      if (e.key === "Escape" && modalStack[modalStack.length - 1] === modalId) onCloseRef.current();
+    }
     window.addEventListener("keydown", cerrarConEscape);
-    return () => window.removeEventListener("keydown", cerrarConEscape);
-  }, [onClose]);
+    return () => {
+      window.removeEventListener("keydown", cerrarConEscape);
+      const index = modalStack.lastIndexOf(modalId);
+      if (index >= 0) modalStack.splice(index, 1);
+    };
+  }, []);
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" role="dialog" aria-modal="true">
+    <div className={`fixed inset-0 ${topLayer ? "z-[70]" : "z-50"} flex items-end sm:items-center justify-center p-0 sm:p-6`} role="dialog" aria-modal="true">
       <div className="momo-modal-backdrop absolute inset-0" style={{ background: "rgba(60,40,30,.45)" }} onClick={onClose} />
       <div style={{ background: T.bg }} className={`momo-modal-sheet relative w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"} max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-xl`}>
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b" style={{ background: T.bg, borderColor: T.border }}>
@@ -1887,6 +1956,434 @@ function Modal({ title, onClose, children, wide }) {
         <div className="p-5">{children}</div>
       </div>
     </div>
+  );
+}
+
+function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOpenProduction, onOpenPacking }) {
+  const operationalRole = String(perfil?.rol || "").trim();
+  const canSeeKitchenCommands = ["Administrador", "Cocina"].includes(operationalRole);
+  const canSeePackingCommands = ["Administrador", "Empaque"].includes(operationalRole);
+  const orderAlertsEnabled = canReceiveKitchenOrderAlerts(perfil?.rol);
+  const delayAlertsEnabled = canReceiveKitchenDelayReminders(perfil?.rol);
+  const enabled = orderAlertsEnabled || delayAlertsEnabled;
+  const [dialogMode, setDialogMode] = useState(null);
+  const [incomingAlerts, setIncomingAlerts] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [delayClock, setDelayClock] = useState(() => Date.now());
+  const knownOrderStatesRef = useRef(new Map());
+  const alertsReadyRef = useRef(false);
+  const delayReminderKeysRef = useRef(new Set());
+  const refreshOrdersRef = useRef(refrescar);
+  const watcherNameRef = useRef(null);
+  refreshOrdersRef.current = refrescar;
+  if (!watcherNameRef.current) watcherNameRef.current = `momoops-global-orders-${voiceCommandKey()}`;
+
+  const catalogs = useMemo(() => ({
+    customers: db?.customers || [],
+    products: db?.products || [],
+    orders: db?.orders || [],
+    orderItems: db?.order_items || [],
+    auditLogs: db?.audit_logs || [],
+  }), [db?.customers, db?.products, db?.orders, db?.order_items, db?.audit_logs]);
+  const delayTiming = useMemo(() => normalizeKitchenDelaySettings(db?.settings), [db?.settings]);
+  const readyCommands = useMemo(() => canSeeKitchenCommands ? kitchenReadyOrderCommands(catalogs) : [], [canSeeKitchenCommands, catalogs]);
+  const packingCommands = useMemo(() => canSeePackingCommands ? (db?.orders || [])
+    .filter((order) => order?.id && order.estado === "Listo para empaque")
+    .map((order) => ({ ...kitchenOrderAlert(order, catalogs, { eventType: "ready_for_packing" }), date: order.fecha || "", time: order.hora || "" })) : [], [canSeePackingCommands, catalogs, db?.orders]);
+  const operationalCommands = useMemo(() => [...readyCommands, ...packingCommands], [readyCommands, packingCommands]);
+  const delayReminders = useMemo(() => delayAlertsEnabled ? kitchenDelayedOrderReminders(catalogs, delayClock, delayTiming) : [], [delayAlertsEnabled, catalogs, delayClock, delayTiming]);
+
+  useEffect(() => {
+    const orders = db?.orders || [];
+    if (!orderAlertsEnabled || !serverDataReady || !alertsReadyRef.current) {
+      knownOrderStatesRef.current = new Map(orders.filter((order) => order?.id).map((order) => [order.id, order.estado || ""]));
+      alertsReadyRef.current = Boolean(orderAlertsEnabled && serverDataReady);
+      return;
+    }
+
+    const detected = kitchenOrderStateEvents(orders, knownOrderStatesRef.current);
+    knownOrderStatesRef.current = detected.nextStates;
+    const alerts = detected.events.slice().reverse().filter(({ type }) => type === "ready_for_packing"
+      ? canSeePackingCommands
+      : canSeeKitchenCommands).map(({ order, type }) => {
+      const alert = kitchenOrderAlert(order, catalogs, { eventType: type });
+      return alert ? {
+        ...alert,
+        detectedAt: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+      } : null;
+    }).filter(Boolean);
+    if (!alerts.length) return;
+
+    setIncomingAlerts((current) => [...current, ...alerts]);
+    setUnreadCount((current) => current + alerts.length);
+    setDialogMode("events");
+    const actionable = alerts.filter((alert) => alert.canPrepare || alert.canPack).length;
+    toast("alert", alerts.length === 1
+      ? alerts[0].canPack ? `Pedido ${alerts[0].orderId} · listo para Empaque` : actionable ? `Pedido ${alerts[0].orderId} pagado · listo para cocina` : `Entró el pedido ${alerts[0].orderId} · revisá la comanda`
+      : `Entraron ${alerts.length} avisos operativos · ${actionable} requieren acción`);
+  }, [orderAlertsEnabled, canSeeKitchenCommands, canSeePackingCommands, serverDataReady, db?.orders, db?.order_items, db?.customers, db?.products]);
+
+  useEffect(() => {
+    if (!delayAlertsEnabled || !serverDataReady) return undefined;
+    const timer = setInterval(() => setDelayClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, [delayAlertsEnabled, serverDataReady]);
+
+  useEffect(() => {
+    if (!delayAlertsEnabled || !serverDataReady || !delayReminders.length) return;
+    const fresh = delayReminders.filter((reminder) => {
+      const key = `${reminder.orderId}:${reminder.state}:${reminder.since}:${reminder.thresholdMinutes}:${reminder.urgentMinutes}:${reminder.repeatMinutes}:${reminder.repeatBucket}`;
+      if (delayReminderKeysRef.current.has(key)) return false;
+      delayReminderKeysRef.current.add(key);
+      return true;
+    });
+    if (!fresh.length) return;
+    setUnreadCount((current) => current + fresh.length);
+    setDialogMode("delays");
+    const urgent = fresh.filter((reminder) => reminder.urgent);
+    const lead = urgent[0] || fresh[0];
+    toast(urgent.length ? "error" : "alert", fresh.length === 1
+      ? `${lead.orderId} lleva ${lead.elapsedMinutes} min en ${lead.area} · revisalo ahora`
+      : `${fresh.length} pedidos demorados · ${urgent.length} urgentes`);
+  }, [delayAlertsEnabled, serverDataReady, delayReminders]);
+
+  useEffect(() => {
+    if (!enabled || !serverDataReady) return undefined;
+    let refreshTimer = null;
+    let disposed = false;
+    const requestOrderRefresh = () => {
+      if (disposed || refreshTimer) return;
+      refreshTimer = setTimeout(async () => {
+        refreshTimer = null;
+        if (disposed) return;
+        try { await refreshOrdersRef.current?.(); } catch { /* el sondeo vuelve a intentar */ }
+      }, 650);
+    };
+    const channel = supabase
+      .channel(watcherNameRef.current)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, requestOrderRefresh)
+      .subscribe();
+    const poll = setInterval(async () => {
+      if (disposed || document.visibilityState !== "visible") return;
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id,estado,fecha,hora")
+        .order("fecha", { ascending: false })
+        .order("hora", { ascending: false })
+        .limit(25);
+      if (!error && (data || []).some((order) => order?.id
+        && (!knownOrderStatesRef.current.has(order.id) || knownOrderStatesRef.current.get(order.id) !== (order.estado || "")))) requestOrderRefresh();
+    }, 15000);
+    return () => {
+      disposed = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
+  }, [enabled, serverDataReady]);
+
+  if (!enabled) return null;
+
+  function closeDialog() {
+    setDialogMode(null);
+    if (dialogMode === "events") setIncomingAlerts([]);
+    setUnreadCount(0);
+  }
+
+  function openAlertCenter() {
+    setDialogMode(delayReminders.length ? "delays" : incomingAlerts.length ? "events" : "commands");
+    setUnreadCount(0);
+  }
+
+  function goToProduction() {
+    closeDialog();
+    onOpenProduction?.();
+  }
+
+  function goToPacking() {
+    closeDialog();
+    onOpenPacking?.();
+  }
+
+  const showsEvents = dialogMode === "events";
+  const showsDelays = dialogMode === "delays";
+  const urgentDelayCount = delayReminders.filter((reminder) => reminder.urgent).length;
+  const delayedKitchenCount = delayReminders.filter((reminder) => reminder.area === "Cocina").length;
+  const delayedPackingCount = delayReminders.filter((reminder) => reminder.area === "Empaque").length;
+  const visibleCount = unreadCount || operationalCommands.length + delayReminders.length;
+  const buttonTone = urgentDelayCount
+    ? { background: "#A03B2A", borderColor: "#A03B2A", color: "#fff" }
+    : delayReminders.length
+      ? { background: "#96690F", borderColor: "#96690F", color: "#fff" }
+      : operationalCommands.length || unreadCount
+        ? { background: T.coral, borderColor: T.coral, color: "#fff" }
+        : { background: "#fff", borderColor: T.border, color: T.choco };
+  return (
+    <>
+      <button type="button" onClick={openAlertCenter}
+        className="momo-btn momo-kitchen-alert-fab rounded-2xl px-3 py-2.5 border flex items-center gap-2 shadow-lg"
+        aria-label={`Abrir seguimiento operativo. ${operationalCommands.length} ${operationalCommands.length === 1 ? "comanda" : "comandas"} requieren acción y ${delayReminders.length} ${delayReminders.length === 1 ? "pedido demorado" : "pedidos demorados"}${unreadCount ? `; ${unreadCount} ${unreadCount === 1 ? "aviso nuevo" : "avisos nuevos"}` : ""}`}
+        style={buttonTone}>
+        <span className="text-xl" aria-hidden="true">🔔</span>
+        <span className="hidden sm:block text-left leading-tight">
+          <span className="block text-[9px] uppercase tracking-[.12em] font-extrabold opacity-75">Seguimiento operativo</span>
+          <span className="block text-xs font-extrabold">{urgentDelayCount ? `${urgentDelayCount} urgente${urgentDelayCount === 1 ? "" : "s"}` : delayReminders.length ? `${delayReminders.length} con demora` : operationalCommands.length ? `${operationalCommands.length} por atender` : "Todo al día"}</span>
+        </span>
+        <span className="min-w-7 h-7 px-2 rounded-full flex items-center justify-center text-xs font-black"
+          style={{ background: visibleCount ? "#fff" : T.vainilla, color: urgentDelayCount ? "#A03B2A" : delayReminders.length ? "#96690F" : visibleCount ? T.coral : T.choco2 }}>
+          {visibleCount}
+        </span>
+      </button>
+
+      {dialogMode && (
+        <Modal title={showsDelays ? "⏱️ Pedidos demorados" : showsEvents ? "🔔 Nuevo aviso operativo" : "🧾 Comandas por atender"} wide topLayer onClose={closeDialog}>
+          <div className="rounded-xl p-3 mb-4 border" role="status" aria-live="assertive"
+            style={{ background: T.soft, borderColor: T.border, color: T.choco }}>
+            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>{showsDelays ? "Seguimiento vivo de la operación" : "Relevo entre áreas"}</div>
+            <div className="font-bold mt-0.5">{showsDelays ? "MOMO OPS recuerda las órdenes que no han avanzado a tiempo." : "MOMO OPS conecta Caja, Cocina y Empaque sin perder la comanda."}</div>
+            <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{showsDelays
+              ? `Cocina avisa desde ${delayTiming.demoraCocinaMin} min y es urgente desde ${delayTiming.demoraCocinaUrgenteMin}; Empaque avisa desde ${delayTiming.demoraEmpaqueMin} min y es urgente desde ${delayTiming.demoraEmpaqueUrgenteMin}. Repite cada ${delayTiming.demoraRepeticionMin} min.`
+              : "El aviso no depende de Momobot: Cocina recibe pagos confirmados y Empaque recibe pedidos terminados por Cocina."}</div>
+            {showsDelays && <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>Cocina · {delayedKitchenCount}</span>
+              <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: "#E8E0F2", color: "#63518A" }}>Empaque · {delayedPackingCount}</span>
+              {urgentDelayCount > 0 && <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Urgentes · {urgentDelayCount}</span>}
+            </div>}
+          </div>
+
+          {showsDelays ? (
+            <div className="space-y-3">
+              {delayReminders.map((reminder) => (
+                <Card key={`${reminder.orderId}-${reminder.state}`} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: reminder.urgent ? "#A03B2A" : T.choco2 }}>{reminder.urgent ? "Urgente · actuar ahora" : "Recordatorio · revisar"}</div>
+                      <div className="display text-lg font-semibold">Pedido {reminder.orderId}</div>
+                      {reminder.customerName && <div className="text-xs font-bold mt-0.5" style={{ color: T.choco2 }}>Cliente: {reminder.customerName}</div>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="display text-xl font-bold leading-none" style={{ color: reminder.urgent ? "#A03B2A" : T.choco }}>{reminder.elapsedMinutes} min</div>
+                      <div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>en {reminder.area}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                    <div className="text-[10px] font-bold mb-1" style={{ color: T.choco2 }}>COMANDA</div>
+                    <div className="text-sm" style={{ color: T.choco }}>{reminder.content}</div>
+                  </div>
+                  <div className="text-xs font-extrabold mt-2" style={{ color: reminder.urgent ? "#A03B2A" : T.choco2 }}>{reminder.nextAction}</div>
+                </Card>
+              ))}
+            </div>
+          ) : showsEvents ? (
+            <div className="space-y-3">
+              {incomingAlerts.map((alert, index) => (
+                <Card key={`${alert.orderId}-${alert.eventType}-${index}`} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[.12em] font-extrabold"
+                        style={{ color: alert.canPrepare ? "#3F6B42" : alert.canPack ? "#A54830" : T.choco2 }}>
+                        {alert.eventType === "ready_for_packing" ? "Cocina terminó" : alert.eventType === "paid" ? "Pago confirmado" : "Pedido nuevo"} · {alert.detectedAt}
+                      </div>
+                      <div className="display text-lg font-semibold mt-0.5">Pedido {alert.orderId}</div>
+                      {alert.customerName && <div className="text-xs font-bold mt-0.5" style={{ color: T.choco2 }}>Cliente: {alert.customerName}</div>}
+                    </div>
+                    <span className="rounded-full px-2.5 py-1 text-[10px] uppercase tracking-wider font-extrabold shrink-0"
+                      style={{ background: alert.canPrepare ? "#DDEBD9" : alert.canPack ? "#FBE3DA" : "#FBE8C8", color: alert.canPrepare ? "#3F6B42" : alert.canPack ? "#A54830" : "#96690F" }}>
+                      {alert.canPrepare ? "✓ Pagado" : alert.canPack ? "→ Empaque" : alert.state || "Pendiente"}
+                    </span>
+                  </div>
+                  <div className="mt-2 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                    <div className="text-[10px] font-bold mb-1" style={{ color: T.choco2 }}>COMANDA</div>
+                    <div className="text-sm" style={{ color: T.choco }}>{alert.content}</div>
+                  </div>
+                  <div className="text-xs font-extrabold mt-2" style={{ color: alert.canPrepare ? "#3F6B42" : alert.canPack ? "#A54830" : "#A03B2A" }}>
+                    {alert.canPrepare ? "✓ Cocina o Administración pueden iniciar esta comanda." : alert.canPack ? "✓ Empaque o Administración pueden tomarla y confirmar Empacado." : "⏳ Pedido recibido: todavía no preparar hasta confirmar el pago."}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : operationalCommands.length ? (
+            <div className="space-y-3">
+              <div className="text-xs font-bold" style={{ color: T.choco2 }}>Ordenadas de la más antigua a la más reciente.</div>
+              {operationalCommands.map((command, index) => (
+                <Card key={command.orderId} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: command.canPack ? "#A54830" : "#3F6B42" }}>Comanda {index + 1} · {command.canPack ? "lista para Empaque" : "lista para Cocina"}</div>
+                      <div className="display text-lg font-semibold mt-0.5">Pedido {command.orderId}</div>
+                      {command.customerName && <div className="text-xs font-bold mt-0.5" style={{ color: T.choco2 }}>Cliente: {command.customerName}</div>}
+                    </div>
+                    <span className="rounded-full px-2.5 py-1 text-[10px] uppercase tracking-wider font-extrabold shrink-0" style={{ background: command.canPack ? "#FBE3DA" : "#DDEBD9", color: command.canPack ? "#A54830" : "#3F6B42" }}>{command.canPack ? "→ Empaque" : "✓ Pagado"}</span>
+                  </div>
+                  <div className="mt-2 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                    <div className="text-[10px] font-bold mb-1" style={{ color: T.choco2 }}>COMANDA</div>
+                    <div className="text-sm" style={{ color: T.choco }}>{command.content}</div>
+                  </div>
+                  {(command.date || command.time) && <div className="text-[10px] font-bold mt-2" style={{ color: T.choco2 }}>Recibido: {[command.date, command.time].filter(Boolean).join(" · ")}</div>}
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl p-7 text-center border" style={{ background: T.soft, borderColor: T.border }}>
+              <div className="text-3xl mb-2" aria-hidden="true">✅</div>
+              <div className="font-extrabold">No hay comandas pagadas esperando iniciar.</div>
+              <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>MOMO OPS abrirá esta ventana apenas entre un pedido nuevo o se confirme su pago.</div>
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <Btn kind="ghost" onClick={closeDialog}>Entendido</Btn>
+            {readyCommands.length > 0 && <Btn onClick={goToProduction}>Ir a Producción</Btn>}
+            {packingCommands.length > 0 && <Btn onClick={goToPacking}>Ir a Empaque</Btn>}
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+function KitchenProductionQueue({ db, onStart, onOpenAssistant, onReady, canStart, canReady, busyOrderId }) {
+  const [delayClock, setDelayClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setDelayClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  const catalogs = useMemo(() => ({
+    customers: db?.customers || [],
+    products: db?.products || [],
+    orders: db?.orders || [],
+    orderItems: db?.order_items || [],
+    auditLogs: db?.audit_logs || [],
+  }), [db?.customers, db?.products, db?.orders, db?.order_items, db?.audit_logs]);
+  const commands = useMemo(() => kitchenReadyOrderCommands(catalogs), [catalogs]);
+  const inProduction = useMemo(() => (db?.orders || [])
+    .filter((order) => order?.id && order.estado === "En producción")
+    .slice()
+    .sort((left, right) => `${left.fecha || ""}T${left.hora || ""}`.localeCompare(`${right.fecha || ""}T${right.hora || ""}`))
+    .map((order) => ({ ...kitchenOrderAlert(order, catalogs), date: order.fecha || "", time: order.hora || "" })), [db?.orders, catalogs]);
+  const delayTiming = useMemo(() => normalizeKitchenDelaySettings(db?.settings), [db?.settings]);
+  const delayReminders = useMemo(() => kitchenDelayedOrderReminders(catalogs, delayClock, delayTiming), [catalogs, delayClock, delayTiming]);
+  const kitchenDelayReminders = delayReminders.filter((reminder) => reminder.area === "Cocina");
+  const urgentDelayCount = kitchenDelayReminders.filter((reminder) => reminder.urgent).length;
+
+  return (
+    <section className="mb-5" aria-labelledby="kitchen-queue-title">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <h2 id="kitchen-queue-title" className="display text-lg font-semibold m-0">Cola de pedidos para preparar</h2>
+          <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Primero el más antiguo. Figura, sabor y relleno vienen de la orden pagada.</div>
+        </div>
+        <div className="flex flex-col items-end shrink-0 gap-0.5 text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>
+          <span><b className="text-xs" style={{ color: commands.length ? T.coral : T.choco }}>{commands.length}</b> por iniciar</span>
+          <span><b className="text-xs" style={{ color: inProduction.length ? "#3E5C7E" : T.choco }}>{inProduction.length}</b> en cocina</span>
+        </div>
+      </div>
+
+      {kitchenDelayReminders.length > 0 && (
+        <div className="mb-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: urgentDelayCount ? "#A03B2A" : T.choco2 }}>⏱ Seguimiento de tiempos · {kitchenDelayReminders.length} pedido{kitchenDelayReminders.length === 1 ? "" : "s"} necesita{kitchenDelayReminders.length === 1 ? "" : "n"} atención</span>
+            {urgentDelayCount > 0 && <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{urgentDelayCount} urgente{urgentDelayCount === 1 ? "" : "s"}</span>}
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {kitchenDelayReminders.map((reminder) => (
+              <Card key={`${reminder.orderId}-${reminder.state}`} className="p-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-extrabold">{reminder.orderId} · {reminder.area}</div>
+                  <div className="text-xs font-semibold mt-0.5 truncate" style={{ color: T.choco2 }}>{reminder.content}</div>
+                  <div className="text-[10px] font-bold mt-1" style={{ color: reminder.urgent ? "#A03B2A" : T.choco2 }}>{reminder.nextAction}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="display text-lg font-bold leading-none" style={{ color: reminder.urgent ? "#A03B2A" : T.choco }}>{reminder.elapsedMinutes}</div>
+                  <div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>min</div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {commands.length ? (
+        <div className="grid gap-3 mb-4">
+          {commands.map((command, index) => (
+            <Card key={command.orderId} className="momo-queue-item p-4 grid lg:grid-cols-[minmax(0,1fr)_auto] gap-4 items-center">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: index === 0 ? T.coral : T.choco2 }}>{index === 0 ? "Siguiente" : `En cola · #${index + 1}`}</div>
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                  <span className="text-sm font-bold leading-tight">Pedido {command.orderId}</span>
+                  <Badge label="Pagado" />
+                </div>
+                <div className="text-xs mt-1" style={{ color: T.choco2 }}>
+                  {[command.customerName && `Cliente: ${command.customerName}`, (command.date || command.time) && `Recibido: ${[command.date, command.time].filter(Boolean).join(" · ")}`].filter(Boolean).join(" · ")}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5 items-center" aria-label={`Figuras del pedido ${command.orderId}`}>
+                  <span className="text-[10px] uppercase tracking-wider font-extrabold mr-1" style={{ color: T.choco2 }}>Figuras a alistar</span>
+                  {command.figures?.length
+                    ? command.figures.map((figure) => <span key={figure} className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: T.rosa, color: "#7C3F4B" }}>🐾 {figure}</span>)
+                    : <span className="text-xs font-semibold" style={{ color: T.choco2 }}>Sin figura · preparación al momento</span>}
+                  {command.flavors?.map((flavor) => <span key={flavor} className="text-xs font-semibold" style={{ color: T.choco2 }}>· Sabor {flavor}</span>)}
+                </div>
+                <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                  <div className="text-[10px] font-bold mb-1" style={{ color: T.choco2 }}>PARA PREPARAR</div>
+                  <div className="text-sm leading-relaxed" style={{ color: T.choco }}>{command.content}</div>
+                </div>
+                <div className="mt-3 flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider" style={{ color: T.choco2 }}>
+                  <span>Pago ✓</span>
+                  <span aria-hidden="true">→</span>
+                  <span style={{ color: T.coral }}>Cocina</span>
+                  <span aria-hidden="true">→</span>
+                  <span className="opacity-60">Empaque</span>
+                </div>
+              </div>
+              <div className="lg:w-48">
+                {canStart
+                  ? <div className="grid gap-2"><BtnAsync textoEnVuelo="Iniciando…" disabled={busyOrderId === command.orderId} onClick={() => onStart?.(command.orderId)}>Iniciar preparación</BtnAsync><Btn kind="soft" disabled={busyOrderId === command.orderId} onClick={() => onOpenAssistant?.(command.orderId)}>Hablar con Momobot</Btn></div>
+                  : <div className="text-xs font-extrabold text-center" style={{ color: "#96690F" }}>Solo Cocina o Administración inician la preparación</div>}
+                <div className="text-[10px] font-bold mt-2 lg:text-center leading-snug" style={{ color: T.choco2 }}>{canStart ? "El botón registra el inicio ahora. Momobot queda como opción manos libres." : "Tu rol puede consultar la cola, pero no confirmar el trabajo de Cocina."}</div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Empty icon="✅" text="La cola de cocina está al día. Cuando un pedido quede Pagado aparecerá aquí con figura, sabor y contenido." />
+      )}
+
+      {inProduction.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="display text-lg font-semibold m-0">Comandas en preparación</h3>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}><b className="text-xs" style={{ color: "#3E5C7E" }}>{inProduction.length}</b> activas</span>
+          </div>
+          <div className="grid gap-3">
+            {inProduction.map((command) => (
+              <Card key={command.orderId} className="momo-queue-item p-4 grid lg:grid-cols-[minmax(0,1fr)_auto] gap-4 items-center">
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: "#3E5C7E" }}>En cocina</div>
+                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                    <span className="text-sm font-bold leading-tight">Pedido {command.orderId}</span>
+                    <Badge label="En producción" />
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: T.choco2 }}>{command.customerName ? `Cliente: ${command.customerName}` : "Comanda en cocina"}</div>
+                  <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                    <div className="text-[10px] font-bold mb-1" style={{ color: T.choco2 }}>PARA PREPARAR</div>
+                    <div className="text-sm leading-relaxed" style={{ color: T.choco }}>{command.content}</div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>
+                    <span className="opacity-60">Pago</span><span aria-hidden="true">→</span><span style={{ color: "#3E5C7E" }}>Cocina</span><span aria-hidden="true">→</span><span className="opacity-60">Listo para empaque</span>
+                  </div>
+                </div>
+                <div className="lg:w-52">
+                  {canReady
+                    ? <BtnAsync textoEnVuelo="Entregando…" disabled={busyOrderId === command.orderId} onClick={() => onReady?.(command.orderId)}>Listo para empaque</BtnAsync>
+                    : <div className="text-xs font-extrabold text-center" style={{ color: "#96690F" }}>Solo Cocina o Administración entregan a Empaque</div>}
+                  <div className="text-[10px] font-bold mt-2 lg:text-center leading-snug" style={{ color: T.choco2 }}>Confirma que Cocina terminó. Empaque recibirá la alerta automáticamente.</div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2149,7 +2646,7 @@ function Dashboard({ db, go, user }) {
 
 /* ================= PEDIDOS ================= */
 
-const KANBAN_COLS = ["Nuevo","Confirmado","Pendiente de pago","Pagado","En producción","Empacado","Listo para despacho","En ruta","Entregado"];
+const KANBAN_COLS = ["Nuevo","Confirmado","Pendiente de pago","Pagado","En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado"];
 
 /* Resumen de actividad por módulo (pedido del usuario 2026-07-12): últimas
    filas del rastro que YA viaja en el read-model (audit_logs / movements) —
@@ -2171,6 +2668,130 @@ function UltimosMovimientos({ filas }) {
   );
 }
 
+function Empaque({ db, update, user, refrescar, perfil }) {
+  const [selId, setSelId] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const verifications = db.packing_verifications || [];
+  const pending = db.orders
+    .filter((order) => order.estado === "Listo para empaque")
+    .sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
+  const packed = db.orders
+    .filter((order) => order.estado === "Empacado")
+    .sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
+  const verifiedPending = pending.filter((order) => findPackingVerification(order.id, verifications)).length;
+  const selected = selId ? db.orders.find((order) => order.id === selId) : null;
+
+  async function cambiar(orderId, estado, opts) {
+    const actual = db.orders.find((order) => order.id === orderId);
+    const permiso = orderTransitionPermission(perfil?.rol, actual?.estado, estado, { quickSale: !!(opts && opts.ventaRapida) });
+    if (!permiso.allowed) {
+      setAviso({ titulo: "Este paso pertenece a otra área", texto: permiso.reason });
+      return false;
+    }
+    try {
+      await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
+      await refrescar();
+      toast("ok", `${orderId} → ${estado}`);
+      if (estado !== "Empacado") setSelId(null);
+      return true;
+    } catch (error) {
+      toast("error", error.message);
+      return false;
+    }
+  }
+
+  function OrderPackingCard({ order, index }) {
+    const customer = customerOf(db, order.customerId);
+    const progress = packingStationProgress({
+      orderId: order.id,
+      orderItems: db.order_items,
+      evidences: db.evidences,
+      verifications,
+    });
+    const topLines = progress.lines.filter((line) => !line.parentItemId);
+    const nextLabel = order.estado === "Empacado"
+      ? "Entregar a despacho"
+      : !progress.verified
+        ? "Comparar con la orden"
+        : progress.readyToPack
+          ? "Confirmar Empacado"
+          : "Completar evidencias";
+    return (
+      <Card className="p-4 sm:p-5" style={{ borderColor: progress.readyToPack || order.estado === "Empacado" ? "#A7C9A4" : T.border }}>
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black" style={{ background: order.estado === "Empacado" ? "#E8E0F2" : T.coral, color: order.estado === "Empacado" ? "#63518A" : "#fff" }}>{index + 1}</span>
+              <h3 className="display text-lg font-semibold m-0">Pedido {order.id}</h3>
+              <Badge label={order.estado} />
+            </div>
+            <div className="text-xs font-bold mt-1" style={{ color: T.choco2 }}>{customer.nombre || "Cliente"} · recibido {order.fecha} {order.hora}</div>
+            <div className="mt-3 rounded-2xl px-3 py-2.5" style={{ background: T.soft }}>
+              {topLines.map((line) => (
+                <div key={line.id} className="text-sm font-bold py-0.5">{line.label}{line.detail && <span className="block text-[11px] font-semibold" style={{ color: T.choco2 }}>{line.detail}</span>}</div>
+              ))}
+            </div>
+          </div>
+          <div className="lg:w-72 shrink-0">
+            <div className="grid grid-cols-3 gap-1.5 mb-3" aria-label={`Avance de empaque ${order.id}`}>
+              {[
+                [progress.verified, "Orden", "○"],
+                [progress.hasOpenPhoto, "Caja abierta", "📷"],
+                [progress.hasSealPhoto, "Sello", "🔒"],
+              ].map(([done, label, icon]) => (
+                <div key={label} className="rounded-xl px-2 py-2 text-center border" style={{ background: "#fff", borderColor: done ? "#A7C9A4" : T.border }}>
+                  <div className="text-sm" aria-hidden="true" style={{ color: done ? "#3F6B42" : T.choco2 }}>{done ? "✓" : icon}</div>
+                  <div className="text-[9px] font-extrabold leading-tight" style={{ color: done ? "#3F6B42" : T.choco2 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <Btn onClick={() => setSelId(order.id)}>{nextLabel} · {order.id}</Btn>
+            <div className="text-[10px] font-semibold mt-2 leading-snug" style={{ color: T.choco2 }}>
+              {order.estado === "Empacado" ? "Empaque ya terminó; falta el relevo formal a Logística." : `${progress.completedSteps} de 3 controles completos. Ningún pedido avanza sin los tres.`}
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div>
+      <SectionTitle>Verificá la comanda antes de sellar</SectionTitle>
+      <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
+        Compará cada producto, figura, sabor y cantidad. La verificación queda registrada con usuario y hora.
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+        <Stat icon="📦" label="Por empacar" value={pending.length} sub="comandas que Cocina entregó" tone={T.coral} />
+        <Stat icon="🚚" label="A despacho" value={packed.length} sub="empacadas, esperan Logística" tone="#63518A" />
+      </div>
+
+      <div className="text-[11px] font-semibold mb-4 flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: T.choco2 }}>
+        <span>Cocina entregó <b style={{ color: "#3F6B42" }}>{pending.length}</b></span>
+        <span aria-hidden="true">→</span>
+        <span><b style={{ color: T.coral }}>{verifiedPending}</b> comparada{verifiedPending === 1 ? "" : "s"} con la orden</span>
+        <span aria-hidden="true">→</span>
+        <span><b style={{ color: "#63518A" }}>{packed.length}</b> lista{packed.length === 1 ? "" : "s"} para Logística</span>
+      </div>
+
+      <SectionTitle>📋 Cola FIFO para verificar y empacar</SectionTitle>
+      <div className="space-y-3 mb-5">
+        {pending.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}
+        {!pending.length && <Card className="p-8 text-center"><div className="text-3xl mb-2">✅</div><div className="font-bold">No hay comandas esperando Empaque</div><div className="text-xs mt-1" style={{ color: T.choco2 }}>Cuando Cocina marque “Listo para empaque”, aparecerán aquí automáticamente.</div></Card>}
+      </div>
+
+      {packed.length > 0 && <>
+        <SectionTitle>🚚 Empacados para entregar a Logística</SectionTitle>
+        <div className="space-y-3">{packed.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}</div>
+      </>}
+
+      {selected && <DetallePedido db={db} o={selected} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
+      {aviso && <Modal title={aviso.titulo} onClose={() => setAviso(null)}><p className="text-sm m-0">{aviso.texto}</p><div className="mt-4"><Btn onClick={() => setAviso(null)}>Entendido</Btn></div></Modal>}
+    </div>
+  );
+}
+
 function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [modo, setModo] = useState("kanban");
   const [selId, setSelId] = useState(null);
@@ -2179,6 +2800,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [verFiltros, setVerFiltros] = useState(!!(focus && (focus.estado || focus.desde || focus.pendientesPago)));
   const [pendPago, setPendPago] = useState(!!(focus && focus.pendientesPago));
   const [f, setF] = useState({ q: "", canal: "", estado: (focus && focus.estado) || "", barrio: "", producto: "", cliente: "", desde: (focus && focus.desde) || "", hasta: (focus && focus.hasta) || "" });
+  const puedeCrearPedido = canCreateOrder(perfil?.rol);
 
   const barrios = [...new Set(db.orders.map((o) => o.barrio))];
 
@@ -2200,19 +2822,25 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
 
   // Fase 3: la transición vive en el SERVER (set_order_status con todas las gates). Luego re-fetch.
   async function cambiar(orderId, estado, opts) {
+    const actual = db.orders.find((order) => order.id === orderId);
+    const permiso = orderTransitionPermission(perfil?.rol, actual?.estado, estado, { quickSale: !!(opts && opts.ventaRapida) });
+    if (!permiso.allowed) {
+      setAviso({ titulo: "Este paso pertenece a otra área", texto: permiso.reason });
+      return false;
+    }
     let res;
     try {
       res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
     } catch (e) {
       toast("error", e.message);
-      return;
+      return false;
     }
     const faltantes = (res && res.faltantes) || [];
     try {
       await refrescar();
     } catch (e) {
       setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El cambio se aplicó correctamente, pero no se pudo actualizar la vista. Recargá la página para ver el estado actual." + (faltantes.length ? " Ojo: había alertas de inventario, revisá Producción." : "") });
-      return;
+      return true;
     }
     toast("ok", estado === "Cancelado" ? `Pedido ${orderId} cancelado` : `${orderId} → ${estado}`);
     if (faltantes.length) {
@@ -2223,6 +2851,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
       if (ins.length) partes.push(`el inventario no alcanzó para: ${ins.map((x) => x.cant + "× " + x.producto).join(", ")}`);
       setAviso({ titulo: "Inventario insuficiente", texto: `Se reservó lo disponible, pero ${partes.join(" y ")}. Ya quedó la sugerencia en Producción.` });
     }
+    return true;
   }
 
   function exportar() {
@@ -2243,8 +2872,13 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
 
   return (
     <div>
+      <Card className="p-3 mb-3" style={{ borderColor: "#A7C9A4", background: "#F2F8F0" }}>
+        <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#3F6B42" }}>Responsables del pedido</div>
+        <div className="text-xs font-bold mt-1 leading-relaxed">Recepción agenda → Caja/Coordinación confirma pago → Cocina prepara → Empaque alista → Logística despacha y entrega.</div>
+        <div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>Tu rol: <b>{perfil?.rol}</b> · {ORDER_ROLE_SUMMARY[perfil?.rol] || "consulta operativa"}.</div>
+      </Card>
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <Btn onClick={() => setNuevo(true)}>＋ Nuevo pedido</Btn>
+        {puedeCrearPedido && <Btn onClick={() => setNuevo(true)}>＋ Agendar pedido</Btn>}
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: T.border }}>
           {["kanban","tabla"].map((m) => (
             <button key={m} onClick={() => setModo(m)} className="px-3 py-2 text-xs font-bold capitalize"
@@ -2350,7 +2984,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
       <UltimosMovimientos filas={db.audit_logs.filter((a) => ["Pedido", "Evidencia", "Domicilio", "Reclamo"].includes(a.entidad)).map((a) => ({ texto: `${a.accion}${a.entidadId ? ` · ${a.entidadId}` : ""}${a.a ? ` → ${a.a}` : ""}`, meta: `${a.fecha}${a.user ? ` · ${a.user}` : ""}` }))} />
 
       {sel && <DetallePedido db={db} o={sel} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
-      {nuevo && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} refrescar={refrescar} />}
+      {nuevo && puedeCrearPedido && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} refrescar={refrescar} />}
       {aviso && (
         <Modal title={aviso.titulo} onClose={() => setAviso(null)}>
           <p className="text-sm m-0">{aviso.texto}</p>
@@ -2369,18 +3003,91 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
   const [subiendo, setSubiendo] = useState(false);
   const [foto, setFoto] = useState(null);
   const [enviando, setEnviando] = useState(false); // guarda local: cambiar() y crearReclamo() son async vía props
+  const [verificandoEmpaque, setVerificandoEmpaque] = useState(false);
+  const [etiquetaDomicilio, setEtiquetaDomicilio] = useState(false);
+  const [solicitudDomicilio, setSolicitudDomicilio] = useState(false);
+  const [creandoDomicilio, setCreandoDomicilio] = useState(false);
+  const [formDomicilio, setFormDomicilio] = useState(() => ({
+    proveedor: db.settings.proveedores[0] || "",
+    zona: o.zona || db.settings.zonas[0]?.nombre || "",
+    costoReal: "",
+    obs: o.obs || "",
+  }));
   const c = customerOf(db, o.customerId);
   const evs = evidencesOf(db, o.id);
-  const flujo = { "Nuevo": "Confirmado", "Confirmado": "Pendiente de pago", "Pendiente de pago": "Pagado", "Pagado": "En producción", "En producción": "Empacado", "Empacado": "Listo para despacho", "Listo para despacho": "En ruta", "En ruta": "Entregado" };
+  const packingLines = buildPackingChecklistLines(o.id, db.order_items);
+  const packingVerificationCandidate = findPackingVerification(o.id, db.packing_verifications || []);
+  const packingVerification = packingVerificationMatchesLines(packingVerificationCandidate, packingLines) ? packingVerificationCandidate : null;
+  const [checkedPackingLines, setCheckedPackingLines] = useState(() => new Set(packingVerification ? packingLines.map((line) => line.id) : []));
+  const flujo = { "Nuevo": "Confirmado", "Confirmado": "Pendiente de pago", "Pendiente de pago": "Pagado", "Pagado": "En producción", "En producción": "Listo para empaque", "Listo para empaque": "Empacado", "Empacado": "Listo para despacho", "Listo para despacho": "En ruta", "En ruta": "Entregado" };
   const siguiente = flujo[o.estado];
+  const permisoSiguiente = siguiente ? orderTransitionPermission(perfil?.rol, o.estado, siguiente) : null;
+  const permisoPago = orderTransitionPermission(perfil?.rol, o.estado, "Pagado");
+  const permisoEntregaRapida = orderTransitionPermission(perfil?.rol, o.estado, "Entregado", { quickSale: true });
+  const permisoCancelar = orderTransitionPermission(perfil?.rol, o.estado, "Cancelado");
+  const permisoReclamo = orderTransitionPermission(perfil?.rol, o.estado, "Reclamo");
+  const tiposEvidenciaPermitidos = EV_TIPOS.filter((tipo) => orderEvidencePermission(perfil?.rol, tipo).allowed);
+  const puedeGestionarRelevo = canManageDeliveryHandoff(perfil?.rol);
+  const domicilioActivo = db.deliveries.find((delivery) => delivery.orderId === o.id && deliveryBlocksNewRequest(delivery));
+  const direccionParaCopiar = o.direccion || c.direccion || "";
+  const textoDomicilio = [
+    `Pedido ${o.id}`,
+    `Cliente: ${c.nombre || "Sin nombre"}`,
+    `Teléfono: ${c.telefono || "Sin teléfono"}`,
+    `Dirección: ${o.direccion || c.direccion || "Sin dirección"}`,
+    `Barrio: ${o.barrio || c.barrio || "Sin barrio"}`,
+    `Zona: ${o.zona || "Sin zona"}`,
+    `Apto/casa/local y referencia: ${o.obs || "Sin referencia adicional"}`,
+  ].join("\n");
+
+  useEffect(() => {
+    setCheckedPackingLines(new Set(packingVerification ? packingLines.map((line) => line.id) : []));
+  }, [o.id, packingVerification?.verifiedAt]);
+
+  const packingChecklistComplete = packingLines.length > 0 && packingLines.every((line) => checkedPackingLines.has(line.id));
+
+  async function confirmarChecklistEmpaque() {
+    if (!packingChecklistComplete || verificandoEmpaque) return;
+    setVerificandoEmpaque(true);
+    try {
+      await confirmarVerificacionEmpaque(o.id, packingLines.map((line) => line.id));
+      await refrescar();
+      toast("ok", `${o.id} · comanda verificada contra la orden`);
+    } catch (error) {
+      setAviso({ titulo: "No se pudo verificar la comanda", texto: error.message });
+    } finally {
+      setVerificandoEmpaque(false);
+    }
+  }
+
+  async function solicitarDomicilioDesdePedido() {
+    if (creandoDomicilio || domicilioActivo || o.canal === "Rappi") return;
+    setCreandoDomicilio(true);
+    try {
+      await crearDomicilio(o.id, formDomicilio.proveedor, formDomicilio.zona, Math.max(0, +formDomicilio.costoReal || 0), formDomicilio.obs);
+      await refrescar();
+      setSolicitudDomicilio(false);
+      toast("ok", `${o.id} · domicilio solicitado`);
+    } catch (error) {
+      setAviso({ titulo: "No se pudo solicitar el domicilio", texto: error.message });
+    } finally {
+      setCreandoDomicilio(false);
+    }
+  }
 
   async function onFile(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+    const tipo = tipoSubidaRef.current;
+    const permisoEvidencia = orderEvidencePermission(perfil?.rol, tipo);
+    if (!permisoEvidencia.allowed) {
+      setAviso({ titulo: "Esta foto pertenece a otra área", texto: permisoEvidencia.reason });
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     setSubiendo(true);
     try {
       const url = await compressImage(file);
-      const tipo = tipoSubidaRef.current;
       // Fase 3: la foto va al bucket privado + RPC crear_evidencia (id/user/audit server-side)
       await subirEvidencia({ orderId: o.id, tipo, dataUrl: url });
     } catch (err) {
@@ -2400,6 +3107,11 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
 
   // Dispara la cámara/galería para una foto con su tipo YA FIJO (evidencias guiadas por paso).
   function abrirCamara(tipo) {
+    const permiso = orderEvidencePermission(perfil?.rol, tipo);
+    if (!permiso.allowed) {
+      setAviso({ titulo: "Esta foto pertenece a otra área", texto: permiso.reason });
+      return;
+    }
     tipoSubidaRef.current = tipo;
     if (fileRef.current) fileRef.current.click();
   }
@@ -2410,6 +3122,15 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         <Badge label={o.estado} /><Badge label={o.canal} map={CANAL_STYLE} />
         <span className="text-xs font-semibold" style={{ color: T.choco2 }}>{o.fecha} · {o.hora}</span>
       </div>
+
+      {siguiente && (
+        <div className="rounded-2xl border px-4 py-3 mb-4" role="note"
+          style={{ background: permisoSiguiente.allowed ? "#F2F8F0" : "#FFF9F1", borderColor: permisoSiguiente.allowed ? "#A7C9A4" : "#E7C078" }}>
+          <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: permisoSiguiente.allowed ? "#3F6B42" : "#96690F" }}>Responsable del siguiente paso</div>
+          <div className="text-sm font-extrabold mt-0.5">{o.estado} → {siguiente}: {permisoSiguiente.ownerLabel}</div>
+          <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{permisoSiguiente.allowed ? "Tu área puede confirmar este avance cuando termine el trabajo." : "Podés consultar la orden, pero la confirmación queda en manos del área que ejecuta el paso."}</div>
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Card className="p-4">
@@ -2449,12 +3170,75 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         </Card>
       </div>
 
+      {puedeGestionarRelevo && ["Listo para empaque", "Empacado", "Listo para despacho"].includes(o.estado) && (
+        <div className="mt-4 rounded-2xl border p-4" style={{ background: "#FFF9F1", borderColor: T.border }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#8E4B5A" }}>Relevo a domicilio</div>
+              <div className="display text-lg font-semibold">Dirección lista para copiar o etiquetar</div>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{o.direccion || c.direccion || "Falta registrar dirección"} · {c.telefono || "sin teléfono"}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Btn small kind="ghost" disabled={!direccionParaCopiar} onClick={() => {
+                if (copiarTexto(direccionParaCopiar)) toast("ok", `${o.id} · dirección copiada`);
+                else setAviso({ titulo: "No se pudo copiar", texto: "Tu navegador bloqueó el portapapeles. Podés abrir la etiqueta y copiar los datos manualmente." });
+              }}>📋 Copiar dirección</Btn>
+              <Btn small kind="rosa" onClick={() => setEtiquetaDomicilio(true)}>🖨️ Imprimir etiqueta</Btn>
+              {!domicilioActivo && o.canal !== "Rappi" && <Btn small onClick={() => setSolicitudDomicilio(true)}>🛵 Solicitar domicilio</Btn>}
+            </div>
+          </div>
+          <div className="mt-2 text-[11px] font-bold" style={{ color: domicilioActivo ? "#3F6B42" : o.canal === "Rappi" ? "#96690F" : T.choco2 }}>
+            {domicilioActivo ? `✓ Domicilio ${domicilioActivo.id} · ${domicilioActivo.proveedor} · ${domicilioActivo.estado}` : o.canal === "Rappi" ? "Rappi gestiona este domicilio desde su aplicación." : "Todavía no hay un domicilio solicitado para esta orden."}
+          </div>
+        </div>
+      )}
+
+      {["Listo para empaque", "Empacado", "Listo para despacho"].includes(o.estado) && (
+        <div className="mt-4 rounded-2xl border p-4" style={{ background: packingVerification ? "#F2F8F0" : T.soft, borderColor: packingVerification ? "#A7C9A4" : T.border }}>
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: packingVerification ? "#3F6B42" : "#A54830" }}>Control de coincidencia</div>
+              <div className="display text-lg font-semibold">Orden solicitada vs. contenido recibido</div>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Marcá cada línea únicamente después de verla físicamente en la mesa de Empaque.</div>
+            </div>
+            <span className="rounded-full px-3 py-1.5 text-[10px] font-extrabold" style={{ background: packingVerification ? "#DDEBD9" : T.vainilla, color: packingVerification ? "#3F6B42" : "#96690F" }}>
+              {packingVerification ? "✓ Verificación registrada" : `${checkedPackingLines.size}/${packingLines.length} líneas`}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {packingLines.map((line) => (
+              <label key={line.id} className="flex items-start gap-3 rounded-xl border px-3 py-2.5 cursor-pointer" style={{ background: checkedPackingLines.has(line.id) ? "#fff" : T.vainilla, borderColor: checkedPackingLines.has(line.id) ? "#A7C9A4" : T.border }}>
+                <input type="checkbox" className="mt-1 accent-[#E5714E]" checked={checkedPackingLines.has(line.id)} disabled={Boolean(packingVerification)} onChange={(event) => {
+                  setCheckedPackingLines((current) => {
+                    const next = new Set(current);
+                    if (event.target.checked) next.add(line.id); else next.delete(line.id);
+                    return next;
+                  });
+                }} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-extrabold">{line.parentItemId ? "↳ " : ""}{line.label}</span>
+                  {line.detail && <span className="block text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{line.detail}</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+          {packingVerification ? (
+            <div className="text-xs font-bold mt-3" style={{ color: "#3F6B42" }}>✓ {packingVerification.user || "Empaque"} confirmó {packingVerification.lineIds?.length || packingLines.length} líneas · {packingVerification.verifiedAt}</div>
+          ) : (
+            <div className="mt-3">
+              <Btn disabled={!packingChecklistComplete || verificandoEmpaque} onClick={confirmarChecklistEmpaque}>{verificandoEmpaque ? "Registrando verificación…" : "Confirmar que todo coincide"}</Btn>
+              {!packingChecklistComplete && <div className="text-[10px] font-bold mt-1.5" style={{ color: "#96690F" }}>Faltan {Math.max(0, packingLines.length - checkedPackingLines.size)} línea(s) por comparar.</div>}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="mt-4">
         <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>PRODUCTOS</div>
         {itemsOf(db, o.id).filter((i) => !i.parentItemId).map((i) => {
           const p = productOf(db, i.productId);
           const disp = p ? availability(db, p) : Infinity;
-          const sinStock = p && !["Pagado","En producción","Empacado","Listo para despacho","En ruta","Entregado"].includes(o.estado) && disp < i.cant;
+          const sinStock = p && !["Pagado","En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado"].includes(o.estado) && disp < i.cant;
           const hijas = itemsOf(db, o.id).filter((h) => h.parentItemId === i.id);
           return (
             <Card key={i.id} className="p-3 mb-2">
@@ -2547,23 +3331,28 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
           if (siguiente) objetivos.push(siguiente);
           const puedePagar = !o.comprobante && !["Pagado","Entregado","Cancelado","Reclamo"].includes(o.estado);
           if (puedePagar && !objetivos.includes("Pagado")) objetivos.push("Pagado");
-          const reqs = objetivos.flatMap((est) => reqFotosPaso(o, est));
+          const reqs = objetivos.flatMap((estadoObjetivo) => reqFotosPaso(o, estadoObjetivo).map((req) => ({
+            ...req,
+            estadoObjetivo,
+            permiso: orderTransitionPermission(perfil?.rol, o.estado, estadoObjetivo),
+          })));
           if (!reqs.length) return null;
           return (
             <div className="rounded-xl p-3 mb-3" style={{ background: T.vainilla, border: `1px solid ${T.border}` }}>
-              <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>📸 Fotos requeridas para avanzar (obligatorias)</div>
+              <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>📸 Fotos necesarias para avanzar (obligatorias)</div>
               {reqs.map((req) => {
                 const hecho = req.tipos.some((t) => tieneEvidencia(db, o.id, t));
                 return (
-                  <div key={req.label} className="flex flex-wrap items-center gap-2 mb-1.5">
+                  <div key={`${req.estadoObjetivo}-${req.label}`} className="flex flex-wrap items-center gap-2 mb-1.5">
                     <span className="text-sm font-semibold" style={{ color: hecho ? "#3F6B42" : "#A03B2A" }}>
-                      {hecho ? "✓" : "○"} {req.label}
+                      {hecho ? "✓" : "○"} {req.label} <span className="text-[10px]">· para {req.estadoObjetivo}</span>
                     </span>
-                    {!hecho && req.tipos.map((t) => (
+                    {!hecho && req.permiso.allowed && req.tipos.map((t) => (
                       <Btn key={t} small kind="rosa" disabled={subiendo} onClick={() => abrirCamara(t)}>
                         {subiendo ? "Procesando…" : `📷 ${req.tipos.length > 1 ? t : "Tomar foto"}`}
                       </Btn>
                     ))}
+                    {!hecho && !req.permiso.allowed && <span className="text-[10px] font-bold" style={{ color: "#96690F" }}>La sube {req.permiso.ownerLabel}</span>}
                   </div>
                 );
               })}
@@ -2575,27 +3364,31 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
           <div className="text-xs font-bold mb-2" style={{ color: "#A03B2A" }}>Para pasar a “En ruta” además: pago confirmado, domicilio asignado y costo real registrado (salvo Rappi). El sello ya se capturó en Empacado.</div>}
 
         <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
-        <button type="button" onClick={() => setLibre((v) => !v)} className="text-xs font-bold underline" style={{ color: T.choco2 }}>
-          {libre ? "− ocultar" : "＋ otra foto (opcional)"}
-        </button>
-        {libre && (
+        {tiposEvidenciaPermitidos.length > 0 && <button type="button" onClick={() => {
+          if (!libre) setTipoEv(tiposEvidenciaPermitidos.includes(tipoEv) ? tipoEv : tiposEvidenciaPermitidos[0]);
+          setLibre((v) => !v);
+        }} className="text-xs font-bold underline" style={{ color: T.choco2 }}>
+          {libre ? "− ocultar" : "＋ otra foto permitida para mi área"}
+        </button>}
+        {libre && tiposEvidenciaPermitidos.length > 0 && (
           <div className="flex flex-wrap gap-2 items-center mt-2">
-            <MiniSelect options={EV_TIPOS} value={tipoEv} onChange={(e) => setTipoEv(e.target.value)} />
+            <MiniSelect options={tiposEvidenciaPermitidos} value={tipoEv} onChange={(e) => setTipoEv(e.target.value)} />
             <Btn small kind="rosa" disabled={subiendo} onClick={() => abrirCamara(tipoEv)}>
               {subiendo ? "Procesando…" : "📷 Subir foto"}
             </Btn>
           </div>
         )}
         <div className="text-[11px] font-semibold mt-2" style={{ color: "#96690F" }}>
-          ⚠️ Las fotos se guardan en el almacenamiento local de esta app (espacio limitado). Para operación real, migra las evidencias a Supabase Storage.
+          🔒 Las fotos se guardan en Supabase Storage y quedan vinculadas al pedido con usuario, fecha y tipo de evidencia.
         </div>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2 sticky bottom-0 py-3" style={{ background: T.bg }}>
-        {siguiente && <Btn disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, siguiente); setEnviando(false); }}>Pasar a “{siguiente}”</Btn>}
-        {!o.comprobante && !["Pagado","Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Pagado"); setEnviando(false); }}>Marcar pagado</Btn>}
-        {o.pagadoEn && ["Pagado","En producción","Empacado","Listo para despacho"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Entregado", { ventaRapida: true }); setEnviando(false); }}>⚡ Entrega inmediata</Btn>}
-        {!["Reclamo","Cancelado"].includes(o.estado) && (
+        {siguiente && permisoSiguiente.allowed && (siguiente !== "Empacado" || packingVerification) && <Btn disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, siguiente); setEnviando(false); }}>Confirmar “{siguiente}” · {permisoSiguiente.ownerLabel}</Btn>}
+        {siguiente === "Empacado" && permisoSiguiente.allowed && !packingVerification && <Btn disabled>Primero verificá la comanda completa</Btn>}
+        {siguiente !== "Pagado" && permisoPago.allowed && !o.comprobante && !["Pagado","Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Pagado"); setEnviando(false); }}>Confirmar pago</Btn>}
+        {permisoEntregaRapida.allowed && o.pagadoEn && ["Pagado","En producción","Empacado","Listo para despacho"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Entregado", { ventaRapida: true }); setEnviando(false); }}>⚡ Entrega inmediata</Btn>}
+        {permisoReclamo.allowed && !["Reclamo","Cancelado"].includes(o.estado) && (
           <Btn kind="danger" disabled={enviando} onClick={async () => {
             setEnviando(true);
             // Fase 3: crear_reclamo ya transiciona el pedido a 'Reclamo' y audita server-side (no llamar setOrderStatusRemoto aparte).
@@ -2617,13 +3410,43 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
             setEnviando(false);
           }}>Crear reclamo</Btn>
         )}
-        {!["Entregado","Cancelado","Reclamo"].includes(o.estado) && <BtnAsync kind="ghost" confirmar="¿Cancelar el pedido? Tocá de nuevo" textoEnVuelo="Cancelando…" disabled={enviando} onClick={async () => { setEnviando(true); try { await cambiar(o.id, "Cancelado"); } finally { setEnviando(false); } }}>Cancelar pedido</BtnAsync>}
+        {permisoCancelar.allowed && !["Entregado","Cancelado","Reclamo"].includes(o.estado) && <BtnAsync kind="ghost" confirmar="¿Cancelar el pedido? Tocá de nuevo" textoEnVuelo="Cancelando…" disabled={enviando} onClick={async () => { setEnviando(true); try { await cambiar(o.id, "Cancelado"); } finally { setEnviando(false); } }}>Cancelar pedido</BtnAsync>}
       </div>
 
       {foto && (
         <Modal title={foto.tipo} onClose={() => setFoto(null)}>
           <img src={foto.url} alt={foto.tipo} className="w-full rounded-2xl" />
           <div className="text-xs font-semibold mt-2" style={{ color: T.choco2 }}>{foto.fecha} {foto.hora} · subida por {foto.user}</div>
+        </Modal>
+      )}
+
+
+      {etiquetaDomicilio && (
+        <Modal title={`Etiqueta de entrega · ${o.id}`} onClose={() => setEtiquetaDomicilio(false)}>
+          <div className="momo-shipping-label rounded-2xl border p-5" style={{ borderColor: T.choco, background: "#fff" }}>
+            <div className="flex justify-between items-start gap-4 border-b pb-3 mb-3" style={{ borderColor: T.border }}>
+              <div><div className="text-[10px] uppercase tracking-[.18em] font-extrabold">D'MOMOS SWEET LOVE</div><div className="display text-2xl font-bold">Pedido {o.id}</div></div>
+              <div className="text-2xl" aria-hidden="true">🐱</div>
+            </div>
+            <div className="text-lg font-extrabold">{c.nombre || "Cliente"}</div>
+            <div className="text-base font-bold mt-1">Tel. {c.telefono || "Sin teléfono"}</div>
+            <div className="text-base font-extrabold mt-4">📍 {o.direccion || c.direccion || "Sin dirección"}</div>
+            <div className="text-sm font-bold mt-1">{o.barrio || c.barrio || "Sin barrio"} · {o.zona || "Sin zona"}</div>
+            <div className="mt-4 rounded-lg border p-3 text-sm font-bold" style={{ borderColor: T.border }}><span className="text-[10px] uppercase block mb-1">Apto / casa / local y referencia</span>{o.obs || "Sin referencia adicional"}</div>
+            <div className="text-[10px] font-bold mt-3">Verificá nombre, teléfono y dirección antes de pegar esta etiqueta.</div>
+          </div>
+          <div className="momo-no-print flex gap-2 mt-4"><Btn onClick={() => window.print()}>Imprimir</Btn><Btn kind="ghost" onClick={() => setEtiquetaDomicilio(false)}>Cerrar</Btn></div>
+        </Modal>
+      )}
+
+      {solicitudDomicilio && !domicilioActivo && (
+        <Modal title={`Solicitar domicilio · ${o.id}`} onClose={() => setSolicitudDomicilio(false)}>
+          <div className="rounded-xl p-3 mb-3 text-xs font-bold whitespace-pre-line" style={{ background: T.vainilla }}>{textoDomicilio}</div>
+          <Field label="Proveedor"><Select options={db.settings.proveedores} value={formDomicilio.proveedor} onChange={(event) => setFormDomicilio({ ...formDomicilio, proveedor: event.target.value })} /></Field>
+          <Field label="Zona"><Select options={db.settings.zonas.map((zona) => zona.nombre)} value={formDomicilio.zona} onChange={(event) => setFormDomicilio({ ...formDomicilio, zona: event.target.value })} /></Field>
+          <Field label="Costo real cotizado"><Input type="number" min="0" value={formDomicilio.costoReal} onChange={(event) => setFormDomicilio({ ...formDomicilio, costoReal: event.target.value })} /></Field>
+          <Field label="Apto, casa, local o referencia"><Input value={formDomicilio.obs} onChange={(event) => setFormDomicilio({ ...formDomicilio, obs: event.target.value })} placeholder="Torre, apartamento, portería o indicaciones" /></Field>
+          <div className="flex gap-2 mt-3"><Btn disabled={creandoDomicilio || !formDomicilio.proveedor || !formDomicilio.zona} onClick={solicitarDomicilioDesdePedido}>{creandoDomicilio ? "Solicitando…" : "Confirmar solicitud"}</Btn><Btn kind="ghost" onClick={() => setSolicitudDomicilio(false)}>Cancelar</Btn></div>
         </Modal>
       )}
     </Modal>
@@ -2661,7 +3484,13 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
     const p = productOf(db, it.productId);
     // Combos: faltante por ESPECIE según la composición real (boxes), coherente con reserveInventory.
     const faltaEsp = p && p.tipo === "combo" ? comboFaltantesEspecie(db, p, it.boxes) : [];
-    return { ...it, nombre: p ? p.nombre : "", precio: p ? (canal === "Rappi" ? p.precioRappi : p.precio) : 0, disp: p ? availability(db, p) : Infinity, tipo: p ? p.tipo : "", faltaEsp };
+    const disponibilidadExacta = p && p.tipo === "momo" ? evaluateExactVariantDemand({
+      productId: p.id, productName: p.nombre, figure: it.figura, flavor: it.sabor,
+      quantity: it.cant, variants: db.variantes || [],
+    }) : null;
+    const disponibilidadCaja = p && p.tipo === "combo" ? evaluateComboVariantAvailability({ db, combo: p, boxes: it.boxes }) : null;
+    const faltantesExactos = disponibilidadCaja?.shortages || (disponibilidadExacta?.complete && disponibilidadExacta.missing > 0 ? [disponibilidadExacta] : []);
+    return { ...it, nombre: p ? p.nombre : "", precio: p ? (canal === "Rappi" ? p.precioRappi : p.precio) : 0, disp: p ? availability(db, p) : Infinity, tipo: p ? p.tipo : "", faltaEsp, disponibilidadExacta, disponibilidadCaja, faltantesExactos };
   });
   const subtotal = lineas.reduce((sm, l) => sm + l.precio * l.cant + lineAdicionesTotal(l) + boxesAdicionesTotal(l), 0);
 
@@ -2675,7 +3504,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
     else if (benef.tipoBeneficio === "producto_gratis") productoGratis = productOf(db, benef.productoGratisId);
   }
   const total = subtotal - descuento + tarifa;
-  const faltaStock = lineas.filter((l) => l.productId && (l.disp < l.cant || (l.faltaEsp && l.faltaEsp.length > 0)));
+  const faltaStock = lineas.filter((l) => l.productId && (l.disp < l.cant || (l.faltaEsp && l.faltaEsp.length > 0) || (l.faltantesExactos && l.faltantesExactos.length > 0)));
 
   const setItem = (i, campo, valor) => setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, [campo]: valor } : x));
   // Combos con composición POR CAJA: boxes = Array(cant) de Array(comboSize) de {figura,sabor,salsa}.
@@ -2850,7 +3679,8 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
                   <option value="">Elegir producto…</option>
                   {db.products.filter((p) => p.activo).map((p) => {
                     const disp = availability(db, p);
-                    return <option key={p.id} value={p.id}>{p.nombre} · {fmt(canal === "Rappi" ? p.precioRappi : p.precio)}{isFinite(disp) ? ` · ${disp} disp.` : ""}</option>;
+                    const stockText = !isFinite(disp) ? "" : p.tipo === "combo" ? ` · hasta ${disp} caja(s) por stock general` : ` · ${disp} disp. generales`;
+                    return <option key={p.id} value={p.id}>{p.nombre} · {fmt(canal === "Rappi" ? p.precioRappi : p.precio)}{stockText}</option>;
                   })}
                 </select>
               </div>
@@ -2867,22 +3697,21 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
             {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && (() => {
               /* Disponibilidad por variante EN VIVO: dice si lo que pide el cliente
                  está desmoldado y, si no, qué ofrece el FIFO (mismo orden de decisión
-                 que _asignar_variante_fifo en el server: SABOR filtra duro — jamás se
-                 sustituye —, FIGURA solo prefiere dentro del sabor). */
+                 que _asignar_variante_fifo en el server: SABOR y FIGURA filtran
+                 duro; otra variante nunca sustituye la elegida). */
               const vars = (db.variantes || []).filter((v) => v.productId === it.productId && v.disponibles > 0);
               const chip = (bg, color, texto) => <div className="mt-1 px-2 py-1.5 rounded-lg text-[11px] font-bold" style={{ background: bg, color }}>{texto}</div>;
               const lista = (arr) => arr.map((v) => `${v.figura} · ${v.sabor} (${v.disponibles})`).join(" · ");
-              if (!vars.length) return chip("#F3D7DC", "#8E4B5A", "Sin desmoldes por figura de este producto — se vende igual y se produce a pedido.");
+              if (!vars.length) return chip("#F3D7DC", "#8E4B5A", "Sin stock verificado por figura y sabor — este pedido requiere producción exacta.");
               if (!it.sabor) return chip("#DCE7F2", "#3E5C7E", `Desmoldado disponible: ${lista(vars)}`);
               const deSabor = vars.filter((v) => v.sabor === it.sabor);
               if (!deSabor.length) return chip("#F3D7DC", "#8E4B5A", `Sin ${it.sabor} desmoldado — hay: ${lista(vars)} · el sabor no se sustituye: se produce a pedido.`);
-              const exacta = it.figura ? deSabor.filter((v) => v.figura === it.figura) : deSabor;
-              if (exacta.length) {
-                const n = exacta.reduce((s, v) => s + v.disponibles, 0);
-                const vence = exacta.map((v) => v.vence).filter(Boolean).sort()[0];
-                return chip("#DDEBD9", "#3F6B42", `✓ Hay ${n}× ${it.sabor}${it.figura ? ` · ${it.figura}` : ""}${vence ? ` · vence ${vence}` : ""}`);
+              if (!it.figura) return chip("#DCE7F2", "#3E5C7E", `${it.sabor} disponible por figura: ${lista(deSabor)}. Elegí la figura para validar.`);
+              const exacta = l.disponibilidadExacta;
+              if (exacta?.canFulfill) {
+                return chip("#DDEBD9", "#3F6B42", `✓ ${exacta.required}× ${it.figura} · ${it.sabor} verificadas · FIFO exacto al pagar${exacta.nextExpiry ? ` · vence ${exacta.nextExpiry}` : ""}`);
               }
-              return chip("#F7EAC9", "#8A6D1F", `${it.sabor} hay, pero en otra figura: ${lista(deSabor)} — el FIFO la asignará (figura es preferencia).`);
+              return chip("#F3D7DC", "#8E4B5A", `Solo ${exacta?.available || 0} de ${it.cant} ${it.figura} · ${it.sabor} verificadas. Otra figura no la reemplaza: faltan ${exacta?.missing || it.cant} para producir.`);
             })()}
             {it.productId && pSel && pSel.tipo === "combo" && (() => {
               const boxes = it.boxes || [];
@@ -2893,6 +3722,10 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="text-[11px] font-bold" style={{ color: T.choco2 }}>🎁 ARMÁ {multi ? `LAS ${boxes.length} CAJAS` : "LA CAJA"} · {pSel.comboSize} momos c/u</div>
                     {multi && <button type="button" onClick={() => copiarCaja1ATodas(i)} className="text-[11px] font-bold" style={{ color: T.coral }}>Caja 1 → todas</button>}
+                  </div>
+                  <div className="mb-2 px-2.5 py-2 rounded-xl text-[11px] font-bold flex items-center justify-between gap-2" style={{ background: l.disponibilidadCaja?.canFulfill ? "#DDEBD9" : "#F7EAC9", color: l.disponibilidadCaja?.canFulfill ? "#3F6B42" : "#8A6D1F" }}>
+                    <span>{l.disponibilidadCaja?.incomplete ? "Completá figura y sabor para validar cada momo" : l.disponibilidadCaja?.canFulfill ? "Composición exacta disponible" : "La caja necesita producción exacta"}</span>
+                    <span className="shrink-0">{l.disponibilidadCaja?.covered || 0}/{l.disponibilidadCaja?.slots?.length || 0} verificadas</span>
                   </div>
                   {boxes.map((box, b) => (
                     <div key={b} className={multi ? "mb-2 p-2 rounded-lg" : ""} style={multi ? { background: T.vainilla } : {}}>
@@ -2907,6 +3740,11 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
                             <Select placeholder="Sabor" options={sabores} value={sl.sabor} onChange={(e) => setSlot(i, b, si, "sabor", e.target.value)} />
                             <Select placeholder="Salsa" options={s.salsas} value={sl.salsa} onChange={(e) => setSlot(i, b, si, "salsa", e.target.value)} />
                           </div>
+                          {(() => {
+                            const exacta = (l.disponibilidadCaja?.slots || []).find((slot) => slot.boxIndex === b && slot.slotIndex === si);
+                            if (!exacta?.complete) return null;
+                            return <div className="mt-1 px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: exacta.covered ? "#E3EFE0" : "#F3D7DC", color: exacta.covered ? "#3F6B42" : "#8E4B5A" }}>{exacta.covered ? `✓ ${exacta.figure} · ${exacta.flavor} disponible · FIFO exacto` : `⚠ ${exacta.figure} · ${exacta.flavor} sin unidad exacta · producir`}</div>;
+                          })()}
                           {Array.isArray(s.toppings) && s.toppings.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {s.toppings.map((top) => {
@@ -2928,6 +3766,9 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
                 </div>
               );
             })()}
+            {l.productId && l.faltantesExactos && l.faltantesExactos.length > 0 && (
+              <div className="text-xs font-bold mt-2 p-2 rounded-xl" style={{ color: "#8E4B5A", background: "#F3D7DC" }}>⚠️ Producción exacta requerida: {l.faltantesExactos.map((f) => `${f.missing}× ${f.figure} · ${f.flavor}`).join(", ")}. El stock anterior u otra figura no cubren esta elección.</div>
+            )}
             {it.productId && pSel && pSel.tipo !== "combo" && Array.isArray(s.toppings) && s.toppings.length > 0 && (
               <div className="mt-2 pt-2 border-t" style={{ borderColor: T.border }}>
                 <div className="text-[11px] font-bold mb-1" style={{ color: T.choco2 }}>🍫 TOPPINGS (opcional)</div>
@@ -2945,11 +3786,11 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
                 </div>
               </div>
             )}
-            {l.productId && (l.faltaEsp && l.faltaEsp.length > 0) && (
+            {l.productId && (!l.faltantesExactos || l.faltantesExactos.length === 0) && (l.faltaEsp && l.faltaEsp.length > 0) && (
               <div className="text-xs font-bold mt-2" style={{ color: "#A03B2A" }}>⚠️ Faltan momos para esta caja: {l.faltaEsp.map((f) => f.falta + " " + f.nombre).join(", ")}. Se reservará lo posible y se sugerirá producción del resto.</div>
             )}
             {l.productId && l.disp < l.cant && !(l.faltaEsp && l.faltaEsp.length > 0) && (
-              <div className="text-xs font-bold mt-2" style={{ color: "#A03B2A" }}>⚠️ Disponibilidad: {l.disp}{l.tipo === "combo" ? " (según momos y cajas)" : ""}. Se sugerirá producción del faltante.</div>
+              <div className="text-xs font-bold mt-2" style={{ color: "#A03B2A" }}>⚠️ Capacidad general: {l.disp}{l.tipo === "combo" ? " caja(s) por momos y empaques" : ""}. Se sugerirá producción del faltante.</div>
             )}
           </Card>
         );
@@ -3025,11 +3866,1250 @@ const PREP_TIPOS = [
   ["cheesecake", "Cheesecake"], ["ganache", "Ganache"], ["salsa", "Salsas"], ["crocante", "Crocante"],
 ];
 
-function Produccion({ db, update, user, refrescar }) {
+const VOICE_KITCHEN_EXAMPLE = "Se está preparando 200 gramos de ganache, ingrésalos. Se van a producir 20 Lizis: 3 de limón, 4 de coco, 3 de banano, 5 de Oreo y 5 de Milo. Van a ingresar a congelación, empieza cronómetro.";
+const VOICE_PHRASE_BIAS_KEY = "momos-voice-native-phrases";
+
+function nativeVoicePhraseBiasEnabled() {
+  try { return window.localStorage.getItem(VOICE_PHRASE_BIAS_KEY) !== "unsupported"; }
+  catch { return true; }
+}
+
+function rememberUnsupportedVoicePhrases(ref) {
+  ref.current = false;
+  try { window.localStorage.setItem(VOICE_PHRASE_BIAS_KEY, "unsupported"); } catch { /* el corrector local sigue activo */ }
+}
+
+function voiceCommandKey() {
+  try { if (crypto && crypto.randomUUID) return "voice-" + crypto.randomUUID(); } catch { /* fallback abajo */ }
+  return "voice-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function voiceOutcomeCount(count, singular, plural) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function voiceOrderItems(madeToOrder) {
+  const items = madeToOrder?.items?.length
+    ? madeToOrder.items
+    : [{ quantity: madeToOrder?.quantity || 0, productName: madeToOrder?.productName || "producto" }];
+  return items.map((item) => `${item.quantity} × ${item.productName}`).join("; ");
+}
+
+function voiceSummary(draft) {
+  const parts = [];
+  const preparations = draft.preparations?.length ? draft.preparations : (draft.preparation ? [draft.preparation] : []);
+  preparations.forEach((preparation) => parts.push(`preparar ${preparation.nominalGrams} gramos de ${preparation.subrecipeName}${preparation.usage ? `, ${preparation.usage.toLowerCase()}` : ""}`));
+  if (draft.production) parts.push(`producir ${draft.production.calculatedTotal} ${draft.production.figure}: ${draft.production.runs.map((run) => `${run.quantity} de ${run.flavor}`).join(", ")}`);
+  if (draft.madeToOrder) parts.push(`iniciar el pedido ${draft.madeToOrder.orderId}${draft.madeToOrder.customerName ? ` de ${draft.madeToOrder.customerName}` : ""}. La comanda contiene ${draft.madeToOrder.orderContent || voiceOrderItems(draft.madeToOrder)}`);
+  if (draft.orderHandoff) parts.push(`marcar el pedido ${draft.orderHandoff.orderId}${draft.orderHandoff.customerName ? ` de ${draft.orderHandoff.customerName}` : ""} como Listo para empaque`);
+  if (draft.unmolding) parts.push(`desmoldar el lote ${draft.unmolding.batchId}: ${voiceOutcomeCount(draft.unmolding.perfectas, "perfecta", "perfectas")}, ${voiceOutcomeCount(draft.unmolding.imperfectas, "imperfecta", "imperfectas")} y ${voiceOutcomeCount(draft.unmolding.descartadas, "descartada", "descartadas")}`);
+  if (draft.freezeBatchIds?.length) parts.push(`iniciar la congelación de ${draft.freezeBatchIds.length === 1 ? `el lote ${draft.freezeBatchIds[0]}` : `los lotes ${draft.freezeBatchIds.join(", ")}`}`);
+  else if (draft.startFreezing) parts.push("iniciar la congelación de los lotes nuevos");
+  return "Entendí: " + parts.join("; ") + ". ¿Está correcto?";
+}
+
+function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar, serverDataReady, requestedOrder }) {
+  const [transcript, setTranscript] = useState("");
+  const [listening, setListening] = useState(false);
+  const [speechError, setSpeechError] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [result, setResult] = useState(null);
+  const [replyByVoice, setReplyByVoice] = useState(true);
+  const [executionLabel, setExecutionLabel] = useState("Ejecutando…");
+  const [executed, setExecuted] = useState(false);
+  const [voiceMode, setVoiceMode] = useState("idle");
+  const [voiceActivity, setVoiceActivity] = useState("idle");
+  const [conversation, setConversation] = useState([]);
+  const recognitionRef = useRef(null);
+  const recognitionSessionRef = useRef({ active: false, mode: "dictation", baseText: "", currentText: "", starting: false, restartTimer: null, turnTimer: null, watchdogTimer: null, activityTimer: null, restartDelay: 180, failures: 0, generation: 0, attempt: 0 });
+  const transcriptRef = useRef("");
+  const draftRef = useRef(null);
+  const executedRef = useRef(false);
+  const executingRef = useRef(false);
+  const conversationContextRef = useRef("");
+  const conversationTurnsRef = useRef(0);
+  const readOnlyTurnsRef = useRef(0);
+  const assistantMemoryRef = useRef({ lastTopic: "", lastOrderId: null, lastBatchId: null });
+  const speechTokenRef = useRef(0);
+  const speechSafetyTimerRef = useRef(null);
+  const speechInProgressRef = useRef(false);
+  const handsFreeCommandRef = useRef(false);
+  const authorizationAttemptRef = useRef(0);
+  const knownOrderStatesRef = useRef(new Map((db.orders || []).filter((order) => order?.id).map((order) => [order.id, order.estado || ""])));
+  const orderAlertsReadyRef = useRef(false);
+  const orderAlertQueueRef = useRef([]);
+  const orderAlertSpeakingRef = useRef(false);
+  const flushOrderAlertsRef = useRef(null);
+  const refreshOrdersRef = useRef(refrescar);
+  const orderWatcherNameRef = useRef(null);
+  const phraseBiasSupportedRef = useRef(nativeVoicePhraseBiasEnabled());
+  const beginRecognitionRef = useRef(null);
+  const startVoiceSessionRef = useRef(null);
+  const finishDictationRef = useRef(null);
+  const handleWakeWordRef = useRef(null);
+  const handleVoiceControlRef = useRef(null);
+  const handleConversationReplyRef = useRef(null);
+  const interpretTranscriptRef = useRef(null);
+  const executeCommandRef = useRef(null);
+  const commandKeyRef = useRef(null);
+  const progressRef = useRef({ bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() });
+  const SpeechRecognitionApi = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+  const voiceInputAvailable = Boolean(
+    SpeechRecognitionApi
+    && typeof navigator !== "undefined"
+    && navigator.mediaDevices
+    && typeof navigator.mediaDevices.getUserMedia === "function",
+  );
+  refreshOrdersRef.current = refrescar;
+  if (!orderWatcherNameRef.current) orderWatcherNameRef.current = `momobot-orders-${voiceCommandKey()}`;
+  const voiceCatalogs = useMemo(() => ({
+    flavors,
+    figures,
+    subrecipes,
+    figureFillings: db.figura_relleno || [],
+    products: db.products || [],
+    inventory: db.inventory_items || [],
+    batches: db.production_batches || [],
+    orders: db.orders || [],
+    orderItems: db.order_items || [],
+    customers: db.customers || [],
+    variants: db.variantes || [],
+    suggestions: db.production_suggestions || [],
+    reservations: db.inventory_reservations || [],
+    auditLogs: db.audit_logs || [],
+    delaySettings: normalizeKitchenDelaySettings(db.settings || {}),
+    extras: [
+      ...(db.settings.salsas || []),
+      ...(db.settings.rellenos || []),
+      ...(db.settings.toppings || []).map((item) => item?.nombre || item).filter(Boolean),
+    ],
+  }), [db, flavors, figures, subrecipes]);
+  const voicePhrases = useMemo(() => kitchenVocabularyPhrases(voiceCatalogs), [voiceCatalogs]);
+  const voiceTaskPhrases = useMemo(() => new Set(kitchenTaskVocabularyPhrases()), []);
+  const contextSnapshot = useMemo(() => momobotContextSnapshot(voiceCatalogs), [voiceCatalogs]);
+
+  useEffect(() => () => {
+    const session = recognitionSessionRef.current;
+    session.active = false;
+    session.generation += 1;
+    if (session.restartTimer) clearTimeout(session.restartTimer);
+    if (session.turnTimer) clearTimeout(session.turnTimer);
+    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
+    if (session.activityTimer) clearTimeout(session.activityTimer);
+    try { recognitionRef.current?.abort(); } catch { /* nada que limpiar */ }
+    speechTokenRef.current += 1;
+    authorizationAttemptRef.current += 1;
+    speechInProgressRef.current = false;
+    if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
+    speechSafetyTimerRef.current = null;
+    try { window.speechSynthesis?.cancel(); } catch { /* degradación silenciosa */ }
+  }, []);
+
+  useEffect(() => {
+    if (!requestedOrder?.orderId) return undefined;
+    const command = `Preparar el pedido ${requestedOrder.orderId}`;
+    stopVoiceSession({ abort: true, nextMode: "idle" });
+    cancelSpeech();
+    changeTranscript(command);
+    const timer = setTimeout(() => interpretTranscriptRef.current?.(command), 60);
+    return () => clearTimeout(timer);
+  }, [requestedOrder?.token]);
+
+  useEffect(() => {
+    if (!voiceInputAvailable) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        if (!navigator.permissions?.query) {
+          if (!cancelled) setSpeechError("Tocá “Activar Momobot” una vez para autorizar el micrófono.");
+          return;
+        }
+        const permission = await navigator.permissions.query({ name: "microphone" });
+        if (cancelled) return;
+        if (canAutoStartMomobot({
+          permissionState: permission.state,
+          sessionActive: recognitionSessionRef.current.active,
+          speechInProgress: speechInProgressRef.current,
+          hasDraft: Boolean(draftRef.current),
+          authorizing: recognitionSessionRef.current.starting,
+        })) startVoiceSessionRef.current?.("standby");
+        else if (permission.state === "denied") setSpeechError("El micrófono está bloqueado. Permitilo en el candado de la barra de direcciones y tocá “Activar Momobot”.");
+        else setSpeechError("Tocá “Activar Momobot” una vez para conceder el micrófono.");
+      } catch {
+        if (!cancelled) setSpeechError("Tocá “Activar Momobot” una vez para autorizar el micrófono.");
+      }
+    }, 420);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [voiceInputAvailable]);
+
+  useEffect(() => {
+    const orders = db.orders || [];
+    if (!serverDataReady || !orderAlertsReadyRef.current) {
+      knownOrderStatesRef.current = new Map(orders.filter((order) => order?.id).map((order) => [order.id, order.estado || ""]));
+      if (serverDataReady) orderAlertsReadyRef.current = true;
+      return;
+    }
+    const detected = kitchenOrderStateEvents(orders, knownOrderStatesRef.current);
+    knownOrderStatesRef.current = detected.nextStates;
+    detected.events.slice().reverse().forEach(({ order, type }) => {
+      const alert = kitchenOrderAlert(order, {
+        customers: db.customers || [],
+        products: db.products || [],
+        orderItems: db.order_items || [],
+      }, { eventType: type });
+      if (!alert) return;
+      const enriched = {
+        ...alert,
+        detectedAt: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+      };
+      orderAlertQueueRef.current.push(enriched);
+    });
+    flushOrderAlertsRef.current?.();
+  }, [serverDataReady, db.orders, db.order_items, db.customers, db.products]);
+
+  useEffect(() => {
+    if (!serverDataReady) return undefined;
+    let refreshTimer = null;
+    let disposed = false;
+    const requestOrderRefresh = () => {
+      if (disposed || refreshTimer) return;
+      refreshTimer = setTimeout(async () => {
+        refreshTimer = null;
+        if (disposed) return;
+        try { await refreshOrdersRef.current?.(); } catch { /* el sondeo vuelve a intentar */ }
+      }, 650);
+    };
+    const channel = supabase
+      .channel(orderWatcherNameRef.current)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, requestOrderRefresh)
+      .subscribe();
+    const poll = setInterval(async () => {
+      if (disposed || document.visibilityState !== "visible") return;
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id,estado,fecha,hora")
+        .order("fecha", { ascending: false })
+        .order("hora", { ascending: false })
+        .limit(25);
+      if (!error && (data || []).some((order) => order?.id
+        && (!knownOrderStatesRef.current.has(order.id) || knownOrderStatesRef.current.get(order.id) !== (order.estado || "")))) requestOrderRefresh();
+    }, 15000);
+    return () => {
+      disposed = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
+  }, [serverDataReady]);
+
+  useEffect(() => {
+    flushOrderAlertsRef.current?.();
+  }, [voiceMode, listening, replyByVoice]);
+
+  function cancelSpeech() {
+    speechTokenRef.current += 1;
+    speechInProgressRef.current = false;
+    if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
+    speechSafetyTimerRef.current = null;
+    try { window.speechSynthesis?.cancel(); } catch { /* degradación silenciosa */ }
+  }
+
+  function speak(text, onDone) {
+    const done = typeof onDone === "function" ? onDone : null;
+    if (!replyByVoice || !text || typeof window === "undefined" || !("speechSynthesis" in window)) {
+      done?.();
+      return;
+    }
+    try {
+      cancelSpeech();
+      const token = speechTokenRef.current;
+      const utterance = new SpeechSynthesisUtterance(text);
+      let finished = false;
+      let safetyTimer = null;
+      speechInProgressRef.current = true;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        speechInProgressRef.current = false;
+        if (safetyTimer) clearTimeout(safetyTimer);
+        if (speechSafetyTimerRef.current === safetyTimer) speechSafetyTimerRef.current = null;
+        if (token !== speechTokenRef.current) return;
+        done?.();
+        setTimeout(() => flushOrderAlertsRef.current?.(), 0);
+      };
+      utterance.lang = "es-CO";
+      utterance.rate = 0.98;
+      utterance.onend = finish;
+      utterance.onerror = finish;
+      safetyTimer = setTimeout(() => {
+        try { window.speechSynthesis.cancel(); } catch { /* el callback igual libera la escucha */ }
+        finish();
+      }, kitchenSpeechTimeoutMs(text));
+      speechSafetyTimerRef.current = safetyTimer;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      speechInProgressRef.current = false;
+      if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
+      speechSafetyTimerRef.current = null;
+      done?.();
+      setTimeout(() => flushOrderAlertsRef.current?.(), 0);
+    }
+  }
+
+  function flushOrderAlerts() {
+    if (orderAlertSpeakingRef.current || speechInProgressRef.current || !orderAlertQueueRef.current.length) return;
+    const session = recognitionSessionRef.current;
+    const inConversation = session.active && session.mode !== "standby";
+    const busy = inConversation || ["authorizing", "processing", "executing"].includes(voiceMode);
+    if (busy) return;
+    const alert = orderAlertQueueRef.current.shift();
+    if (!alert) return;
+    const resumeStandby = session.active && session.mode === "standby";
+    if (resumeStandby) stopVoiceSession({ abort: true, nextMode: "idle" });
+    orderAlertSpeakingRef.current = true;
+    speak(alert.text, () => {
+      orderAlertSpeakingRef.current = false;
+      if (resumeStandby) startVoiceSession("standby");
+      setTimeout(() => flushOrderAlertsRef.current?.(), 250);
+    });
+  }
+
+  function addConversationMessage(role, text) {
+    const clean = String(text || "").trim();
+    if (!clean) return;
+    setConversation((current) => [...current, { id: voiceCommandKey(), role, text: clean }].slice(-8));
+  }
+
+  function resetVoiceDraft({ keepConversation = false } = {}) {
+    setDraft(null);
+    draftRef.current = null;
+    setResult(null);
+    setExecuted(false);
+    executedRef.current = false;
+    commandKeyRef.current = null;
+    progressRef.current = { bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() };
+    conversationContextRef.current = "";
+    conversationTurnsRef.current = 0;
+    handsFreeCommandRef.current = false;
+    if (!keepConversation) {
+      readOnlyTurnsRef.current = 0;
+      setConversation([]);
+    }
+  }
+
+  function changeTranscript(value, { keepConversation = false } = {}) {
+    if (recognitionSessionRef.current.active && recognitionSessionRef.current.mode === "standby") stopVoiceSession();
+    const nextValue = String(value || "");
+    setTranscript(nextValue);
+    transcriptRef.current = nextValue;
+    resetVoiceDraft({ keepConversation });
+  }
+
+  function stopVoiceSession({ abort = false, nextMode = "idle" } = {}) {
+    authorizationAttemptRef.current += 1;
+    const session = recognitionSessionRef.current;
+    session.active = false;
+    session.starting = false;
+    session.generation += 1;
+    if (session.restartTimer) clearTimeout(session.restartTimer);
+    if (session.turnTimer) clearTimeout(session.turnTimer);
+    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
+    if (session.activityTimer) clearTimeout(session.activityTimer);
+    session.restartTimer = null;
+    session.turnTimer = null;
+    session.watchdogTimer = null;
+    session.activityTimer = null;
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    try { if (abort) recognition?.abort(); else recognition?.stop(); } catch { /* ya estaba detenida */ }
+    setListening(false);
+    setVoiceMode(nextMode);
+    setVoiceActivity("idle");
+  }
+
+  function markVoiceActivity(session, generation, activity) {
+    if (!session.active || session.generation !== generation) return;
+    if (session.activityTimer) clearTimeout(session.activityTimer);
+    setVoiceActivity(activity);
+    if (activity === "hearing" || activity === "wake") {
+      session.activityTimer = setTimeout(() => {
+        if (session.active && session.generation === generation) setVoiceActivity("listening");
+      }, activity === "wake" ? kitchenVoicePauseMs("standby") + 250 : 1100);
+    }
+  }
+
+  function preserveCurrentDictation(session) {
+    if (session.mode !== "dictation" || !session.currentText) return;
+    session.baseText = [session.baseText, session.currentText].filter(Boolean).join(" ").trim();
+    session.currentText = "";
+    transcriptRef.current = session.baseText;
+    setTranscript(session.baseText);
+  }
+
+  function queueRecognitionRestart(session, generation, { delay = 180, abort = true, message = "" } = {}) {
+    if (!session.active || session.generation !== generation) return;
+    preserveCurrentDictation(session);
+    if (session.restartTimer) clearTimeout(session.restartTimer);
+    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
+    session.watchdogTimer = null;
+    session.starting = false;
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    setListening(true);
+    setVoiceMode(session.mode);
+    setVoiceActivity("recovering");
+    if (message) setSpeechError(message);
+    session.restartTimer = setTimeout(() => {
+      session.restartTimer = null;
+      if (!session.active || session.generation !== generation) return;
+      setVoiceActivity("starting");
+      beginRecognitionRef.current?.();
+    }, delay);
+    if (abort) {
+      try { recognition?.abort(); } catch { /* el reinicio vigilado continúa */ }
+    }
+  }
+
+  function armRecognitionWatchdog(session, generation, attempt, recognition, phase) {
+    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
+    session.watchdogTimer = setTimeout(() => {
+      if (!session.active || session.generation !== generation || session.attempt !== attempt || recognitionRef.current !== recognition) return;
+      queueRecognitionRestart(session, generation, {
+        delay: 220,
+      });
+    }, kitchenRecognitionWatchdogMs(phase));
+  }
+
+  async function authorizeAndStartVoiceSession(mode, options = {}) {
+    if (!voiceInputAvailable) {
+      setVoiceMode("idle");
+      setListening(false);
+      setSpeechError("Este navegador no permite usar el micrófono con Momobot. Abrí MOMOS OPS en Chrome o Edge.");
+      return;
+    }
+    stopVoiceSession({ abort: true, nextMode: "authorizing" });
+    const authorizationAttempt = authorizationAttemptRef.current;
+    cancelSpeech();
+    setSpeechError("Esperando autorización del micrófono…");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      if (!isCurrentMomobotAuthorization(authorizationAttempt, authorizationAttemptRef.current)) return;
+      setSpeechError("");
+      startVoiceSession(mode, options);
+    } catch (error) {
+      if (!isCurrentMomobotAuthorization(authorizationAttempt, authorizationAttemptRef.current)) return;
+      setVoiceMode("idle");
+      setListening(false);
+      const blocked = error?.name === "NotAllowedError" || error?.name === "SecurityError";
+      setSpeechError(blocked
+        ? "El micrófono quedó bloqueado. Permitilo en el candado de la barra de direcciones y volvé a tocar “Activar Momobot”."
+        : "No pude abrir el micrófono. Revisá que esté conectado y que ninguna otra aplicación lo esté usando.");
+    }
+  }
+
+  function startVoiceSession(mode, { clearDictation = false } = {}) {
+    if (!voiceInputAvailable) {
+      setSpeechError("Este navegador no permite usar el micrófono con Momobot. Abrí MOMOS OPS en Chrome o Edge.");
+      setVoiceMode("idle");
+      return;
+    }
+    cancelSpeech();
+    stopVoiceSession({ abort: true, nextMode: mode });
+    if (clearDictation) changeTranscript("");
+    const session = recognitionSessionRef.current;
+    session.active = true;
+    session.mode = mode;
+    session.baseText = mode === "dictation" && !clearDictation ? transcriptRef.current.trim() : "";
+    session.currentText = "";
+    session.failures = 0;
+    session.restartDelay = 180;
+    if (session.turnTimer) clearTimeout(session.turnTimer);
+    session.turnTimer = null;
+    session.generation += 1;
+    setVoiceMode(mode);
+    setListening(true);
+    setVoiceActivity("starting");
+    setSpeechError("");
+    session.restartTimer = setTimeout(() => beginRecognitionRef.current?.(), 80);
+  }
+
+  function processActionAlternatives(alternatives) {
+    const readOnlyAlternative = alternatives.find((alternative) => kitchenOrderLookupAnswer(alternative?.transcript, voiceCatalogs) || kitchenOrderQueueAnswer(alternative?.transcript, voiceCatalogs));
+    if (readOnlyAlternative) {
+      interpretTranscriptRef.current?.(readOnlyAlternative.transcript, { handsFree: true, continuation: true, spokenText: readOnlyAlternative.transcript });
+      return;
+    }
+    const controlSelection = selectKitchenVoiceControl(alternatives);
+    const heard = controlSelection.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript;
+    const control = controlSelection.control;
+    if (controlSelection.ambiguous) {
+      setSpeechError("Escuché dos órdenes posibles. Repetí solo confirmar, editar o cancelar.");
+      return;
+    }
+    if (control) {
+      handleVoiceControlRef.current?.(control);
+      return;
+    }
+    handleConversationReplyRef.current?.(heard);
+  }
+
+  function processFollowupAlternatives(alternatives) {
+    const readOnlyAlternative = alternatives.find((alternative) => kitchenOrderLookupAnswer(alternative?.transcript, voiceCatalogs) || kitchenOrderQueueAnswer(alternative?.transcript, voiceCatalogs));
+    if (readOnlyAlternative) {
+      interpretTranscriptRef.current?.(readOnlyAlternative.transcript, { handsFree: true, continuation: true, spokenText: readOnlyAlternative.transcript });
+      return;
+    }
+    const controlSelection = selectKitchenVoiceControl(alternatives);
+    const heard = controlSelection.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript;
+    const control = controlSelection.control;
+    if (controlSelection.ambiguous) {
+      setSpeechError("Escuché dos órdenes posibles. Repetí una sola respuesta.");
+      return;
+    }
+    if (control) handleVoiceControlRef.current?.(control);
+    else handleConversationReplyRef.current?.(heard);
+  }
+
+  function recognitionEventAlternatives(event) {
+    const groups = [];
+    for (let i = event.resultIndex || 0; i < event.results.length; i += 1) {
+      const alternatives = [];
+      for (let j = 0; j < event.results[i].length; j += 1) {
+        alternatives.push({ transcript: event.results[i][j].transcript, confidence: event.results[i][j].confidence });
+      }
+      if (alternatives.length) groups.push(alternatives);
+    }
+    return combineKitchenVoiceAlternatives(groups);
+  }
+
+  function beginRecognition() {
+    const session = recognitionSessionRef.current;
+    if (!session.active || session.starting || recognitionRef.current || !SpeechRecognitionApi) return;
+    const generation = session.generation;
+    session.attempt += 1;
+    const attempt = session.attempt;
+    session.starting = true;
+    try {
+      const recognition = new SpeechRecognitionApi();
+      recognition.lang = "es-CO";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 5;
+      try {
+        const Phrase = window.SpeechRecognitionPhrase || window.webkitSpeechRecognitionPhrase;
+        if (phraseBiasSupportedRef.current && Phrase && "phrases" in recognition) {
+          recognition.phrases = voicePhrases.slice(0, 300).map((phrase) => new Phrase(phrase, phrase === "Momobot" || voiceTaskPhrases.has(phrase) ? 10 : 8));
+        }
+      } catch { rememberUnsupportedVoicePhrases(phraseBiasSupportedRef); }
+      recognition.onstart = () => {
+        if (recognitionSessionRef.current.generation !== generation || session.attempt !== attempt) return;
+        session.starting = false;
+        session.failures = 0;
+        setListening(true);
+        setVoiceActivity("listening");
+        setSpeechError("");
+        armRecognitionWatchdog(session, generation, attempt, recognition, "listening");
+        vibrar("tap");
+      };
+      const noteAudioActivity = () => {
+        if (!session.active || session.generation !== generation || session.attempt !== attempt) return;
+        markVoiceActivity(session, generation, "hearing");
+        armRecognitionWatchdog(session, generation, attempt, recognition, "listening");
+      };
+      recognition.onaudiostart = noteAudioActivity;
+      recognition.onsoundstart = noteAudioActivity;
+      recognition.onspeechstart = noteAudioActivity;
+      recognition.onresult = (event) => {
+        if (!session.active || session.generation !== generation || session.attempt !== attempt) return;
+        session.failures = 0;
+        session.restartDelay = 180;
+        if (session.turnTimer) clearTimeout(session.turnTimer);
+        session.turnTimer = null;
+        markVoiceActivity(session, generation, "hearing");
+        armRecognitionWatchdog(session, generation, attempt, recognition, "listening");
+        if (session.mode === "standby") {
+          let pendingWake = null;
+          let lastHeard = "";
+          let heardFinalWithoutWake = false;
+          for (let i = event.resultIndex || 0; i < event.results.length; i += 1) {
+            const alternatives = [];
+            for (let j = 0; j < event.results[i].length; j += 1) {
+              alternatives.push({ transcript: event.results[i][j].transcript, confidence: event.results[i][j].confidence });
+            }
+            const wakeAlternative = alternatives.find((alternative) => splitKitchenWakeWord(alternative.transcript).woke);
+            const heard = wakeAlternative?.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript;
+            const wake = splitKitchenWakeWord(heard);
+            lastHeard = heard || lastHeard;
+            if (wake.woke) {
+              if (event.results[i].isFinal) {
+                handleWakeWordRef.current?.(wake.text);
+                return;
+              }
+              pendingWake = wake.text;
+              markVoiceActivity(session, generation, "wake");
+              setSpeechError("Te oigo. Terminá la frase y hacé una pausa.");
+            }
+            if (event.results[i].isFinal) {
+              const standbySelection = selectKitchenVoiceControl(alternatives);
+              const standbyControl = standbySelection.control;
+              if (standbySelection.ambiguous) {
+                setSpeechError("Escuché dos controles posibles. Repetí solo editar, limpiar o cancelar.");
+                return;
+              }
+              if (standbyControl === "close") {
+                handleVoiceControlRef.current?.("close");
+                return;
+              }
+              const hasPendingDraft = Boolean(draftRef.current && !executedRef.current);
+              if (hasPendingDraft && ["edit", "cancel", "repeat", "new"].includes(standbyControl)) {
+                handleVoiceControlRef.current?.(standbyControl);
+                return;
+              }
+              if (hasPendingDraft && !standbyControl && heard) {
+                handleConversationReplyRef.current?.(heard);
+                return;
+              }
+            }
+            if (event.results[i].isFinal && !wake.woke) heardFinalWithoutWake = true;
+          }
+          if (pendingWake !== null) {
+            session.turnTimer = setTimeout(() => {
+              if (session.active && session.generation === generation && session.mode === "standby") handleWakeWordRef.current?.(pendingWake);
+            }, kitchenVoicePauseMs("standby"));
+          } else if (heardFinalWithoutWake && lastHeard) {
+            setSpeechError(`Sí te oí: “${lastHeard}”. Para abrir un turno, empezá diciendo Momobot.`);
+          }
+          return;
+        }
+        if (session.mode === "action") {
+          const alternatives = recognitionEventAlternatives(event);
+          const lastResult = event.results[event.results.length - 1];
+          if (lastResult?.isFinal) {
+            processActionAlternatives(alternatives);
+            return;
+          }
+          if (alternatives.length) {
+            session.turnTimer = setTimeout(() => processActionAlternatives(alternatives), kitchenVoicePauseMs("action"));
+          }
+          return;
+        }
+        if (session.mode === "followup") {
+          const alternatives = recognitionEventAlternatives(event);
+          const lastResult = event.results[event.results.length - 1];
+          if (lastResult?.isFinal) {
+            processFollowupAlternatives(alternatives);
+            return;
+          }
+          if (alternatives.length) {
+            session.turnTimer = setTimeout(() => processFollowupAlternatives(alternatives), kitchenVoicePauseMs("followup"));
+          }
+          return;
+        }
+
+        setSpeechError("");
+        const parts = [];
+        for (let i = 0; i < event.results.length; i += 1) {
+          const alternatives = [];
+          for (let j = 0; j < event.results[i].length; j += 1) {
+            alternatives.push({ transcript: event.results[i][j].transcript, confidence: event.results[i][j].confidence });
+          }
+          const readOnlyAlternative = alternatives.find((alternative) => kitchenOrderLookupAnswer(alternative?.transcript, voiceCatalogs) || kitchenOrderQueueAnswer(alternative?.transcript, voiceCatalogs));
+          parts.push(readOnlyAlternative?.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript);
+        }
+        session.currentText = parts.join(" ").trim();
+        const fullText = [session.baseText, session.currentText].filter(Boolean).join(" ").trim();
+        transcriptRef.current = fullText;
+        setTranscript(fullText);
+        const lastResult = event.results[event.results.length - 1];
+        const closure = splitKitchenVoiceClosure(fullText);
+        if (lastResult?.isFinal && closure.closed) finishDictationRef.current?.(closure.text);
+        else if (fullText) {
+          session.turnTimer = setTimeout(() => finishDictationRef.current?.(fullText), kitchenVoicePauseMs("dictation", Boolean(lastResult?.isFinal)));
+        }
+      };
+      recognition.onerror = (event) => {
+        if (session.generation !== generation || session.attempt !== attempt) return;
+        session.starting = false;
+        const errorCode = event.error || "unknown";
+        if (errorCode === "aborted" && session.active) {
+          if (!session.restartTimer) queueRecognitionRestart(session, generation, { delay: 180, abort: false });
+          return;
+        }
+        if (errorCode === "no-speech" && session.active) {
+          const message = session.mode === "standby"
+            ? "Momobot sigue atenta. Estoy renovando la escucha para que no se congele."
+            : session.mode === "followup"
+              ? "No escuché tu respuesta todavía. Momobot sigue atento."
+              : session.mode === "action"
+                ? "Sigo esperando tu confirmación o corrección."
+                : "Sigo escuchando. Termino el turno cuando hagas una pausa.";
+          queueRecognitionRestart(session, generation, { delay: 180, message });
+          return;
+        }
+        if (errorCode === "phrases-not-supported" && session.active) {
+          rememberUnsupportedVoicePhrases(phraseBiasSupportedRef);
+          queueRecognitionRestart(session, generation, {
+            delay: 180,
+            message: "Este navegador no admite el refuerzo nativo de frases. Momobot continúa con el corrector de vocabulario MOMOS.",
+          });
+          return;
+        }
+        if (errorCode === "network" && session.active) {
+          session.failures = Math.min(session.failures + 1, 6);
+          queueRecognitionRestart(session, generation, {
+            delay: Math.min(2400, 350 * session.failures),
+            message: "Momobot perdió por un instante el servicio de voz. Sigue reconectando automáticamente…",
+          });
+          return;
+        }
+        session.active = false;
+        setListening(false);
+        setVoiceMode("idle");
+        setVoiceActivity("idle");
+        const friendly = errorCode === "not-allowed" || errorCode === "service-not-allowed" ? "Para activar Momobot, permití el micrófono y tocá “Activar Momobot” una vez."
+          : errorCode === "audio-capture" ? "No encuentro un micrófono disponible. Revisá que esté conectado y permitido."
+          : session.mode === "standby" ? `Momobot no pudo quedar en espera (código: ${errorCode}). Tocá “Activar Momobot” para reintentar.`
+          : `Se interrumpió el reconocimiento de voz (código: ${errorCode}). Tocá el micrófono para retomarlo.`;
+        setSpeechError(friendly);
+      };
+      recognition.onend = () => {
+        if (recognitionRef.current === recognition) recognitionRef.current = null;
+        if (session.generation !== generation || session.attempt !== attempt) return;
+        session.starting = false;
+        if (!session.active) { setListening(false); return; }
+        if (session.restartTimer) return;
+        const delay = session.restartDelay || 180;
+        session.restartDelay = 180;
+        queueRecognitionRestart(session, generation, { delay, abort: false });
+      };
+      recognitionRef.current = recognition;
+      recognition.start();
+      armRecognitionWatchdog(session, generation, attempt, recognition, "starting");
+    } catch (e) {
+      session.starting = false;
+      recognitionRef.current = null;
+      if (session.active && session.generation === generation && session.attempt === attempt && session.failures < 6) {
+        session.failures += 1;
+        queueRecognitionRestart(session, generation, {
+          delay: Math.min(2400, 350 * session.failures),
+          abort: false,
+          message: `Momobot está reabriendo el micrófono (${session.failures}/6)…`,
+        });
+        return;
+      }
+      session.active = false;
+      setListening(false);
+      setVoiceMode("idle");
+      setVoiceActivity("idle");
+      setSpeechError("No pude mantener activo el reconocimiento: " + (e?.message || "error del navegador") + ".");
+    }
+  }
+
+  function finishDictation(value) {
+    const cleanText = String(value || "").trim();
+    stopVoiceSession({ nextMode: "processing" });
+    if (!cleanText) {
+      setSpeechError("");
+      setVoiceMode("idle");
+      speak("Micrófono cerrado. No registré ninguna acción nueva.");
+      return;
+    }
+    transcriptRef.current = cleanText;
+    setTranscript(cleanText);
+    setTimeout(() => interpretTranscriptRef.current?.(cleanText, { handsFree: true }), 120);
+  }
+
+  function handleWakeWord(remainder) {
+    stopVoiceSession({ nextMode: "dictation" });
+    readOnlyTurnsRef.current = 0;
+    setSpeechError("");
+    vibrar("tap");
+    const closure = splitKitchenVoiceClosure(remainder);
+    const control = kitchenVoiceControl(closure.text);
+    if (control) {
+      handleVoiceControlRef.current?.(control);
+      return;
+    }
+    changeTranscript(closure.text);
+    if (closure.text) {
+      finishDictation(closure.text);
+      return;
+    }
+    speak("Te oigo, empecemos.", () => startVoiceSession("dictation", { clearDictation: true }));
+  }
+
+  function resumeMomobotStandby() {
+    if (voiceInputAvailable) startVoiceSession("standby");
+  }
+
+  function continueMomobotAfterExecution() {
+    setDraft(null);
+    draftRef.current = null;
+    setExecuted(false);
+    executedRef.current = false;
+    commandKeyRef.current = null;
+    progressRef.current = { bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() };
+    conversationContextRef.current = "";
+    conversationTurnsRef.current = 0;
+    readOnlyTurnsRef.current = 0;
+    setTranscript("");
+    transcriptRef.current = "";
+    startVoiceSession("dictation");
+  }
+
+  function handleVoiceControl(control) {
+    const currentDraft = draftRef.current;
+    stopVoiceSession({ nextMode: control === "confirm" ? "executing" : "idle" });
+    setSpeechError("");
+    if (control === "confirm") {
+      if (executingRef.current) {
+        speak("Ya estoy registrando este comando. Esperá un momento.");
+        return;
+      }
+      if (!currentDraft?.canExecute || executedRef.current) {
+        speak(executedRef.current ? "Este comando ya fue aplicado." : "Todavía no puedo confirmar. Decí editar para dictar el comando nuevamente.", () => {
+          if (!executedRef.current) startVoiceSession("action");
+        });
+        return;
+      }
+      executeCommandRef.current?.();
+      return;
+    }
+    if (control === "edit" || control === "new") {
+      changeTranscript("");
+      speak("Listo, corrijámoslo. Contame nuevamente la tarea con tus palabras; termino el turno cuando hagas una pausa.", () => startVoiceSession("dictation"));
+      return;
+    }
+    if (control === "repeat") {
+      const prompt = currentDraft ? kitchenConversationPrompt(currentDraft, voiceCatalogs) : null;
+      const summary = currentDraft?.canExecute
+        ? voiceSummary(currentDraft) + " Podés decir sí, editar o cancelar."
+        : prompt?.text || "Todavía no tengo una tarea para resumir.";
+      speak(summary, () => startVoiceSession(currentDraft?.canExecute || !prompt?.recoverable ? "action" : "followup"));
+      return;
+    }
+    if (control === "cancel") {
+      changeTranscript("");
+      speak("Comando cancelado. No registré nada. Momobot queda en espera.", resumeMomobotStandby);
+      return;
+    }
+    if (control === "close") speak("Micrófono cerrado. El borrador sigue sin registrar.");
+  }
+
+  function handleConversationReply(reply) {
+    const heard = String(reply || "").trim();
+    if (!heard) {
+      speak("No alcancé a oír la respuesta. Intentemos otra vez.", () => startVoiceSession("followup"));
+      return;
+    }
+    stopVoiceSession({ nextMode: "processing" });
+    const combined = mergeKitchenConversation(conversationContextRef.current || transcriptRef.current, heard);
+    transcriptRef.current = combined;
+    setTranscript(combined);
+    setTimeout(() => interpretTranscriptRef.current?.(combined, { handsFree: true, continuation: true, spokenText: heard }), 100);
+  }
+
+  function toggleListening() {
+    if (recognitionSessionRef.current.active || listening) {
+      stopVoiceSession();
+      cancelSpeech();
+      return;
+    }
+    if (draftRef.current && !executedRef.current) startVoiceSession(draftRef.current.canExecute ? "action" : "followup");
+    else authorizeAndStartVoiceSession("dictation", { clearDictation: true });
+  }
+
+  function interpretTranscript(value, { handsFree = false, continuation = false, spokenText = value } = {}) {
+    const queryText = String(spokenText || value || "").trim();
+    const readOnlyAnswer = kitchenOrderLookupAnswer(queryText, voiceCatalogs)
+      || kitchenOrderQueueAnswer(queryText, voiceCatalogs)
+      || momobotContextAnswer(queryText, voiceCatalogs, assistantMemoryRef.current)
+      || kitchenOrderLookupAnswer(value, voiceCatalogs)
+      || kitchenOrderQueueAnswer(value, voiceCatalogs)
+      || momobotContextAnswer(value, voiceCatalogs, assistantMemoryRef.current);
+    if (readOnlyAnswer) {
+      const pendingDraft = draftRef.current && !executedRef.current ? draftRef.current : null;
+      stopVoiceSession({ nextMode: "processing" });
+      setSpeechError("");
+      setTranscript(queryText);
+      transcriptRef.current = queryText;
+      setResult({ type: "ok", text: readOnlyAnswer.text, warnings: [] });
+      assistantMemoryRef.current = {
+        ...assistantMemoryRef.current,
+        ...(readOnlyAnswer.memoryPatch || {}),
+        ...(readOnlyAnswer.orderId ? { lastTopic: "order", lastOrderId: readOnlyAnswer.orderId } : {}),
+        ...(readOnlyAnswer.paidOrderIds?.[0] ? { lastTopic: "order", lastOrderId: readOnlyAnswer.paidOrderIds[0] } : {}),
+      };
+      addConversationMessage("user", queryText);
+      addConversationMessage("assistant", readOnlyAnswer.text);
+      readOnlyTurnsRef.current += 1;
+      const resumeMode = momobotModeAfterReadOnly({
+        handsFree,
+        readOnlyTurns: readOnlyTurnsRef.current,
+        hasPendingDraft: Boolean(pendingDraft),
+        draftCanExecute: Boolean(pendingDraft?.canExecute),
+      });
+      if (handsFree) speak(readOnlyAnswer.text, resumeMode === "standby" ? resumeMomobotStandby : () => startVoiceSession(resumeMode));
+      else setVoiceMode("idle");
+      return;
+    }
+    readOnlyTurnsRef.current = 0;
+    handsFreeCommandRef.current = handsFree;
+    const next = parseKitchenVoice(value, voiceCatalogs);
+    if (!commandKeyRef.current) commandKeyRef.current = voiceCommandKey();
+    conversationContextRef.current = String(value || "").trim();
+    conversationTurnsRef.current = continuation ? conversationTurnsRef.current + 1 : 0;
+    progressRef.current = { bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() };
+    setDraft(next);
+    draftRef.current = next;
+    setResult(null);
+    setExecuted(false);
+    executedRef.current = false;
+    if (handsFree) addConversationMessage("user", spokenText);
+    if (next.canExecute) {
+      vibrar("tap");
+      const message = voiceSummary(next) + (handsFree ? " Podés responder sí, dale, editar o cancelar." : "");
+      if (handsFree) addConversationMessage("assistant", message);
+      speak(message, handsFree ? () => startVoiceSession("action") : null);
+    } else {
+      vibrar("error");
+      const prompt = kitchenConversationPrompt(next, voiceCatalogs);
+      const keepTalking = handsFree && prompt.recoverable && conversationTurnsRef.current < 4;
+      const message = keepTalking
+        ? prompt.text
+        : prompt.recoverable
+          ? `${prompt.text} Si preferís empezar de nuevo, decí editar.`
+          : prompt.text;
+      if (handsFree) addConversationMessage("assistant", message);
+      speak(message, handsFree ? () => startVoiceSession(keepTalking ? "followup" : "action") : null);
+    }
+  }
+
+  function interpretCommand() {
+    interpretTranscript(transcriptRef.current || transcript);
+  }
+
+  async function executeCommand() {
+    const currentDraft = draftRef.current;
+    if (!currentDraft?.canExecute || executedRef.current || executingRef.current) return;
+    executingRef.current = true;
+    stopVoiceSession({ nextMode: "executing" });
+    cancelSpeech();
+    const key = commandKeyRef.current || voiceCommandKey();
+    commandKeyRef.current = key;
+    const note = (`[Comando de voz ${key}] ${currentDraft.transcript}`).slice(0, 1800);
+    const progress = progressRef.current;
+    const applied = [];
+    const operationWarnings = [];
+    try {
+      const preparations = currentDraft.preparations?.length ? currentDraft.preparations : (currentDraft.preparation ? [currentDraft.preparation] : []);
+      for (let i = 0; i < preparations.length; i += 1) {
+        if (progress.bases.has(i)) continue;
+        const preparation = preparations[i];
+        setExecutionLabel(`Registrando ${preparation.subrecipeName}…`);
+        const response = await producirSubreceta({
+          subreceta_id: preparation.subrecipeId,
+          gramos_nominales: preparation.nominalGrams,
+          gramos_obtenidos: preparation.obtainedGrams,
+          resp_user_id: perfil?.id || null,
+          obs: note,
+          idempotency_key: key + "-base-" + i,
+        });
+        progress.bases.add(i);
+        applied.push(`${preparation.subrecipeName}: ${preparation.obtainedGrams} g`);
+        if (Array.isArray(response?.faltantes) && response.faltantes.length) operationWarnings.push(...response.faltantes.map((x) => `${x.insumo}: faltan ${x.faltan} ${x.unidad}`));
+      }
+
+      if (currentDraft.production) {
+        const filling = db.settings.rellenos?.[0];
+        if (!filling) throw new Error("No hay un relleno predeterminado configurado para crear las corridas.");
+        for (let i = 0; i < currentDraft.production.runs.length; i += 1) {
+          if (progress.runs.has(i)) continue;
+          const run = currentDraft.production.runs[i];
+          setExecutionLabel(`Creando ${run.quantity} ${currentDraft.production.figure} de ${run.flavor}…`);
+          const response = await crearCorrida({
+            sabor: run.flavor,
+            relleno: filling,
+            figuras: [{ figura: currentDraft.production.figure, cant: run.quantity }],
+            resp_user_id: perfil?.id || null,
+            vence: dISO(14),
+            horas_congelacion: db.settings.horasCongelacion || 10,
+            obs: note,
+            idempotency_key: key + "-run-" + i,
+          });
+          progress.runs.add(i);
+          applied.push(`${run.quantity} ${currentDraft.production.figure} de ${run.flavor}`);
+          const lots = Array.isArray(response?.lotes) ? response.lotes : [];
+          lots.forEach((lot) => {
+            const id = lot.batch_id || lot.id;
+            if (id && !progress.batchIds.includes(id)) progress.batchIds.push(id);
+          });
+          if (Array.isArray(response?.faltantes) && response.faltantes.length) operationWarnings.push(...response.faltantes.map((x) => `${x.insumo}: faltan ${x.faltan} ${x.unidad}`));
+        }
+      }
+
+      if (currentDraft.madeToOrder && !progress.orders.has(currentDraft.madeToOrder.orderId)) {
+        const orderPreparation = currentDraft.madeToOrder;
+        const sourceOrder = db.orders.find((order) => order.id === orderPreparation.orderId);
+        const permission = orderTransitionPermission(perfil?.rol, sourceOrder?.estado || "Pagado", "En producción");
+        if (!permission.allowed) throw new Error(permission.reason);
+        setExecutionLabel(`Iniciando preparación del pedido ${orderPreparation.orderId}…`);
+        const response = await setOrderStatusRemoto(orderPreparation.orderId, "En producción");
+        progress.orders.add(orderPreparation.orderId);
+        applied.push(`${orderPreparation.orderId} en producción · ${voiceOrderItems(orderPreparation)}`);
+        if (Array.isArray(response?.faltantes) && response.faltantes.length) {
+          operationWarnings.push(`El pedido inició con ${response.faltantes.length} faltante${response.faltantes.length === 1 ? "" : "s"} de inventario. Revisá el detalle del pedido.`);
+        }
+      }
+
+      if (currentDraft.orderHandoff && !progress.ordersReady.has(currentDraft.orderHandoff.orderId)) {
+        const handoff = currentDraft.orderHandoff;
+        const sourceOrder = db.orders.find((order) => order.id === handoff.orderId);
+        const permission = orderTransitionPermission(perfil?.rol, sourceOrder?.estado || "En producción", "Listo para empaque");
+        if (!permission.allowed) throw new Error(permission.reason);
+        setExecutionLabel(`Entregando el pedido ${handoff.orderId} a Empaque…`);
+        await setOrderStatusRemoto(handoff.orderId, "Listo para empaque");
+        progress.ordersReady.add(handoff.orderId);
+        applied.push(`${handoff.orderId} listo para empaque`);
+      }
+
+      if (currentDraft.startFreezing) {
+        const freezingTargets = [...new Set([...(currentDraft.freezeBatchIds || []), ...progress.batchIds])];
+        if (!freezingTargets.length) throw new Error("No tengo un lote validado para iniciar su congelación.");
+        for (let i = 0; i < freezingTargets.length; i += 1) {
+          const batchId = freezingTargets[i];
+          if (progress.frozen.has(batchId)) continue;
+          setExecutionLabel(`Iniciando congelación ${batchId} · ${i + 1}/${freezingTargets.length}…`);
+          await empezarCongelamiento(batchId);
+          progress.frozen.add(batchId);
+        }
+        applied.push(`${progress.frozen.size} cronómetro${progress.frozen.size === 1 ? "" : "s"} de congelación`);
+      }
+
+      if (currentDraft.unmolding && !progress.unmolded.has(currentDraft.unmolding.batchId)) {
+        const outcome = currentDraft.unmolding;
+        setExecutionLabel(`Desmoldando ${outcome.batchId}…`);
+        await desmoldarLote(outcome.batchId, outcome.perfectas, outcome.imperfectas, outcome.descartadas);
+        progress.unmolded.add(outcome.batchId);
+        applied.push(`${outcome.batchId} desmoldado: ${voiceOutcomeCount(outcome.perfectas, "perfecta", "perfectas")}, ${voiceOutcomeCount(outcome.imperfectas, "imperfecta", "imperfectas")} y ${voiceOutcomeCount(outcome.descartadas, "descartada", "descartadas")}`);
+      }
+
+      setExecutionLabel("Actualizando la cocina…");
+      try { await refrescar(); }
+      catch { operationWarnings.push("Las acciones se aplicaron, pero la vista no se pudo actualizar. Recargá para verlas."); }
+      const uniqueApplied = [...new Set(applied)];
+      const text = uniqueApplied.length ? uniqueApplied.join(" · ") : "Comando aplicado";
+      setResult({ type: "ok", text, warnings: [...new Set(operationWarnings)] });
+      setExecuted(true);
+      executedRef.current = true;
+      setVoiceMode("idle");
+      toast("ok", "Comando de cocina aplicado");
+      const nextMode = momobotModeAfterExecution({ handsFree: handsFreeCommandRef.current, voiceAvailable: voiceInputAvailable, succeeded: true });
+      if (nextMode === "dictation") {
+        const message = "Listo. " + text + ". ¿Qué hacemos después? Si terminaste, decí cierra.";
+        addConversationMessage("assistant", message);
+        speak(message, continueMomobotAfterExecution);
+      } else speak("Listo. " + text + ". Momobot queda en espera.", resumeMomobotStandby);
+    } catch (e) {
+      const partial = progress.bases.size || progress.runs.size || progress.frozen.size || progress.unmolded.size || progress.orders.size;
+      const detail = (partial ? "Hay pasos ya aplicados y protegidos contra duplicados. " : "") + (e?.message || "No se pudo completar el comando.");
+      setResult({ type: "error", text: detail, warnings: [] });
+      setVoiceMode("idle");
+      toast("error", detail);
+      speak("No pude completar todo el comando. Revisá el mensaje en pantalla. No inicié pasos posteriores al error.", resumeMomobotStandby);
+    } finally {
+      executingRef.current = false;
+    }
+  }
+
+  beginRecognitionRef.current = beginRecognition;
+  startVoiceSessionRef.current = startVoiceSession;
+  finishDictationRef.current = finishDictation;
+  handleWakeWordRef.current = handleWakeWord;
+  handleVoiceControlRef.current = handleVoiceControl;
+  handleConversationReplyRef.current = handleConversationReply;
+  interpretTranscriptRef.current = interpretTranscript;
+  executeCommandRef.current = executeCommand;
+  flushOrderAlertsRef.current = flushOrderAlerts;
+
+  const voiceStatusLabel = listening
+    ? voiceActivity === "recovering" ? "Reconectando oído…"
+      : voiceActivity === "starting" ? "Abriendo micrófono…"
+        : voiceActivity === "wake" ? "Momobot te oyó · terminá la frase"
+          : voiceActivity === "hearing" ? "Te estoy oyendo…"
+            : voiceMode === "standby" ? "Atenta · decí “Momobot”"
+              : voiceMode === "action" ? "Esperando confirmar o editar"
+                : voiceMode === "followup" ? "Escuchando tu respuesta"
+                  : "Te escucho · hacé una pausa"
+    : voiceMode === "authorizing" ? "Autorizando micrófono…"
+      : voiceMode === "processing" ? "Interpretando…"
+        : draft && !executed ? "Tocá para dar una orden" : "Tocá para hablar";
+  const standbyStatus = voiceActivity === "recovering" ? "↻ Reconectando escucha"
+    : voiceActivity === "starting" ? "◌ Abriendo micrófono"
+      : voiceActivity === "wake" ? "● Momobot detectada"
+        : voiceActivity === "hearing" ? "● Voz detectada"
+          : "● Micrófono activo · decí Momobot";
+
+  return (
+    <Card id="momobot-cocina" className="p-4 mb-5 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-3 border-b" style={{ borderColor: T.border }}>
+        <div className="flex items-center gap-2">
+          <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0" style={{ background: T.coralSoft }} aria-hidden="true">✨</span>
+          <div><div className="text-[9px] uppercase tracking-[.2em] font-extrabold" style={{ color: T.choco2 }}>Momo Ops Intelligence</div><div className="text-xs font-extrabold" style={{ color: T.choco }}>MOMOBOT · copiloto operativo de cocina</div></div>
+        </div>
+        <span className="rounded-full px-2.5 py-1 text-[9px] uppercase tracking-wider font-extrabold" style={{ background: listening ? T.coralSoft : T.vainilla, color: listening ? "#A54830" : T.choco2 }}>{listening ? "● Escucha activa" : "Voz protegida · confirma antes de registrar"}</span>
+      </div>
+      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+        <div className="flex sm:flex-col items-center gap-2 shrink-0">
+          <button type="button" onClick={toggleListening} disabled={voiceMode === "authorizing"} data-listening={listening} aria-pressed={listening}
+            className="momo-voice-orb w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-bold"
+            style={{ background: T.coral }} aria-label={listening ? voiceMode === "standby" ? "Desactivar Momobot" : "Cerrar micrófono" : draft && !executed ? "Escuchar una orden de voz" : "Empezar dictado continuo"}>
+            {listening ? <span className="momo-voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> : "🎙️"}
+          </button>
+          <span className="text-[10px] font-extrabold uppercase tracking-[.1em] text-center" style={{ color: listening ? "#A03B2A" : T.choco2 }}>
+            {voiceStatusLabel}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <div>
+              <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Asistente manos libres de Momo Ops</div>
+              <div className="display text-2xl font-semibold">🎙️ Copiloto de cocina</div>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Decí “Momobot” u “Oye Momobot” y hablá natural. Te responde, completa lo que falte y nunca registra sin tu confirmación.</div>
+              <div className="inline-flex mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>Modo conversación · hasta 4 preguntas</div>
+              <div className="inline-flex ml-1 mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#E3EFE0", color: "#3F6B42" }}>Vocabulario MOMOS activo · {voicePhrases.length} términos</div>
+              <div className="inline-flex ml-1 mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#FFF4E0", color: "#96690F" }}>Tareas reforzadas · {voiceTaskPhrases.size}</div>
+              <div className="inline-flex ml-1 mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#E7EEF7", color: "#35577A" }}>Contexto vivo · {contextSnapshot.paid + contextSnapshot.kitchen + contextSnapshot.packing} comandas · {contextSnapshot.activeLots} lotes</div>
+              {voiceMode === "standby" && <div className="inline-flex ml-1 mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" role="status" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>{standbyStatus}</div>}
+              {!voiceInputAvailable && <div className="text-[10px] font-extrabold mt-1" style={{ color: "#A03B2A" }}>Este visor no ofrece micrófono para Momobot · abrí la app en Chrome o Edge</div>}
+              <div className="mt-2 rounded-xl px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ background: T.vainilla, color: T.choco2 }}>
+                <span className="text-[10px] uppercase tracking-wider font-extrabold">Manos libres</span>
+                <span className="text-[10px] font-bold">“sí” · “dale” · “hazlo” · “editar” · “limpiar” · “repetir” · “cancelar”</span>
+                <span className="text-[10px] font-bold" style={{ color: "#3E5C7E" }}>Probá: “Momobot, ¿qué hago ahora?” · “¿Cómo va el lote 31?” · “¿Cuántos Max de Oreo tenemos?”</span>
+              </div>
+            </div>
+            <label className="flex items-center gap-1.5 text-[11px] font-bold rounded-full px-3 py-1.5 shrink-0" style={{ color: T.choco2, background: T.surface, border: `1px solid ${T.border}` }}>
+              <input type="checkbox" checked={replyByVoice} onChange={(e) => setReplyByVoice(e.target.checked)} /> Responder por voz
+            </label>
+          </div>
+          {conversation.length > 0 && (
+            <div className="rounded-2xl p-3 mb-2 space-y-2" aria-live="polite" style={{ background: T.soft, border: `1px solid ${T.border}` }}>
+              <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={{ color: T.choco2 }}>Conversación con Momobot</div>
+              {conversation.map((message) => (
+                <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className="max-w-[92%] rounded-2xl px-3 py-2 text-xs font-semibold" style={message.role === "user"
+                    ? { background: T.rosa, color: "#6D3541" }
+                    : { background: T.vainilla, color: T.choco }}>
+                    <span className="font-extrabold">{message.role === "user" ? "Cocina" : "Momobot"}: </span>{message.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <textarea value={transcript} onChange={(e) => changeTranscript(e.target.value)} rows={3}
+            className={inputCls + " resize-y"} style={{ ...inputStyle, borderColor: "#EAC8BA", boxShadow: "inset 0 1px 0 rgba(84,56,43,.03)" }}
+            placeholder="Ej: Producir 10 Lizis: 4 de limón y 6 de Oreo; después iniciar congelación." aria-label="Comando de cocina" />
+          {speechError && <div className="mt-2 text-xs font-bold rounded-xl px-3 py-2" style={{ background: "#FFF4E0", color: "#96690F" }}>{speechError}</div>}
+          <div className="flex flex-wrap gap-2 mt-2">
+            <Btn small onClick={interpretCommand} disabled={!transcript.trim() || listening || voiceMode === "processing" || voiceMode === "executing"}>Interpretar comando</Btn>
+            <Btn small kind="ghost" onClick={() => changeTranscript(VOICE_KITCHEN_EXAMPLE)}>Usar ejemplo</Btn>
+            {(transcript || draft || result) && <Btn small kind="ghost" onClick={() => changeTranscript("")}>Limpiar</Btn>}
+            {voiceInputAvailable && !listening && voiceMode === "idle" && <Btn small kind="ghost" onClick={() => authorizeAndStartVoiceSession("standby")}>Activar “Momobot”</Btn>}
+          </div>
+        </div>
+      </div>
+
+      {draft && (
+        <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
+          <div className="text-xs font-extrabold uppercase tracking-[.12em] mb-2" style={{ color: T.choco2 }}>Esto entendió MOMOS</div>
+          {draft.corrections?.length > 0 && (
+            <div className="text-xs font-bold rounded-xl px-3 py-2 mb-2" style={{ background: "#E3EFE0", color: "#3F6B42" }}>
+              ✓ Afiné vocabulario MOMOS: {draft.corrections.map((item) => `“${item.heard}” → ${item.understoodAs}`).join(" · ")}
+            </div>
+          )}
+          {draft.errors.map((error) => <div key={error} className="text-xs font-bold rounded-xl px-3 py-2 mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>✕ {error}</div>)}
+          {draft.warnings.map((warning) => <div key={warning} className="text-xs font-bold rounded-xl px-3 py-2 mb-2" style={{ background: "#FFF4E0", color: "#96690F" }}>△ {warning}</div>)}
+          <div className="grid sm:grid-cols-3 gap-2">
+            {(draft.preparations?.length ? draft.preparations : (draft.preparation ? [draft.preparation] : [])).map((preparation) => (
+              <div key={preparation.subrecipeId} className="rounded-2xl p-3" style={{ background: "#F7ECD9" }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: T.choco2 }}>Preparar base</div>
+                <div className="font-bold text-sm mt-1">{preparation.subrecipeName}</div>
+                <div className="text-xs mt-1">{preparation.nominalGrams} g preparados → {preparation.obtainedGrams} g obtenidos</div>
+                {preparation.usage && <div className="text-[10px] font-extrabold mt-1" style={{ color: preparation.usage.includes("Relleno") ? "#8E4B5A" : T.choco2 }}>↳ {preparation.usage}</div>}
+              </div>
+            ))}
+            {draft.production && (
+              <div className="rounded-2xl p-3" style={{ background: "#F3D7DC" }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#8E4B5A" }}>Producción · {draft.production.calculatedTotal} total</div>
+                <div className="font-bold text-sm mt-1">{draft.production.figure}</div>
+                <div className="text-xs mt-1">{draft.production.runs.map((run) => `${run.quantity} ${run.flavor}`).join(" · ")}</div>
+              </div>
+            )}
+            {draft.madeToOrder && (
+              <div className="rounded-2xl p-3" style={{ background: "#F7ECD9" }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#96690F" }}>Preparación bajo pedido</div>
+                <div className="font-bold text-sm mt-1">Pedido {draft.madeToOrder.orderId}{draft.madeToOrder.customerName ? ` · ${draft.madeToOrder.customerName}` : ""}</div>
+                <div className="text-xs mt-1">Comanda: {draft.madeToOrder.orderContent || draft.madeToOrder.items.map((item) => `${item.quantity} × ${item.productName}`).join(" · ")}</div>
+                <div className="text-[10px] font-extrabold mt-1" style={{ color: "#3F6B42" }}>✓ Orden pagada y contenido verificado</div>
+                <div className="text-[10px] font-extrabold mt-1" style={{ color: "#96690F" }}>Al confirmar, el pedido completo pasa a En producción y registra su inicio en Cocina</div>
+              </div>
+            )}
+            {draft.orderHandoff && (
+              <div className="rounded-2xl p-3 border" style={{ background: T.vainilla, borderColor: T.border }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#A54830" }}>Entrega de Cocina a Empaque</div>
+                <div className="font-bold text-sm mt-1">Pedido {draft.orderHandoff.orderId}{draft.orderHandoff.customerName ? ` · ${draft.orderHandoff.customerName}` : ""}</div>
+                <div className="text-xs mt-1">{draft.orderHandoff.orderContent}</div>
+                <div className="text-[10px] font-extrabold mt-2" style={{ color: "#A54830" }}>Al confirmar pasa a Listo para empaque y avisa al equipo de Empaque.</div>
+              </div>
+            )}
+            {draft.startFreezing && (
+              <div className="rounded-2xl p-3" style={{ background: T.vainilla }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#3E5C7E" }}>{draft.production ? "Después" : "Acción sobre lote"}</div>
+                <div className="font-bold text-sm mt-1">❄️ Iniciar congelación</div>
+                <div className="text-xs mt-1">{draft.freezeBatchIds?.length
+                  ? `${draft.freezeBatchIds.join(", ")} · lote${draft.freezeBatchIds.length === 1 ? "" : "s"} existente${draft.freezeBatchIds.length === 1 ? "" : "s"} validado${draft.freezeBatchIds.length === 1 ? "" : "s"}`
+                  : "Solo en los lotes que cree este comando"} · objetivo {db.settings.horasCongelacion || 10} h</div>
+              </div>
+            )}
+            {draft.unmolding && (
+              <div className="rounded-2xl p-3" style={{ background: T.vainilla }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#3F6B42" }}>Desmolde · {draft.unmolding.total} total</div>
+                <div className="font-bold text-sm mt-1">🧊 {draft.unmolding.batchId}</div>
+                <div className="text-xs mt-1">{voiceOutcomeCount(draft.unmolding.perfectas, "perfecta", "perfectas")} · {voiceOutcomeCount(draft.unmolding.imperfectas, "imperfecta", "imperfectas")} · {voiceOutcomeCount(draft.unmolding.descartadas, "descartada", "descartadas")}</div>
+                <div className="text-[10px] font-extrabold mt-1" style={{ color: "#3F6B42" }}>Al confirmar pasa a Listo y actualiza el stock</div>
+              </div>
+            )}
+          </div>
+          <div className="text-[11px] font-semibold mt-2" style={{ color: T.choco2 }}>Manos libres: respondé “sí”, “dale”, “hazlo”, “editar”, “repetir” o “cancelar”. “Cierra” solo apaga el micrófono. La conversación original quedará en las observaciones.</div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <BtnAsync confirmar="¿Ejecutar? Tocá de nuevo" textoEnVuelo={executionLabel} disabled={!draft.canExecute || executed} onClick={executeCommand}>
+              {executed ? "Aplicado ✓" : "Confirmar y registrar"}
+            </BtnAsync>
+            <Btn kind="ghost" onClick={() => { stopVoiceSession(); resetVoiceDraft(); }}>Cancelar</Btn>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-3 rounded-2xl px-4 py-3 text-sm font-bold" role={result.type === "error" ? "alert" : "status"}
+          style={result.type === "error" ? { background: "#F6D4CD", color: "#A03B2A" } : { background: "#E3EFE0", color: "#3F6B42" }}>
+          {result.type === "error" ? "✕ " : "✓ "}{result.text}
+          {result.warnings?.length > 0 && <div className="text-xs mt-2 font-semibold">Atención: {result.warnings.join(" · ")}</div>}
+        </div>
+      )}
+
+    </Card>
+  );
+}
+
+function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
   const [nuevo, setNuevo] = useState(false);
   const [pre, setPre] = useState(null); // sugerencia que origina la corrida
+  const [queueRequest, setQueueRequest] = useState(null);
   const corridaIdemKeyRef = useRef(null); // 1 por apertura del form: tolera retries de red sin duplicar la corrida
   const s = db.settings;
   const sabores = [...s.saboresFrutales, ...s.saboresCremosos];
@@ -3051,6 +5131,9 @@ function Produccion({ db, update, user, refrescar }) {
   const [enviandoBatchId, setEnviandoBatchId] = useState(null); // deshabilita solo la card del lote en vuelo
   const [desmolde, setDesmolde] = useState(null); // {batchId, prod, perfectas, imperfectas, descartadas} — mini-modal de conteos
   const [enviandoDesmolde, setEnviandoDesmolde] = useState(false);
+  const puedeIniciarPedidos = orderTransitionPermission(perfil?.rol, "Pagado", "En producción").allowed;
+  const puedeEntregarEmpaque = orderTransitionPermission(perfil?.rol, "En producción", "Listo para empaque").allowed;
+  const [queueBusyOrderId, setQueueBusyOrderId] = useState(null);
 
   // ── Componentes + BOM (hito 2): preparar bases/subrecetas ──
   const [prepBase, setPrepBase] = useState(false);
@@ -3137,6 +5220,44 @@ function Produccion({ db, update, user, refrescar }) {
   const focoLabel = foco ? (foco.combo ? `${foco.producto} · ${foco.sabor} · ${foco.figura} · ${foco.gramaje}` : foco.producto) : "";
   function enfocarLotes(next) { setFoco(next); setTimeout(() => { const el = document.getElementById("lotes-produccion"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }
 
+  function alistarPedidoDesdeCola(orderId) {
+    if (!puedeIniciarPedidos) {
+      setMsg("Solo Cocina o Administración pueden confirmar que un pedido pagado entra a producción.");
+      return;
+    }
+    setQueueRequest({ orderId, token: `${orderId}-${Date.now()}` });
+    setTimeout(() => {
+      const panel = document.getElementById("momobot-cocina");
+      if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
+
+  async function cambiarPedidoDesdeCocina(orderId, estado) {
+    const order = db.orders.find((item) => item.id === orderId);
+    const permiso = orderTransitionPermission(perfil?.rol, order?.estado, estado);
+    if (!permiso.allowed) {
+      setMsg(permiso.reason);
+      return;
+    }
+    setQueueBusyOrderId(orderId);
+    // Escritura y refresco en try/catch SEPARADOS: si falla refrescar() no debe
+    // reportarse como que falló la transición de estado (juice-v1 regla 4).
+    let response;
+    try {
+      response = await setOrderStatusRemoto(orderId, estado);
+    } catch (error) {
+      setQueueBusyOrderId(null);
+      toast("error", `No se pudo pasar ${orderId} a “${estado}”: ${error.message}`);
+      return;
+    }
+    const faltantes = Array.isArray(response?.faltantes) ? response.faltantes.length : 0;
+    toast("ok", estado === "En producción"
+      ? `${orderId} · Cocina inició la preparación${faltantes ? ` con ${faltantes} alerta${faltantes === 1 ? "" : "s"} de inventario` : ""}`
+      : `${orderId} · listo para Empaque`);
+    try { await refrescar(); } catch { toast("alert", `${orderId} avanzó, pero no se pudo actualizar la vista. Recargá la página.`); }
+    setQueueBusyOrderId(null);
+  }
+
   // Genera una idempotency_key nueva cada vez que el form se abre; los reintentos
   // dentro de la misma apertura reusan la misma key (útil para timeouts de red).
   function abrirNuevaCorrida() {
@@ -3170,7 +5291,7 @@ function Produccion({ db, update, user, refrescar }) {
     try {
       resultado = await crearCorrida(payload);
     } catch (e) {
-      setMsg("No se pudo registrar la producción: " + e.message);
+      toast("error", "No se pudo registrar la producción: " + e.message);
       setEnviando(false);
       return;
     }
@@ -3207,7 +5328,7 @@ function Produccion({ db, update, user, refrescar }) {
     try {
       resultado = await producirSubreceta(payload);
     } catch (e) {
-      setMsg("No se pudo registrar la preparación: " + e.message);
+      toast("error", "No se pudo registrar la preparación: " + e.message);
       setEnviandoPrep(false);
       return;
     }
@@ -3249,11 +5370,12 @@ function Produccion({ db, update, user, refrescar }) {
     try {
       await setLoteEstado(l.id, "Listo");
     } catch (e) {
-      setMsg("No se pudo cambiar el estado del lote: " + e.message);
+      toast("error", "No se pudo cambiar el estado del lote: " + e.message);
       setEnviandoBatchId(null);
       return;
     }
-    await refrescarSilencioso(() => setMsg("El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+    toast("ok", `${l.id} · listo`);
+    await refrescarSilencioso(() => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
     setEnviandoBatchId(null);
   }
 
@@ -3270,7 +5392,7 @@ function Produccion({ db, update, user, refrescar }) {
         await desmoldarLote(batchId, +perfectas || 0, +imperfectas || 0, +descartadas || 0);
       }
     } catch (e) {
-      setMsg("No se pudo registrar el desmolde: " + e.message);
+      toast("error", "No se pudo registrar el desmolde: " + e.message);
       setEnviandoDesmolde(false);
       return;
     }
@@ -3282,6 +5404,16 @@ function Produccion({ db, update, user, refrescar }) {
 
   return (
     <div>
+      <KitchenProductionQueue
+        db={db}
+        onStart={(orderId) => cambiarPedidoDesdeCocina(orderId, "En producción")}
+        onOpenAssistant={alistarPedidoDesdeCola}
+        onReady={(orderId) => cambiarPedidoDesdeCocina(orderId, "Listo para empaque")}
+        canStart={puedeIniciarPedidos}
+        canReady={puedeEntregarEmpaque}
+        busyOrderId={queueBusyOrderId}
+      />
+      <VoiceKitchenPanel db={db} perfil={perfil} flavors={sabores} figures={figurasProducibles} subrecipes={subrecetasActivas} refrescar={refrescar} serverDataReady={serverDataReady} requestedOrder={queueRequest} />
       <div className="mb-4 flex gap-2 flex-wrap"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn>{subrecetasActivas.length > 0 && <Btn kind="soft" onClick={abrirPrepararBase}>🥣 Preparar base</Btn>}</div>
 
       {sugerencias.length > 0 && (
@@ -3295,7 +5427,7 @@ function Produccion({ db, update, user, refrescar }) {
                   <div className="text-xs" style={{ color: T.choco2 }}>{sg.motivo}{sg.orderId && ` · pedido ${sg.orderId}`} · {sg.fecha}</div>
                   {(() => {
                     /* Variantes 2: qué variante espera este pedido — el desmolde
-                       la asigna solo (sabor duro, figura preferida). */
+                       la asigna solo cuando coinciden sabor y figura). */
                     const oi = sg.orderItemId && (db.order_items || []).find((i) => i.id === sg.orderItemId);
                     if (!oi || (!oi.sabor && !oi.figura)) return null;
                     return <div className="text-[11px] font-bold mt-0.5" style={{ color: "#8A6D1F" }}>⏳ espera: {[oi.sabor, oi.figura].filter(Boolean).join(" · ")} — se asigna sola al desmoldar</div>;
@@ -3389,53 +5521,63 @@ function Produccion({ db, update, user, refrescar }) {
         {lotesFiltrados.map((l) => {
           const merma = l.prod > 0 ? (l.imperfectas + l.descartadas) / l.prod : 0;
           return (
-            <Card key={l.id} className="p-4">
-              <div className="flex justify-between items-start gap-2">
-                <div>
-                  <div className="font-bold flex items-center gap-1.5 flex-wrap">
-                    <span>{l.id} · {l.producto}</span>
+            <Card key={l.id} className="momo-queue-item p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Lote</span>
+                    <Badge label={l.estado} />
                     {l.corridaId && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: T.vainilla, color: "#63518A" }}>Corrida {l.corridaId}</span>}
                   </div>
-                  <div className="text-xs" style={{ color: T.choco2 }}>{l.fecha} · Resp: {l.resp || "—"} · Vence {l.vence}</div>
+                  <div className="text-sm font-bold leading-tight mt-0.5">{l.id} · {l.producto}</div>
+                  <div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{l.fecha} · Resp: {l.resp || "—"} · Vence {l.vence}</div>
                 </div>
-                <Badge label={l.estado} />
+                <div className="text-right shrink-0">
+                  <div className="display text-2xl" style={{ color: T.coral }}>{l.prod || 0}</div>
+                  <div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>unidades</div>
+                </div>
               </div>
-              <div className="text-xs mt-2" style={{ color: T.choco2 }}>
+              <div className="text-xs font-semibold mt-2" style={{ color: T.choco2 }}>
                 {Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => `${f.cant}× ${f.figura}`).join(" · ") : l.figura} · {l.sabor} · Relleno {l.relleno}{l.salsa ? ` · Salsa ${l.salsa}` : ""} · {l.gramaje}
               </div>
-              <div className="grid grid-cols-4 gap-2 mt-3 text-center">
-                {[["Producidas", l.prod, T.choco], ["Perfectas", l.perfectas, "#3F6B42"], ["Imperfectas", l.imperfectas, "#96690F"], ["Descartadas", l.descartadas, "#A03B2A"]].map(([lab, v, col]) => (
-                  <div key={lab} className="rounded-xl py-2" style={{ background: T.vainilla }}>
-                    <div className="display text-lg" style={{ color: col }}>{v}</div>
-                    <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{lab}</div>
-                  </div>
-                ))}
+              <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                <div className="flex justify-between items-baseline gap-2 text-xs">
+                  <span style={{ color: T.choco2 }}>Perfectas</span>
+                  <span className="font-bold" style={{ color: "#3F6B42" }}>{l.perfectas}</span>
+                </div>
+                <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
+                  <span style={{ color: T.choco2 }}>Imperfectas</span>
+                  <span className="font-bold" style={{ color: "#96690F" }}>{l.imperfectas}</span>
+                </div>
+                <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
+                  <span style={{ color: T.choco2 }}>Descartadas</span>
+                  <span className="font-bold" style={{ color: "#A03B2A" }}>{l.descartadas}</span>
+                </div>
               </div>
               {(() => {
                 const cong = estadoCongelacion(l);
                 if (!cong) return null;
-                const progreso = Math.max(0, Math.min(100, (cong.horas / cong.objetivo) * 100));
                 return (
-                  <div className="mt-3 p-2.5 rounded-xl" style={{ background: cong.listo ? "#DDEBD9" : "#DCE7F2" }}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-bold" style={{ color: cong.listo ? "#3F6B42" : "#3E5C7E" }}>
-                        {cong.listo ? "✅ Congelación cumplida" : "🧊 Congelando"}
-                      </span>
-                      <span className="text-xs font-bold" style={{ color: cong.listo ? "#3F6B42" : "#3E5C7E" }}>
-                        {cong.listo ? `lleva ${fmtHoras(cong.horas)}` : `${fmtHoras(cong.horas)} · listo en ~${fmtHoras(cong.restan)}`}
-                      </span>
+                  <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                    <div className="flex justify-between items-baseline gap-2 text-xs">
+                      <span style={{ color: T.choco2 }}>{cong.listo ? "Congelación cumplida" : "Congelando"}</span>
+                      <span className="font-bold" style={{ color: cong.listo ? "#3F6B42" : T.choco }}>{cong.listo ? `lleva ${fmtHoras(cong.horas)}` : `${fmtHoras(cong.horas)} · ~${fmtHoras(cong.restan)}`}</span>
                     </div>
-                    <div className="h-2 rounded-full overflow-hidden" style={{ background: "#ffffff99" }}>
-                      <div className="h-full rounded-full" style={{ width: progreso + "%", background: cong.listo ? "#3F6B42" : "#3E5C7E" }} />
+                    <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
+                      <span style={{ color: T.choco2 }}>Objetivo</span>
+                      <span className="font-bold" style={{ color: T.choco }}>{cong.objetivo} h</span>
                     </div>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Objetivo {cong.objetivo} h · inició {l.inicioCongelacion.slice(11, 16)}</span>
-                      {cong.listo && (
-                        // v2: si los conteos ya cuadran con prod, marcarListo pasa directo a 'Listo';
-                        // si no cuadran, abre el modal de desmolde para cargarlos.
-                        <button disabled={enviandoBatchId === l.id} onClick={() => marcarListo(l)} className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#3F6B42", color: "#fff", opacity: enviandoBatchId === l.id ? 0.5 : 1 }}>Marcar Listo</button>
-                      )}
+                    <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
+                      <span style={{ color: T.choco2 }}>Inició</span>
+                      <span className="font-bold" style={{ color: T.choco }}>{l.inicioCongelacion.slice(11, 16)}</span>
                     </div>
+                    {cong.listo && (
+                      // v2: si los conteos ya cuadran con prod, marcarListo pasa directo a 'Listo';
+                      // si no cuadran, abre el modal de desmolde para cargarlos.
+                      <div className="mt-2">
+                        <BtnAsync small textoEnVuelo="Listando…" disabled={enviandoBatchId === l.id} onClick={() => marcarListo(l)}>Marcar Listo</BtnAsync>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -3445,34 +5587,34 @@ function Produccion({ db, update, user, refrescar }) {
                 </div>
                 <div className="flex gap-2">
                   {l.estado === "En preparación" && (
-                    <Btn small disabled={enviandoBatchId === l.id} onClick={async () => {
+                    <BtnAsync small confirmar="❄️ ¿Empezar? Tocá de nuevo" textoEnVuelo="Empezando…" disabled={enviandoBatchId === l.id} onClick={async () => {
                       setEnviandoBatchId(l.id);
                       try {
                         await empezarCongelamiento(l.id);
                       } catch (e) {
-                        setMsg("No se pudo empezar el congelamiento: " + e.message);
+                        toast("error", "No se pudo empezar el congelamiento: " + e.message);
                         setEnviandoBatchId(null);
                         return;
                       }
-                      await refrescarSilencioso(() => setMsg("El lote empezó a congelar, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+                      toast("ok", `${l.id} · congelamiento iniciado`);
+                      await refrescarSilencioso(() => toast("alert", "El lote empezó a congelar, pero no se pudo actualizar la vista. Recargá la página."));
                       setEnviandoBatchId(null);
-                    }}>❄️ Empezar congelamiento</Btn>
+                    }}>❄️ Empezar congelamiento</BtnAsync>
                   )}
                   {l.imperfectas > 0 && !String(l.destino).includes("Insumo") && (
-                    <Btn small kind="soft" disabled={enviandoBatchId === l.id} onClick={async () => {
+                    <BtnAsync small kind="soft" confirmar="♻️ ¿Convertir a insumo? Tocá de nuevo" textoEnVuelo="Convirtiendo…" disabled={enviandoBatchId === l.id} onClick={async () => {
                       setEnviandoBatchId(l.id);
                       try {
                         await convertirImperfectas(l.id);
                       } catch (e) {
-                        setMsg("No se pudieron convertir las imperfectas: " + e.message);
+                        toast("error", "No se pudieron convertir las imperfectas: " + e.message);
                         setEnviandoBatchId(null);
                         return;
                       }
-                      let refetchOk = true;
-                      await refrescarSilencioso(() => { refetchOk = false; setMsg("Las imperfectas se convirtieron, pero no se pudo actualizar la vista. Recargá la página para verlo."); });
+                      toast("ok", `${l.imperfectas} imperfectas del lote ${l.id} → insumo`);
+                      await refrescarSilencioso(() => toast("alert", "Las imperfectas se convirtieron, pero no se pudo actualizar la vista. Recargá la página."));
                       setEnviandoBatchId(null);
-                      if (refetchOk) setMsg(`Las ${l.imperfectas} piezas imperfectas del lote ${l.id} quedaron como insumo para malteadas, crepas o pruebas internas.`);
-                    }}>♻️ Convertir imperfectas</Btn>
+                    }}>♻️ Convertir imperfectas</BtnAsync>
                   )}
                   <MiniSelect options={LOTE_ESTADOS} value={l.estado} disabled={enviandoBatchId === l.id} onChange={async (e) => {
                     const nuevoEstado = e.target.value;
@@ -3484,11 +5626,12 @@ function Produccion({ db, update, user, refrescar }) {
                     try {
                       await setLoteEstado(l.id, nuevoEstado);
                     } catch (err) {
-                      setMsg("No se pudo cambiar el estado del lote: " + err.message);
+                      toast("error", "No se pudo cambiar el estado del lote: " + err.message);
                       setEnviandoBatchId(null);
                       return;
                     }
-                    await refrescarSilencioso(() => setMsg("El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+                    toast("ok", `${l.id} → ${nuevoEstado}`);
+                    await refrescarSilencioso(() => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
                     setEnviandoBatchId(null);
                   }} />
                 </div>
@@ -3562,7 +5705,7 @@ function Produccion({ db, update, user, refrescar }) {
             <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
             <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los insumos de la receta (por la cantidad producida) y se crea un lote por cada figura elegida. Las piezas perfectas se suman al stock cuando cada lote pase a "Listo" (con desmolde).</div>
             <div className="flex gap-2">
-              <Btn disabled={enviando || totalUnidades === 0} onClick={registrarCorrida}>Registrar producción</Btn>
+              <BtnAsync textoEnVuelo="Registrando…" disabled={enviando || totalUnidades === 0} onClick={registrarCorrida}>Registrar producción</BtnAsync>
               <Btn kind="ghost" disabled={enviando} onClick={() => { setNuevo(false); setPre(null); }}>Cancelar</Btn>
             </div>
           </Modal>
@@ -3608,7 +5751,7 @@ function Produccion({ db, update, user, refrescar }) {
           )}
           <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los ingredientes por los gramos nominales, y los gramos obtenidos suman al stock de la base con su costo real (WAC). Los faltantes no bloquean: quedan avisados.</div>
           <div className="flex gap-2">
-            <Btn disabled={enviandoPrep || !prepSel || !(+prepForm.nominal > 0)} onClick={registrarPreparacion}>Registrar preparación</Btn>
+            <BtnAsync textoEnVuelo="Registrando…" disabled={enviandoPrep || !prepSel || !(+prepForm.nominal > 0)} onClick={registrarPreparacion}>Registrar preparación</BtnAsync>
             <Btn kind="ghost" disabled={enviandoPrep} onClick={() => setPrepBase(false)}>Cancelar</Btn>
           </div>
         </Modal>
@@ -3670,14 +5813,238 @@ function Produccion({ db, update, user, refrescar }) {
   );
 }
 
-/* ================= INVENTARIO ================= */
+/* ================= INVENTARIO TERMINADO ================= */
+
+function InventarioTerminado({ db, go }) {
+  const [tab, setTab] = useState("Disponibles");
+  const inventory = useMemo(() => buildFinishedInventory(db), [db]);
+  const orderById = useMemo(() => Object.fromEntries((db.orders || []).map((order) => [order.id, order])), [db.orders]);
+  const tabs = [
+    ["Disponibles", inventory.summary.available],
+    ["Reservadas", inventory.summary.reserved],
+    ["En proceso", inventory.summary.inProcess],
+    ["Imperfectas", inventory.summary.imperfectTotal],
+  ];
+  const exactCoverage = inventory.summary.available > 0
+    ? Math.round(inventory.summary.exactAvailable / inventory.summary.available * 100)
+    : 0;
+
+  const metrics = [
+    { icon: "✓", label: "Disponibles para vender", value: inventory.summary.available, note: inventory.summary.quarantined > 0 ? `stock seguro · ${inventory.summary.quarantined} en cuarentena` : "stock oficial, después de reservas", color: T.coral, wash: "rgba(63,107,66,.12)", iconBg: "#E3EFE0" },
+    { icon: "🏷", label: "Reservadas", value: inventory.summary.reserved, note: "separadas para pedidos pagos", color: "#63518A", wash: "rgba(99,81,138,.12)", iconBg: "#E8E0F2" },
+    { icon: "❄", label: "En proceso", value: inventory.summary.inProcess, note: "todavía no se pueden vender", color: T.choco, wash: "rgba(62,92,126,.12)", iconBg: "#DCE7F2" },
+    { icon: "♻", label: "Imperfectas pendientes", value: inventory.summary.imperfectPending, note: `${inventory.summary.imperfectReused} ya tienen destino`, color: "#96690F", wash: "rgba(150,105,15,.12)", iconBg: "#FBE8C8" },
+  ];
+
+  return (
+    <div>
+      <SectionTitle>Inventario terminado</SectionTitle>
+      <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
+        “Disponibles” es la cifra oficial que usan ventas y reservas. Las reservadas ya fueron descontadas; el detalle por figura y sabor explica ese stock sin duplicarlo.
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {metrics.map((metric) => (
+          <Stat key={metric.label} icon={metric.icon} label={metric.label} value={metric.value} sub={metric.note} tone={metric.color} />
+        ))}
+      </div>
+      <div className="text-[11px] font-semibold mt-2 mb-4" style={{ color: T.choco2 }}>
+        Trazabilidad exacta: <b style={{ color: T.coral }}>{exactCoverage}%</b> — {inventory.summary.exactAvailable} de {inventory.summary.available} con figura y sabor.
+      </div>
+      {(inventory.summary.quarantined > 0 || inventory.summary.reconciliationExcess > 0 || inventory.summary.negativeStockProducts > 0) && (
+        <div className="rounded-2xl p-3 mb-4 text-xs font-semibold" role="alert" style={{ background: "#F6D4CD", color: "#7D2D22", border: "1px solid #ECBBB1" }}>
+          <div className="font-extrabold mb-1">⚠ Inventario protegido</div>
+          {inventory.summary.quarantined > 0 && <div>{inventory.summary.quarantined} unidad(es) vencidas están en cuarentena y no cubren ventas.</div>}
+          {inventory.summary.reconciliationExcess > 0 && <div>{inventory.summary.reconciliationBlocked} unidad(es) con detalle físico quedaron bloqueadas: exceden el stock oficial por {inventory.summary.reconciliationExcess}. Reconciliá antes de vender esa variante.</div>}
+          {inventory.summary.negativeStockProducts > 0 && <div>{inventory.summary.negativeStockProducts} producto(s) tenían stock negativo; se muestran en cero y requieren revisión.</div>}
+        </div>
+      )}
+
+      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-3 rounded-2xl" role="tablist" aria-label="Vistas del inventario terminado">
+        {tabs.map(([name, count]) => (
+          <button key={name} type="button" role="tab" aria-selected={tab === name} onClick={() => setTab(name)}
+            className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
+            style={tab === name ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
+            {name} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: tab === name ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
+          </button>
+        ))}
+      </div>
+
+      {tab === "Disponibles" && (
+        <>
+          <SectionTitle>Producto disponible para venta</SectionTitle>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+            {inventory.products.map((product) => (
+              <Card key={product.id} className="momo-queue-item p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: product.available <= 2 ? "#A03B2A" : T.choco2 }}>{product.available <= 2 ? "Stock por reponer" : "Disponible ahora"}</div>
+                    <div className="text-sm font-bold leading-tight mt-0.5">{product.nombre}</div>
+                  </div>
+                  <div className="text-right shrink-0"><div className="display text-2xl" style={{ color: product.available <= 2 ? "#A03B2A" : T.coral }}>{product.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>unidades</div></div>
+                </div>
+                <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                  <div className="flex justify-between items-baseline gap-2 text-xs">
+                    <span style={{ color: T.choco2 }}>Con figura y sabor</span>
+                    <span className="font-bold" style={{ color: T.coral }}>{product.exactAvailable}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
+                    <span style={{ color: T.choco2 }}>Stock anterior <span className="opacity-70">· sin figura ni sabor</span></span>
+                    <span className="font-bold" style={{ color: T.choco }}>{product.withoutVariantDetail}</span>
+                  </div>
+                </div>
+                <div className="text-[10px] font-bold mt-2" style={{ color: T.choco2 }}>{product.available > 0 ? Math.round(product.exactAvailable / product.available * 100) : 0}% del stock con figura y sabor verificables</div>
+              </Card>
+            ))}
+            {inventory.products.length === 0 && <Empty icon="🍮" text="No hay producto terminado disponible para venta." />}
+          </div>
+
+          <SectionTitle>Figuras y sabores exactos</SectionTitle>
+          <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>
+            El stock anterior conserva el conteo físico general, pero no confirma una figura ni un sabor. Para prometer una combinación exacta debe reconciliarse o producirse con trazabilidad.
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {inventory.variants.map((variant) => {
+              const days = variant.vence ? diasEntre(hoyISO(), variant.vence) : null;
+              const expiring = days != null && days <= 3;
+              return (
+                <Card key={`${variant.productId}-${variant.figura}-${variant.sabor}-${variant.gramajeG}`} className="momo-queue-item p-4" style={{ borderColor: expiring ? "#ECBBB1" : T.border }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: T.rosa, color: "#8E4B5A" }} aria-hidden="true">🐾</span>
+                      <div>
+                        <div className="text-sm font-bold">{variant.figura} · {variant.sabor || "Sin sabor"}</div>
+                        <div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{variant.producto}{variant.gramajeG != null ? ` · ${variant.gramajeG} g` : ""}</div>
+                      </div>
+                    </div>
+                    <div className="text-right"><div className="display text-2xl" style={{ color: T.coral }}>{variant.disponibles}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>disp.</div></div>
+                  </div>
+                  {variant.vence && <div className="text-[11px] font-bold mt-2" style={{ color: expiring ? "#A03B2A" : T.choco2 }}>Vence {variant.vence}{days != null ? ` · ${days < 0 ? "vencido" : `${days} día(s)`}` : ""}</div>}
+                </Card>
+              );
+            })}
+            {inventory.variants.length === 0 && <Empty icon="🎯" text="Los próximos desmoldes con conteo por figura aparecerán aquí." />}
+          </div>
+          {inventory.quarantinedVariants.length > 0 && (
+            <div className="mt-4 rounded-2xl p-3" style={{ background: "#FFF1EE", border: "1px solid #ECBBB1" }}>
+              <div className="text-xs font-extrabold" style={{ color: "#A03B2A" }}>Cuarentena por vencimiento</div>
+              <div className="text-xs mt-1" style={{ color: T.choco2 }}>
+                {inventory.quarantinedVariants.map((variant) => `${variant.disponibles}× ${variant.figura} · ${variant.sabor || "Sin sabor"} (${variant.producto}, venció ${variant.vence})`).join(" · ")}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "Reservadas" && (
+        <>
+          <SectionTitle>Producto separado para pedidos</SectionTitle>
+          <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
+            Estas unidades ya salieron del stock disponible. El lote muestra la asignación FIFO cuando existe trazabilidad física.
+          </div>
+          {inventory.reservations.length > 0 ? (
+            <Card className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[680px]">
+                <thead><tr className="text-left text-xs" style={{ color: T.choco2 }}>
+                  {['Pedido','Producto','Cantidad','Lote / figura','Estado pedido','Reserva'].map((heading) => <th key={heading} className="px-3 py-3 font-bold">{heading}</th>)}
+                </tr></thead>
+                <tbody>
+                  {inventory.reservations.map((reservation) => {
+                    const order = orderById[reservation.orderId];
+                    return (
+                      <tr key={reservation.id} className="border-t" style={{ borderColor: T.border }}>
+                        <td className="px-3 py-2 text-xs font-bold">{reservation.orderId}</td>
+                        <td className="px-3 py-2 font-semibold">{reservation.nombre}</td>
+                        <td className="px-3 py-2 font-bold">{reservation.cantidad}</td>
+                        <td className="px-3 py-2 text-xs">{reservation.batchId ? `${reservation.batchId}${reservation.figuraLote ? ` · ${reservation.figuraLote}` : ""}` : "Sin lote detallado"}</td>
+                        <td className="px-3 py-2"><Badge label={order?.estado || "Sin pedido"} /></td>
+                        <td className="px-3 py-2"><Badge label={reservation.estado} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          ) : <Empty icon="🏷️" text="No hay reservas de producto terminado." />}
+        </>
+      )}
+
+      {tab === "En proceso" && (
+        <>
+          <SectionTitle action={<Btn small kind="soft" onClick={() => go("Producción")}>Abrir Producción</Btn>}>Lotes que todavía no están disponibles</SectionTitle>
+          <div className="grid lg:grid-cols-2 gap-3">
+            {inventory.inProcess.map((batch) => (
+              <Card key={batch.id} className="p-4">
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <div className="font-bold">{batch.id} · {batch.producto}</div>
+                    <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{batch.sabor} · {batch.gramaje || "sin gramaje"} · vence {batch.vence || "sin fecha"}</div>
+                  </div>
+                  <Badge label={batch.estado} />
+                </div>
+                <div className="mt-3 flex justify-between items-baseline gap-2">
+                  <span className="text-xs font-bold" style={{ color: T.choco2 }}>Unidades producidas</span>
+                  <span className="display text-2xl font-semibold" style={{ color: T.choco }}>{batch.prod || 0}</span>
+                </div>
+                <div className="text-xs font-semibold mt-2" style={{ color: T.choco2 }}>
+                  {Array.isArray(batch.figuras) && batch.figuras.length ? batch.figuras.map((figure) => `${figure.cant}× ${figure.figura}`).join(" · ") : batch.figura || "Sin figura detallada"}
+                </div>
+              </Card>
+            ))}
+            {inventory.inProcess.length === 0 && <Empty icon="🧊" text="No hay lotes en preparación, congelación o reserva." />}
+          </div>
+        </>
+      )}
+
+      {tab === "Imperfectas" && (
+        <>
+          <SectionTitle action={<Btn small kind="soft" onClick={() => go("Producción")}>Gestionar en Producción</Btn>}>Imperfectas y descartadas por lote</SectionTitle>
+          <div className="rounded-xl p-3 mb-3 text-xs font-semibold" style={{ background: T.vainilla, color: T.choco2 }}>
+            Pendientes: {inventory.summary.imperfectPending} · Reaprovechadas/con destino: {inventory.summary.imperfectReused} · Descartadas: {inventory.summary.discarded}. Las reaprovechadas no se suman al producto disponible para venta.
+          </div>
+          <div className="grid lg:grid-cols-2 gap-3">
+            {inventory.imperfects.map((batch) => (
+              <Card key={batch.id} className="p-4">
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <div className="font-bold">{batch.id} · {batch.producto}</div>
+                    <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{batch.figura || "Sin figura"} · {batch.sabor || "Sin sabor"} · {batch.fecha}</div>
+                  </div>
+                  <Badge label={batch.destinationRegistered ? "Con destino" : "Pendiente"} map={{ "Con destino": { bg: "#DDEBD9", fg: "#3F6B42" }, "Pendiente": { bg: "#FBE8C8", fg: "#96690F" } }} />
+                </div>
+                <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+                  <div className="flex justify-between items-baseline gap-2 text-xs">
+                    <span style={{ color: T.choco2 }}>Imperfectas</span>
+                    <span className="font-bold" style={{ color: "#96690F" }}>{batch.imperfectas}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
+                    <span style={{ color: T.choco2 }}>Descartadas</span>
+                    <span className="font-bold" style={{ color: "#A03B2A" }}>{batch.descartadas}</span>
+                  </div>
+                </div>
+                <div className="text-xs font-bold mt-2" style={{ color: batch.destinationRegistered ? "#3F6B42" : "#96690F" }}>
+                  {batch.destinationRegistered ? `Destino: ${batch.destino}` : "Falta definir si se reaprovechan o se descartan."}
+                </div>
+              </Card>
+            ))}
+            {inventory.imperfects.length === 0 && <Empty icon="✨" text="No hay imperfectas ni descartadas registradas." />}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ================= INVENTARIO DE INSUMOS ================= */
 
 function Inventario({ db, update, user, focus, refrescar }) {
   const [mov, setMov] = useState(false);
+  const [desecharVencido, setDesecharVencido] = useState(null);
+  const [motivoDesecho, setMotivoDesecho] = useState("");
   const [nuevoIns, setNuevoIns] = useState(false);
   const [fi, setFi] = useState({ nombre: "", cat: "", unidad: "und", stock: "", min: "", costoTotal: "", proveedor: "", vence: "", ubicacion: "" });
   const [errIns, setErrIns] = useState("");
-  const [form, setForm] = useState({ tipo: "Entrada", item: "", cant: "", precio: "", nota: "" });
+  const [form, setForm] = useState({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "" });
   const [fCat, setFCat] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [avisoInv, setAvisoInv] = useState(null);
@@ -3696,6 +6063,20 @@ function Inventario({ db, update, user, focus, refrescar }) {
   const ubicacionesInv = [...new Set(db.inventory_items.map((i) => i.ubicacion).filter(Boolean))].sort();
   const lista = db.inventory_items.filter((i) => !fCat || i.cat === fCat);
   const selMovIt = db.inventory_items.find((i) => i.nombre === form.item);
+
+  function abrirMovimiento(item, tipo = "Entrada") {
+    setForm({
+      tipo,
+      item: item.nombre,
+      cant: "",
+      precio: "",
+      vence: "",
+      proveedor: item.proveedor || "",
+      ubicacion: item.ubicacion || "",
+      nota: tipo === "Entrada" ? "Compra de inventario" : "",
+    });
+    setMov(true);
+  }
 
   async function refrescarSilencioso(onFail) {
     try {
@@ -3733,18 +6114,19 @@ function Inventario({ db, update, user, focus, refrescar }) {
                     <div className="text-sm font-bold">{sg.cantidad}× {sg.producto}</div>
                     <div className="text-xs" style={{ color: T.choco2 }}>Falta para {sg.orderId ? "pedido " + sg.orderId : "reponer stock"} · {sg.fecha}</div>
                   </div>
-                  <Btn small kind="soft" disabled={enviandoSugId === sg.id} onClick={async () => {
+                  <BtnAsync small kind="soft" textoEnVuelo="Marcando…" disabled={enviandoSugId === sg.id} onClick={async () => {
                     setEnviandoSugId(sg.id);
                     try {
                       await setSugerenciaEstado(sg.id, "Atendida");
                     } catch (e) {
-                      setAvisoInv({ titulo: "No se pudo marcar la sugerencia", texto: e.message });
+                      toast("error", "No se pudo marcar la sugerencia: " + e.message);
                       setEnviandoSugId(null);
                       return;
                     }
                     setEnviandoSugId(null);
-                    await refrescarSilencioso(() => setAvisoInv({ titulo: "Acción aplicada, vista desactualizada", texto: "La sugerencia se marcó como atendida, pero no se pudo actualizar la vista. Recargá la página para verlo." }));
-                  }}>Marcar atendida</Btn>
+                    toast("ok", `✓ ${sg.producto} · compra atendida`);
+                    await refrescarSilencioso(() => toast("alert", "La sugerencia se marcó, pero no se pudo actualizar la vista. Recargá la página."));
+                  }}>Marcar atendida</BtnAsync>
                 </Card>
               ))}
             </div>
@@ -3755,17 +6137,26 @@ function Inventario({ db, update, user, focus, refrescar }) {
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {lista.map((i) => {
           const bajo = i.stock < i.min;
-          const vencePronto = i.vence && diasEntre(hoyISO(), i.vence) <= 5;
+          const lotesListos = Boolean(db.inventoryLotsReady);
+          const lotSummary = buildIngredientLotSummary(i.id, db.inventory_lots || [], hoyISO());
+          const diasVence = i.vence ? diasEntre(hoyISO(), i.vence) : null;
+          const vencidoLegacy = diasVence != null && diasVence < 0;
+          const vencido = lotesListos ? lotSummary.expiredStock > 0 : vencidoLegacy;
+          const todoVencido = lotesListos ? lotSummary.expiredStock > 0 && lotSummary.usableStock === 0 : vencidoLegacy;
+          const venceHoy = lotesListos ? lotSummary.usable.some((lot) => lot.status === "Vence hoy") : diasVence === 0;
+          const proximoVence = lotesListos ? lotSummary.nextExpiry : i.vence;
+          const diasProximo = proximoVence ? diasEntre(hoyISO(), proximoVence) : null;
+          const vencePronto = diasProximo != null && diasProximo > 0 && diasProximo <= 5;
           const hl = highlightId === i.id;
           return (
             <div key={i.id} ref={hl ? highlightRef : null} className="rounded-2xl" style={hl ? { boxShadow: `0 0 0 3px ${T.coral}` } : undefined}>
-            <Card className="p-4">
+            <Card className="momo-queue-item p-4" style={todoVencido ? { borderColor: "#D66A59", background: "#FFF5F2" } : vencido || venceHoy ? { borderColor: "#E9A45F", background: vencido ? "#FFFAF2" : undefined } : undefined}>
               <div className="flex justify-between items-start gap-2">
                 <div className="font-bold text-sm leading-tight">{i.nombre}</div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: T.vainilla, color: T.choco2 }}>{i.cat}</span>
               </div>
               <div className="flex items-end gap-1 mt-2">
-                <span className="display text-2xl" style={{ color: bajo ? "#A03B2A" : T.choco }}>{i.stock}</span>
+                <span className="display text-2xl" style={{ color: bajo ? "#A03B2A" : T.coral }}>{i.stock}</span>
                 <span className="text-xs font-semibold mb-1" style={{ color: T.choco2 }}>{i.unidad} · mín {i.min}</span>
               </div>
               <div className="text-xs mt-1" style={{ color: T.choco2 }}>
@@ -3773,8 +6164,37 @@ function Inventario({ db, update, user, focus, refrescar }) {
               </div>
               <div className="flex gap-1.5 mt-2 flex-wrap">
                 {bajo && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Stock bajo</span>}
+                {todoVencido && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ background: "#A03B2A", color: "#fff" }}>Vencido · no usar</span>}
+                {lotesListos && vencido && !todoVencido && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>{lotSummary.expiredStock} {i.unidad} en cuarentena</span>}
+                {venceHoy && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Vence hoy</span>}
                 {vencePronto && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>Vence pronto</span>}
                 {i.costoEstimado && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>≈ costo estimado</span>}
+              </div>
+              {lotesListos && lotSummary.active.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {lotSummary.active.slice(0, 4).map((lot) => (
+                    <div key={lot.id} className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: lot.status === "Vencido" ? "#FFF0EC" : "#F4F8F1", color: lot.status === "Vencido" ? "#A03B2A" : "#3F6B42" }}>
+                      <span>{lot.id} · {lot.available} {i.unidad} · {lot.expiresAt ? `vence ${lot.expiresAt}` : "sin vencimiento"}</span>
+                      {lot.status === "Vencido" && ["Administrador","Cocina"].includes(user) && (
+                        <button className="underline font-extrabold" onClick={() => {
+                          setMotivoDesecho(`Vencido desde ${lot.expiresAt}`);
+                          setDesecharVencido({ ...lot, itemName: i.nombre, unit: i.unidad });
+                        }}>Desechar</button>
+                      )}
+                    </div>
+                  ))}
+                  {lotSummary.active.length > 4 && <div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>＋ {lotSummary.active.length - 4} lote(s) más</div>}
+                </div>
+              )}
+              <div className="flex gap-2 mt-3 pt-3 border-t flex-wrap" style={{ borderColor: T.border }}>
+                <Btn small kind="soft" onClick={() => abrirMovimiento(i, "Entrada")}>＋ Registrar compra</Btn>
+                <Btn small kind="ghost" onClick={() => abrirMovimiento(i, "Ajuste")}>Otro movimiento</Btn>
+                {!lotesListos && vencido && Number(i.stock) > 0 && ["Administrador","Cocina"].includes(user) && (
+                  <Btn small kind="danger" onClick={() => {
+                    setMotivoDesecho(`Vencido desde ${i.vence}`);
+                    setDesecharVencido({ itemId: i.id, itemName: i.nombre, available: Number(i.stock), unit: i.unidad, expiresAt: i.vence });
+                  }}>Desechar vencido</Btn>
+                )}
               </div>
             </Card>
             </div>
@@ -3857,7 +6277,7 @@ function Inventario({ db, update, user, focus, refrescar }) {
           {errIns && <div className="text-sm font-bold p-2.5 rounded-xl mb-3" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errIns}</div>}
           <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>El stock inicial quedará registrado como un movimiento de entrada (fecha de compra: hoy).</div>
           <div className="flex gap-2">
-            <Btn disabled={enviando} onClick={async () => {
+            <BtnAsync textoEnVuelo="Creando…" disabled={enviando} onClick={async () => {
               // Centinelas "➕ Nueva…" (solo admin): el valor final sale del input de texto.
               const catFinal = fi.cat === NUEVA_CAT ? (fi.catNueva || "").trim() : fi.cat.trim();
               const ubiFinal = fi.ubicacion === NUEVA_UBI ? (fi.ubiNueva || "").trim() : fi.ubicacion.trim();
@@ -3866,9 +6286,10 @@ function Inventario({ db, update, user, focus, refrescar }) {
               if (!catFinal) { setErrIns("Indica la categoría."); return; }
               setErrIns("");
               setEnviando(true);
+              const nombreCreado = fi.nombre.trim();
               try {
                 await crearInsumo({
-                  nombre: fi.nombre.trim(), cat: catFinal, unidad: fi.unidad,
+                  nombre: nombreCreado, cat: catFinal, unidad: fi.unidad,
                   stock: parseFloat(fi.stock) || 0, minimo: parseFloat(fi.min) || 0,
                   costo_total: +fi.costoTotal || 0, proveedor: fi.proveedor.trim(),
                   vence: fi.vence || null, ubicacion: ubiFinal,
@@ -3880,15 +6301,16 @@ function Inventario({ db, update, user, focus, refrescar }) {
               }
               setEnviando(false);
               setNuevoIns(false);
-              await refrescarSilencioso(() => setAvisoInv({ titulo: "Acción aplicada, vista desactualizada", texto: "El insumo se creó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." }));
-            }}>Crear insumo</Btn>
+              toast("ok", `✓ Insumo ${nombreCreado} creado`);
+              await refrescarSilencioso(() => toast("alert", "El insumo se creó, pero no se pudo actualizar la vista. Recargá la página."));
+            }}>Crear insumo</BtnAsync>
             <Btn kind="ghost" disabled={enviando} onClick={() => setNuevoIns(false)}>Cancelar</Btn>
           </div>
         </Modal>
       )}
 
       {mov && (
-        <Modal title="Registrar movimiento de inventario" onClose={() => setMov(false)}>
+        <Modal title={selMovIt ? `Movimiento · ${selMovIt.nombre}` : "Registrar movimiento de inventario"} onClose={() => setMov(false)}>
           <Field label="Tipo"><Select options={["Entrada","Salida","Ajuste","Merma","Uso en producción"]} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })} /></Field>
           <Field label="Ítem"><Select placeholder="Elegir ítem…" options={db.inventory_items.map((i) => i.nombre)} value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} /></Field>
           {form.tipo === "Entrada" ? (
@@ -3900,6 +6322,9 @@ function Inventario({ db, update, user, focus, refrescar }) {
                 </div>
               </Field>
               <Field label="Costo total de la compra"><Input type="number" min="0" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} placeholder="Lo que pagaste en total (factura)" /></Field>
+              <Field label="Vencimiento de este lote (opcional)"><Input type="date" min={hoyISO()} value={form.vence} onChange={(e) => setForm({ ...form, vence: e.target.value })} /></Field>
+              <Field label="Proveedor de este lote"><Input value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })} /></Field>
+              <Field label="Ubicación"><Input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} /></Field>
             </>
           ) : (
             <Field label="Cantidad (ej: +5, -0.5)"><Input value={form.cant} onChange={(e) => setForm({ ...form, cant: e.target.value })} /></Field>
@@ -3922,28 +6347,89 @@ function Inventario({ db, update, user, focus, refrescar }) {
             )
           )}
           <div className="flex gap-2 mt-2">
-            <Btn disabled={enviando} onClick={async () => {
-              if (!form.item || !form.cant) return;
-              if (form.tipo === "Entrada" && (!(+form.cant > 0) || form.precio === "" || +form.precio < 0)) return;
+            <BtnAsync textoEnVuelo="Guardando…" disabled={enviando} onClick={async () => {
+              if (!form.item || !form.cant) { setAvisoInv({ titulo: "Faltan datos", texto: "Elegí el insumo e indicá una cantidad." }); return; }
+              const cantidadMovimiento = Number(form.cant);
+              if (!Number.isFinite(cantidadMovimiento) || cantidadMovimiento === 0) { setAvisoInv({ titulo: "Cantidad inválida", texto: "Ingresá una cantidad numérica distinta de cero." }); return; }
+              if (form.tipo === "Entrada" && (!(cantidadMovimiento > 0) || form.precio === "" || !Number.isFinite(Number(form.precio)) || +form.precio < 0)) { setAvisoInv({ titulo: "Entrada inválida", texto: "La cantidad debe ser mayor que cero y el costo total no puede ser negativo." }); return; }
               const it = db.inventory_items.find((i) => i.nombre === form.item);
               if (!it) return;
+              const itemVencido = it.vence && diasEntre(hoyISO(), it.vence) < 0;
+              if (itemVencido && ["Salida", "Uso en producción"].includes(form.tipo)) { setAvisoInv({ titulo: "Insumo vencido", texto: `${it.nombre} venció el ${it.vence}. Registrá una Merma para retirarlo; no puede usarse ni salir como inventario válido.` }); return; }
+              const tipoMov = form.tipo, nombreMov = it.nombre;
               setEnviando(true);
               try {
                 if (form.tipo === "Entrada") {
-                  await entradaInsumo(it.id, +form.cant, +form.precio || 0, form.nota);
+                  if (db.inventoryLotsReady) {
+                    await entradaInsumoLote({ itemId: it.id, cant: +form.cant, costoTotal: +form.precio || 0, vence: form.vence || null, proveedor: form.proveedor, ubicacion: form.ubicacion, nota: form.nota });
+                  } else {
+                    await entradaInsumo(it.id, +form.cant, +form.precio || 0, form.nota);
+                  }
                 } else {
-                  await movimientoInsumo(it.id, form.tipo, parseFloat(form.cant), form.nota);
+                  await movimientoInsumo(it.id, form.tipo, cantidadMovimiento, form.nota);
                 }
               } catch (e) {
-                setAvisoInv({ titulo: "No se pudo registrar el movimiento", texto: e.message });
+                toast("error", "No se pudo registrar el movimiento: " + e.message);
                 setEnviando(false);
                 return;
               }
               setEnviando(false);
-              setMov(false); setForm({ tipo: "Entrada", item: "", cant: "", precio: "", nota: "" });
-              await refrescarSilencioso(() => setAvisoInv({ titulo: "Acción aplicada, vista desactualizada", texto: "El movimiento se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." }));
-            }}>Guardar</Btn>
+              setMov(false); setForm({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "" });
+              toast("ok", `✓ ${tipoMov} registrada · ${nombreMov}`);
+              await refrescarSilencioso(() => toast("alert", "El movimiento se registró, pero no se pudo actualizar la vista. Recargá la página."));
+            }}>Guardar</BtnAsync>
             <Btn kind="ghost" disabled={enviando} onClick={() => setMov(false)}>Cancelar</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {desecharVencido && (
+        <Modal title="Desechar insumo vencido" onClose={() => { if (!enviando) setDesecharVencido(null); }}>
+          <div className="rounded-2xl p-4 mb-4" style={{ background: "#FFF1ED", border: "1px solid #E9A08F" }}>
+            <div className="text-xs font-extrabold uppercase tracking-[.12em]" style={{ color: "#A03B2A" }}>Merma con trazabilidad</div>
+            <div className="display text-xl mt-1" style={{ color: T.choco }}>{desecharVencido.itemName}</div>
+            <div className="text-sm mt-1" style={{ color: T.choco2 }}>
+              Se retirarán <b>{desecharVencido.available} {desecharVencido.unit}</b> del {desecharVencido.id ? `lote ${desecharVencido.id}, ` : ""}vencido el {desecharVencido.expiresAt}. El insumo seguirá visible y el movimiento quedará en el historial.
+            </div>
+          </div>
+          <Field label="Motivo del desecho"><Input value={motivoDesecho} onChange={(e) => setMotivoDesecho(e.target.value)} placeholder="Ej: olor alterado, vencimiento, cadena de frío" /></Field>
+          <div className="flex gap-2 mt-2">
+            <BtnAsync kind="danger" textoEnVuelo="Desechando…" disabled={enviando} onClick={async () => {
+              const stockActual = Number(desecharVencido.available);
+              const nombreDesecho = desecharVencido.nombre;
+              if (!(stockActual > 0)) {
+                setDesecharVencido(null);
+                setAvisoInv({ titulo: "Sin stock para desechar", texto: "Este insumo ya está en cero." });
+                return;
+              }
+              if (!motivoDesecho.trim()) {
+                setAvisoInv({ titulo: "Falta el motivo", texto: "Indicá por qué se desecha para conservar la trazabilidad de la merma." });
+                return;
+              }
+              setEnviando(true);
+              try {
+                if (desecharVencido.id && db.inventoryLotsReady) {
+                  await desecharLoteInsumo(desecharVencido.id, motivoDesecho.trim());
+                } else {
+                  await movimientoInsumo(
+                    desecharVencido.itemId,
+                    "Merma",
+                    -stockActual,
+                    `Desecho por vencimiento ${desecharVencido.expiresAt} · ${motivoDesecho.trim()}`,
+                  );
+                }
+              } catch (e) {
+                toast("error", "No se pudo desechar el insumo: " + e.message);
+                setEnviando(false);
+                return;
+              }
+              setEnviando(false);
+              setDesecharVencido(null);
+              setMotivoDesecho("");
+              toast("ok", `✓ Merma registrada · ${nombreDesecho}`);
+              await refrescarSilencioso(() => toast("alert", "El stock quedó retirado, pero no se pudo actualizar la vista. Recargá la página."));
+            }}>Confirmar desecho</BtnAsync>
+            <Btn kind="ghost" disabled={enviando} onClick={() => setDesecharVencido(null)}>Conservar insumo</Btn>
           </div>
         </Modal>
       )}
@@ -3965,10 +6451,10 @@ function Inventario({ db, update, user, focus, refrescar }) {
 const CAT_EMOJI = { "Momos Signature": "🐱", "Cajas y Combos": "🎁", "Momos Cuchara": "🥄", "Momos Antojos": "🥞", "Momos Bebidas": "🥤" };
 
 function nuevoProductoVacio() {
-  return { nombre: "", cat: "Momos Signature", tipo: "momo", precio: "", precioRappi: "", costo: "", prep: "", frio: true, lejano: false, desc: "", comboSize: "", componentProductIds: [], empaqueItem: "" };
+  return { nombre: "", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: "", precioRappi: "", costo: "", prep: "", frio: true, lejano: false, desc: "", comboSize: "", componentProductIds: [], empaqueItem: "", colchonProduccion: 0 };
 }
 
-function Productos({ db, update, user }) {
+function Productos({ db, user, refrescar, serverDataReady }) {
   const cats = ["Momos Signature","Cajas y Combos","Momos Cuchara","Momos Antojos","Momos Bebidas"];
   const [recetaDe, setRecetaDe] = useState(null); // productId con receta abierta
   const [linea, setLinea] = useState({ itemId: "", cantidad: "" });
@@ -3976,30 +6462,52 @@ function Productos({ db, update, user }) {
   const [editandoProd, setEditandoProd] = useState(null);
   const [form, setForm] = useState(nuevoProductoVacio());
   const [errProd, setErrProd] = useState("");
+  const [guardandoProd, setGuardandoProd] = useState(false);
+  const [recetaDraft, setRecetaDraft] = useState([]);
+  const [recetaSucia, setRecetaSucia] = useState(false);
+  const [errReceta, setErrReceta] = useState("");
+  const [guardandoReceta, setGuardandoReceta] = useState(false);
 
   const prodReceta = recetaDe ? db.products.find((p) => p.id === recetaDe) : null;
+  const puedeEditar = user === "Administrador" && serverDataReady && Boolean(db.productsServerReady);
+  const costoRecetaDraft = recetaDraft.reduce((total, line) => {
+    const item = db.inventory_items.find((candidate) => candidate.id === line.itemId);
+    return total + Number(line.cantidad || 0) * Number(item?.costo || 0);
+  }, 0);
 
-  function guardarNuevo() {
+  function payloadProducto() {
+    return {
+      nombre: form.nombre.trim(), cat: form.cat, tipo: form.tipo,
+      especie: form.tipo === "momo" ? form.especie : null,
+      precio: Number(form.precio), precio_rappi: Number(form.precioRappi) || null,
+      costo: Number(form.costo), prep: Number(form.prep) || 0,
+      frio: Boolean(form.frio), lejano: Boolean(form.lejano), descr: form.desc || "",
+      combo_size: form.tipo === "combo" ? Number(form.comboSize) : null,
+      component_product_ids: form.tipo === "combo" ? [...(form.componentProductIds || [])] : [],
+      empaque_item_id: form.tipo === "combo" ? form.empaqueItem : null,
+      colchon_produccion: form.tipo === "momo" ? Number(form.colchonProduccion) || 0 : 0,
+    };
+  }
+
+  async function guardarNuevo() {
     const nombre = form.nombre.trim();
     if (!nombre) { setErrProd("Falta el nombre"); return; }
     if (!(+form.precio > 0)) { setErrProd("Precio inválido"); return; }
     if (!(+form.costo >= 0)) { setErrProd("Costo inválido"); return; }
+    if (form.tipo === "momo" && !["gato","perro"].includes(form.especie)) { setErrProd("Elegí la especie del momo."); return; }
     if (form.tipo === "combo") {
       if (!(+form.comboSize > 0)) { setErrProd("El combo necesita un tamaño (cuántos momos por caja)."); return; }
       if (!(form.componentProductIds || []).length) { setErrProd("Elegí al menos un momo componente."); return; }
       if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
     }
-    const precioRappi = +form.precioRappi > 0 ? +form.precioRappi : Math.round(+form.precio * 1.25);
-    update((d) => {
-      const id = nextId(d, "product", "PR", 2);
-      const rec = { id, nombre, cat: form.cat, tipo: form.tipo, precio: +form.precio, precioRappi, costo: +form.costo, prep: +form.prep || 10, frio: !!form.frio, lejano: !!form.lejano, activo: true, desc: form.desc || "", atributos: atributosDeTipo(form.tipo) };
-      if (form.tipo === "momo") rec.stock = 0;
-      if (form.tipo === "combo") { rec.comboSize = +form.comboSize; rec.componentProductIds = [...(form.componentProductIds || [])]; rec.empaqueItem = form.empaqueItem; }
-      d.products.push(rec);
-      addAudit(d, { user, entidad: "Producto", entidadId: id, accion: "Producto creado", a: rec.nombre });
-    });
-    setAbrirForm(false);
-    setErrProd("");
+    setGuardandoProd(true);
+    try {
+      await crearProducto(payloadProducto());
+      await refrescar();
+      setAbrirForm(false);
+      setErrProd("");
+    } catch (error) { setErrProd(error.message); }
+    finally { setGuardandoProd(false); }
   }
 
   async function guardarEdicion() {
@@ -4007,44 +6515,20 @@ function Productos({ db, update, user }) {
     if (!nombre) { setErrProd("Falta el nombre"); return; }
     if (!(+form.precio > 0)) { setErrProd("Precio inválido"); return; }
     if (!(+form.costo >= 0)) { setErrProd("Costo inválido"); return; }
+    if (form.tipo === "momo" && !["gato","perro"].includes(form.especie)) { setErrProd("Elegí la especie del momo."); return; }
     if (form.tipo === "combo") {
       if (!(+form.comboSize > 0)) { setErrProd("El combo necesita un tamaño (cuántos momos por caja)."); return; }
       if (!(form.componentProductIds || []).length) { setErrProd("Elegí al menos un momo componente."); return; }
       if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
     }
-    /* Variantes 3: el colchón se persiste vía RPC (set_colchon_produccion,
-       gate is_admin en el server) ANTES del guardado local — si el server lo
-       rechaza (no admin, producto no server-side), la edición no continúa y
-       el error se muestra. El resto de campos sigue el camino local de
-       siempre (deuda conocida del módulo). */
-    if (editandoProd.tipo === "momo" && user === "Administrador" && (+form.colchonProduccion || 0) !== (editandoProd.colchonProduccion ?? 0)) {
-      try {
-        await setColchonProduccion(editandoProd.id, +form.colchonProduccion || 0);
-      } catch (e) {
-        setErrProd("No se pudo guardar el colchón: " + e.message);
-        return;
-      }
-    }
-    const precioRappi = +form.precioRappi > 0 ? +form.precioRappi : Math.round(+form.precio * 1.25);
-    update((d) => {
-      const x = d.products.find((y) => y.id === editandoProd.id);
-      if (!x) return;
-      const dePrecio = x.precio, deCosto = x.costo;
-      x.nombre = nombre;
-      x.cat = form.cat;
-      x.precio = +form.precio;
-      x.precioRappi = precioRappi;
-      x.costo = +form.costo;
-      x.prep = +form.prep || x.prep;
-      x.frio = !!form.frio;
-      x.lejano = !!form.lejano;
-      x.desc = form.desc || "";
-      x.atributos = atributosDeTipo(x.tipo); // siempre derivado del tipo (inmutable en edición)
-      if (x.tipo === "momo") x.colchonProduccion = +form.colchonProduccion || 0; // espejo local del valor ya persistido vía RPC
-      if (x.tipo === "combo") { x.comboSize = +form.comboSize; x.componentProductIds = [...(form.componentProductIds || [])]; x.empaqueItem = form.empaqueItem; }
-      addAudit(d, { user, entidad: "Producto", entidadId: x.id, accion: "Producto editado", de: "$" + dePrecio + "/" + deCosto, a: "$" + x.precio + "/" + x.costo });
-    });
-    setAbrirForm(false);
+    setGuardandoProd(true);
+    try {
+      await editarProducto(editandoProd.id, payloadProducto());
+      await refrescar();
+      setAbrirForm(false);
+      setErrProd("");
+    } catch (error) { setErrProd(error.message); }
+    finally { setGuardandoProd(false); }
   }
 
   return (
@@ -4052,8 +6536,10 @@ function Productos({ db, update, user }) {
       <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: T.vainilla, color: T.choco2 }}>
         🧾 Cada producto puede tener una receta (insumos por unidad). Al registrar un lote o al pasar a "En producción" un producto que se prepara al momento, los insumos se descuentan solos del inventario.
       </div>
+      {!puedeEditar && <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: "#F7ECD9", color: T.choco2 }}>{user === "Administrador" && !db.productsServerReady ? "Catálogo en modo consulta hasta aplicar la migración 13 de Productos." : "Catálogo en modo consulta. Solo Administrador puede modificar productos y recetas."}</div>}
+      {!abrirForm && errProd && <div className="text-sm font-bold p-2.5 rounded-xl mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errProd}</div>}
       <div className="flex justify-end mb-3">
-        <Btn small kind="rosa" onClick={() => { setForm(nuevoProductoVacio()); setEditandoProd(null); setErrProd(""); setAbrirForm(true); }}>＋ Nuevo producto</Btn>
+        {puedeEditar && <Btn small kind="rosa" onClick={() => { setForm(nuevoProductoVacio()); setEditandoProd(null); setErrProd(""); setAbrirForm(true); }}>＋ Nuevo producto</Btn>}
       </div>
       {cats.map((cat) => (
         <div key={cat}>
@@ -4087,17 +6573,16 @@ function Productos({ db, update, user }) {
                     </span>
                   </div>
                   <div className="mt-3 flex gap-2 flex-wrap items-center">
-                    <Btn small kind="rosa" onClick={() => { setLinea({ itemId: "", cantidad: "" }); setRecetaDe(p.id); }}>
+                    <Btn small kind="rosa" onClick={() => { setLinea({ itemId: "", cantidad: "" }); setRecetaDraft(recipeLines(db,p.id).map((line) => ({ ...line }))); setRecetaSucia(false); setErrReceta(""); setRecetaDe(p.id); }}>
                       🧾 Receta {recipeLines(db, p.id).length > 0 && `(${recipeLines(db, p.id).length})`}
                     </Btn>
-                    <Btn small kind="ghost" onClick={() => { setEditandoProd(p); setForm({ nombre: p.nombre, cat: p.cat, tipo: p.tipo, precio: p.precio, precioRappi: p.precioRappi, costo: p.costo, prep: p.prep, frio: !!p.frio, lejano: !!p.lejano, desc: p.desc || "", comboSize: p.comboSize || "", componentProductIds: [...(p.componentProductIds || [])], empaqueItem: p.empaqueItem || "", colchonProduccion: p.colchonProduccion ?? 0 }); setErrProd(""); setAbrirForm(true); }}>✏️ Editar</Btn>
-                    <Btn small kind={p.activo ? "ghost" : "soft"} onClick={() => update((d) => {
-                      const x = d.products.find((y) => y.id === p.id);
-                      x.activo = !x.activo;
-                      addAudit(d, { user, entidad: "Producto", entidadId: p.id, accion: x.activo ? "Activado en menú" : "Desactivado del menú", a: p.nombre });
-                    })}>
+                    {puedeEditar && <Btn small kind="ghost" onClick={() => { setEditandoProd(p); setForm({ nombre: p.nombre, cat: p.cat, tipo: p.tipo, especie: p.especie || "gato", precio: p.precio, precioRappi: p.precioRappi, costo: p.costo, prep: p.prep, frio: !!p.frio, lejano: !!p.lejano, desc: p.desc || "", comboSize: p.comboSize || "", componentProductIds: [...(p.componentProductIds || [])], empaqueItem: p.empaqueItem || "", colchonProduccion: p.colchonProduccion ?? 0 }); setErrProd(""); setAbrirForm(true); }}>✏️ Editar</Btn>}
+                    {puedeEditar && <Btn small kind={p.activo ? "ghost" : "soft"} onClick={async () => {
+                      try { await setProductoActivo(p.id,!p.activo); await refrescar(); }
+                      catch (error) { setErrProd(error.message); }
+                    }}>
                       {p.activo ? "Desactivar del menú" : "Activar en el menú"}
-                    </Btn>
+                    </Btn>}
                   </div>
                   {recipeLines(db, p.id).length > 0 && (
                     <div className="text-[11px] font-bold mt-2" style={{ color: T.choco2 }}>
@@ -4122,6 +6607,7 @@ function Productos({ db, update, user }) {
               ? <Select options={[form.tipo]} value={form.tipo} disabled onChange={() => {}} />
               : <Select options={["momo", "pedido", "combo"]} value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))} />}
           </Field>
+          {form.tipo === "momo" && <Field label="Especie"><Select options={["gato","perro"]} value={form.especie} onChange={(e) => setForm({ ...form, especie: e.target.value })} /></Field>}
           <div className="grid grid-cols-2 gap-2">
             <Field label="Precio"><Input type="number" min="0" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></Field>
             <Field label="Precio Rappi"><Input type="number" min="0" value={form.precioRappi} onChange={(e) => setForm({ ...form, precioRappi: e.target.value })} /></Field>
@@ -4181,7 +6667,7 @@ function Productos({ db, update, user }) {
           </Field>
           {errProd && <div className="text-sm font-bold mb-3" style={{ color: T.coral }}>{errProd}</div>}
           <div className="flex justify-end">
-            <Btn kind="rosa" onClick={editandoProd ? guardarEdicion : guardarNuevo}>Guardar</Btn>
+            <Btn kind="rosa" disabled={guardandoProd} onClick={editandoProd ? guardarEdicion : guardarNuevo}>{guardandoProd ? "Guardando…" : "Guardar"}</Btn>
           </div>
         </Modal>
       )}
@@ -4192,13 +6678,13 @@ function Productos({ db, update, user }) {
             Cantidades por <b>1 unidad</b> de producto. {prodReceta.tipo === "momo" ? "Se descuentan al registrar un lote de producción." : prodReceta.tipo === "pedido" ? "Se descuentan cuando el pedido pasa a \u201cEn producción\u201d." : "Los combos descuentan momos y cajas automáticamente; agrega aquí solo extras (lazo, tarjeta…)."}
           </div>
 
-          {recipeLines(db, prodReceta.id).length === 0 && (
+          {recetaDraft.length === 0 && (
             <div className="text-sm font-semibold mb-3 p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>
               Este producto aún no tiene receta. Agrega el primer insumo abajo.
             </div>
           )}
 
-          {recipeLines(db, prodReceta.id).map((l) => {
+          {recetaDraft.map((l) => {
             const it = db.inventory_items.find((i) => i.id === l.itemId);
             if (!it) return null;
             return (
@@ -4209,25 +6695,23 @@ function Productos({ db, update, user }) {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <input type="number" min="0" step="0.01" value={l.cantidad}
-                    onChange={(e) => update((d) => { const x = d.recipes.find((y) => y.id === l.id); x.cantidad = parseFloat(e.target.value) || 0; })}
+                    disabled={!puedeEditar}
+                    onChange={(e) => { setRecetaDraft((lines) => lines.map((line) => line.itemId === l.itemId ? { ...line, cantidad: e.target.value } : line)); setRecetaSucia(true); }}
                     className="w-20 rounded-xl px-2 py-1.5 text-sm border text-right font-bold" style={inputStyle} aria-label={`Cantidad de ${it.nombre}`} />
                   <span className="text-xs font-bold" style={{ color: T.choco2 }}>{it.unidad}</span>
                   <span className="text-xs font-bold w-16 text-right">{fmt(it.costo * l.cantidad)}</span>
-                  <button aria-label={`Quitar ${it.nombre}`} onClick={() => update((d) => {
-                    d.recipes = d.recipes.filter((y) => y.id !== l.id);
-                    addAudit(d, { user, entidad: "Receta", entidadId: prodReceta.id, accion: "Insumo quitado de receta", a: it.nombre });
-                  })} className="w-7 h-7 rounded-full font-bold text-xs" style={{ background: "#F6D4CD", color: "#A03B2A" }}>✕</button>
+                  {puedeEditar && <button aria-label={`Quitar ${it.nombre}`} onClick={() => { setRecetaDraft((lines) => lines.filter((line) => line.itemId !== l.itemId)); setRecetaSucia(true); }} className="w-7 h-7 rounded-full font-bold text-xs" style={{ background: "#F6D4CD", color: "#A03B2A" }}>✕</button>}
                 </div>
               </Card>
             );
           })}
 
-          <Card className="p-3 mb-3">
+          {puedeEditar && <Card className="p-3 mb-3">
             <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>AGREGAR INSUMO A LA RECETA</div>
             <div className="flex flex-wrap gap-2 items-center">
               <select value={linea.itemId} onChange={(e) => setLinea({ ...linea, itemId: e.target.value })} className="flex-1 min-w-[160px] rounded-xl px-2 py-2 text-sm border font-semibold" style={inputStyle}>
                 <option value="">Elegir insumo…</option>
-                {db.inventory_items.filter((i) => !recipeLines(db, prodReceta.id).some((l) => l.itemId === i.id)).map((i) => (
+                {db.inventory_items.filter((i) => !recetaDraft.some((l) => l.itemId === i.id)).map((i) => (
                   <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>
                 ))}
               </select>
@@ -4235,33 +6719,44 @@ function Productos({ db, update, user }) {
                 placeholder="Cant." className="w-24 rounded-xl px-2 py-2 text-sm border text-right font-bold" style={inputStyle} aria-label="Cantidad por unidad" />
               <Btn small kind="rosa" onClick={() => {
                 if (!linea.itemId || !parseFloat(linea.cantidad)) return;
-                update((d) => {
-                  d.recipes.push({ id: nextId(d, "recipe", "RC"), productId: prodReceta.id, itemId: linea.itemId, cantidad: parseFloat(linea.cantidad) });
-                  const it = d.inventory_items.find((i) => i.id === linea.itemId);
-                  addAudit(d, { user, entidad: "Receta", entidadId: prodReceta.id, accion: "Insumo agregado a receta", a: (it ? it.nombre : linea.itemId) + " × " + linea.cantidad });
-                });
+                setRecetaDraft((lines) => [...lines,{ id: `draft-${linea.itemId}`, productId: prodReceta.id, itemId: linea.itemId, cantidad: parseFloat(linea.cantidad) }]);
+                setRecetaSucia(true);
                 setLinea({ itemId: "", cantidad: "" });
               }}>＋ Agregar</Btn>
             </div>
             <div className="text-[11px] font-semibold mt-2" style={{ color: T.choco2 }}>¿No está el insumo? Créalo primero en Inventario → ＋ Nuevo insumo.</div>
-          </Card>
+          </Card>}
+
+          {errReceta && <div className="text-sm font-bold p-2.5 rounded-xl mb-3" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errReceta}</div>}
+          {puedeEditar && <div className="flex justify-end mb-3">
+            <Btn kind="rosa" disabled={!recetaSucia || guardandoReceta} onClick={async () => {
+              if (recetaDraft.some((line) => !(Number(line.cantidad)>0))) { setErrReceta("Todas las cantidades deben ser mayores que cero."); return; }
+              setGuardandoReceta(true); setErrReceta("");
+              try {
+                await guardarRecetaProducto(prodReceta.id,recetaDraft);
+                await refrescar();
+                setRecetaSucia(false);
+              } catch (error) { setErrReceta(error.message); }
+              finally { setGuardandoReceta(false); }
+            }}>{guardandoReceta ? "Guardando receta…" : recetaSucia ? "Guardar receta" : "Receta guardada ✓"}</Btn>
+          </div>}
 
           <Card className="p-4">
             <div className="flex justify-between items-center text-sm">
               <span className="font-semibold">Costo estimado por receta (1 unidad)</span>
-              <b className="display text-lg" style={{ color: T.coral }}>{fmt(recipeCost(db, prodReceta.id))}</b>
+              <b className="display text-lg" style={{ color: T.coral }}>{fmt(costoRecetaDraft)}</b>
             </div>
             <div className="flex justify-between items-center text-xs mt-1" style={{ color: T.choco2 }}>
               <span>Costo registrado del producto</span><b>{fmt(prodReceta.costo)}</b>
             </div>
-            {recipeLines(db, prodReceta.id).length > 0 && Math.round(recipeCost(db, prodReceta.id)) !== prodReceta.costo && (
+            {puedeEditar && recetaDraft.length > 0 && Math.round(costoRecetaDraft) !== prodReceta.costo && (
               <div className="mt-3">
-                <Btn small kind="soft" onClick={() => update((d) => {
-                  const x = d.products.find((y) => y.id === prodReceta.id);
-                  const nuevo = Math.round(recipeCost(d, x.id));
-                  addAudit(d, { user, entidad: "Producto", entidadId: x.id, accion: "Costo actualizado desde receta", de: fmt(x.costo), a: fmt(nuevo) });
-                  x.costo = nuevo;
-                })}>Actualizar costo del producto con la receta</Btn>
+                <Btn small kind="soft" disabled={recetaSucia || guardandoReceta} onClick={async () => {
+                  setGuardandoReceta(true); setErrReceta("");
+                  try { await sincronizarCostoProducto(prodReceta.id); await refrescar(); }
+                  catch (error) { setErrReceta(error.message); }
+                  finally { setGuardandoReceta(false); }
+                }}>Actualizar costo del producto con la receta</Btn>
               </div>
             )}
           </Card>
@@ -4285,7 +6780,11 @@ function Domicilios({ db, update, user, refrescar }) {
 
   const subsidio = db.deliveries.reduce((sm, d) => sm + Math.max(0, d.costoReal - d.cobrado), 0);
   const excedente = db.deliveries.reduce((sm, d) => sm + Math.max(0, d.cobrado - d.costoReal), 0);
-  const pendientes = db.orders.filter((o) => ["Empacado","Listo para despacho"].includes(o.estado) && !db.deliveries.some((d) => d.orderId === o.id));
+  const pedidosSinDomicilio = db.orders
+    .filter((o) => !["Entregado", "Cancelado"].includes(o.estado))
+    .filter((o) => o.canal !== "Rappi")
+    .filter((o) => !db.deliveries.some((delivery) => delivery.orderId === o.id && deliveryBlocksNewRequest(delivery)));
+  const pendientes = pedidosSinDomicilio.filter((o) => ["Empacado","Listo para despacho"].includes(o.estado));
 
   function exportar() {
     downloadCSV("domicilios",
@@ -4303,7 +6802,7 @@ function Domicilios({ db, update, user, refrescar }) {
       </div>
 
       <div className="mb-4 flex gap-2">
-        <Btn onClick={() => setNuevo(true)}>＋ Solicitar domicilio</Btn>
+        <Btn onClick={() => { setForm((actual) => ({ ...actual, orderId: "" })); setNuevo(true); }}>＋ Solicitar domicilio</Btn>
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
       </div>
 
@@ -4384,7 +6883,7 @@ function Domicilios({ db, update, user, refrescar }) {
       {nuevo && (
         <Modal title="Solicitar domicilio" onClose={() => setNuevo(false)}>
           <Field label="Pedido">
-            <Select placeholder="Elegir pedido…" options={db.orders.filter((o) => !["Entregado","Cancelado"].includes(o.estado)).filter((o) => o.canal !== "Rappi").map((o) => o.id)} value={form.orderId} onChange={(e) => {
+            <Select placeholder="Elegir pedido…" options={pedidosSinDomicilio.map((o) => o.id)} value={form.orderId} onChange={(e) => {
               const o = db.orders.find((x) => x.id === e.target.value);
               setForm({ ...form, orderId: e.target.value, zona: o ? o.zona : form.zona });
             }} />
@@ -5132,11 +7631,49 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
   const [nuevaFig, setNuevaFig] = useState({ nombre: "", especie: "gato", gramaje: "150 g" });
   const [nuevoTop, setNuevoTop] = useState({ nombre: "", precio: "", insumoId: "" });
   const s = db.settings;
+  const [delayDraft, setDelayDraft] = useState(() => normalizeKitchenDelaySettings(s));
+  const [delayMsg, setDelayMsg] = useState("");
+  const [guardandoDemoras, setGuardandoDemoras] = useState(false);
   const listas = [
     ["saboresFrutales", "Sabores frutales"], ["saboresCremosos", "Sabores cremosos"],
     ["rellenos", "Rellenos"], ["salsas", "Salsas"],
     ["pagos", "Métodos de pago"], ["proveedores", "Proveedores de domicilio"],
   ];
+
+  useEffect(() => {
+    setDelayDraft(normalizeKitchenDelaySettings(s));
+  }, [s.demoraCocinaMin, s.demoraCocinaUrgenteMin, s.demoraEmpaqueMin, s.demoraEmpaqueUrgenteMin, s.demoraRepeticionMin]);
+
+  async function guardarTiemposDemora() {
+    if (guardandoDemoras) return;
+    const values = Object.fromEntries(Object.entries(delayDraft).map(([key, value]) => [key, Number(value)]));
+    if (Object.values(values).some((value) => !Number.isInteger(value) || value < 1)) {
+      setDelayMsg("⚠️ Todos los tiempos deben ser minutos enteros mayores que cero.");
+      return;
+    }
+    if (values.demoraCocinaUrgenteMin < values.demoraCocinaMin || values.demoraEmpaqueUrgenteMin < values.demoraEmpaqueMin) {
+      setDelayMsg("⚠️ El tiempo urgente no puede ser menor que el primer aviso de su área.");
+      return;
+    }
+    const next = normalizeKitchenDelaySettings(values);
+    setGuardandoDemoras(true);
+    setDelayMsg("");
+    try {
+      await guardarConfiguracionDemoras(next);
+      update((d) => {
+        Object.assign(d.settings, next);
+        addAudit(d, { user, entidad: "Configuración", entidadId: "demoras_pedidos", accion: "Tiempos actualizados", a: `Cocina ${next.demoraCocinaMin}/${next.demoraCocinaUrgenteMin} · Empaque ${next.demoraEmpaqueMin}/${next.demoraEmpaqueUrgenteMin} · cada ${next.demoraRepeticionMin} min` });
+      });
+      setDelayDraft(next);
+      setDelayMsg("✓ Tiempos guardados para todos los equipos.");
+      toast("ok", "Tiempos de pedidos demorados actualizados");
+      try { await refrescar?.(); } catch { /* la copia local ya refleja el cambio guardado */ }
+    } catch (error) {
+      setDelayMsg("⚠️ No se pudieron guardar los tiempos: " + error.message);
+    } finally {
+      setGuardandoDemoras(false);
+    }
+  }
 
   function agregar(k) {
     const v = (nuevoItem[k] || "").trim();
@@ -5214,6 +7751,57 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
               className="w-24 rounded-xl px-2 py-1.5 text-sm border text-right font-bold" style={inputStyle} />
             <span className="text-xs font-bold" style={{ color: T.choco2 }}>h</span>
           </div>
+        </div>
+      </Card>
+
+      <SectionTitle>⏱️ Tiempos de pedidos demorados</SectionTitle>
+      <Card className="p-4" style={{ background: "linear-gradient(145deg, #fff, #FFF9F1)" }}>
+        <div className="flex items-start gap-3 mb-4">
+          <span className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0" style={{ background: T.coralSoft, color: T.coral }} aria-hidden="true">⏱</span>
+          <div>
+            <div className="text-sm font-bold">Ritmo operativo por área</div>
+            <div className="text-xs font-semibold mt-0.5 leading-relaxed" style={{ color: T.choco2 }}>
+              Define cuándo Momo Ops avisa, cuándo escala una orden a urgente y cada cuánto vuelve a recordarla. Los cambios se comparten con Cocina, Empaque y Administración.
+            </div>
+          </div>
+        </div>
+        <div className="grid lg:grid-cols-[1fr_1fr_.72fr] gap-3">
+          <div className="rounded-2xl border p-3" style={{ background: T.soft, borderColor: T.border }}>
+            <div className="flex items-center gap-2 mb-3"><span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: T.rosa }} aria-hidden="true">👩‍🍳</span><div><div className="text-sm font-bold">Cocina</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Preparación del pedido</div></div></div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Primer aviso">
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraCocinaMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraCocinaMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+              </Field>
+              <Field label="Urgente desde">
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraCocinaUrgenteMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraCocinaUrgenteMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+              </Field>
+            </div>
+            <div className="text-[10px] font-bold rounded-xl px-2.5 py-2" style={{ background: T.rosa, color: "#7C3F4B" }}>Aviso a los {delayDraft.demoraCocinaMin} min → urgente a los {delayDraft.demoraCocinaUrgenteMin} min</div>
+          </div>
+          <div className="rounded-2xl border p-3" style={{ background: T.soft, borderColor: T.border }}>
+            <div className="flex items-center gap-2 mb-3"><span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#DCE7F2" }} aria-hidden="true">📦</span><div><div className="text-sm font-bold">Empaque</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Alistamiento y sello</div></div></div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Primer aviso">
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraEmpaqueMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraEmpaqueMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+              </Field>
+              <Field label="Urgente desde">
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraEmpaqueUrgenteMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraEmpaqueUrgenteMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+              </Field>
+            </div>
+            <div className="text-[10px] font-bold rounded-xl px-2.5 py-2" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>Aviso a los {delayDraft.demoraEmpaqueMin} min → urgente a los {delayDraft.demoraEmpaqueUrgenteMin} min</div>
+          </div>
+          <div className="rounded-2xl border p-3 flex flex-col" style={{ background: T.vainilla, borderColor: T.border }}>
+            <div className="flex items-center gap-2 mb-3"><span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fff" }} aria-hidden="true">🔔</span><div><div className="text-sm font-bold">Repetición</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Mientras siga detenido</div></div></div>
+            <Field label="Recordar cada">
+              <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraRepeticionMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraRepeticionMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+            </Field>
+            <div className="text-[10px] font-semibold mt-auto" style={{ color: T.choco2 }}>Evita que una orden urgente quede olvidada.</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
+          <Btn onClick={guardarTiemposDemora} disabled={guardandoDemoras}>{guardandoDemoras ? "Guardando…" : "Guardar tiempos"}</Btn>
+          <div className="text-[10px] font-bold rounded-full px-3 py-1.5" style={{ background: "#E3EFE0", color: "#3F6B42" }}>✓ Se aplican en todos los equipos</div>
+          {delayMsg && <span className="text-xs font-bold" role="status" style={{ color: delayMsg.startsWith("⚠️") ? "#A03B2A" : "#3F6B42" }}>{delayMsg}</span>}
         </div>
       </Card>
 
@@ -5360,7 +7948,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
             className="flex-1 min-w-[110px] rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
           <input value={nuevoUser.email} onChange={(e) => setNuevoUser({ ...nuevoUser, email: e.target.value })} placeholder="Correo"
             className="flex-1 min-w-[130px] rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
-          <MiniSelect options={["Administrador","Cocina","Empaque","Logística","Marketing/CRM","Mensajero"]} value={nuevoUser.rol} onChange={(e) => setNuevoUser({ ...nuevoUser, rol: e.target.value })} />
+          <MiniSelect options={ROLES} value={nuevoUser.rol} onChange={(e) => setNuevoUser({ ...nuevoUser, rol: e.target.value })} />
           <Btn small kind="rosa" onClick={async () => {
             if (!nuevoUser.nombre.trim() || !nuevoUser.email.trim() || enviandoUser) return;
             setEnviandoUser(true); setUserMsg("");
@@ -5516,9 +8104,8 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
       <Card className="p-4 mb-3">
         <div className="text-sm font-semibold mb-1">📷 Almacenamiento de fotos</div>
         <div className="text-xs font-bold p-2.5 rounded-xl" style={{ background: "#FBE8C8", color: "#96690F" }}>
-          Las evidencias fotográficas se guardan hoy en el almacenamiento local de la app, con espacio limitado (~5 MB en total, unas 30–50 fotos comprimidas).
-          Tamaño actual de los datos: <b>{(JSON.stringify(db).length / 1024 / 1024).toFixed(2)} MB</b>.
-          Para operación real, migra las evidencias a <b>Supabase Storage</b>: la app ya tiene la función repo.uploadEvidence lista para ese cambio.
+          Las evidencias fotográficas se guardan en el bucket privado de <b>Supabase Storage</b>.
+          Cada archivo queda ligado al pedido y al paso operativo correspondiente; las vistas temporales usan enlaces firmados que vencen automáticamente.
         </div>
       </Card>
 
@@ -6877,26 +9464,30 @@ function TareasRedes({ db, update, user }) {
 
 // Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
 // sus cambios no llegan al servidor y la próxima hidratación los pisa.
-const MODULOS_EN_MIGRACION = ["Productos", "Beneficios", "Crecimiento", "Finanzas", "Configuración"];
+const MODULOS_EN_MIGRACION = ["Beneficios", "Crecimiento", "Finanzas", "Configuración"];
 
-function BannerMigracion() {
+function BannerMigracion({ modulo }) {
+  const configuracion = modulo === "Configuración";
   return (
     <div className="rounded-2xl border px-4 py-3 mb-4 text-sm font-bold" role="alert"
       style={{ background: "#FFF4E0", borderColor: "#E7C078", color: "#96690F" }}>
-      🚧 Módulo en migración: los cambios hechos acá todavía NO se guardan en el servidor —
-      se pierden al recargar o cuando la app se actualiza desde el server. Usalo para consultar.
+      {configuracion
+        ? "🚧 Configuración en migración: los tiempos de pedidos demorados y la gestión de usuarios sí se guardan en el servidor. Los demás ajustes todavía pueden ser solo locales."
+        : "🚧 Módulo en migración: los cambios hechos acá todavía NO se guardan en el servidor — se pierden al recargar o cuando la app se actualiza desde el server. Usalo para consultar."}
     </div>
   );
 }
 
 const MODULOS = [
-  { id: "Dashboard", icon: "🏠", hint: "Lo urgente de hoy, en el orden correcto.", roles: ["Administrador","Cocina","Empaque","Logística","Marketing/CRM"] },
-  { id: "Pedidos", icon: "🧾", hint: "Confirmá, cobrá, prepará y entregá sin saltarte pasos.", roles: ["Administrador","Cocina","Empaque","Logística"] },
+  { id: "Dashboard", icon: "🏠", hint: "Lo urgente de hoy, en el orden correcto.", roles: ["Administrador","Cajero","Coordinador de pedidos","Cocina","Empaque","Logística","Marketing/CRM","Mensajero"] },
+  { id: "Pedidos", icon: "🧾", hint: "Cada área confirma únicamente el paso que realmente ejecutó.", roles: ["Administrador","Cajero","Coordinador de pedidos","Cocina","Empaque","Logística","Mensajero"] },
   { id: "Producción", icon: "👩‍🍳", hint: "Prepará, congelá y desmoldá cada lote con trazabilidad.", roles: ["Administrador","Cocina"] },
+  { id: "Empaque", icon: "🎁", hint: "Compará la comanda, documentá el empaque y entregá a Logística.", roles: ["Administrador","Empaque"] },
+  { id: "Inventario terminado", icon: "🍮", hint: "Consultá disponibles, reservas, lotes en proceso e imperfectas.", roles: ["Administrador","Cajero","Coordinador de pedidos","Cocina","Empaque","Logística"] },
   { id: "Inventario", icon: "📦", hint: "Registrá lo que entra, se usa, se ajusta o se acaba.", roles: ["Administrador","Cocina"] },
   { id: "Productos", icon: "🍰", hint: "Definí qué vendemos, cuánto cuesta y cómo se prepara.", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Domicilios", icon: "🛵", hint: "Asigná, despachá y seguí cada entrega hasta cerrar.", roles: ["Administrador","Logística"] },
-  { id: "Reclamos", icon: "⚠️", hint: "Investigá, decidí y resolvé cada caso con evidencia.", roles: ["Administrador","Empaque","Logística","Marketing/CRM"] },
+  { id: "Domicilios", icon: "🛵", hint: "Asigná, despachá y seguí cada entrega hasta cerrar.", roles: ["Administrador","Logística","Mensajero"] },
+  { id: "Reclamos", icon: "⚠️", hint: "Investigá, decidí y resolvé cada caso con evidencia.", roles: ["Administrador","Coordinador de pedidos","Empaque","Logística","Marketing/CRM"] },
   { id: "Clientes", icon: "💗", hint: "Reconocé a cada persona y prepará el siguiente contacto.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Beneficios", icon: "🎁", hint: "Creá motivos claros para volver, regalar y recomendar.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Crecimiento", icon: "🌱", hint: "Convertí oportunidades en acciones simples para hoy.", roles: ["Administrador","Marketing/CRM"] },
@@ -6909,7 +9500,7 @@ const MODULOS = [
   { id: "Configuración", icon: "⚙️", hint: "Ajustá reglas, accesos y respaldos de la operación.", roles: ["Administrador"] },
 ];
 
-const ROLES = ["Administrador","Cocina","Empaque","Logística","Marketing/CRM"];
+const ROLES = ORDER_WORKFLOW_ROLES;
 
 /* ── Fase 3 · slice 1: login real contra Supabase Auth ── */
 function PantallaLogin() {
@@ -7020,7 +9611,10 @@ export default function MomosOps() {
     const [cat, op] = await Promise.all([fetchCatalogos(), fetchOperativo()]);
     update((d) => {
       d.products = cat.products;
+      d.productsServerReady = Boolean(cat.productsServerReady);
       d.inventory_items = cat.inventory_items;
+      d.inventory_lots = cat.inventory_lots || [];
+      d.inventoryLotsReady = Boolean(cat.inventoryLotsReady);
       d.recipes = cat.recipes;
       d.users = cat.users;
       d.figuras = cat.figuras || []; // catálogo figuras con product_id/gramaje (Producción v2)
@@ -7341,11 +9935,13 @@ export default function MomosOps() {
   const moduloActivo = visibles.find((m) => m.id === activa) || visibles[0];
 
   function render() {
-    const p = { db, update, user, refrescar: hidratarDesdeServidor, perfil };
+    const p = { db, update, user, refrescar: hidratarDesdeServidor, perfil, serverDataReady: Boolean(catalogosDe) };
     switch (activa) {
       case "Dashboard": return <Dashboard db={db} go={go} user={user} />;
       case "Pedidos": return <Pedidos {...p} focus={focus} />;
       case "Producción": return <Produccion {...p} />;
+      case "Empaque": return <Empaque {...p} />;
+      case "Inventario terminado": return <InventarioTerminado {...p} go={go} />;
       case "Inventario": return <Inventario {...p} focus={focus} />;
       case "Productos": return <Productos {...p} />;
       case "Domicilios": return <Domicilios {...p} />;
@@ -7371,6 +9967,14 @@ export default function MomosOps() {
     <div className="momos min-h-screen" style={{ background: T.bg }}>
       <style>{FONTS}</style>
       <Toasts />
+      <GlobalKitchenOrderAlerts
+        db={db}
+        perfil={perfil}
+        refrescar={hidratarDesdeServidor}
+        serverDataReady={Boolean(catalogosDe)}
+        onOpenProduction={() => go("Producción")}
+        onOpenPacking={() => go("Empaque")}
+      />
 
       <header className="sticky top-0 z-40 border-b" style={{ background: "rgba(250,244,236,.92)", backdropFilter: "blur(8px)", borderColor: T.border }}>
         <div className="max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
@@ -7425,7 +10029,7 @@ export default function MomosOps() {
                 <p className="text-xs sm:text-sm font-semibold m-0 mt-0.5" style={{ color: T.choco2 }}>{moduloActivo.hint}</p>
               </div>
             </div>
-            {MODULOS_EN_MIGRACION.includes(activa) && <BannerMigracion />}
+            {MODULOS_EN_MIGRACION.includes(activa) && <BannerMigracion modulo={activa} />}
             {render()}
           </div>
         </main>

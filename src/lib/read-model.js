@@ -41,6 +41,20 @@ export async function fetchCatalogos() {
   if (conError) throw new Error(conError.error.message);
   const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, camps, creativeRows, postRows, metricRows] = q.map((r) => r.data);
 
+  const productReadyResult = await supabase.rpc("productos_servidor_disponible");
+  const productProbeMissing = productReadyResult.error &&
+    (productReadyResult.error.code === "PGRST202" || /could not find the function|schema cache/i.test(productReadyResult.error.message || ""));
+  if (productReadyResult.error && !productProbeMissing) throw new Error(productReadyResult.error.message);
+  const productsServerReady = !productProbeMissing && productReadyResult.data === true;
+
+  const lotsResult = await supabase
+    .from("v_inventory_lots")
+    .select("id,item_id,item_name,unidad,received_at,expires_at,initial_quantity,available_quantity,unit_cost,supplier,location,origin,status")
+    .order("item_id").order("expires_at", { ascending: true, nullsFirst: false }).order("received_at");
+  const lotsMissing = lotsResult.error && ["42P01", "PGRST205"].includes(lotsResult.error.code);
+  if (lotsResult.error && !lotsMissing) throw new Error(lotsResult.error.message);
+  const lotRows = lotsMissing ? [] : (lotsResult.data || []);
+
   // RLS deny-by-default devuelve VACÍO (no error): un catálogo estructural vacío = algo anda mal,
   // mejor quedarse con la caché local que pisar el db con arrays vacíos.
   // (toppings/proveedores/brand_library quedan afuera: pueden vaciarse legítimamente desde la UI.)
@@ -84,6 +98,13 @@ export async function fetchCatalogos() {
     proveedor: nz(i.proveedor), vence: nz(i.vence), ubicacion: nz(i.ubicacion), compra: nz(i.compra),
     costoEstimado: !!i.costo_estimado, // marca "corregir con compra real" (Componentes+BOM)
   }));
+  const inventory_lots = lotRows.map((lot) => ({
+    id: lot.id, itemId: lot.item_id, itemName: lot.item_name, unit: lot.unidad,
+    receivedAt: nz(lot.received_at), expiresAt: nz(lot.expires_at),
+    initialQuantity: Number(lot.initial_quantity), available: Number(lot.available_quantity),
+    unitCost: Number(lot.unit_cost), supplier: nz(lot.supplier), location: nz(lot.location),
+    origin: lot.origin, status: lot.status,
+  }));
 
   const recipes = recs.map((r) => ({ id: r.id, productId: r.product_id, itemId: r.item_id, cantidad: r.cantidad }));
 
@@ -106,6 +127,11 @@ export async function fetchCatalogos() {
     pedidoMinimo: Number(setting.pedido_minimo ?? 25000),
     pautaMensual: Number(setting.pauta_mensual ?? 350000),
     horasCongelacion: Number(setting.horas_congelacion ?? 10),
+    demoraCocinaMin: Number(setting.demora_cocina_min ?? 15),
+    demoraCocinaUrgenteMin: Number(setting.demora_cocina_urgente_min ?? 30),
+    demoraEmpaqueMin: Number(setting.demora_empaque_min ?? 10),
+    demoraEmpaqueUrgenteMin: Number(setting.demora_empaque_urgente_min ?? 20),
+    demoraRepeticionMin: Number(setting.demora_repeticion_min ?? 5),
     politicas: String(setting.politicas ?? ""),
   };
   if (setting.relleno_fijo) settingsCatalogos.rellenos = [String(setting.relleno_fijo)];
@@ -169,7 +195,7 @@ export async function fetchCatalogos() {
     mensajesWhatsApp: Number(m.mensajes_wa), gasto: Number(m.gasto), notas: nz(m.notas),
   }));
 
-  return { products, inventory_items, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results };
+  return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
@@ -205,6 +231,27 @@ export async function fetchOperativo() {
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
   const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches, subProds, variantesRows] = q.map((r) => r.data);
+
+  // Empaque trazable se despliega después del paquete 01-08. Mientras la
+  // migración 09 todavía no exista, la lectura opcional queda vacía y no rompe
+  // el resto de la operación durante el rollout.
+  const packingResult = await supabase
+    .from("packing_verifications")
+    .select("order_id,user_id,verified_at,line_ids,order_signature,snapshot")
+    .order("verified_at", { ascending: false });
+  const packingMissing = packingResult.error && ["42P01", "PGRST205"].includes(packingResult.error.code);
+  if (packingResult.error && !packingMissing) throw new Error(packingResult.error.message);
+  const packingRows = packingMissing ? [] : (packingResult.data || []);
+
+  // La cuarentena aparece con la migración 11. Es opcional durante el rollout
+  // para que el front siga cargando entre la publicación y la ejecución SQL.
+  const quarantineResult = await supabase
+    .from("v_variantes_cuarentena")
+    .select("product_id,producto,figura,sabor,gramaje_g,disponibles,vencimiento_proximo")
+    .order("producto").order("figura").order("sabor");
+  const quarantineMissing = quarantineResult.error && ["42P01", "PGRST205"].includes(quarantineResult.error.code);
+  if (quarantineResult.error && !quarantineMissing) throw new Error(quarantineResult.error.message);
+  const quarantineRows = quarantineMissing ? [] : (quarantineResult.data || []);
 
   const rolDe = {}; const nombreUserDe = {}; usrs.forEach((u) => { rolDe[u.id] = u.rol; nombreUserDe[u.id] = u.nombre; });
   const insumoDe = {}; invs.forEach((i) => { insumoDe[i.id] = i; });
@@ -313,6 +360,16 @@ export async function fetchOperativo() {
     entidad: a.entidad, entidadId: nz(a.entidad_id), accion: a.accion, de: nz(a.de), a: nz(a.a),
   }));
 
+  const packing_verifications = packingRows.map((verification) => ({
+    orderId: verification.order_id,
+    userId: verification.user_id,
+    user: nz(nombreUserDe[verification.user_id], nz(rolDe[verification.user_id], "Empaque")),
+    verifiedAt: tsBogota(verification.verified_at),
+    lineIds: verification.line_ids || [],
+    orderSignature: verification.order_signature,
+    snapshot: verification.snapshot || [],
+  }));
+
   // Shape EXACTO de la maqueta (db.batches / production_batches en MomosOps.jsx):
   // producto/resp son STRINGS (nombre), no ids — el server normalizó a FK
   // (product_id, resp_user_id) pero el front sigue leyendo por nombre.
@@ -347,6 +404,10 @@ export async function fetchOperativo() {
     productId: v.product_id, producto: v.producto, figura: v.figura, sabor: nz(v.sabor),
     gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
   }));
+  const variantesCuarentena = quarantineRows.map((v) => ({
+    productId: v.product_id, producto: v.producto, figura: v.figura, sabor: nz(v.sabor),
+    gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
+  }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, production_batches, subreceta_producciones, variantes };
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena };
 }

@@ -17,6 +17,19 @@ export async function setOrderStatusRemoto(orderId, estado, ventaRapida = false)
   return data; // {ok, de, a, faltantes:[{producto,cant,area,item_id?}]}
 }
 
+export async function confirmarVerificacionEmpaque(orderId, lineIds) {
+  const { data, error } = await supabase.rpc("confirmar_verificacion_empaque", {
+    p_order_id: orderId,
+    p_line_ids: lineIds,
+  });
+  if (error) {
+    const missingRpc = error.code === "PGRST202" || /could not find the function|schema cache/i.test(error.message || "");
+    if (missingRpc) throw new Error("La verificación de Empaque todavía no está instalada en el servidor. Un administrador debe aplicar la migración 09 de Empaque y luego recargar Momo Ops.");
+    throw new Error(error.message);
+  }
+  return data; // {ok, order_id, lineas}
+}
+
 // Evidencias: foto al bucket privado + RPC crear_evidencia (asigna id, deriva user de auth.uid() y audita server-side).
 // La gate de set_order_status lee la FILA en evidences — sin fila no hay transición.
 export async function subirEvidencia({ orderId, tipo, dataUrl }) {
@@ -25,7 +38,13 @@ export async function subirEvidencia({ orderId, tipo, dataUrl }) {
   const up = await supabase.storage.from("evidencias").upload(path, blob, { contentType: "image/jpeg" });
   if (up.error) throw new Error("No se pudo subir la foto: " + up.error.message);
   const { data, error } = await supabase.rpc("crear_evidencia", { p_order_id: orderId, p_tipo: tipo, p_storage_path: path });
-  if (error) throw new Error("La foto subió pero no se pudo registrar: " + error.message);
+  if (error) {
+    // La fila y el archivo forman una sola unidad lógica. Si la RPC rechaza la
+    // evidencia (rol, ruta, duplicado, etc.), retirar el objeto recién subido.
+    const cleanup = await supabase.storage.from("evidencias").remove([path]);
+    const cleanupNote = cleanup.error ? " No se pudo limpiar el archivo huérfano: " + cleanup.error.message : "";
+    throw new Error("La foto subió pero no se pudo registrar: " + error.message + cleanupNote);
+  }
   return data; // id de la evidencia (E01, E02…)
 }
 
@@ -127,6 +146,40 @@ export async function setColchonProduccion(productId, colchon) {
   return data; // {ok, colchon, cambio}
 }
 
+/* ── Productos servidor v1 (migración 13) ── */
+export async function crearProducto(payload) {
+  const { data, error } = await supabase.rpc("crear_producto", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function editarProducto(productId, payload) {
+  const { data, error } = await supabase.rpc("editar_producto", { p_id: productId, p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function setProductoActivo(productId, activo) {
+  const { data, error } = await supabase.rpc("set_producto_activo", { p_id: productId, p_activo: activo });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function guardarRecetaProducto(productId, lines) {
+  const { data, error } = await supabase.rpc("guardar_receta_producto", {
+    p_product_id: productId,
+    p_lineas: lines.map((line) => ({ item_id: line.itemId, cantidad: Number(line.cantidad) })),
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function sincronizarCostoProducto(productId) {
+  const { data, error } = await supabase.rpc("sincronizar_costo_producto", { p_product_id: productId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function crearUsuarioStaff(nombre, email, rol) {
   const { data, error } = await supabase.rpc("crear_usuario_staff", { p_nombre: nombre, p_email: email, p_rol: rol });
   if (error) throw new Error(error.message);
@@ -137,6 +190,19 @@ export async function setUserActivo(userId, activo) {
   const { data, error } = await supabase.rpc("set_user_activo", { p_user_id: userId, p_activo: activo });
   if (error) throw new Error(error.message);
   return data; // {ok, activo, cambio}
+}
+
+export async function guardarConfiguracionDemoras(settings) {
+  const rows = [
+    { clave: "demora_cocina_min", valor: settings.demoraCocinaMin },
+    { clave: "demora_cocina_urgente_min", valor: settings.demoraCocinaUrgenteMin },
+    { clave: "demora_empaque_min", valor: settings.demoraEmpaqueMin },
+    { clave: "demora_empaque_urgente_min", valor: settings.demoraEmpaqueUrgenteMin },
+    { clave: "demora_repeticion_min", valor: settings.demoraRepeticionMin },
+  ];
+  const { error } = await supabase.from("app_settings").upsert(rows, { onConflict: "clave" });
+  if (error) throw new Error(error.message);
+  return settings;
 }
 
 // Marketing Hito 2: gate is_staff() is not true (server). productoFocoId → id crudo.
@@ -198,6 +264,30 @@ export async function entradaInsumo(itemId, cant, costoTotal, nota = "") {
   const { data, error } = await supabase.rpc("entrada_insumo", { p_item_id: itemId, p_cant: cant, p_costo_total: costoTotal, p_nota: nota });
   if (error) throw new Error(error.message);
   return data; // {stock, costo}
+}
+
+export async function entradaInsumoLote({ itemId, cant, costoTotal, vence, proveedor = "", ubicacion = "", nota = "" }) {
+  const { data, error } = await supabase.rpc("entrada_insumo_lote", {
+    p_item_id: itemId,
+    p_cant: cant,
+    p_costo_total: costoTotal,
+    p_vence: vence || null,
+    p_proveedor: proveedor,
+    p_ubicacion: ubicacion,
+    p_nota: nota,
+  });
+  if (error) {
+    const missingRpc = error.code === "PGRST202" || /could not find the function|schema cache/i.test(error.message || "");
+    if (missingRpc) throw new Error("Los lotes de insumos todavía no están instalados. Aplicá la migración 12 y recargá Momo Ops.");
+    throw new Error(error.message);
+  }
+  return data;
+}
+
+export async function desecharLoteInsumo(lotId, motivo) {
+  const { data, error } = await supabase.rpc("desechar_lote_insumo", { p_lot_id: lotId, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 export async function movimientoInsumo(itemId, tipo, cant, nota = "") {

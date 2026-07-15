@@ -1,0 +1,269 @@
+import {
+  kitchenDelayedOrderReminders,
+  kitchenOrderAlert,
+  normalizeKitchenVoice,
+} from "./kitchen-voice.js";
+
+const UNPAID = new Set(["Nuevo", "Confirmado", "Pendiente de pago"]);
+const ACTIVE_BATCH_STATES = new Set(["En preparación", "Congelando"]);
+
+function text(value) {
+  return String(value ?? "").trim();
+}
+
+function number(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function entityName(value) {
+  return text(typeof value === "string" ? value : value?.nombre ?? value?.name ?? value?.valor);
+}
+
+function numericId(value) {
+  const match = text(value).match(/(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function naturalList(values = []) {
+  const clean = values.map(text).filter(Boolean);
+  if (clean.length < 2) return clean[0] || "";
+  return `${clean.slice(0, -1).join(", ")} y ${clean.at(-1)}`;
+}
+
+function orderMoment(order) {
+  return `${text(order?.fecha)}T${text(order?.hora)}`;
+}
+
+function sortedOrders(catalogs, state) {
+  return (catalogs.orders || [])
+    .filter((order) => order?.id && (!state || order.estado === state))
+    .slice()
+    .sort((left, right) => orderMoment(left).localeCompare(orderMoment(right)) || text(left.id).localeCompare(text(right.id)));
+}
+
+function findOrderByNumber(catalogs, spokenNumber) {
+  return (catalogs.orders || []).find((order) => numericId(order?.id) === Number(spokenNumber)) || null;
+}
+
+function findOrder(catalogs, query, memory) {
+  const explicit = query.match(/(?:^|\s)(?:pedido|orden|comanda)(?:\s+(?:numero|ps|pe|p|n))?\s+(\d+)(?=\s|$)/)?.[1];
+  if (explicit) return findOrderByNumber(catalogs, explicit);
+  if (/(?:^|\s)(?:ese|esa|este|esta|el|la|mismo|misma)\s+(?:pedido|orden|comanda)(?=\s|$)|^(?:y\s+)?(?:como|que|cual|donde)\b/.test(query)
+      && memory?.lastOrderId) {
+    return (catalogs.orders || []).find((order) => order.id === memory.lastOrderId) || null;
+  }
+  return null;
+}
+
+function findBatch(catalogs, query, memory) {
+  const explicit = query.match(/(?:^|\s)lote(?:\s+(?:numero|n))?\s+(\d+)(?=\s|$)/)?.[1];
+  if (explicit) return (catalogs.batches || []).find((batch) => numericId(batch?.id) === Number(explicit)) || null;
+  if (/(?:ese|este|el|mismo)\s+lote|^(?:y\s+)?(?:como|que|cuanto)\b/.test(query) && memory?.lastBatchId) {
+    return (catalogs.batches || []).find((batch) => batch.id === memory.lastBatchId) || null;
+  }
+  return null;
+}
+
+function nextOrderStep(state) {
+  if (UNPAID.has(state)) return "esperar la confirmación del pago";
+  if (state === "Pagado") return "iniciar su preparación en Cocina";
+  if (state === "En producción") return "terminar Cocina y entregarlo como Listo para empaque";
+  if (state === "Listo para empaque") return "que Empaque lo aliste y confirme Empacado";
+  if (state === "Empacado") return "confirmar que está Listo para despacho";
+  if (state === "Listo para despacho") return "asignar la salida de Logística";
+  if (state === "En ruta") return "confirmar la entrega con su evidencia";
+  if (state === "Entregado") return "no requiere otro paso operativo";
+  if (state === "Cancelado") return "no realizar ninguna preparación";
+  return "revisar el detalle con Coordinación";
+}
+
+function describeOrder(order, catalogs) {
+  const alert = kitchenOrderAlert(order, catalogs);
+  const customer = alert?.customerName ? ` de ${alert.customerName}` : "";
+  return `El pedido ${order.id}${customer} está ${order.estado}. Contiene ${alert?.content || "productos sin detalle"}. Lo siguiente es ${nextOrderStep(order.estado)}.`;
+}
+
+function freezingStatus(batch, now) {
+  if (batch.estado !== "Congelando" || !batch.inicioCongelacion) return "";
+  const start = new Date(text(batch.inicioCongelacion).replace(" ", "T"));
+  if (Number.isNaN(start.getTime())) return " Su cronómetro de congelación está activo.";
+  const target = start.getTime() + number(batch.horasCongelacion) * 60 * 60 * 1000;
+  const remaining = Math.max(0, Math.ceil((target - now) / 60000));
+  if (remaining <= 0) return " Ya cumplió el tiempo objetivo de congelación; revisalo antes de desmoldar.";
+  const hours = Math.floor(remaining / 60);
+  const minutes = remaining % 60;
+  return ` Le faltan aproximadamente ${hours ? `${hours} hora${hours === 1 ? "" : "s"}` : ""}${hours && minutes ? " y " : ""}${minutes ? `${minutes} minuto${minutes === 1 ? "" : "s"}` : ""}.`;
+}
+
+function describeBatch(batch, now) {
+  const produced = number(batch.prod);
+  const results = number(batch.perfectas) + number(batch.imperfectas) + number(batch.descartadas);
+  const countText = produced ? ` Tiene ${produced} producida${produced === 1 ? "" : "s"}.` : "";
+  const resultText = results ? ` Resultado: ${number(batch.perfectas)} perfectas, ${number(batch.imperfectas)} imperfectas y ${number(batch.descartadas)} descartadas.` : "";
+  return `El lote ${batch.id} de ${batch.producto || "producto"}${batch.figura ? `, figura ${batch.figura}` : ""}${batch.sabor ? `, sabor ${batch.sabor}` : ""}, está ${batch.estado}.${countText}${resultText}${freezingStatus(batch, now)}`;
+}
+
+function matchedCatalogName(query, entries = []) {
+  return entries
+    .map((entry) => ({ entry, name: entityName(entry), normalized: normalizeKitchenVoice(entityName(entry)) }))
+    .filter((candidate) => candidate.normalized && (` ${query} `).includes(` ${candidate.normalized} `))
+    .sort((left, right) => right.normalized.length - left.normalized.length)[0]?.entry || null;
+}
+
+function exactVariantAnswer(query, catalogs) {
+  const figure = matchedCatalogName(query, catalogs.figures || []);
+  const flavor = matchedCatalogName(query, catalogs.flavors || []);
+  if (!figure || !flavor) return null;
+  const figureName = entityName(figure);
+  const flavorName = entityName(flavor);
+  const variants = (catalogs.variants || []).filter((variant) =>
+    normalizeKitchenVoice(variant.figura) === normalizeKitchenVoice(figureName)
+    && normalizeKitchenVoice(variant.sabor) === normalizeKitchenVoice(flavorName));
+  const available = variants.reduce((sum, variant) => sum + number(variant.disponibles), 0);
+  const expiry = variants.map((variant) => text(variant.vence)).filter(Boolean).sort()[0];
+  return {
+    text: `Hay ${available} unidad${available === 1 ? "" : "es"} lista${available === 1 ? "" : "s"} de ${figureName} sabor ${flavorName}.${expiry ? ` El vencimiento más próximo es ${expiry}.` : ""}${available ? "" : " Esa combinación requiere producción."}`,
+    memoryPatch: { lastTopic: "inventory", lastFigure: figureName, lastFlavor: flavorName },
+  };
+}
+
+function stockAnswer(query, catalogs) {
+  const exact = exactVariantAnswer(query, catalogs);
+  if (exact) return exact;
+  const inventoryItem = matchedCatalogName(query, catalogs.inventory || []);
+  if (inventoryItem) {
+    const stock = number(inventoryItem.stock);
+    const minimum = number(inventoryItem.min ?? inventoryItem.minimo);
+    const warning = stock <= minimum ? " Está en mínimo o por debajo; conviene reponerlo." : "";
+    return {
+      text: `Hay ${stock} ${inventoryItem.unidad || "unidades"} de ${entityName(inventoryItem)}.${warning}`,
+      memoryPatch: { lastTopic: "inventory", lastInventoryId: inventoryItem.id || null },
+    };
+  }
+  const product = matchedCatalogName(query, catalogs.products || []);
+  if (product) {
+    const stock = number(product.stock);
+    const exactNote = product.tipo === "momo" ? " Es el total general; para prometer una figura y sabor debo revisar la variante exacta." : "";
+    return {
+      text: `El stock general de ${entityName(product)} es ${stock}.${exactNote}`,
+      memoryPatch: { lastTopic: "inventory", lastProductId: product.id || null },
+    };
+  }
+  return null;
+}
+
+function nextWorkAnswer(catalogs) {
+  const paid = sortedOrders(catalogs, "Pagado");
+  if (paid.length) {
+    const first = paid[0];
+    const alert = kitchenOrderAlert(first, catalogs);
+    return {
+      text: `Lo primero es el pedido ${first.id}${alert?.customerName ? ` de ${alert.customerName}` : ""}, porque es el pagado más antiguo sin iniciar. Hay que preparar ${alert?.content || "su comanda"}. Después quedan ${paid.length - 1} pedido${paid.length - 1 === 1 ? "" : "s"} pagado${paid.length - 1 === 1 ? "" : "s"} en espera. Podés decir “prepara el pedido ${numericId(first.id)}” para abrirlo con confirmación.`,
+      memoryPatch: { lastTopic: "order", lastOrderId: first.id },
+    };
+  }
+  const producing = sortedOrders(catalogs, "En producción");
+  if (producing.length) {
+    const first = producing[0];
+    return {
+      text: `No hay pedidos pagados por iniciar. Lo más antiguo en Cocina es ${first.id}; está En producción. Cuando termine, Cocina debe marcarlo Listo para empaque.`,
+      memoryPatch: { lastTopic: "order", lastOrderId: first.id },
+    };
+  }
+  const packing = sortedOrders(catalogs, "Listo para empaque");
+  if (packing.length) {
+    return {
+      text: `Cocina no tiene pedidos por iniciar. Empaque tiene ${packing.length}: ${naturalList(packing.slice(0, 4).map((order) => order.id))}.`,
+      memoryPatch: { lastTopic: "order", lastOrderId: packing[0].id },
+    };
+  }
+  return { text: "La cola operativa está al día: no hay pedidos pagados por iniciar ni comandas activas en Cocina o Empaque.", memoryPatch: { lastTopic: "overview" } };
+}
+
+function overviewAnswer(catalogs, now) {
+  const counts = Object.fromEntries(["Pagado", "En producción", "Listo para empaque", "Empacado", "Listo para despacho"].map((state) => [state, sortedOrders(catalogs, state).length]));
+  const activeLots = (catalogs.batches || []).filter((batch) => ACTIVE_BATCH_STATES.has(batch.estado));
+  const pendingShortages = (catalogs.suggestions || []).filter((item) => !item.estado || item.estado === "Pendiente");
+  const delayed = kitchenDelayedOrderReminders(catalogs, now, catalogs.delaySettings).length;
+  return {
+    text: `Resumen operativo: ${counts.Pagado} pedido${counts.Pagado === 1 ? "" : "s"} pagado${counts.Pagado === 1 ? "" : "s"} por iniciar, ${counts["En producción"]} en Cocina, ${counts["Listo para empaque"]} esperando Empaque, ${counts.Empacado + counts["Listo para despacho"]} listo${counts.Empacado + counts["Listo para despacho"] === 1 ? "" : "s"} en salida, ${activeLots.length} lote${activeLots.length === 1 ? "" : "s"} activo${activeLots.length === 1 ? "" : "s"} y ${pendingShortages.length} faltante${pendingShortages.length === 1 ? "" : "s"} pendiente${pendingShortages.length === 1 ? "" : "s"}.${delayed ? ` Atención: ${delayed} pedido${delayed === 1 ? "" : "s"} supera${delayed === 1 ? "" : "n"} el tiempo configurado.` : " No hay demoras activas."}`,
+    memoryPatch: { lastTopic: "overview" },
+  };
+}
+
+function shortagesAnswer(catalogs) {
+  const pending = (catalogs.suggestions || []).filter((item) => !item.estado || item.estado === "Pendiente");
+  if (!pending.length) return { text: "No hay faltantes pendientes registrados para Producción o Inventario.", memoryPatch: { lastTopic: "shortages" } };
+  const visible = pending.slice(0, 5).map((item) => `${number(item.cantidad)} de ${item.producto || "producto"}${item.orderId ? ` para ${item.orderId}` : ""}`);
+  return {
+    text: `Hay ${pending.length} faltante${pending.length === 1 ? "" : "s"} pendiente${pending.length === 1 ? "" : "s"}: ${naturalList(visible)}${pending.length > 5 ? `, y ${pending.length - 5} más` : ""}.`,
+    memoryPatch: { lastTopic: "shortages" },
+  };
+}
+
+function activeLotsAnswer(catalogs, now) {
+  const active = (catalogs.batches || []).filter((batch) => ACTIVE_BATCH_STATES.has(batch.estado));
+  if (!active.length) return { text: "No hay lotes en preparación ni congelando en este momento.", memoryPatch: { lastTopic: "batch" } };
+  const visible = active.slice(0, 4).map((batch) => `${batch.id} de ${batch.figura || batch.producto || "producto"}, ${batch.estado}`);
+  const first = active[0];
+  return {
+    text: `Hay ${active.length} lote${active.length === 1 ? "" : "s"} activo${active.length === 1 ? "" : "s"}: ${naturalList(visible)}.${active.length === 1 ? freezingStatus(first, now) : ""}`,
+    memoryPatch: { lastTopic: "batch", lastBatchId: first.id },
+  };
+}
+
+export function momobotContextSnapshot(catalogs = {}, now = Date.now()) {
+  return {
+    paid: sortedOrders(catalogs, "Pagado").length,
+    kitchen: sortedOrders(catalogs, "En producción").length,
+    packing: sortedOrders(catalogs, "Listo para empaque").length,
+    activeLots: (catalogs.batches || []).filter((batch) => ACTIVE_BATCH_STATES.has(batch.estado)).length,
+    shortages: (catalogs.suggestions || []).filter((item) => !item.estado || item.estado === "Pendiente").length,
+    delayed: kitchenDelayedOrderReminders(catalogs, now, catalogs.delaySettings).length,
+  };
+}
+
+export function momobotContextAnswer(value, catalogs = {}, memory = {}, now = Date.now()) {
+  const query = normalizeKitchenVoice(value);
+  if (!query) return null;
+
+  const order = findOrder(catalogs, query, memory);
+  const asksOrder = order && /(?:como|donde|en que|que|cual|estado|sigue|falta|va|tiene|trae|contiene)/.test(query);
+  if (asksOrder) return {
+    matched: true,
+    topic: "order",
+    text: describeOrder(order, catalogs),
+    memoryPatch: { lastTopic: "order", lastOrderId: order.id },
+  };
+
+  const asksNext = /(?:que|cual).*(?:hago|hacemos|sigue|primero|ahora)|por donde (?:empiezo|comienzo)|ayudame (?:a )?(?:priorizar|empezar)|dime que hago/.test(query)
+    || /(?:que|cual).*(?:hay|tenemos|queda|toca|debemos).*(?:hacer|preparar|atender)|(?:en que|con que).*(?:trabajamos|seguimos)|(?:que|cual).*(?:siguiente|proxima).*(?:tarea|comanda|pedido)/.test(query);
+  if (asksNext) return { matched: true, topic: "next", ...nextWorkAnswer(catalogs) };
+
+  const batch = findBatch(catalogs, query, memory);
+  const asksBatch = batch && /(?:como|cuanto|que|cual|estado|falta|va|tiempo)/.test(query);
+  if (asksBatch) return {
+    matched: true,
+    topic: "batch",
+    text: describeBatch(batch, now),
+    memoryPatch: { lastTopic: "batch", lastBatchId: batch.id },
+  };
+
+  const asksOverview = /(?:como|que tal).*(?:cocina|produccion|operacion)|(?:dame|dime|quiero) (?:un )?resumen|ponme al dia|panorama (?:de )?(?:cocina|produccion|operativo)/.test(query);
+  if (asksOverview) return { matched: true, topic: "overview", ...overviewAnswer(catalogs, now) };
+
+  const asksShortages = /(?:que|cuales|cuantos|hay|tenemos|muestra|dime).*(?:faltante|faltantes|por producir|por comprar)|(?:falta|necesitamos) (?:producir|comprar|reponer)/.test(query);
+  if (asksShortages) return { matched: true, topic: "shortages", ...shortagesAnswer(catalogs) };
+
+  const asksLots = /(?:que|cuales|cuantos|hay|tenemos|muestra|dime).*(?:lote|lotes).*(?:activo|preparacion|congelando|produccion)?|(?:como|que tal).*lotes/.test(query);
+  if (asksLots) return { matched: true, topic: "batch", ...activeLotsAnswer(catalogs, now) };
+
+  const asksStock = /(?:cuanto|cuantos|cuantas|stock|disponible|disponibles|tenemos|queda|quedan|hay)(?:\s|$)/.test(query);
+  if (asksStock) {
+    const answer = stockAnswer(query, catalogs);
+    if (answer) return { matched: true, topic: "inventory", ...answer };
+  }
+
+  return null;
+}
