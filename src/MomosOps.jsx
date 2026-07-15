@@ -173,6 +173,10 @@ const FONTS = `
 .momo-delay-ticket::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--delay-tone, #E7C078); }
 .momo-stock-meter { height: 7px; overflow: hidden; border-radius: 999px; background: #F2E8DB; }
 .momo-stock-meter > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6A9B69, #E5714E); transition: width 520ms var(--momo-spring); }
+.momo-crm-row { transition: background 160ms ease; border-radius: 10px; }
+.momo-crm-row:hover { background: rgba(247,236,217,.5); }
+.momo-crm-chip { transition: transform 160ms var(--momo-spring), box-shadow 160ms ease; }
+.momo-crm-chip:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(196,128,142,.24); }
 @keyframes momo-page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes momo-sheet-in { from { opacity: 0; transform: translateY(28px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes momo-toast-in { 0% { opacity: 0; transform: translateY(18px) scale(.94); } 65% { transform: translateY(-2px) scale(1.01); } 100% { opacity: 1; transform: none; } }
@@ -1809,6 +1813,29 @@ function Card({ children, className = "", onClick, style, ...props }) {
       {children}
     </div>
   );
+}
+
+function CountUp({ value, format }) {
+  const target = Number(value) || 0;
+  const reduce = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const [shown, setShown] = useState(reduce ? target : 0);
+  const rafRef = useRef(0);
+  useEffect(() => {
+    if (reduce) { setShown(target); return; }
+    const t0 = performance.now();
+    const dur = 640;
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      setShown(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    setShown(0);
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+  const n = Math.round(shown);
+  return <>{format ? format(n) : n}</>;
 }
 
 function Stat({ icon, label, value, sub, tone, onClick, active }) {
@@ -7864,29 +7891,68 @@ function Clientes({ db, update, user, refrescar }) {
       {sel && (
         <Modal title={sel.nombre} onClose={() => setSel(null)}>
           {!db.crmServerReady && <div className="text-xs font-bold p-2.5 rounded-xl mb-3" style={{ background: "#FBE8C8", color: "#96690F" }}>CRM en modo consulta. Aplicá la migración 15 para registrar contactos, activaciones y preferencias.</div>}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            {[["Compras", crm.purchases], ["Valor cliente", fmt(crm.spend)], ["Ticket", fmt(crm.averageTicket)], ["Ficha", `${crmCompleteness(crm)}%`]].map(([label, value]) => <div key={label} className="rounded-xl p-2 text-center" style={{ background: T.vainilla }}><div className="font-extrabold text-sm">{value}</div><div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{label}</div></div>)}
+          {/* Hero de identidad del cliente */}
+          <div className="momo-trace-open rounded-2xl p-4 mb-4" style={{ background: `linear-gradient(135deg, ${T.rosa} 0%, ${T.coralSoft} 100%)`, border: `1px solid ${T.border}`, animationDelay: "20ms" }}>
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center display text-xl shrink-0" style={{ background: T.surface, color: T.rosaDeep, boxShadow: "inset 0 0 0 1px rgba(196,128,142,.2), 0 8px 18px rgba(196,128,142,.18)" }}>
+                {(sel.nombre || "·").split(" ").map((w) => w[0]).slice(0, 2).join("")}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="display text-lg font-semibold leading-tight" style={{ textWrap: "balance" }}>{sel.nombre}</div>
+                {(sel.telefono || sel.barrio) && <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}><span style={{ fontVariantNumeric: "tabular-nums" }}>{sel.telefono}</span>{sel.telefono && sel.barrio ? " · " : ""}{sel.barrio}</div>}
+                <div className="flex gap-1.5 mt-2 flex-wrap"><Badge label={sel.estado} /><Badge label={sel.canal} map={CANAL_STYLE} /></div>
+              </div>
+            </div>
           </div>
-          <div className="p-3 rounded-2xl mb-3" style={{ background: crm.nextAction.type === "blocked" ? "#F6D4CD" : "#E6F1E3", border: `1px solid ${crm.nextAction.type === "blocked" ? "#E8A697" : "#B8D2B2"}` }}>
-            <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: crm.nextAction.type === "blocked" ? "#A03B2A" : "#3F6B42" }}>Siguiente mejor acción</div>
-            <div className="font-bold text-sm mt-0.5">{crm.nextAction.label}</div><div className="text-xs mt-0.5">{crm.nextAction.detail}</div>
+
+          {/* Métricas del cliente */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            {[["🧾", "Compras", <CountUp value={crm.purchases} />, "#C4808E", "rgba(196,128,142,.12)"], ["💰", "Valor cliente", <CountUp value={crm.spend} format={fmt} />, "#E5714E", "rgba(229,113,78,.1)"], ["🎯", "Ticket", <CountUp value={crm.averageTicket} format={fmt} />, "#8A6520", "rgba(138,101,32,.1)"]].map(([icon, label, node, tone, wash], i) => (
+              <div key={label} className="momo-metric-card momo-trace-open rounded-xl p-2.5 text-center" style={{ background: T.surface, border: `1px solid ${T.border}`, "--metric-tone": tone, "--metric-wash": wash, animationDelay: `${70 + i * 55}ms` }}>
+                <div className="text-sm" aria-hidden="true">{icon}</div>
+                <div className="display font-semibold text-base leading-tight" style={{ fontVariantNumeric: "tabular-nums" }}>{node}</div>
+                <div className="text-[10px] font-bold mt-0.5" style={{ color: T.choco2 }}>{label}</div>
+              </div>
+            ))}
+            <div className="momo-metric-card momo-trace-open rounded-xl p-2.5 text-center" style={{ background: T.surface, border: `1px solid ${T.border}`, "--metric-tone": "#6A9B69", "--metric-wash": "rgba(106,155,105,.12)", animationDelay: `${70 + 3 * 55}ms` }}>
+              <div className="text-sm" aria-hidden="true">📇</div>
+              <div className="display font-semibold text-base leading-tight" style={{ fontVariantNumeric: "tabular-nums" }}><CountUp value={crmCompleteness(crm)} format={(v) => `${v}%`} /></div>
+              <div className="momo-stock-meter mt-1.5" style={{ height: "5px" }}><i style={{ width: `${crmCompleteness(crm)}%` }} /></div>
+              <div className="text-[10px] font-bold mt-1" style={{ color: T.choco2 }}>Ficha</div>
+            </div>
           </div>
-          <div className="flex gap-2 mb-3 flex-wrap"><Badge label={sel.estado} /><Badge label={sel.canal} map={CANAL_STYLE} /></div>
-          <div className="text-sm space-y-1.5">
-            <div>📞 {sel.telefono} {sel.instagram && <span>· {sel.instagram}</span>}</div>
-            <div>📍 {sel.direccion} ({sel.barrio})</div>
-            <div>🗓️ {crm.firstPurchase ? <>Primera compra {crm.firstPurchase} · última {crm.lastPurchase}</> : <span style={{ color: T.choco2 }}>Sin compras entregadas aún (lead)</span>}</div>
-            {sel.cumple && <div>🎂 Cumpleaños: {sel.cumple}</div>}
-            <div>💗 Favoritos: {sel.favoritos || "—"}</div>
-            <div>💰 Total: <b>{fmt(crm.spend)}</b> en {crm.purchases} pedidos (ticket {fmt(crm.averageTicket)})</div>
+
+          {/* Siguiente mejor acción — la estrella del CRM */}
+          <div className="momo-trace-open rounded-2xl p-3.5 mb-4" style={{ background: crm.nextAction.type === "blocked" ? "#F9DDD6" : "#E6F1E3", border: `1px solid ${crm.nextAction.type === "blocked" ? "#E8A697" : "#B8D2B2"}`, animationDelay: "260ms" }}>
+            <div className="flex items-start gap-2.5">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-base" style={{ background: crm.nextAction.type === "blocked" ? "#F2C4BA" : "#CBE3C4" }} aria-hidden="true">{crm.nextAction.type === "blocked" ? "⛔" : "✨"}</div>
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: crm.nextAction.type === "blocked" ? "#A03B2A" : "#3F6B42" }}>Siguiente mejor acción</div>
+                <div className="font-bold text-sm mt-0.5" style={{ textWrap: "balance" }}>{crm.nextAction.label}</div>
+                <div className="text-xs mt-0.5" style={{ textWrap: "pretty" }}>{crm.nextAction.detail}</div>
+              </div>
+            </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>GUSTOS REALES SEGÚN COMPRAS</div>
-            {crm.automaticFavorites.length ? <div className="flex flex-wrap gap-1.5">{crm.automaticFavorites.map((favorite) => <span key={favorite.label} className="text-xs font-bold px-2 py-1 rounded-full" style={{ background: T.rosa }}>{favorite.label} · {favorite.quantity}</span>)}</div> : <div className="text-sm" style={{ color: T.choco2 }}>Aún no hay compras entregadas para aprender sus gustos.</div>}
+
+          {/* Datos de contacto — sin duplicar métricas */}
+          <div className="momo-trace-open rounded-2xl p-3 mb-4 text-sm space-y-1.5" style={{ background: T.soft, border: `1px solid ${T.border}`, animationDelay: "300ms" }}>
+            {sel.instagram && <div className="flex items-center gap-2"><span aria-hidden="true">📸</span><span>{sel.instagram}</span></div>}
+            <div className="flex items-start gap-2"><span aria-hidden="true">📍</span><span style={{ textWrap: "pretty" }}>{sel.direccion} <span style={{ color: T.choco2 }}>({sel.barrio})</span></span></div>
+            <div className="flex items-start gap-2"><span aria-hidden="true">🗓️</span><span>{crm.firstPurchase ? <>Primera compra <b style={{ fontVariantNumeric: "tabular-nums" }}>{crm.firstPurchase}</b> · última <b style={{ fontVariantNumeric: "tabular-nums" }}>{crm.lastPurchase}</b></> : <span style={{ color: T.choco2 }}>Sin compras entregadas aún (lead)</span>}</span></div>
+            {sel.cumple && <div className="flex items-center gap-2"><span aria-hidden="true">🎂</span><span>Cumpleaños: {sel.cumple}</span></div>}
+            {sel.favoritos && <div className="flex items-start gap-2"><span aria-hidden="true">💗</span><span style={{ textWrap: "pretty" }}>{sel.favoritos}</span></div>}
           </div>
-          <div className="mt-3">
-            <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>HISTORIAL DE PEDIDOS</div>
-            {crm.orders.slice(0, 8).map((order) => <div key={order.id} className="flex justify-between gap-3 text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div><b>{order.id}</b> · {order.fecha}<div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1">{fmt(order.totalCrm)}</div></div></div>)}
+
+          {/* Gustos reales según compras */}
+          <div className="momo-trace-open mb-4" style={{ animationDelay: "340ms" }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: T.choco2 }}>GUSTOS REALES SEGÚN COMPRAS</div>
+            {crm.automaticFavorites.length ? <div className="flex flex-wrap gap-1.5">{crm.automaticFavorites.map((favorite) => <span key={favorite.label} className="momo-crm-chip text-xs font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1.5" style={{ background: T.rosa, color: "#8E4B5A" }}>{favorite.label} <span style={{ background: "rgba(255,255,255,.6)", borderRadius: "999px", padding: "0 6px", fontVariantNumeric: "tabular-nums" }}>{favorite.quantity}</span></span>)}</div> : <div className="text-sm" style={{ color: T.choco2 }}>Aún no hay compras entregadas para aprender sus gustos.</div>}
+          </div>
+
+          {/* Historial de pedidos */}
+          <div className="momo-trace-open" style={{ animationDelay: "380ms" }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: T.choco2 }}>HISTORIAL DE PEDIDOS</div>
+            {crm.orders.slice(0, 8).map((order) => <div key={order.id} className="momo-crm-row flex justify-between gap-3 text-sm px-2 py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="min-w-0"><b>{order.id}</b> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{order.fecha}</span><div className="text-xs mt-0.5" style={{ color: T.choco2, textWrap: "pretty" }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(order.totalCrm)}</div></div></div>)}
             {!crm.orders.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin pedidos todavía.</div>}
           </div>
           <div className="mt-3">
