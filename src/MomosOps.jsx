@@ -15,6 +15,7 @@ import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgres
 import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
+import { buildCreativePackage } from "./lib/creative-package";
 import { buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
 
 /* ================================================================
@@ -3213,9 +3214,9 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
 
   return (
     <div>
-      <SectionTitle>Pedidos</SectionTitle>
+      <SectionTitle>Tablero de pedidos</SectionTitle>
       <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
-        Cada área confirma únicamente el paso que realmente ejecutó. Seguí cada pedido desde la agenda hasta la entrega.
+        Seguí cada pedido desde la agenda hasta la entrega, en tablero, tabla o trazabilidad.
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -9542,6 +9543,8 @@ function AgenciaControl({ db, user, refrescar }) {
   const [creativeOpen, setCreativeOpen] = useState(false);
   const [opportunityFilter, setOpportunityFilter] = useState("Todas");
   const [expandedOpportunity, setExpandedOpportunity] = useState(null);
+  const [creativePackageBrief, setCreativePackageBrief] = useState(null);
+  const [creativePackageVariant, setCreativePackageVariant] = useState(0);
   const [settingsForm, setSettingsForm] = useState(settings);
   const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
   const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
@@ -9550,6 +9553,12 @@ function AgenciaControl({ db, user, refrescar }) {
   const visibleRecommendations = opportunityFilter === "Todas"
     ? intelligence.recommendations
     : intelligence.recommendations.filter((item) => item.pillar === opportunityFilter);
+  const creativePackageDraft = useMemo(() => creativePackageBrief
+    ? buildCreativePackage(creativePackageBrief, db, creativePackageVariant)
+    : null, [creativePackageBrief, creativePackageVariant, db]);
+  const creativePackageSaved = creativePackageBrief
+    ? (db.agencyCreativeVersions || []).some((version) => String(version.briefId) === String(creativePackageBrief.id))
+    : false;
 
   function openBrief(recommendation = null) {
     const source = recommendation || {
@@ -9639,6 +9648,51 @@ function AgenciaControl({ db, user, refrescar }) {
       asset_url: creativeForm.assetUrl, thumbnail_url: creativeForm.assetUrl, generation_cost: 0,
     });
     setCreativeOpen(false); toast("ok", "Versión creativa guardada con la marca usada como evidencia"); await refrescar();
+  }
+
+  function openCreativePackage(brief) {
+    setCreativePackageVariant(0);
+    setCreativePackageBrief(brief);
+  }
+
+  async function saveCreativePackage() {
+    const brief = creativePackageBrief; const draft = creativePackageDraft;
+    if (!brief || !draft) return;
+    if (!["Aprobado", "En producción"].includes(brief.status)) {
+      toast("alert", "El paquete puede revisarse, pero solo se guarda cuando el brief tenga aprobación humana."); return;
+    }
+    if (!draft.audit.passed) {
+      toast("error", draft.audit.errors[0] || "El paquete no pasó el control de marca."); return;
+    }
+    const marker = `[AGENCY_BRIEF:${brief.id}]`;
+    const existingVersion = (db.agencyCreativeVersions || []).find((version) => String(version.briefId) === String(brief.id));
+    let creativeId = existingVersion?.creativeId || (db.creatives || []).find((creative) => String(creative.notas || "").includes(marker))?.id || "";
+    try {
+      if (!creativeId) {
+        const created = await crearCreativo({
+          campaign_id: draft.campaignId || null, titulo: draft.title, canal: draft.channel, formato: draft.format,
+          producto_foco_id: draft.productId || null, figura: null, sabor: null, hook: draft.selectedHook,
+          copy: draft.copy, guion: draft.script.join("\n"), estado: "Idea", responsable: "Marketing",
+          fecha_entrega: dISO(3), asset_url: "", notas: `${marker} Borrador generado desde Agencia MOMOS; requiere revisión humana.`,
+        });
+        creativeId = created.id;
+      }
+      if (!existingVersion) {
+        await crearVersionCreativaAgencia({
+          creative_id: creativeId, brief_id: brief.id, provider: "momos-ops-rules",
+          prompt: draft.prompt, negative_prompt: draft.negativePrompt, brand_snapshot: draft.brandSnapshot,
+          asset_url: "", thumbnail_url: "", generation_cost: 0,
+        });
+      }
+      setCreativePackageBrief(null);
+      toast("ok", `Paquete guardado como creativo ${creativeId}; continúa en Idea hasta revisión humana.`);
+      await refrescar();
+    } catch (error) {
+      toast("error", creativeId
+        ? `El creativo ${creativeId} quedó guardado, pero falta completar su versión trazable. Reintentá: ${error.message}`
+        : error.message);
+      try { await refrescar(); } catch { /* conserva la recuperación por marcador al recargar */ }
+    }
   }
 
   async function reviewCreativeVersion(version, status) {
@@ -9758,7 +9812,10 @@ function AgenciaControl({ db, user, refrescar }) {
               {(db.agencyBriefs || []).slice(0, 4).map((brief) => <div key={brief.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#fff" }}>
                 <div className="flex justify-between gap-2"><div><div className="text-[10px] font-extrabold uppercase" style={{ color: T.coral }}>BRIEF #{brief.id} · {brief.objective}</div><div className="display font-semibold">{brief.title}</div></div><Badge label={brief.status} /></div>
                 <div className="text-xs mt-2" style={{ color: T.choco2 }}>{brief.channel} · presupuesto {money(brief.proposedBudget)}{brief.stockSnapshot !== null ? ` · stock foto ${brief.stockSnapshot}` : ""}</div>
-                {["Borrador","En revisión","Aprobado","En producción"].includes(brief.status) && <div className="mt-3"><BtnAsync small kind={brief.status === "En revisión" ? "primary" : "soft"} onClick={() => advanceBrief(brief)}>{({ "Borrador": "Enviar a revisión", "En revisión": "Aprobar brief", "Aprobado": "Iniciar producción", "En producción": "Marcar completado" })[brief.status]}</BtnAsync></div>}
+                {["Borrador","En revisión","Aprobado","En producción"].includes(brief.status) && <div className="mt-3 flex flex-wrap gap-2">
+                  <Btn kind="ghost" small onClick={() => openCreativePackage(brief)}>✦ Preparar paquete</Btn>
+                  <BtnAsync small kind={brief.status === "En revisión" ? "primary" : "soft"} onClick={() => advanceBrief(brief)}>{({ "Borrador": "Enviar a revisión", "En revisión": "Aprobar brief", "Aprobado": "Iniciar producción", "En producción": "Marcar completado" })[brief.status]}</BtnAsync>
+                </div>}
               </div>)}
             </div>
           </>}
@@ -9799,6 +9856,55 @@ function AgenciaControl({ db, user, refrescar }) {
         <Field label="Presupuesto propuesto"><Input type="number" min="0" value={briefForm.proposedBudget} onChange={(e) => setBriefForm({ ...briefForm, proposedBudget: e.target.value })} /></Field>
         <Field label="Notas"><textarea className={inputCls} style={inputStyle} rows="3" value={briefForm.notes} onChange={(e) => setBriefForm({ ...briefForm, notes: e.target.value })} /></Field>
         <div className="flex gap-2"><BtnAsync onClick={saveBrief}>Guardar brief trazable</BtnAsync><Btn kind="ghost" onClick={() => setBriefSource(null)}>Cancelar</Btn></div>
+      </Modal>}
+
+      {creativePackageBrief && creativePackageDraft && <Modal title="Paquete creativo MOMOS" onClose={() => setCreativePackageBrief(null)} wide>
+        <div className="rounded-3xl p-4 mb-4" style={{ background: "linear-gradient(135deg,#4A3028,#8C4E3B)", color: "#fff" }}>
+          <div className="text-[9px] uppercase tracking-[.18em] font-extrabold opacity-70">Brief #{creativePackageBrief.id} · {creativePackageBrief.status}</div>
+          <div className="display text-xl font-semibold mt-1">{creativePackageDraft.title}</div>
+          <div className="text-xs opacity-80 mt-1">{creativePackageDraft.channel} · {creativePackageDraft.format} · {creativePackageDraft.objective}</div>
+        </div>
+
+        {!creativePackageDraft.audit.passed && <div className="rounded-2xl px-4 py-3 mb-3 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }} role="alert">⛔ {creativePackageDraft.audit.errors.join(" · ")}</div>}
+        {creativePackageDraft.audit.warnings.length > 0 && <div className="rounded-2xl px-4 py-3 mb-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>⚠ {creativePackageDraft.audit.warnings.join(" · ")}</div>}
+        {!["Aprobado","En producción"].includes(creativePackageBrief.status) && <div className="rounded-2xl px-4 py-3 mb-4 text-xs font-bold" style={{ background: "#EAF0F7", color: "#3E5C7E" }}>Podés revisar y copiar este borrador. Para guardarlo en Creativos, primero el brief debe quedar Aprobado.</div>}
+
+        <div className="grid md:grid-cols-3 gap-2 mb-4">
+          {[["Producto",creativePackageDraft.productName],["Canal",creativePackageDraft.channel],["KPI principal",creativePackageDraft.measurement.primaryKpi]].map(([label,value]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-sm font-bold">{value}</div></div>)}
+        </div>
+
+        <Field label="Elegí el hook que detiene el scroll">
+          <div className="grid gap-2">{creativePackageDraft.hooks.map((hook, index) => <button key={hook} type="button" onClick={() => setCreativePackageVariant(index)} className="text-left rounded-2xl border px-3 py-3 text-sm font-bold" style={{ borderColor: creativePackageDraft.hookIndex === index ? T.coral : T.border, background: creativePackageDraft.hookIndex === index ? T.coralSoft : "#fff", color: T.choco }}><span className="text-[9px] uppercase tracking-wider mr-2" style={{ color: T.coral }}>Opción {String.fromCharCode(65 + index)}</span>{hook}</button>)}</div>
+        </Field>
+
+        <div className="grid lg:grid-cols-2 gap-3 mt-4">
+          <div className="rounded-2xl border p-4" style={{ borderColor: T.border }}>
+            <div className="flex items-center justify-between gap-2 mb-2"><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Copy listo para revisar</div><CopyBtn texto={creativePackageDraft.copy} label="Copiar copy" /></div>
+            <div className="text-sm whitespace-pre-line leading-relaxed">{creativePackageDraft.copy}</div>
+          </div>
+          <div className="rounded-2xl border p-4" style={{ borderColor: T.border }}>
+            <div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.coral }}>Guion de producción</div>
+            <ol className="m-0 pl-5 text-sm space-y-2">{creativePackageDraft.script.map((line) => <li key={line}>{line}</li>)}</ol>
+          </div>
+        </div>
+
+        <div className="rounded-2xl p-4 mt-3" style={{ background: T.vainilla }}>
+          <div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.coral }}>Dirección visual para generar o producir</div>
+          <div className="text-xs leading-relaxed mb-2">{creativePackageDraft.prompt}</div>
+          <div className="text-[11px]" style={{ color: T.choco2 }}><b>Evitar:</b> {creativePackageDraft.negativePrompt}</div>
+        </div>
+
+        <div className="rounded-2xl border p-4 mt-3 mb-4" style={{ borderColor: T.border }}>
+          <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Cómo sabremos si funcionó</div>
+          <div className="text-sm font-bold mt-1">{creativePackageDraft.measurement.primaryKpi}</div>
+          <div className="text-xs mt-1" style={{ color: T.choco2 }}>{creativePackageDraft.measurement.secondaryKpi} · {creativePackageDraft.measurement.attribution}</div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <BtnAsync onClick={saveCreativePackage} disabled={creativePackageSaved || !creativePackageDraft.audit.passed || !["Aprobado","En producción"].includes(creativePackageBrief.status)} textoEnVuelo="Guardando paquete…">{creativePackageSaved ? "Paquete ya guardado ✓" : "Guardar como creativo en Idea"}</BtnAsync>
+          <CopyBtn texto={[creativePackageDraft.selectedHook, creativePackageDraft.copy, ...creativePackageDraft.script, creativePackageDraft.prompt].join("\n\n")} label="Copiar paquete" />
+          <Btn kind="ghost" onClick={() => setCreativePackageBrief(null)}>Cerrar</Btn>
+        </div>
       </Modal>}
 
       {settingsOpen && <Modal title="Guardas de Agencia MOMOS" onClose={() => setSettingsOpen(false)}>
