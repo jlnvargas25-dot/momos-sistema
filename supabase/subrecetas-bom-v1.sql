@@ -497,8 +497,8 @@ begin
   end loop;
 
   -- Sellos y defaults
-  v_vence := nullif(p->>'vence','')::date;
-  v_vence := coalesce(v_vence, v_hoy + 14);
+  -- El vencimiento se sella al desmoldar (migración 17), no al crear la corrida.
+  v_vence := null;
   v_horas_congelacion := coalesce(nullif(p->>'horas_congelacion','')::numeric, 10);
 
   v_id := next_id('corrida','CR-',3);  -- CR-001 — mismo padding que L-001/R-001 (convención existente)

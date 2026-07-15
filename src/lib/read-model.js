@@ -465,6 +465,13 @@ export async function fetchOperativo() {
     id: a.id, fecha: tsBogota(a.fecha), user: nz(rolDe[a.user_id]),
     entidad: a.entidad, entidadId: nz(a.entidad_id), accion: a.accion, de: nz(a.de), a: nz(a.a),
   }));
+  const desmoldadoEnDe = {};
+  audit_logs.forEach((log) => {
+    if (log.entidad !== "Lote" || !/desmoldado/i.test(log.accion || "")) return;
+    if (!desmoldadoEnDe[log.entidadId] || log.fecha < desmoldadoEnDe[log.entidadId]) {
+      desmoldadoEnDe[log.entidadId] = log.fecha;
+    }
+  });
 
   const packing_verifications = packingRows.map((verification) => ({
     orderId: verification.order_id,
@@ -529,7 +536,7 @@ export async function fetchOperativo() {
     gramaje: b.gramaje_g != null ? `${b.gramaje_g} g` : "",
     prod: b.prod, perfectas: b.perfectas, imperfectas: b.imperfectas, descartadas: b.descartadas,
     destino: nz(b.destino, "—"),
-    resp: nz(nombreUserDe[b.resp_user_id]), vence: nz(b.vence),
+    resp: nz(nombreUserDe[b.resp_user_id]), vence: nz(b.vence), desmoldadoEn: nz(desmoldadoEnDe[b.id]),
     estado: b.estado, stockContabilizado: b.stock_contabilizado,
     horasCongelacion: b.horas_congelacion,
     inicioCongelacion: b.inicio_congelacion ? tsBogota(b.inicio_congelacion) : "",

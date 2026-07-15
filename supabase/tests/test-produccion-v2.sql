@@ -111,8 +111,8 @@ begin
       'A8 corrida_id compartido para '||v_lote.id;
     assert (select fecha from production_batches where id=v_lote.id) = v_hoy,
       'A9 fecha = hoy Bogotá para '||v_lote.id;
-    assert (select vence from production_batches where id=v_lote.id) = v_hoy + 14,
-      'A10 vence = fecha+14 para '||v_lote.id;
+    assert (select vence from production_batches where id=v_lote.id) is null,
+      'A10 un lote sin desmoldar no debe tener vencimiento para '||v_lote.id;
   end loop;
 
   -- figuras jsonb con composición correcta (Momo lleva SOLO Momo, cant=2).
