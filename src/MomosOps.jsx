@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderTransitionPermission } from "./lib/order-workflow";
 import { buildFinishedInventory } from "./lib/finished-inventory";
@@ -13,6 +13,7 @@ import { buildPackingChecklistLines, findPackingVerification, packingStationProg
 import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgressFor, openOrderIncidents, operationalStageForOrder, STAGE_LINE_STATUSES } from "./lib/operational-control";
 import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
+import { buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -9130,6 +9131,234 @@ function resultadoSimple(m) {
   return { texto: `Funcionó regular: gastó más de lo que vendió. Revisa el precio o el mensaje, o prueba otro creativo.`, tono: "#A03B2A", bg: "#F6D4CD" };
 }
 
+function AgenciaControl({ db, user, refrescar }) {
+  const serverReady = Boolean(db.agencyServerReady);
+  const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
+  const intelligence = useMemo(() => buildAgencyIntelligence(db, settings, hoyISO()), [db, settings]);
+  const [briefSource, setBriefSource] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [creativeOpen, setCreativeOpen] = useState(false);
+  const [settingsForm, setSettingsForm] = useState(settings);
+  const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
+  const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
+  const existingKeys = new Set((db.agencyBriefs || []).map((brief) => brief.decisionKey).filter(Boolean));
+
+  function openBrief(recommendation = null) {
+    const source = recommendation || {
+      id: `manual-${Date.now()}`, type: "Crear contenido", risk: "Bajo",
+      title: "Nueva oportunidad comercial", rationale: "Brief iniciado manualmente por el equipo.", evidence: {},
+    };
+    setBriefSource(source);
+    setBriefForm({
+      title: source.title,
+      objective: source.type === "Contactar segmento" ? "Recompra" : source.type === "Crear contenido" ? "Contenido" : "Ventas",
+      channel: source.type === "Contactar segmento" ? "WhatsApp" : "Instagram",
+      offer: "", crmSegment: source.type === "Contactar segmento" ? "Clientes inactivos con permiso" : "",
+      proposedBudget: source.proposedBudget || 0, notes: source.rationale,
+    });
+  }
+
+  async function saveBrief() {
+    if (!serverReady) throw new Error("Aplicá primero la migración 16 de Agencia Comercial.");
+    const created = await crearBriefAgencia({
+      decision_key: briefSource.id, title: briefForm.title, objective: briefForm.objective,
+      campaign_id: briefSource.campaignId || null, product_id: briefSource.productId || null,
+      crm_segment: briefForm.crmSegment, offer: briefForm.offer, channel: briefForm.channel,
+      deliverables: briefSource.type === "Crear contenido" ? ["Pieza principal", "Adaptación para historias"] : [],
+      insight: briefSource.rationale, evidence: briefSource.evidence || {}, proposed_budget: Number(briefForm.proposedBudget || 0), notes: briefForm.notes,
+    });
+    await crearDecisionAgencia({
+      brief_id: created.brief_id, campaign_id: briefSource.campaignId || null, creative_id: briefSource.creativeId || null,
+      type: briefSource.type, title: briefSource.title, rationale: briefSource.rationale,
+      evidence: briefSource.evidence || {}, risk_level: briefSource.risk, author: "reglas",
+      proposed_action: {
+        product_id: briefSource.productId || null, creative_id: briefSource.creativeId || null,
+        proposed_budget: Number(briefForm.proposedBudget || 0), customer_ids: briefSource.customerIds || [],
+      },
+    });
+    setBriefSource(null);
+    toast("ok", "Brief y decisión guardados con trazabilidad");
+    await refrescar();
+  }
+
+  async function saveSettings() {
+    await guardarConfiguracionAgencia({
+      autonomy_mode: settingsForm.autonomyMode, daily_budget_limit: Number(settingsForm.dailyBudgetLimit),
+      campaign_budget_limit: Number(settingsForm.campaignBudgetLimit), scale_step_pct: Number(settingsForm.scaleStepPct),
+      require_creative_approval: settingsForm.requireCreativeApproval, block_out_of_stock: settingsForm.blockOutOfStock,
+      contact_only_authorized: settingsForm.contactOnlyAuthorized, paused: settingsForm.paused,
+    });
+    setSettingsOpen(false); toast("ok", "Guardas comerciales actualizadas"); await refrescar();
+  }
+
+  async function advanceBrief(brief) {
+    const next = { "Borrador": "En revisión", "En revisión": "Aprobado", "Aprobado": "En producción", "En producción": "Completado" }[brief.status];
+    if (!next) return;
+    await setEstadoBriefAgencia(brief.id, next, `${next} desde Agencia MOMOS`);
+    toast("ok", `Brief #${brief.id}: ${next}`); await refrescar();
+  }
+
+  async function advanceDecision(decision) {
+    if (decision.status === "Propuesta") {
+      await resolverDecisionAgencia(decision.id, "Aprobada", "Aprobación humana desde Agencia MOMOS");
+      toast("ok", `Decisión #${decision.id} aprobada`); await refrescar(); return;
+    }
+    const result = window.prompt("¿Qué resultado real tuvo esta acción? No marques ejecutada una acción que todavía no hiciste.", "");
+    if (!result) return;
+    await resolverDecisionAgencia(decision.id, "Ejecutada", result);
+    toast("ok", `Resultado de decisión #${decision.id} registrado`); await refrescar();
+  }
+
+  function openCreativeVersion() {
+    const creative = (db.creatives || []).find((item) => !["Publicado","Ganador"].includes(item.estado)) || (db.creatives || [])[0];
+    const tone = (db.brand_library?.tono || []).join(", ");
+    setCreativeForm({
+      creativeId: creative?.id || "", briefId: "",
+      prompt: creative ? `Crear ${creative.formato} para ${creative.productoFoco || creative.titulo}. Hook: ${creative.hook || "momento MOMOS"}. Tono de marca: ${tone || "tierno, premium y cercano"}.` : "",
+      negativePrompt: (db.brand_library?.palabrasNo || []).join(", "), assetUrl: creative?.assetUrl || "",
+    });
+    setCreativeOpen(true);
+  }
+
+  async function saveCreativeVersion() {
+    if (!creativeForm.creativeId) throw new Error("Elegí el creativo que vas a versionar.");
+    await crearVersionCreativaAgencia({
+      creative_id: creativeForm.creativeId, brief_id: creativeForm.briefId || null,
+      provider: "manual", prompt: creativeForm.prompt, negative_prompt: creativeForm.negativePrompt,
+      asset_url: creativeForm.assetUrl, thumbnail_url: creativeForm.assetUrl, generation_cost: 0,
+    });
+    setCreativeOpen(false); toast("ok", "Versión creativa guardada con la marca usada como evidencia"); await refrescar();
+  }
+
+  async function reviewCreativeVersion(version, status) {
+    await revisarVersionCreativaAgencia(version.id, status, status === "Aprobada" ? "Aprobación humana en Agencia MOMOS" : "Lista para revisión humana");
+    toast("ok", `Versión ${version.version}: ${status}`); await refrescar();
+  }
+
+  const money = (value) => fmt(Math.round(Number(value || 0)));
+  const riskStyle = (risk) => risk === "Alto" ? { bg: "#F6D4CD", fg: "#A03B2A" } : risk === "Medio" ? { bg: "#FBE8C8", fg: "#96690F" } : { bg: "#DDEBD9", fg: "#3F6B42" };
+
+  return (
+    <section className="mb-6" aria-label="Agencia Comercial MOMOS">
+      <div className="rounded-[28px] overflow-hidden border shadow-sm" style={{ borderColor: "#D9C2AE", background: T.surface }}>
+        <div className="p-5 sm:p-6 text-white relative overflow-hidden" style={{ background: "linear-gradient(135deg,#4A3028 0%,#704334 58%,#A14E39 100%)" }}>
+          <div className="absolute -right-10 -top-16 w-52 h-52 rounded-full opacity-20" style={{ background: T.rosa }} aria-hidden="true" />
+          <div className="relative flex flex-col sm:flex-row sm:items-start gap-4 justify-between">
+            <div>
+              <div className="text-[10px] font-extrabold tracking-[.2em] uppercase opacity-80">MOMO OPS INTELLIGENCE</div>
+              <h2 className="display text-2xl sm:text-3xl font-semibold mt-1 mb-2">Agencia Comercial MOMOS</h2>
+              <p className="text-sm max-w-2xl opacity-90 m-0">Ventas, CRM, inventario, contenido y pauta convertidos en decisiones explicables. La máquina propone; las guardas protegen; el equipo aprueba.</p>
+            </div>
+            <div className="flex flex-wrap sm:justify-end gap-2">
+              <span className="rounded-full px-3 py-1.5 text-xs font-extrabold" style={{ background: "rgba(255,255,255,.16)" }}>{settings.autonomyMode}</span>
+              <span className="rounded-full px-3 py-1.5 text-xs font-extrabold" style={{ background: settings.paused ? "#F6D4CD" : "#DDEBD9", color: settings.paused ? "#A03B2A" : "#315B35" }}>{settings.paused ? "● PAUSA TOTAL" : "● PROTEGIDA"}</span>
+            </div>
+          </div>
+          <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-2 mt-5">
+            {[
+              ["Oportunidades", intelligence.summary.opportunities, `${intelligence.summary.blocked} bloqueada(s)`],
+              ["ROAS combinado", intelligence.summary.blendedRoas == null ? "—" : `${intelligence.summary.blendedRoas.toFixed(1)}×`, `${money(intelligence.summary.spend)} invertidos`],
+              ["Creativos", intelligence.summary.pendingCreatives, "esperan aprobación"],
+              ["Reactivación CRM", intelligence.summary.eligibleCustomers, "contactables con permiso"],
+            ].map(([label, value, sub]) => <div key={label} className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,.11)", border: "1px solid rgba(255,255,255,.12)" }}>
+              <div className="text-[10px] uppercase tracking-wider font-bold opacity-75">{label}</div><div className="display text-2xl font-semibold">{value}</div><div className="text-[11px] opacity-75">{sub}</div>
+            </div>)}
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          {!serverReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Vista inteligente activa · aplicá <code>agencia-comercial-v1.sql</code> para guardar briefs, aprobaciones y decisiones en el servidor.</div>}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Decisiones para hoy</div><div className="text-sm" style={{ color: T.choco2 }}>Priorizadas por riesgo, evidencia y capacidad real.</div></div>
+            <div className="flex gap-2"><Btn kind="soft" small onClick={() => openBrief()}>＋ Brief manual</Btn>{user === "Administrador" && <Btn kind="ghost" small onClick={() => { setSettingsForm(settings); setSettingsOpen(true); }}>⚙ Guardas</Btn>}</div>
+          </div>
+          <div className="grid lg:grid-cols-3 gap-3">
+            {intelligence.recommendations.slice(0, 6).map((item) => {
+              const guard = item.guard; const risk = riskStyle(item.risk); const created = existingKeys.has(item.id);
+              return <article key={item.id} className="rounded-2xl border p-4 flex flex-col" style={{ borderColor: guard.allowed ? T.border : "#E6B7AE", background: guard.allowed ? T.soft : "#FFF5F2" }}>
+                <div className="flex items-start justify-between gap-2"><span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{item.type}</span><span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold" style={{ background: risk.bg, color: risk.fg }}>Riesgo {item.risk}</span></div>
+                <h3 className="display text-base font-semibold mt-2 mb-1">{item.title}</h3>
+                <p className="text-xs leading-relaxed mb-3" style={{ color: T.choco2 }}>{item.rationale}</p>
+                <div className="mt-auto">
+                  <div className="rounded-xl px-3 py-2 text-[11px] mb-3" style={{ background: guard.allowed ? "#E8F1E4" : "#F6D4CD", color: guard.allowed ? "#3F6B42" : "#A03B2A" }}>
+                    {guard.allowed ? "✓ Pasa las guardas; requiere aprobación según el modo." : `⛔ ${guard.reasons[0]}`}
+                  </div>
+                  <Btn small kind={created ? "ghost" : "primary"} disabled={created || !serverReady} onClick={() => openBrief(item)}>{created ? "Brief creado ✓" : "Convertir en brief"}</Btn>
+                </div>
+              </article>;
+            })}
+          </div>
+
+          {(db.agencyBriefs || []).length > 0 && <>
+            <SectionTitle>Flujo de briefs</SectionTitle>
+            <div className="grid md:grid-cols-2 gap-3">
+              {(db.agencyBriefs || []).slice(0, 4).map((brief) => <div key={brief.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#fff" }}>
+                <div className="flex justify-between gap-2"><div><div className="text-[10px] font-extrabold uppercase" style={{ color: T.coral }}>BRIEF #{brief.id} · {brief.objective}</div><div className="display font-semibold">{brief.title}</div></div><Badge label={brief.status} /></div>
+                <div className="text-xs mt-2" style={{ color: T.choco2 }}>{brief.channel} · presupuesto {money(brief.proposedBudget)}{brief.stockSnapshot !== null ? ` · stock foto ${brief.stockSnapshot}` : ""}</div>
+                {["Borrador","En revisión","Aprobado","En producción"].includes(brief.status) && <div className="mt-3"><BtnAsync small kind={brief.status === "En revisión" ? "primary" : "soft"} onClick={() => advanceBrief(brief)}>{({ "Borrador": "Enviar a revisión", "En revisión": "Aprobar brief", "Aprobado": "Iniciar producción", "En producción": "Marcar completado" })[brief.status]}</BtnAsync></div>}
+              </div>)}
+            </div>
+          </>}
+
+          {(db.agencyDecisions || []).some((decision) => ["Propuesta","Aprobada"].includes(decision.status)) && <>
+            <SectionTitle>Centro de aprobaciones</SectionTitle>
+            <div className="space-y-2">{(db.agencyDecisions || []).filter((decision) => ["Propuesta","Aprobada"].includes(decision.status)).slice(0, 5).map((decision) => <div key={decision.id} className="rounded-2xl border p-3 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: T.border }}>
+              <div className="flex-1"><div className="text-[10px] font-extrabold uppercase" style={{ color: T.coral }}>{decision.type} · riesgo {decision.riskLevel}</div><div className="font-bold text-sm">{decision.title}</div><div className="text-xs" style={{ color: T.choco2 }}>{decision.rationale}</div></div>
+              <BtnAsync small kind={decision.status === "Propuesta" ? "primary" : "soft"} onClick={() => advanceDecision(decision)}>{decision.status === "Propuesta" ? "Aprobar decisión" : "Registrar resultado"}</BtnAsync>
+            </div>)}</div>
+          </>}
+
+          {(db.creatives || []).length > 0 && <>
+            <SectionTitle action={<Btn small kind="soft" disabled={!serverReady} onClick={openCreativeVersion}>＋ Nueva versión</Btn>}>Estudio creativo versionado</SectionTitle>
+            <div className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border }}>
+              <div className="px-4 py-3 text-xs" style={{ background: T.vainilla, color: T.choco2 }}><b style={{ color: T.choco }}>Marca congelada por versión.</b> Cada pieza conserva prompt, palabras prohibidas, archivo, costo y aprobación. El generador externo podrá conectarse después sin perder control.</div>
+              {(db.agencyCreativeVersions || []).length === 0 ? <div className="p-4 text-sm" style={{ color: T.choco2 }}>Todavía no hay versiones. Creá la primera sobre uno de los creativos existentes.</div> :
+                (db.agencyCreativeVersions || []).slice(0, 5).map((version) => {
+                  const creative = (db.creatives || []).find((item) => item.id === version.creativeId);
+                  return <div key={version.id} className="p-4 border-t flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: T.border }}>
+                    {version.thumbnailUrl ? <img src={version.thumbnailUrl} alt="" className="w-14 h-14 rounded-xl object-cover border" style={{ borderColor: T.border }} /> : <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl" style={{ background: T.rosa }}>✦</div>}
+                    <div className="flex-1 min-w-0"><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{creative?.titulo || version.creativeId} · V{version.version}</div><div className="text-sm font-bold truncate">{version.prompt || "Versión sin prompt"}</div><div className="text-xs" style={{ color: T.choco2 }}>{version.provider} · {version.status}</div></div>
+                    {version.status === "Borrador" && <BtnAsync small kind="soft" onClick={() => reviewCreativeVersion(version, "En revisión")}>Enviar a revisión</BtnAsync>}
+                    {version.status === "En revisión" && <BtnAsync small disabled={!version.assetUrl} onClick={() => reviewCreativeVersion(version, "Aprobada")}>Aprobar archivo</BtnAsync>}
+                  </div>;
+                })}
+            </div>
+          </>}
+        </div>
+      </div>
+
+      {briefSource && <Modal title="Nuevo brief comercial" onClose={() => setBriefSource(null)}>
+        <div className="rounded-2xl p-3 mb-4 text-xs" style={{ background: T.vainilla }}><b>Por qué ahora:</b> {briefSource.rationale}</div>
+        <Field label="Nombre del brief"><Input value={briefForm.title} onChange={(e) => setBriefForm({ ...briefForm, title: e.target.value })} /></Field>
+        <div className="grid sm:grid-cols-2 gap-3"><Field label="Objetivo"><Select value={briefForm.objective} onChange={(e) => setBriefForm({ ...briefForm, objective: e.target.value })} options={["Ventas","Recompra","Lanzamiento","Cumpleaños","Tráfico WhatsApp","Branding","Contenido","Otro"]} /></Field><Field label="Canal"><Select value={briefForm.channel} onChange={(e) => setBriefForm({ ...briefForm, channel: e.target.value })} options={["Instagram","Facebook","TikTok","WhatsApp","Rappi","Referidos","Influencer","Orgánico","Multicanal"]} /></Field></div>
+        <Field label="Segmento CRM"><Input value={briefForm.crmSegment} placeholder="Ej. clientes inactivos con permiso" onChange={(e) => setBriefForm({ ...briefForm, crmSegment: e.target.value })} /></Field>
+        <Field label="Oferta o mensaje central"><Input value={briefForm.offer} placeholder="Qué queremos que entienda o haga la persona" onChange={(e) => setBriefForm({ ...briefForm, offer: e.target.value })} /></Field>
+        <Field label="Presupuesto propuesto"><Input type="number" min="0" value={briefForm.proposedBudget} onChange={(e) => setBriefForm({ ...briefForm, proposedBudget: e.target.value })} /></Field>
+        <Field label="Notas"><textarea className={inputCls} style={inputStyle} rows="3" value={briefForm.notes} onChange={(e) => setBriefForm({ ...briefForm, notes: e.target.value })} /></Field>
+        <div className="flex gap-2"><BtnAsync onClick={saveBrief}>Guardar brief trazable</BtnAsync><Btn kind="ghost" onClick={() => setBriefSource(null)}>Cancelar</Btn></div>
+      </Modal>}
+
+      {settingsOpen && <Modal title="Guardas de Agencia MOMOS" onClose={() => setSettingsOpen(false)}>
+        <Field label="Modo de autonomía"><Select value={settingsForm.autonomyMode} onChange={(e) => setSettingsForm({ ...settingsForm, autonomyMode: e.target.value })} options={["Asesor","Copiloto","Autopiloto protegido"]} /></Field>
+        <div className="grid sm:grid-cols-2 gap-3"><Field label="Límite diario"><Input type="number" min="0" value={settingsForm.dailyBudgetLimit} onChange={(e) => setSettingsForm({ ...settingsForm, dailyBudgetLimit: e.target.value })} /></Field><Field label="Límite por campaña"><Input type="number" min="0" value={settingsForm.campaignBudgetLimit} onChange={(e) => setSettingsForm({ ...settingsForm, campaignBudgetLimit: e.target.value })} /></Field></div>
+        <Field label="Escalamiento máximo por paso (%)"><Input type="number" min="0" max="30" value={settingsForm.scaleStepPct} onChange={(e) => setSettingsForm({ ...settingsForm, scaleStepPct: e.target.value })} /></Field>
+        {[["requireCreativeApproval","Exigir aprobación humana del creativo"],["blockOutOfStock","Bloquear pauta sin stock"],["contactOnlyAuthorized","Contactar solo clientes autorizados"],["paused","Parada de emergencia comercial"]].map(([key,label]) => <label key={key} className="flex items-center gap-2 py-2 text-sm font-bold"><input type="checkbox" checked={Boolean(settingsForm[key])} onChange={(e) => setSettingsForm({ ...settingsForm, [key]: e.target.checked })} />{label}</label>)}
+        <div className="flex gap-2 mt-4"><BtnAsync onClick={saveSettings}>Guardar guardas</BtnAsync><Btn kind="ghost" onClick={() => setSettingsOpen(false)}>Cancelar</Btn></div>
+      </Modal>}
+
+      {creativeOpen && <Modal title="Nueva versión creativa" onClose={() => setCreativeOpen(false)} wide>
+        <div className="rounded-2xl px-4 py-3 mb-4 text-xs" style={{ background: T.vainilla }}><b>Control de marca:</b> esta versión guardará una fotografía del tono y vocabulario vigente. Crear la versión no la aprueba ni la publica.</div>
+        <Field label="Creativo base"><select className={inputCls} style={inputStyle} value={creativeForm.creativeId} onChange={(e) => setCreativeForm({ ...creativeForm, creativeId: e.target.value })}><option value="">Elegir creativo…</option>{(db.creatives || []).map((creative) => <option key={creative.id} value={creative.id}>{creative.titulo} · {creative.formato}</option>)}</select></Field>
+        <Field label="Brief relacionado (opcional)"><select className={inputCls} style={inputStyle} value={creativeForm.briefId} onChange={(e) => setCreativeForm({ ...creativeForm, briefId: e.target.value })}><option value="">Sin brief</option>{(db.agencyBriefs || []).filter((brief) => !["Descartado","Completado"].includes(brief.status)).map((brief) => <option key={brief.id} value={brief.id}>#{brief.id} · {brief.title}</option>)}</select></Field>
+        <Field label="Prompt maestro"><textarea className={inputCls} style={inputStyle} rows="4" value={creativeForm.prompt} onChange={(e) => setCreativeForm({ ...creativeForm, prompt: e.target.value })} /></Field>
+        <Field label="Evitar"><Input value={creativeForm.negativePrompt} onChange={(e) => setCreativeForm({ ...creativeForm, negativePrompt: e.target.value })} /></Field>
+        <Field label="URL del archivo o borrador (opcional)"><Input value={creativeForm.assetUrl} placeholder="Se puede agregar cuando el archivo esté listo" onChange={(e) => setCreativeForm({ ...creativeForm, assetUrl: e.target.value })} /></Field>
+        <div className="flex gap-2"><BtnAsync onClick={saveCreativeVersion}>Guardar versión</BtnAsync><Btn kind="ghost" onClick={() => setCreativeOpen(false)}>Cancelar</Btn></div>
+      </Modal>}
+    </section>
+  );
+}
+
 function Crecimiento({ db, update, user, go, refrescar }) {
   const [seccion, setSeccion] = useState("inicio");
 
@@ -9167,11 +9396,11 @@ function Crecimiento({ db, update, user, go, refrescar }) {
         {seccion === "campanas" && <CampanasSimples db={db} update={update} user={user} refrescar={refrescar} />}
         {seccion === "funciono" && <QueFunciono db={db} />}
         {seccion === "pausar" && <QuePausar db={db} update={update} user={user} refrescar={refrescar} />}
-        {seccion === "repetir" && <IdeasListas db={db} update={update} user={user} soloRepetir />}
-        {seccion === "ideas" && <IdeasListas db={db} update={update} user={user} />}
+        {seccion === "repetir" && <IdeasListas db={db} update={update} user={user} refrescar={refrescar} soloRepetir />}
+        {seccion === "ideas" && <IdeasListas db={db} update={update} user={user} refrescar={refrescar} />}
         {seccion === "marca" && <BibliotecaMarca db={db} />}
         {seccion === "resultados" && <ResultadosFaciles db={db} update={update} user={user} refrescar={refrescar} />}
-        {seccion === "tareas" && <TareasRedes db={db} update={update} user={user} />}
+        {seccion === "tareas" && <TareasRedes db={db} update={update} user={user} refrescar={refrescar} />}
       </div>
     );
   }
@@ -9181,6 +9410,7 @@ function Crecimiento({ db, update, user, go, refrescar }) {
 
   return (
     <div>
+      <AgenciaControl db={db} user={user} refrescar={refrescar} />
       <Card className="p-4 mb-4" >
         <div className="display text-lg font-semibold mb-1">¡Hola! 💛 Esto es lo importante hoy</div>
         <div className="text-sm" style={{ color: T.choco2 }}>
@@ -9230,11 +9460,10 @@ function QuePublicar({ db, update, refrescar }) {
         copy_final: idea.copy, estado: "Programado", notas: "Desde Crecimiento MOMOS",
       });
     } catch (e) { toast("error", e.message); return; }
-    // La idea sigue en el slice local de Crecimiento; solo su estado se actualiza acá.
-    update((d) => {
-      const x = d.marketing_ideas.find((y) => y.id === idea.id);
-      if (x && x.estado === "Nueva") x.estado = "Usada";
-    });
+    if (idea.estado === "Nueva") {
+      if (db.agencyServerReady) await setIdeaMarketingEstado(idea.id, "Usada");
+      else update((d) => { const x = d.marketing_ideas.find((y) => y.id === idea.id); if (x) x.estado = "Usada"; });
+    }
     toast("ok", `Publicación ${res.id} programada`);
     try { await refrescar(); } catch { toast("error", "Programada; recargá para verla"); }
   }
@@ -9570,12 +9799,15 @@ function QuePausar({ db, update, user, refrescar }) {
 }
 
 /* --- Ideas listas (biblioteca con categorías y estados) --- */
-function IdeasListas({ db, update, user, soloRepetir }) {
+function IdeasListas({ db, update, user, refrescar, soloRepetir }) {
   const [cat, setCat] = useState("");
   const base = soloRepetir ? (db.marketing_ideas || []).filter((i) => ["Ganadora","Repetir"].includes(i.estado)) : (db.marketing_ideas || []);
   const lista = base.filter((i) => !cat || i.cat === cat);
 
-  function setEstado(idea, estado) {
+  async function setEstado(idea, estado) {
+    if (db.agencyServerReady) {
+      await setIdeaMarketingEstado(idea.id, estado); toast("ok", `Idea marcada ${estado}`); await refrescar(); return;
+    }
     update((d) => { const x = d.marketing_ideas.find((y) => y.id === idea.id); addAudit(d, { user, entidad: "Idea", entidadId: idea.id, accion: "Cambio de estado", de: x.estado, a: estado }); x.estado = estado; });
   }
 
@@ -9734,17 +9966,25 @@ function ResultadosFaciles({ db, update, user, refrescar }) {
 }
 
 /* --- Tareas de redes --- */
-function TareasRedes({ db, update, user }) {
+function TareasRedes({ db, update, user, refrescar }) {
   const hoy = hoyISO();
   const tareas = (db.marketing_tasks || []).filter((t) => t.fecha === hoy);
   const pend = tareas.filter((t) => t.estado === "Pendiente");
 
-  function marcar(t, estado) {
+  async function marcar(t, estado) {
+    if (db.agencyServerReady) {
+      await setTareaMarketingEstado(t.id, estado); toast("ok", `Tarea marcada ${estado}`); await refrescar(); return;
+    }
     update((d) => { const x = d.marketing_tasks.find((y) => y.id === t.id); addAudit(d, { user, entidad: "Tarea redes", entidadId: t.id, accion: "Cambio de estado", de: x.estado, a: estado }); x.estado = estado; });
   }
-  function generarHoy() {
+  async function generarHoy() {
+    const base = ["Publicar la historia del producto del día","Subir el Reel recomendado","Revisar etiquetas en Instagram y activar beneficios","Responder comentarios y mensajes","Escribir a clientes con beneficio por vencer","Escribir a clientes que no compran hace 15 días","Revisar cómo va la campaña activa","Registrar los resultados del contenido publicado ayer"];
+    if (db.agencyServerReady) {
+      const existing = new Set((db.marketing_tasks || []).filter((t) => t.fecha === hoy).map((t) => t.tarea));
+      await Promise.all(base.filter((tarea) => !existing.has(tarea)).map((tarea) => crearTareaMarketing({ tarea, fecha: hoy, responsable: "Marketing" })));
+      toast("ok", "Tareas comerciales del día preparadas"); await refrescar(); return;
+    }
     update((d) => {
-      const base = ["Publicar la historia del producto del día","Subir el Reel recomendado","Revisar etiquetas en Instagram y activar beneficios","Responder comentarios y mensajes","Escribir a clientes con beneficio por vencer","Escribir a clientes que no compran hace 15 días","Revisar cómo va la campaña activa","Registrar los resultados del contenido publicado ayer"];
       base.forEach((tarea) => {
         if (!d.marketing_tasks.some((t) => t.tarea === tarea && t.fecha === hoy)) {
           const id = nextId(d, "tarea", "TAR-", 2);
@@ -9786,7 +10026,7 @@ function TareasRedes({ db, update, user }) {
 
 // Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
 // sus cambios no llegan al servidor y la próxima hidratación los pisa.
-const MODULOS_EN_MIGRACION = ["Beneficios", "Crecimiento", "Finanzas", "Configuración"];
+const MODULOS_EN_MIGRACION = ["Beneficios", "Finanzas", "Configuración"];
 
 function BannerMigracion({ modulo }) {
   const configuracion = modulo === "Configuración";
@@ -9812,7 +10052,7 @@ const MODULOS = [
   { id: "Reclamos", icon: "⚠️", hint: "Investigá, decidí y resolvé cada caso con evidencia.", roles: ["Administrador","Coordinador de pedidos","Empaque","Logística","Marketing/CRM"] },
   { id: "Clientes", icon: "💗", hint: "Reconocé a cada persona y prepará el siguiente contacto.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Beneficios", icon: "🎁", hint: "Creá motivos claros para volver, regalar y recomendar.", roles: ["Administrador","Marketing/CRM"] },
-  { id: "Crecimiento", icon: "🌱", hint: "Convertí oportunidades en acciones simples para hoy.", roles: ["Administrador","Marketing/CRM"] },
+  { id: "Crecimiento", label: "Agencia MOMOS", title: "Agencia Comercial MOMOS", icon: "✦", hint: "Convertí datos reales en decisiones, creativos y crecimiento protegido.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Marketing", icon: "📣", hint: "Planeá campañas con objetivo, presupuesto y responsable.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Creativos", icon: "🎨", hint: "Llevá cada idea de borrador a pieza ganadora.", roles: ["Administrador","Marketing/CRM"] },
   { id: "Calendario", icon: "🗓️", hint: "Programá qué sale, dónde, cuándo y con qué intención.", roles: ["Administrador","Marketing/CRM"] },
@@ -9918,6 +10158,7 @@ export default function MomosOps() {
     const tables = ["orders", "order_items", "packing_verifications", "evidences", "deliveries"];
     if (db.operationalControlReady) tables.push("order_stage_assignments", "order_line_progress", "order_incidents", "order_dispatch_handoffs");
     if (db.crmServerReady) tables.push("customers", "benefits", "customer_crm_profiles", "customer_contacts", "customer_activations");
+    if (db.agencyServerReady) tables.push("campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks", "agency_settings", "agency_briefs", "agency_decisions", "agency_creative_versions");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = () => {
       if (timer) clearTimeout(timer);
@@ -9939,7 +10180,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -9981,6 +10222,15 @@ export default function MomosOps() {
       d.creatives = cat.creatives || []; // Marketing contenido v1: Creativos server-side
       d.content_calendar = cat.content_calendar || []; // Calendario → content_posts
       d.creative_results = cat.creative_results || []; // Resultados → metrics_daily (sin pedidos/ventas manuales)
+      d.agencyServerReady = Boolean(cat.agencyServerReady);
+      d.agencySettings = cat.agencySettings || d.agencySettings || DEFAULT_AGENCY_SETTINGS;
+      d.agencyBriefs = cat.agencyBriefs || [];
+      d.agencyDecisions = cat.agencyDecisions || [];
+      d.agencyCreativeVersions = cat.agencyCreativeVersions || [];
+      if (cat.marketingIdeas) d.marketing_ideas = cat.marketingIdeas;
+      if (cat.marketingGuiones) d.marketing_guiones = cat.marketingGuiones;
+      if (cat.marketingMensajes) d.marketing_mensajes = cat.marketingMensajes;
+      if (cat.marketingTasks) d.marketing_tasks = cat.marketingTasks;
       if (cat.brand_library) d.brand_library = cat.brand_library;
       Object.assign(d.settings, cat.settingsCatalogos);
       Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
@@ -10371,7 +10621,7 @@ export default function MomosOps() {
               data-active={activa === m.id}
               aria-current={activa === m.id ? "page" : undefined}
               style={{ background: activa === m.id ? T.rosa : "transparent", color: activa === m.id ? "#8E4B5A" : T.choco }}>
-              <span aria-hidden="true">{m.icon}</span>{m.id}
+              <span aria-hidden="true">{m.icon}</span>{m.label || m.id}
             </button>
           ))}
         </nav>
@@ -10382,7 +10632,7 @@ export default function MomosOps() {
               <div className="momo-module-icon w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0"
                 style={{ background: `linear-gradient(135deg, ${T.rosa}, ${T.coralSoft})` }} aria-hidden="true">{moduloActivo.icon}</div>
               <div className="min-w-0">
-                <h1 className="display text-2xl font-semibold m-0 leading-tight">{activa}</h1>
+                <h1 className="display text-2xl font-semibold m-0 leading-tight">{moduloActivo.title || moduloActivo.label || activa}</h1>
                 <p className="text-xs sm:text-sm font-semibold m-0 mt-0.5" style={{ color: T.choco2 }}>{moduloActivo.hint}</p>
               </div>
             </div>
@@ -10399,7 +10649,7 @@ export default function MomosOps() {
             data-active={activa === m.id}
             aria-current={activa === m.id ? "page" : undefined}
             style={{ color: activa === m.id ? T.coral : T.choco2 }}>
-            <span className="text-lg" aria-hidden="true">{m.icon}</span>{m.id}
+            <span className="text-lg" aria-hidden="true">{m.icon}</span>{m.label || m.id}
           </button>
         ))}
         {navExtra.length > 0 && (
@@ -10421,7 +10671,7 @@ export default function MomosOps() {
               <button key={m.id} onClick={() => { go(m.id); setMasAbierto(false); }}
                 className="flex flex-col items-center gap-1 py-3 rounded-2xl text-[11px] font-bold"
                 style={{ background: activa === m.id ? T.rosa : T.vainilla, color: activa === m.id ? "#8E4B5A" : T.choco }}>
-                <span className="text-xl" aria-hidden="true">{m.icon}</span>{m.id}
+                <span className="text-xl" aria-hidden="true">{m.icon}</span>{m.label || m.id}
               </button>
             ))}
           </div>

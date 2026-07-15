@@ -342,6 +342,67 @@ export async function registrarMetricasCreativo(payload) {
   return data; // {ok, id, actualizado}
 }
 
+/* ── Agencia Comercial MOMOS v1 (migración 16) ── */
+export async function guardarConfiguracionAgencia(payload) {
+  const { data, error } = await supabase.rpc("guardar_configuracion_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearBriefAgencia(payload) {
+  const { data, error } = await supabase.rpc("crear_brief_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function setEstadoBriefAgencia(briefId, status, note = "") {
+  const { data, error } = await supabase.rpc("set_estado_brief_agencia", { p_brief_id: briefId, p_status: status, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearDecisionAgencia(payload) {
+  const { data, error } = await supabase.rpc("crear_decision_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverDecisionAgencia(decisionId, status, result = "") {
+  const { data, error } = await supabase.rpc("resolver_decision_agencia", { p_decision_id: decisionId, p_status: status, p_result: result });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearVersionCreativaAgencia(payload) {
+  const { data, error } = await supabase.rpc("crear_version_creativa_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revisarVersionCreativaAgencia(versionId, status, feedback = "") {
+  const { data, error } = await supabase.rpc("revisar_version_creativa_agencia", { p_version_id: versionId, p_status: status, p_feedback: feedback });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function setIdeaMarketingEstado(id, estado) {
+  const { data, error } = await supabase.rpc("set_idea_marketing_estado", { p_id: id, p_estado: estado });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearTareaMarketing(payload) {
+  const { data, error } = await supabase.rpc("crear_tarea_marketing", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function setTareaMarketingEstado(id, estado) {
+  const { data, error } = await supabase.rpc("set_tarea_marketing_estado", { p_id: id, p_estado: estado });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function entradaInsumo(itemId, cant, costoTotal, nota = "") {
   const { data, error } = await supabase.rpc("entrada_insumo", { p_item_id: itemId, p_cant: cant, p_costo_total: costoTotal, p_nota: nota });
   if (error) throw new Error(error.message);

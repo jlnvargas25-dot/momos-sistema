@@ -195,7 +195,74 @@ export async function fetchCatalogos() {
     mensajesWhatsApp: Number(m.mensajes_wa), gasto: Number(m.gasto), notas: nz(m.notas),
   }));
 
-  return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results };
+  // Agencia Comercial v1 se hidrata de forma opcional durante el rollout de la
+  // migración 16. Antes de aplicarla, Crecimiento conserva su biblioteca local.
+  const agencyProbe = await supabase.rpc("agencia_comercial_disponible");
+  const agencyProbeMissing = agencyProbe.error &&
+    (agencyProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(agencyProbe.error.message || ""));
+  if (agencyProbe.error && !agencyProbeMissing) throw new Error(agencyProbe.error.message);
+  const agencyServerReady = !agencyProbeMissing && agencyProbe.data === true;
+  let agencySettings = null; let agencyBriefs = []; let agencyDecisions = []; let agencyCreativeVersions = [];
+  let marketingIdeas = null; let marketingGuiones = null; let marketingMensajes = null; let marketingTasks = null;
+  if (agencyServerReady) {
+    const agencyResults = await Promise.all([
+      supabase.from("agency_settings").select("autonomy_mode,daily_budget_limit,campaign_budget_limit,scale_step_pct,require_creative_approval,block_out_of_stock,contact_only_authorized,paused,updated_by,updated_at").eq("id", true).maybeSingle(),
+      supabase.from("agency_briefs").select("id,decision_key,title,objective,campaign_id,product_id,crm_segment,offer,channel,deliverables,insight,evidence,status,proposed_budget,approved_budget,stock_snapshot,created_by,approved_by,created_at,approved_at,updated_at,notes").order("created_at", { ascending: false }),
+      supabase.from("agency_decisions").select("id,brief_id,campaign_id,creative_id,type,title,rationale,evidence,proposed_action,risk_level,status,author,created_by,approved_by,executed_by,created_at,approved_at,executed_at,result").order("created_at", { ascending: false }),
+      supabase.from("agency_creative_versions").select("id,creative_id,brief_id,version,provider,prompt,negative_prompt,brand_snapshot,asset_url,thumbnail_url,status,feedback,generation_cost,created_by,reviewed_by,created_at,reviewed_at").order("created_at", { ascending: false }),
+      supabase.from("marketing_ideas").select("id,titulo,cat,objetivo,producto_sugerido_id,copy,guion_corto,canal,estado,autor").order("id"),
+      supabase.from("marketing_guiones").select("id,titulo,duracion_seg,producto_foco_id,objetivo,dificultad,escenas,texto_pantalla,audio,autor").order("id"),
+      supabase.from("marketing_mensajes").select("id,tipo,texto").order("id"),
+      supabase.from("marketing_tasks").select("id,tarea,fecha,estado,responsable,origen,recommendation_id").order("fecha", { ascending: false }),
+    ]);
+    const agencyError = agencyResults.find((result) => result.error);
+    if (agencyError) throw new Error(agencyError.error.message);
+    const [settingsRow, briefRows, decisionRows, versionRows, ideaRows, guionRows, messageRows, taskRows] = agencyResults.map((result) => result.data);
+    agencySettings = settingsRow ? {
+      autonomyMode: settingsRow.autonomy_mode, dailyBudgetLimit: Number(settingsRow.daily_budget_limit),
+      campaignBudgetLimit: Number(settingsRow.campaign_budget_limit), scaleStepPct: Number(settingsRow.scale_step_pct),
+      requireCreativeApproval: settingsRow.require_creative_approval, blockOutOfStock: settingsRow.block_out_of_stock,
+      contactOnlyAuthorized: settingsRow.contact_only_authorized, paused: settingsRow.paused,
+      updatedBy: nz(settingsRow.updated_by), updatedAt: tsBogota(settingsRow.updated_at),
+    } : null;
+    agencyBriefs = briefRows.map((row) => ({
+      id: row.id, decisionKey: nz(row.decision_key), title: row.title, objective: row.objective,
+      campaignId: nz(row.campaign_id), productId: nz(row.product_id), crmSegment: nz(row.crm_segment),
+      offer: nz(row.offer), channel: row.channel, deliverables: row.deliverables || [], insight: nz(row.insight),
+      evidence: row.evidence || {}, status: row.status, proposedBudget: Number(row.proposed_budget),
+      approvedBudget: row.approved_budget == null ? null : Number(row.approved_budget), stockSnapshot: row.stock_snapshot == null ? null : Number(row.stock_snapshot),
+      createdBy: row.created_by, approvedBy: nz(row.approved_by), createdAt: tsBogota(row.created_at),
+      approvedAt: tsBogota(row.approved_at), updatedAt: tsBogota(row.updated_at), notes: nz(row.notes),
+    }));
+    agencyDecisions = decisionRows.map((row) => ({
+      id: row.id, briefId: row.brief_id, campaignId: nz(row.campaign_id), creativeId: nz(row.creative_id),
+      type: row.type, title: row.title, rationale: row.rationale, evidence: row.evidence || {}, proposedAction: row.proposed_action || {},
+      riskLevel: row.risk_level, status: row.status, author: row.author, createdBy: row.created_by,
+      approvedBy: nz(row.approved_by), executedBy: nz(row.executed_by), createdAt: tsBogota(row.created_at),
+      approvedAt: tsBogota(row.approved_at), executedAt: tsBogota(row.executed_at), result: nz(row.result),
+    }));
+    agencyCreativeVersions = versionRows.map((row) => ({
+      id: row.id, creativeId: row.creative_id, briefId: row.brief_id, version: row.version, provider: row.provider,
+      prompt: nz(row.prompt), negativePrompt: nz(row.negative_prompt), brandSnapshot: row.brand_snapshot || {},
+      assetUrl: nz(row.asset_url), thumbnailUrl: nz(row.thumbnail_url), status: row.status, feedback: nz(row.feedback),
+      generationCost: Number(row.generation_cost), createdBy: row.created_by, reviewedBy: nz(row.reviewed_by),
+      createdAt: tsBogota(row.created_at), reviewedAt: tsBogota(row.reviewed_at),
+    }));
+    marketingIdeas = ideaRows.map((row) => ({ id: row.id, titulo: row.titulo, cat: nz(row.cat), objetivo: nz(row.objetivo),
+      productoSugeridoId: nz(row.producto_sugerido_id), productoSugerido: row.producto_sugerido_id ? (nombreProd[row.producto_sugerido_id] || "") : "",
+      copy: nz(row.copy), guionCorto: nz(row.guion_corto), canal: nz(row.canal), estado: row.estado, autor: row.autor }));
+    marketingGuiones = guionRows.map((row) => ({ id: row.id, titulo: row.titulo, duracion: row.duracion_seg ? `${row.duracion_seg} seg` : "",
+      productoFocoId: nz(row.producto_foco_id), productoFoco: row.producto_foco_id ? (nombreProd[row.producto_foco_id] || "") : "",
+      objetivo: nz(row.objetivo), dificultad: nz(row.dificultad), escenas: row.escenas || [],
+      escena1: row.escenas?.[0] || "", escena2: row.escenas?.[1] || "", escena3: row.escenas?.[2] || "", escena4: row.escenas?.[3] || "",
+      textoPantalla: nz(row.texto_pantalla), audio: nz(row.audio), autor: row.autor }));
+    marketingMensajes = messageRows.map((row) => ({ id: row.id, tipo: row.tipo, texto: row.texto }));
+    marketingTasks = taskRows.map((row) => ({ id: row.id, tarea: row.tarea, fecha: row.fecha, estado: row.estado,
+      responsable: nz(row.responsable), origen: row.origen, recommendationId: row.recommendation_id }));
+  }
+
+  return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
+    agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
