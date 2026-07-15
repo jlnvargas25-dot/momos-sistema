@@ -5446,7 +5446,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
           {listening ? <span className="momo-voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> : "🎙️"}
         </button>
       ) : (
-      <Card id="momobot-cocina" className="momo-modal-sheet p-4 w-[min(92vw,440px)] max-h-[78vh] overflow-y-auto shadow-2xl">
+      <Card id="momobot-cocina" data-testid="momobot-panel" className="momo-modal-sheet momo-momobot-panel p-4 w-[min(94vw,760px)] max-h-[82vh] overflow-y-auto shadow-2xl">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-3 border-b" style={{ borderColor: T.border }}>
         <div className="flex items-center gap-2">
           <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0" style={{ background: T.coralSoft }} aria-hidden="true">✨</span>
@@ -5457,14 +5457,14 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
           <button type="button" onClick={() => setAbierto(false)} aria-label="Minimizar Momobot" title="Minimizar" className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold border shrink-0 transition" style={{ background: T.surface, borderColor: T.border, color: T.choco2 }}>✕</button>
         </div>
       </div>
-      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-        <div className="flex sm:flex-col items-center gap-2 shrink-0">
+      <div data-testid="momobot-layout" className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-5">
+        <div className="flex sm:w-28 sm:flex-col items-center gap-3 sm:gap-2 shrink-0">
           <button type="button" onClick={toggleListening} disabled={voiceMode === "authorizing"} data-listening={listening} aria-pressed={listening}
-            className="momo-voice-orb w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-bold"
+            className="momo-voice-orb w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl font-bold shrink-0"
             style={{ background: T.coral }} aria-label={listening ? voiceMode === "standby" ? "Desactivar Momobot" : "Cerrar micrófono" : draft && !executed ? "Escuchar una orden de voz" : "Empezar dictado continuo"}>
             {listening ? <span className="momo-voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> : "🎙️"}
           </button>
-          <span className="text-[10px] font-extrabold uppercase tracking-[.1em] text-center" style={{ color: listening ? "#A03B2A" : T.choco2 }}>
+          <span className="text-[10px] font-extrabold uppercase tracking-[.1em] text-left sm:text-center leading-snug" style={{ color: listening ? "#A03B2A" : T.choco2 }}>
             {voiceStatusLabel}
           </span>
         </div>
@@ -5472,7 +5472,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
           <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <div>
               <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Asistente manos libres de Momo Ops</div>
-              <div className="display text-2xl font-semibold">🎙️ Copiloto de cocina</div>
+              <div className="display text-xl sm:text-2xl font-semibold">🎙️ Copiloto de cocina</div>
               <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Decí “Momobot” u “Oye Momobot” y hablá natural. Te responde, completa lo que falte y nunca registra sin tu confirmación.</div>
               <div className="inline-flex mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>Modo conversación · hasta 4 preguntas</div>
               <div className="inline-flex ml-1 mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#E3EFE0", color: "#3F6B42" }}>Vocabulario MOMOS activo · {voicePhrases.length} términos</div>
