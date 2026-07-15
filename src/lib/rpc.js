@@ -406,6 +406,52 @@ export async function revisarVersionCreativaAgencia(versionId, status, feedback 
   return data;
 }
 
+/* Biblioteca Inteligente de Marca + Estudio Creativo (migración 20).
+   El navegador calcula la huella del archivo; Storage conserva el original
+   privado y la RPC valida que objeto, tipo, tamaño, derechos y fila coincidan. */
+async function sha256File(file) {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function subirActivoMarca(file, metadata = {}) {
+  if (!(file instanceof File)) throw new Error("Elegí un archivo original para la biblioteca.");
+  if (file.size <= 0 || file.size > 100 * 1024 * 1024) throw new Error("El archivo debe pesar entre 1 byte y 100 MB.");
+  const allowedMime = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|quicktime|webm)|audio\/(mpeg|mp4|wav)|application\/pdf)$/i;
+  if (!allowedMime.test(file.type || "")) throw new Error("El formato del archivo no está permitido en la biblioteca de marca.");
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError || !auth.user) throw new Error("La sesión expiró; volvé a iniciar sesión antes de subir el archivo.");
+  const hash = await sha256File(file);
+  const rawExt = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const path = `${auth.user.id}/${Date.now()}-${crypto.randomUUID()}.${rawExt}`;
+  const upload = await supabase.storage.from("brand-assets").upload(path, file, { contentType: file.type, upsert: false });
+  if (upload.error) throw new Error(`No se pudo subir el original: ${upload.error.message}`);
+  const { data, error } = await supabase.rpc("registrar_activo_marca", {
+    p: {
+      ...metadata, storage_path: path, content_hash: hash,
+      mime_type: file.type, size_bytes: file.size,
+    },
+  });
+  if (error) {
+    const cleanup = await supabase.storage.from("brand-assets").remove([path]);
+    const cleanupNote = cleanup.error ? ` Además, no se pudo retirar el archivo huérfano: ${cleanup.error.message}` : "";
+    throw new Error(`${error.message}${cleanupNote}`);
+  }
+  return data;
+}
+
+export async function archivarActivoMarca(assetId, reason) {
+  const { data, error } = await supabase.rpc("archivar_activo_marca", { p_asset_id: assetId, p_reason: reason });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearTrabajoCreativo(payload) {
+  const { data, error } = await supabase.rpc("crear_trabajo_creativo", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function setIdeaMarketingEstado(id, estado) {
   const { data, error } = await supabase.rpc("set_idea_marketing_estado", { p_id: id, p_estado: estado });
   if (error) throw new Error(error.message);

@@ -14,7 +14,7 @@ begin
     '20260714_13_productos_servidor','20260714_14_control_operativo',
     '20260714_15_crm_clientes','20260714_16_agencia_comercial',
     '20260715_17_vencimiento_terminado','20260715_18_abastecimiento_interno',
-    '20260715_19_distribucion_comercial'
+    '20260715_19_distribucion_comercial','20260715_20_biblioteca_creativa'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -29,6 +29,8 @@ begin
   assert exists(select 1 from pg_trigger where tgname='inventory_lots_internal_purchase_guard' and not tgisinternal), 'falta guard de compra para elaboraciones internas';
   assert exists(select 1 from pg_trigger where tgname='content_posts_distribution_guard' and not tgisinternal), 'falta guard de publicación comercial';
   assert to_regclass('public.content_distributions') is not null, 'falta distribución comercial';
+  assert to_regclass('public.brand_media_assets') is not null, 'falta biblioteca inteligente de marca';
+  assert to_regclass('public.creative_generation_jobs') is not null, 'falta estudio creativo trazable';
   assert exists(
     select 1 from information_schema.columns
     where table_schema='public' and table_name='production_batches' and column_name='desmoldado_en'
@@ -52,6 +54,7 @@ begin
   assert has_function_privilege('authenticated','public.crear_brief_agencia(jsonb)','EXECUTE'), 'falta RPC de briefs comerciales';
   assert has_function_privilege('authenticated','public.resolver_decision_agencia(bigint,text,text)','EXECUTE'), 'falta RPC de decisiones comerciales';
   assert has_function_privilege('authenticated','public.cerrar_distribucion_publicacion(text,text,text,text,text)','EXECUTE'), 'falta RPC de cierre comercial';
+  assert has_function_privilege('authenticated','public.crear_trabajo_creativo(jsonb)','EXECUTE'), 'falta RPC del estudio creativo';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -83,5 +86,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-19 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-20 PASS, rollback total' as resultado;
   rollback;

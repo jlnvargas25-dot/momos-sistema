@@ -280,9 +280,69 @@ export async function fetchCatalogos() {
     }));
   }
 
+  // Biblioteca Inteligente + Estudio Creativo (migración 20). Durante el
+  // rollout la sonda puede no existir: Agencia sigue operativa y muestra la
+  // instalación pendiente, sin consultar tablas que aún no fueron creadas.
+  const brandMediaProbe = await supabase.rpc("biblioteca_creativa_disponible");
+  const brandMediaProbeMissing = brandMediaProbe.error &&
+    (brandMediaProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandMediaProbe.error.message || ""));
+  if (brandMediaProbe.error && !brandMediaProbeMissing) throw new Error(brandMediaProbe.error.message);
+  const brandMediaReady = !brandMediaProbeMissing && brandMediaProbe.data === true;
+  let brandMediaAssets = []; let creativeGenerationJobs = []; let brandMediaUsages = [];
+  if (brandMediaReady) {
+    const brandMediaResults = await Promise.all([
+      supabase.from("brand_media_assets")
+        .select("id,name,media_type,source,product_id,figure,flavor,shot_type,orientation,contains_people,rights_status,rights_expires_at,ai_use_allowed,allowed_channels,status,storage_path,content_hash,mime_type,size_bytes,width,height,duration_seconds,tags,notes,original_asset_id,generation_meta,created_by,created_at,archived_by,archived_at")
+        .order("created_at", { ascending: false }),
+      supabase.from("creative_generation_jobs")
+        .select("id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,created_by,created_at,updated_at")
+        .order("created_at", { ascending: false }),
+      supabase.from("brand_media_usages")
+        .select("id,asset_id,job_id,creative_version_id,role,start_second,end_second,created_by,created_at")
+        .order("created_at", { ascending: false }),
+    ]);
+    const brandMediaError = brandMediaResults.find((result) => result.error);
+    if (brandMediaError) throw new Error(brandMediaError.error.message);
+    const [assetRows, jobRows, usageRows] = brandMediaResults.map((result) => result.data || []);
+    let signedByPath = new Map();
+    if (assetRows.length) {
+      const signed = await supabase.storage.from("brand-assets").createSignedUrls(assetRows.map((row) => row.storage_path), 60 * 60 * 8);
+      if (signed.error) throw new Error(`No se pudieron abrir los originales de marca: ${signed.error.message}`);
+      signedByPath = new Map((signed.data || []).filter((item) => item.signedUrl).map((item) => [item.path, item.signedUrl]));
+    }
+    brandMediaAssets = assetRows.map((row) => ({
+      id: row.id, name: row.name, mediaType: row.media_type, source: row.source,
+      productId: nz(row.product_id, null), productName: row.product_id ? (nombreProd[row.product_id] || "") : "",
+      figure: nz(row.figure), flavor: nz(row.flavor), shotType: nz(row.shot_type), orientation: row.orientation,
+      containsPeople: row.contains_people, rightsStatus: row.rights_status, rightsExpiresAt: nz(row.rights_expires_at),
+      aiUseAllowed: row.ai_use_allowed, allowedChannels: row.allowed_channels || [], status: row.status,
+      storagePath: row.storage_path, url: signedByPath.get(row.storage_path) || "", contentHash: row.content_hash,
+      mimeType: row.mime_type, sizeBytes: Number(row.size_bytes), width: row.width == null ? null : Number(row.width),
+      height: row.height == null ? null : Number(row.height), durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds),
+      tags: row.tags || [], notes: nz(row.notes), originalAssetId: row.original_asset_id,
+      generationMeta: row.generation_meta || {}, createdBy: row.created_by, createdAt: tsBogota(row.created_at),
+      archivedBy: nz(row.archived_by), archivedAt: tsBogota(row.archived_at),
+    }));
+    creativeGenerationJobs = jobRows.map((row) => ({
+      id: row.id, creativeId: nz(row.creative_id), briefId: row.brief_id, provider: row.provider,
+      operation: row.operation, status: row.status, inputAssetIds: row.input_asset_ids || [],
+      targetChannel: row.target_channel, targetFormat: row.target_format, prompt: row.prompt,
+      negativePrompt: nz(row.negative_prompt), brandSnapshot: row.brand_snapshot || {}, outputSpec: row.output_spec || {},
+      providerJobId: nz(row.provider_job_id), outputAssetId: row.output_asset_id,
+      generationCost: Number(row.generation_cost), errorMessage: nz(row.error_message),
+      createdBy: row.created_by, createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at),
+    }));
+    brandMediaUsages = usageRows.map((row) => ({
+      id: row.id, assetId: row.asset_id, jobId: row.job_id, creativeVersionId: row.creative_version_id,
+      role: row.role, startSecond: row.start_second == null ? null : Number(row.start_second),
+      endSecond: row.end_second == null ? null : Number(row.end_second), createdBy: row.created_by,
+      createdAt: tsBogota(row.created_at),
+    }));
+  }
+
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
-    distributionServerReady, content_distributions };
+    distributionServerReady, content_distributions, brandMediaReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
