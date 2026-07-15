@@ -243,6 +243,45 @@ export async function fetchOperativo() {
   if (packingResult.error && !packingMissing) throw new Error(packingResult.error.message);
   const packingRows = packingMissing ? [] : (packingResult.data || []);
 
+  // Control operativo (migración 14) es opcional durante el rollout. La sonda
+  // evita consultar tablas inexistentes y mantiene utilizable la versión 13.
+  const operationalProbe = await supabase.rpc("operacion_pedido_disponible");
+  const operationalProbeMissing = operationalProbe.error
+    && (operationalProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(operationalProbe.error.message || ""));
+  if (operationalProbe.error && !operationalProbeMissing) throw new Error(operationalProbe.error.message);
+  const operationalControlReady = !operationalProbeMissing && operationalProbe.data === true;
+  let assignmentRows = []; let progressRows = []; let incidentRows = []; let handoffRows = [];
+  if (operationalControlReady) {
+    const operationalResults = await Promise.all([
+      supabase.from("order_stage_assignments").select("id,order_id,stage,user_id,status,claimed_at,released_at,release_reason").order("claimed_at", { ascending: false }),
+      supabase.from("order_line_progress").select("order_item_id,order_id,stage,status,user_id,updated_at,version"),
+      supabase.from("order_incidents").select("id,order_id,order_item_id,area,type,description,status,created_by,created_at,resolved_by,resolved_at,resolution").order("created_at", { ascending: false }),
+      supabase.from("order_dispatch_handoffs").select("order_id,status,packing_user_id,logistics_user_id,offered_at,accepted_at,package_signature,note,version"),
+    ]);
+    const operationalError = operationalResults.find((result) => result.error);
+    if (operationalError) throw new Error(operationalError.error.message);
+    [assignmentRows, progressRows, incidentRows, handoffRows] = operationalResults.map((result) => result.data || []);
+  }
+
+  // CRM v2 (migración 15) también es opcional durante el despliegue. El CRM
+  // histórico sigue visible con customers/orders aunque estas tablas aún no existan.
+  const crmProbe = await supabase.rpc("crm_clientes_disponible");
+  const crmProbeMissing = crmProbe.error
+    && (crmProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(crmProbe.error.message || ""));
+  if (crmProbe.error && !crmProbeMissing) throw new Error(crmProbe.error.message);
+  const crmServerReady = !crmProbeMissing && crmProbe.data === true;
+  let crmProfileRows = []; let contactRows = []; let activationRows = [];
+  if (crmServerReady) {
+    const crmResults = await Promise.all([
+      supabase.from("customer_crm_profiles").select("customer_id,contact_allowed,contact_reason,preferred_channel,acquisition_source,referred_by_customer_id,updated_by,updated_at"),
+      supabase.from("customer_contacts").select("id,customer_id,channel,reason,outcome,notes,follow_up_on,activation_id,order_id,created_by,created_at").order("created_at", { ascending: false }),
+      supabase.from("customer_activations").select("id,customer_id,type,title,message,status,benefit_id,expires_on,converted_order_id,created_by,created_at,updated_at").order("created_at", { ascending: false }),
+    ]);
+    const crmError = crmResults.find((result) => result.error);
+    if (crmError) throw new Error(crmError.error.message);
+    [crmProfileRows, contactRows, activationRows] = crmResults.map((result) => result.data || []);
+  }
+
   // La cuarentena aparece con la migración 11. Es opcional durante el rollout
   // para que el front siga cargando entre la publicación y la ejecución SQL.
   const quarantineResult = await supabase
@@ -370,6 +409,48 @@ export async function fetchOperativo() {
     snapshot: verification.snapshot || [],
   }));
 
+  const order_stage_assignments = assignmentRows.map((row) => ({
+    id: row.id, orderId: row.order_id, stage: row.stage, userId: row.user_id,
+    user: nz(nombreUserDe[row.user_id]), status: row.status, claimedAt: tsBogota(row.claimed_at),
+    releasedAt: tsBogota(row.released_at), releaseReason: nz(row.release_reason),
+  }));
+  const order_line_progress = progressRows.map((row) => ({
+    orderItemId: row.order_item_id, orderId: row.order_id, stage: row.stage,
+    status: row.status, userId: row.user_id, user: nz(nombreUserDe[row.user_id]),
+    updatedAt: tsBogota(row.updated_at), version: Number(row.version),
+  }));
+  const order_incidents = incidentRows.map((row) => ({
+    id: row.id, orderId: row.order_id, orderItemId: nz(row.order_item_id), area: row.area,
+    type: row.type, description: row.description, status: row.status,
+    createdBy: row.created_by, createdByName: nz(nombreUserDe[row.created_by]), createdAt: tsBogota(row.created_at),
+    resolvedBy: nz(row.resolved_by), resolvedAt: tsBogota(row.resolved_at), resolution: nz(row.resolution),
+  }));
+  const order_dispatch_handoffs = handoffRows.map((row) => ({
+    orderId: row.order_id, status: row.status, packingUserId: row.packing_user_id,
+    packingUser: nz(nombreUserDe[row.packing_user_id]), logisticsUserId: nz(row.logistics_user_id),
+    logisticsUser: nz(nombreUserDe[row.logistics_user_id]), offeredAt: tsBogota(row.offered_at),
+    acceptedAt: tsBogota(row.accepted_at), packageSignature: row.package_signature,
+    note: nz(row.note), version: Number(row.version),
+  }));
+
+  const customer_crm_profiles = crmProfileRows.map((row) => ({
+    customerId: row.customer_id, contactAllowed: row.contact_allowed, contactReason: nz(row.contact_reason),
+    preferredChannel: row.preferred_channel, acquisitionSource: nz(row.acquisition_source),
+    referredByCustomerId: nz(row.referred_by_customer_id), updatedBy: nz(row.updated_by), updatedAt: tsBogota(row.updated_at),
+  }));
+  const customer_contacts = contactRows.map((row) => ({
+    id: String(row.id), customerId: row.customer_id, channel: row.channel, reason: row.reason,
+    outcome: row.outcome, notes: nz(row.notes), followUpOn: nz(row.follow_up_on),
+    activationId: row.activation_id == null ? "" : String(row.activation_id), orderId: nz(row.order_id),
+    createdBy: row.created_by, createdByName: nz(nombreUserDe[row.created_by]), createdAt: tsBogota(row.created_at),
+  }));
+  const customer_activations = activationRows.map((row) => ({
+    id: String(row.id), customerId: row.customer_id, type: row.type, title: row.title, message: nz(row.message),
+    status: row.status, benefitId: nz(row.benefit_id), expiresOn: nz(row.expires_on),
+    convertedOrderId: nz(row.converted_order_id), createdBy: row.created_by,
+    createdByName: nz(nombreUserDe[row.created_by]), createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at),
+  }));
+
   // Shape EXACTO de la maqueta (db.batches / production_batches en MomosOps.jsx):
   // producto/resp son STRINGS (nombre), no ids — el server normalizó a FK
   // (product_id, resp_user_id) pero el front sigue leyendo por nombre.
@@ -409,5 +490,5 @@ export async function fetchOperativo() {
     gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena };
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations };
 }

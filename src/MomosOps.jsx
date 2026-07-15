@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderTransitionPermission } from "./lib/order-workflow";
 import { buildFinishedInventory } from "./lib/finished-inventory";
@@ -10,6 +10,9 @@ import { evaluateComboVariantAvailability, evaluateExactVariantDemand } from "./
 import { momobotContextAnswer, momobotContextSnapshot } from "./lib/momobot-context";
 import { canAutoStartMomobot, isCurrentMomobotAuthorization, momobotModeAfterExecution, momobotModeAfterReadOnly } from "./lib/momobot-session";
 import { buildPackingChecklistLines, findPackingVerification, packingStationProgress, packingVerificationMatchesLines } from "./lib/packing-workflow";
+import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgressFor, openOrderIncidents, operationalStageForOrder, STAGE_LINE_STATUSES } from "./lib/operational-control";
+import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
+import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -1965,7 +1968,8 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
   const canSeePackingCommands = ["Administrador", "Empaque"].includes(operationalRole);
   const orderAlertsEnabled = canReceiveKitchenOrderAlerts(perfil?.rol);
   const delayAlertsEnabled = canReceiveKitchenDelayReminders(perfil?.rol);
-  const enabled = orderAlertsEnabled || delayAlertsEnabled;
+  const incidentAlertsEnabled = Boolean(db?.operationalControlReady);
+  const enabled = orderAlertsEnabled || delayAlertsEnabled || incidentAlertsEnabled;
   const [dialogMode, setDialogMode] = useState(null);
   const [incomingAlerts, setIncomingAlerts] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -1992,6 +1996,12 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
     .map((order) => ({ ...kitchenOrderAlert(order, catalogs, { eventType: "ready_for_packing" }), date: order.fecha || "", time: order.hora || "" })) : [], [canSeePackingCommands, catalogs, db?.orders]);
   const operationalCommands = useMemo(() => [...readyCommands, ...packingCommands], [readyCommands, packingCommands]);
   const delayReminders = useMemo(() => delayAlertsEnabled ? kitchenDelayedOrderReminders(catalogs, delayClock, delayTiming) : [], [delayAlertsEnabled, catalogs, delayClock, delayTiming]);
+  const operationalIncidents = useMemo(() => incidentAlertsEnabled ? (db?.order_incidents || []).filter((incident) => {
+    if (incident.status !== "Abierto") return false;
+    if (["Administrador", "Coordinador de pedidos"].includes(operationalRole)) return true;
+    if (incident.area === "Recepción") return operationalRole === "Cajero";
+    return canOperateStage(operationalRole, incident.area);
+  }) : [], [incidentAlertsEnabled, db?.order_incidents, operationalRole]);
 
   useEffect(() => {
     const orders = db?.orders || [];
@@ -2091,7 +2101,7 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
   }
 
   function openAlertCenter() {
-    setDialogMode(delayReminders.length ? "delays" : incomingAlerts.length ? "events" : "commands");
+    setDialogMode(operationalIncidents.length ? "incidents" : delayReminders.length ? "delays" : incomingAlerts.length ? "events" : "commands");
     setUnreadCount(0);
   }
 
@@ -2107,11 +2117,12 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
 
   const showsEvents = dialogMode === "events";
   const showsDelays = dialogMode === "delays";
+  const showsIncidents = dialogMode === "incidents";
   const urgentDelayCount = delayReminders.filter((reminder) => reminder.urgent).length;
   const delayedKitchenCount = delayReminders.filter((reminder) => reminder.area === "Cocina").length;
   const delayedPackingCount = delayReminders.filter((reminder) => reminder.area === "Empaque").length;
-  const visibleCount = unreadCount || operationalCommands.length + delayReminders.length;
-  const buttonTone = urgentDelayCount
+  const visibleCount = unreadCount || operationalCommands.length + delayReminders.length + operationalIncidents.length;
+  const buttonTone = operationalIncidents.length || urgentDelayCount
     ? { background: "#A03B2A", borderColor: "#A03B2A", color: "#fff" }
     : delayReminders.length
       ? { background: "#96690F", borderColor: "#96690F", color: "#fff" }
@@ -2122,12 +2133,12 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
     <>
       <button type="button" onClick={openAlertCenter}
         className="momo-btn momo-kitchen-alert-fab rounded-2xl px-3 py-2.5 border flex items-center gap-2 shadow-lg"
-        aria-label={`Abrir seguimiento operativo. ${operationalCommands.length} ${operationalCommands.length === 1 ? "comanda" : "comandas"} requieren acción y ${delayReminders.length} ${delayReminders.length === 1 ? "pedido demorado" : "pedidos demorados"}${unreadCount ? `; ${unreadCount} ${unreadCount === 1 ? "aviso nuevo" : "avisos nuevos"}` : ""}`}
+        aria-label={`Abrir seguimiento operativo. ${operationalCommands.length} ${operationalCommands.length === 1 ? "comanda" : "comandas"} requieren acción, ${delayReminders.length} ${delayReminders.length === 1 ? "pedido demorado" : "pedidos demorados"} y ${operationalIncidents.length} ${operationalIncidents.length === 1 ? "novedad abierta" : "novedades abiertas"}${unreadCount ? `; ${unreadCount} ${unreadCount === 1 ? "aviso nuevo" : "avisos nuevos"}` : ""}`}
         style={buttonTone}>
         <span className="text-xl" aria-hidden="true">🔔</span>
         <span className="hidden sm:block text-left leading-tight">
           <span className="block text-[9px] uppercase tracking-[.12em] font-extrabold opacity-75">Seguimiento operativo</span>
-          <span className="block text-xs font-extrabold">{urgentDelayCount ? `${urgentDelayCount} urgente${urgentDelayCount === 1 ? "" : "s"}` : delayReminders.length ? `${delayReminders.length} con demora` : operationalCommands.length ? `${operationalCommands.length} por atender` : "Todo al día"}</span>
+          <span className="block text-xs font-extrabold">{operationalIncidents.length ? `${operationalIncidents.length} novedad${operationalIncidents.length === 1 ? "" : "es"}` : urgentDelayCount ? `${urgentDelayCount} urgente${urgentDelayCount === 1 ? "" : "s"}` : delayReminders.length ? `${delayReminders.length} con demora` : operationalCommands.length ? `${operationalCommands.length} por atender` : "Todo al día"}</span>
         </span>
         <span className="min-w-7 h-7 px-2 rounded-full flex items-center justify-center text-xs font-black"
           style={{ background: visibleCount ? "#fff" : T.vainilla, color: urgentDelayCount ? "#A03B2A" : delayReminders.length ? "#96690F" : visibleCount ? T.coral : T.choco2 }}>
@@ -2136,11 +2147,11 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
       </button>
 
       {dialogMode && (
-        <Modal title={showsDelays ? "⏱️ Pedidos demorados" : showsEvents ? "🔔 Nuevo aviso operativo" : "🧾 Comandas por atender"} wide topLayer onClose={closeDialog}>
+        <Modal title={showsIncidents ? "⚠️ Novedades que bloquean pedidos" : showsDelays ? "⏱️ Pedidos demorados" : showsEvents ? "🔔 Nuevo aviso operativo" : "🧾 Comandas por atender"} wide topLayer onClose={closeDialog}>
           <div className="rounded-xl p-3 mb-4 border" role="status" aria-live="assertive"
             style={{ background: T.soft, borderColor: T.border, color: T.choco }}>
-            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>{showsDelays ? "Seguimiento vivo de la operación" : "Relevo entre áreas"}</div>
-            <div className="font-bold mt-0.5">{showsDelays ? "MOMO OPS recuerda las órdenes que no han avanzado a tiempo." : "MOMO OPS conecta Caja, Cocina y Empaque sin perder la comanda."}</div>
+            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>{showsIncidents ? "Centro de excepciones" : showsDelays ? "Seguimiento vivo de la operación" : "Relevo entre áreas"}</div>
+            <div className="font-bold mt-0.5">{showsIncidents ? "Estas novedades detienen el avance hasta que el área responsable las resuelva." : showsDelays ? "MOMO OPS recuerda las órdenes que no han avanzado a tiempo." : "MOMO OPS conecta Caja, Cocina y Empaque sin perder la comanda."}</div>
             <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{showsDelays
               ? `Cocina avisa desde ${delayTiming.demoraCocinaMin} min y es urgente desde ${delayTiming.demoraCocinaUrgenteMin}; Empaque avisa desde ${delayTiming.demoraEmpaqueMin} min y es urgente desde ${delayTiming.demoraEmpaqueUrgenteMin}. Repite cada ${delayTiming.demoraRepeticionMin} min.`
               : "El aviso no depende de Momobot: Cocina recibe pagos confirmados y Empaque recibe pedidos terminados por Cocina."}</div>
@@ -2151,7 +2162,22 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
             </div>}
           </div>
 
-          {showsDelays ? (
+          {showsIncidents ? (
+            <div className="space-y-3">
+              {operationalIncidents.map((incident) => (
+                <Card key={incident.id} className="p-4" style={{ borderColor: "#E3A292" }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#A03B2A" }}>{incident.area} · {incident.type}</div><div className="display text-lg font-semibold">Pedido {incident.orderId}</div></div>
+                    <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: "#F8D6CF", color: "#A03B2A" }}>Bloqueado</span>
+                  </div>
+                  <div className="text-sm font-semibold mt-2">{incident.description}</div>
+                  <div className="text-[10px] font-bold mt-1" style={{ color: T.choco2 }}>{incident.createdByName || "Equipo"} · {incident.createdAt}</div>
+                  {incident.area === "Cocina" && <div className="mt-3"><Btn small onClick={goToProduction}>Abrir Producción</Btn></div>}
+                  {incident.area === "Empaque" && <div className="mt-3"><Btn small onClick={goToPacking}>Abrir Empaque</Btn></div>}
+                </Card>
+              ))}
+            </div>
+          ) : showsDelays ? (
             <div className="space-y-3">
               {delayReminders.map((reminder) => (
                 <Card key={`${reminder.orderId}-${reminder.state}`} className="p-4">
@@ -2792,6 +2818,100 @@ function Empaque({ db, update, user, refrescar, perfil }) {
   );
 }
 
+function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
+  const traces = useMemo(() => orders.map((order) => buildOrderTraceability(db, order)).filter(Boolean), [db, orders]);
+  const [selectedId, setSelectedId] = useState(() => traces[0]?.order.id || "");
+  useEffect(() => {
+    if (!traces.length) { setSelectedId(""); return; }
+    if (!traces.some((trace) => trace.order.id === selectedId)) setSelectedId(traces[0].order.id);
+  }, [traces, selectedId]);
+  const selected = traces.find((trace) => trace.order.id === selectedId) || traces[0] || null;
+  const active = traces.filter((trace) => !["Entregado", "Cancelado"].includes(trace.order.estado)).length;
+  const blocked = traces.filter((trace) => traceabilityHealth(trace) === "blocked").length;
+  const handoffs = traces.filter((trace) => trace.order.estado === "Listo para despacho").length;
+  const inRoute = traces.filter((trace) => trace.order.estado === "En ruta").length;
+  const healthStyle = {
+    blocked: { bg: "#FBE3DA", color: "#A03B2A", label: "Bloqueado" },
+    attention: { bg: "#FBE8C8", color: "#96690F", label: "Requiere atención" },
+    complete: { bg: "#DDEBD9", color: "#3F6B42", label: "Finalizado" },
+    active: { bg: "#DCE7F2", color: "#3E5C7E", label: "En curso" },
+  };
+  const eventIcon = { created: "🧾", audit: "↻", evidence: "📷", assignment: "👤", incident: "⚠", packing: "🎁", delivery: "🛵", handoff: "🤝", claim: "💬", inventory: "📦" };
+
+  if (!selected) return <Card className="p-8 text-center"><div className="text-3xl mb-2">🔎</div><div className="font-bold">No hay pedidos que coincidan con la búsqueda</div></Card>;
+  const order = selected.order;
+  const customer = customerOf(db, order.customerId);
+  const health = healthStyle[traceabilityHealth(selected)] || healthStyle.active;
+  return (
+    <div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Stat icon="🧾" label="En seguimiento" value={active} sub="pedidos no terminales" tone={T.coral} />
+        <Stat icon="⚠️" label="Bloqueados" value={blocked} sub="novedades por resolver" tone="#A03B2A" />
+        <Stat icon="🤝" label="En relevo" value={handoffs} sub="Empaque → Logística" tone="#63518A" />
+        <Stat icon="🛵" label="En ruta" value={inRoute} sub="esperan entrega" tone="#3F6B42" />
+      </div>
+
+      <div className="grid lg:grid-cols-[310px_minmax(0,1fr)] gap-4 items-start">
+        <Card className="p-2 lg:sticky lg:top-20 max-h-[72vh] overflow-y-auto">
+          <div className="px-2 py-2 text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>Pedidos encontrados · {traces.length}</div>
+          <div className="space-y-2">
+            {traces.map((trace) => {
+              const traceHealth = healthStyle[traceabilityHealth(trace)] || healthStyle.active;
+              const traceCustomer = customerOf(db, trace.order.customerId);
+              return <button key={trace.order.id} type="button" onClick={() => setSelectedId(trace.order.id)} className="w-full text-left rounded-2xl border p-3 transition"
+                style={{ background: trace.order.id === selected.order.id ? T.coralSoft : "#fff", borderColor: trace.order.id === selected.order.id ? "#E9A18C" : T.border }}>
+                <div className="flex items-center justify-between gap-2"><b className="text-sm">{trace.order.id}</b><span className="rounded-full px-2 py-0.5 text-[9px] font-extrabold" style={{ background: traceHealth.bg, color: traceHealth.color }}>{traceHealth.label}</span></div>
+                <div className="text-xs font-bold mt-1 truncate">{traceCustomer.nombre || "Cliente sin nombre"}</div>
+                <div className="text-[10px] font-semibold mt-1 truncate" style={{ color: T.choco2 }}>{trace.area}</div>
+                <div className="text-[10px] font-bold mt-1 truncate" style={{ color: traceHealth.color }}>{trace.nextAction}</div>
+              </button>;
+            })}
+          </div>
+        </Card>
+
+        <div className="space-y-4 min-w-0">
+          <Card className="p-4 sm:p-5" style={{ borderColor: health.color + "66" }}>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div><div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-semibold m-0">{order.id}</h2><Badge label={order.estado} /><span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: health.bg, color: health.color }}>{health.label}</span></div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{order.fecha} · {order.hora} · {order.canal}</div></div>
+              <Btn small onClick={() => onOpen(order.id)}>Abrir pedido completo</Btn>
+            </div>
+            <div className="mt-4 rounded-2xl p-3" style={{ background: T.soft }}>
+              <div className="flex justify-between text-xs font-extrabold"><span>{selected.area}</span><span>{selected.flow.percent}%</span></div>
+              <div className="h-2 rounded-full mt-2 overflow-hidden" style={{ background: T.vainilla }}><div className="h-full rounded-full" style={{ width: `${selected.flow.percent}%`, background: health.color }} /></div>
+              <div className="flex justify-between mt-2 gap-1" aria-label="Etapas del pedido">{["Pago", "Cocina", "Empaque", "Despacho", "Entrega"].map((label, index) => <span key={label} className="text-[9px] font-extrabold" style={{ color: selected.flow.percent >= index * 25 ? health.color : T.choco2 }}>{label}</span>)}</div>
+            </div>
+            <div className="mt-3 rounded-xl px-3 py-2 border" style={{ background: selected.openIncidents.length ? "#FBE3DA" : "#F2F8F0", borderColor: selected.openIncidents.length ? "#E3A292" : "#A7C9A4" }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: selected.openIncidents.length ? "#A03B2A" : "#3F6B42" }}>Siguiente acción</div><div className="text-sm font-bold">{selected.nextAction}</div></div>
+          </Card>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Cliente y destino</div><div className="font-bold">{customer.nombre || "Sin nombre"}</div><div className="text-sm">{customer.telefono || "Sin teléfono"}</div><div className="text-sm mt-1">{order.direccion || customer.direccion || "Sin dirección"}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{order.barrio || customer.barrio} · {order.zona}</div></Card>
+            <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Pago y valor</div><div className="flex justify-between text-sm"><span>Total</span><b>{fmt(orderTotal(db, order))}</b></div><div className="flex justify-between text-sm mt-1"><span>Medio</span><b>{order.pago || "Pendiente"}</b></div><div className="flex justify-between text-sm mt-1"><span>Comprobante</span><b style={{ color: order.comprobante ? "#3F6B42" : "#A03B2A" }}>{order.comprobante ? "Recibido ✓" : "Pendiente"}</b></div></Card>
+          </div>
+
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-2 mb-3"><div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contenido y control físico</div><div className="display text-lg font-semibold">{selected.items.length} línea{selected.items.length === 1 ? "" : "s"} del pedido</div></div><span className="text-xs font-bold" style={{ color: selected.packing ? "#3F6B42" : T.choco2 }}>{selected.packing ? "Comanda verificada ✓" : "Sin verificación de Empaque"}</span></div>
+            <div className="space-y-2">{selected.items.map((item) => {
+              const lineProgress = selected.progress.filter((row) => row.orderItemId === item.id);
+              return <div key={item.id} className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: T.soft }}><div className="flex-1"><b className="text-sm">{item.cant}× {item.nombre}</b><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa, item.relleno].filter(Boolean).join(" · ")}</div></div><div className="flex flex-wrap gap-1">{lineProgress.map((row) => <span key={row.stage} className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: row.status === "Incidente" ? "#F8D6CF" : row.status === "Listo" || row.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{row.stage}: {row.status}</span>)}</div></div>;
+            })}</div>
+          </Card>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[["Responsable", selected.activeAssignments.map((row) => `${row.stage}: ${row.user || "asignado"}`).join(" · ") || "Sin etapa tomada"], ["Evidencias", `${selected.evidences.length} registradas`], ["Reservas FIFO", `${selected.reservations.length} movimientos`], ["Domicilio", selected.delivery ? `${selected.delivery.proveedor} · ${selected.delivery.estado}` : "Sin solicitud"]].map(([label, value]) => <Card key={label} className="p-3"><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-xs font-bold mt-1">{value}</div></Card>)}
+          </div>
+
+          <Card className="p-4 sm:p-5">
+            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Trazabilidad completa</div><div className="display text-xl font-semibold mb-4">Qué ha pasado con {order.id}</div>
+            <div className="relative pl-7 space-y-4 before:absolute before:left-[10px] before:top-2 before:bottom-2 before:w-px before:bg-[#EEDFCE]">
+              {selected.events.map((event) => <div key={event.id} className="relative"><span className="absolute -left-7 top-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: event.type === "incident" ? "#F8D6CF" : T.vainilla }}>{eventIcon[event.type] || "•"}</span><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1"><div><div className="text-sm font-bold">{event.title}</div>{event.detail && <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{event.detail}</div>}<div className="text-[10px] font-bold mt-1" style={{ color: T.choco2 }}>{event.area}{event.actor ? ` · ${event.actor}` : ""}</div></div><time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{event.at || "Sin hora"}</time></div></div>)}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [modo, setModo] = useState("kanban");
   const [selId, setSelId] = useState(null);
@@ -2830,6 +2950,9 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
     }
     let res;
     try {
+      if (estado === "Listo para empaque" && db.operationalControlReady) {
+        await completarEtapaPedido(orderId, "Cocina");
+      }
       res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
     } catch (e) {
       toast("error", e.message);
@@ -2880,9 +3003,9 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {puedeCrearPedido && <Btn onClick={() => setNuevo(true)}>＋ Agendar pedido</Btn>}
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: T.border }}>
-          {["kanban","tabla"].map((m) => (
-            <button key={m} onClick={() => setModo(m)} className="px-3 py-2 text-xs font-bold capitalize"
-              style={{ background: modo === m ? T.rosa : T.surface, color: modo === m ? "#8E4B5A" : T.choco2 }}>{m}</button>
+          {[{ id: "kanban", label: "Kanban" }, { id: "tabla", label: "Tabla" }, { id: "control", label: "Control y trazabilidad" }].map((option) => (
+            <button key={option.id} onClick={() => setModo(option.id)} className="px-3 py-2 text-xs font-bold"
+              style={{ background: modo === option.id ? T.rosa : T.surface, color: modo === option.id ? "#8E4B5A" : T.choco2 }}>{option.label}</button>
           ))}
         </div>
         <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Buscar pedido, cliente o teléfono…"
@@ -2918,7 +3041,9 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
         </Card>
       )}
 
-      {modo === "kanban" ? (
+      {modo === "control" ? (
+        <PanelTrazabilidadPedidos db={db} orders={filtrados} onOpen={setSelId} />
+      ) : modo === "kanban" ? (
         <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
           {KANBAN_COLS.map((col) => {
             const enCol = filtrados.filter((o) => o.estado === col);
@@ -2991,6 +3116,101 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
           <div className="mt-4"><Btn onClick={() => setAviso(null)}>Entendido</Btn></div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function ControlOperativoPedido({ db, order, perfil, refrescar, setAviso }) {
+  const stage = operationalStageForOrder(order);
+  const assignment = stage ? activeStageAssignment(order.id, stage, db.order_stage_assignments) : null;
+  const lines = stage && stage !== "Logística" ? lineProgressFor(order.id, stage, db.order_items, db.order_line_progress) : [];
+  const incidents = openOrderIncidents(order.id, db.order_incidents);
+  const handoff = dispatchHandoffFor(order.id, db.order_dispatch_handoffs);
+  const allowed = stage && canOperateStage(perfil?.rol, stage);
+  const owns = assignment && (assignment.userId === perfil?.id || perfil?.rol === "Administrador");
+  const [busy, setBusy] = useState("");
+  const [issueOpen, setIssueOpen] = useState(false);
+  const [issue, setIssue] = useState({ type: "Faltante", description: "", orderItemId: "" });
+
+  if (!db.operationalControlReady || !stage) return null;
+
+  async function act(key, action, success) {
+    if (busy) return;
+    setBusy(key);
+    try {
+      await action();
+      await refrescar();
+      toast("ok", success);
+    } catch (error) {
+      setAviso({ titulo: "No se pudo completar el control operativo", texto: error.message });
+    } finally { setBusy(""); }
+  }
+
+  const allKitchenReady = stage === "Cocina" && lines.length > 0 && lines.every(({ progress }) => progress.status === "Listo");
+  return (
+    <div className="rounded-2xl border p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF9F1,#FFFFFF)", borderColor: T.border }}>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Control operativo · {stage}</div>
+          <div className="display text-lg font-semibold">{assignment ? `${assignment.user || "Responsable asignado"} tiene esta etapa` : "Etapa disponible para tomar"}</div>
+          <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>
+            {assignment ? `Tomada ${assignment.claimedAt}. Una sola persona confirma; el equipo puede consultar.` : "Tomarla evita que dos personas procesen la misma orden al tiempo."}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!assignment && allowed && <Btn small disabled={!!busy} onClick={() => act("claim", () => tomarEtapaPedido(order.id, stage), `${order.id} · ${stage} quedó a tu cargo`)}>Tomar {stage}</Btn>}
+          {assignment && owns && <Btn small kind="ghost" disabled={!!busy} onClick={() => act("release", () => liberarEtapaPedido(order.id, stage, "Reasignación operativa"), `${order.id} · etapa liberada`)}>Liberar etapa</Btn>}
+          {allowed && <Btn small kind="rosa" disabled={!!busy} onClick={() => setIssueOpen((value) => !value)}>⚠ Registrar novedad</Btn>}
+        </div>
+      </div>
+
+      {lines.length > 0 && <div className="mt-4 space-y-2">
+        {lines.map(({ item, progress }) => (
+          <div key={item.id} className="rounded-xl border px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ borderColor: progress.status === "Incidente" ? "#E3A292" : T.border, background: progress.status === "Listo" || progress.status === "Verificado" ? "#F2F8F0" : "#fff" }}>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold">{item.cant}× {item.nombre}</div>
+              <div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa].filter(Boolean).join(" · ") || "Línea de la orden"}</div>
+            </div>
+            <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: progress.status === "Incidente" ? "#F8D6CF" : progress.status === "Listo" || progress.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{progress.status}</span>
+            {stage === "Cocina" && owns && <select aria-label={`Estado de ${item.nombre}`} value={progress.status} disabled={!!busy}
+              onChange={(event) => act(item.id, () => setProgresoLineaPedido(item.id, stage, event.target.value, progress.version || null), `${item.nombre} · ${event.target.value}`)}
+              className="rounded-xl border px-2 py-2 text-xs font-bold" style={inputStyle}>
+              {STAGE_LINE_STATUSES.Cocina.map((status) => <option key={status}>{status}</option>)}
+            </select>}
+          </div>
+        ))}
+        {stage === "Cocina" && owns && <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="text-[11px] font-semibold" style={{ color: allKitchenReady ? "#3F6B42" : T.choco2 }}>{lines.filter(({ progress }) => progress.status === "Listo").length}/{lines.length} líneas listas</div>
+          {!allKitchenReady && <Btn small disabled={!!busy || incidents.length > 0} onClick={() => act("complete", () => completarEtapaPedido(order.id, "Cocina"), `${order.id} · todas las líneas quedaron listas`)}>Marcar cocina terminada</Btn>}
+        </div>}
+        {stage === "Empaque" && <div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>Las líneas solo quedan Verificadas al completar la comparación exacta de la comanda; no pueden marcarse manualmente.</div>}
+      </div>}
+
+      {issueOpen && <div className="mt-4 rounded-xl p-3 border" style={{ background: T.coralSoft, borderColor: "#E8B5A5" }}>
+        <div className="grid sm:grid-cols-3 gap-2">
+          <select value={issue.orderItemId} onChange={(e) => setIssue({ ...issue, orderItemId: e.target.value })} className="rounded-xl border px-2 py-2 text-xs" style={inputStyle}>
+            <option value="">Pedido completo</option>{lines.map(({ item }) => <option key={item.id} value={item.id}>{item.cant}× {item.nombre}</option>)}
+          </select>
+          <select value={issue.type} onChange={(e) => setIssue({ ...issue, type: e.target.value })} className="rounded-xl border px-2 py-2 text-xs" style={inputStyle}>
+            {["Faltante", "Sustitución", "Preparación equivocada", "Rehacer", "Diferencia de empaque", "Dirección", "Domicilio", "Cliente ausente", "Otro"].map((type) => <option key={type}>{type}</option>)}
+          </select>
+          <input value={issue.description} onChange={(e) => setIssue({ ...issue, description: e.target.value })} placeholder="¿Qué ocurrió?" className="rounded-xl border px-3 py-2 text-xs" style={inputStyle} />
+        </div>
+        <div className="flex justify-end mt-2"><Btn small disabled={issue.description.trim().length < 3 || !!busy} onClick={() => act("issue", () => crearIncidentePedido({ order_id: order.id, order_item_id: issue.orderItemId || null, area: stage, type: issue.type, description: issue.description }), `${order.id} · novedad registrada`).then(() => { setIssueOpen(false); setIssue({ type: "Faltante", description: "", orderItemId: "" }); })}>Registrar y bloquear avance</Btn></div>
+      </div>}
+
+      {incidents.length > 0 && <div className="mt-3 space-y-2">{incidents.map((incident) => <div key={incident.id} className="rounded-xl px-3 py-2 flex items-center gap-3" style={{ background: "#FBE3DA" }}>
+        <div className="flex-1 text-xs"><b>{incident.type}</b> · {incident.description}<div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{incident.area} · {incident.createdByName || "equipo"} · {incident.createdAt}</div></div>
+        {(perfil?.rol === "Administrador" || perfil?.rol === "Coordinador de pedidos" || canOperateStage(perfil?.rol, incident.area)) && <Btn small kind="ghost" disabled={!!busy} onClick={() => act(incident.id, () => resolverIncidentePedido(incident.id, "Resuelto y validado por el área responsable"), `${incident.id} · resuelto`)}>Resolver</Btn>}
+      </div>)}</div>}
+
+      {order.estado === "Listo para despacho" && <div className="mt-4 rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: handoff?.status === "Aceptado" ? "#F2F8F0" : "#F7F0FF", borderColor: handoff?.status === "Aceptado" ? "#A7C9A4" : "#D8C8E8" }}>
+        <div><div className="text-xs font-extrabold">Relevo físico Empaque → Logística</div><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{handoff ? `${handoff.status} · ${handoff.packingUser || "Empaque"}${handoff.logisticsUser ? ` → ${handoff.logisticsUser}` : ""}` : "Empaque debe ofrecer el paquete y Logística aceptarlo antes de iniciar ruta."}</div></div>
+        <div className="flex gap-2">
+          {canOperateStage(perfil?.rol, "Empaque") && (!handoff || handoff.status !== "Aceptado") && <Btn small disabled={!!busy} onClick={() => act("offer", () => ofrecerRelevoDespacho(order.id), `${order.id} · ofrecido a Logística`)}>Ofrecer paquete</Btn>}
+          {canOperateStage(perfil?.rol, "Logística") && handoff?.status === "Ofrecido" && <Btn small disabled={!!busy} onClick={() => act("accept", () => aceptarRelevoDespacho(order.id), `${order.id} · relevo aceptado`)}>Aceptar paquete</Btn>}
+        </div>
+      </div>}
     </div>
   );
 }
@@ -3131,6 +3351,8 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
           <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{permisoSiguiente.allowed ? "Tu área puede confirmar este avance cuando termine el trabajo." : "Podés consultar la orden, pero la confirmación queda en manos del área que ejecuta el paso."}</div>
         </div>
       )}
+
+      <ControlOperativoPedido db={db} order={o} perfil={perfil} refrescar={refrescar} setAviso={setAviso} />
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Card className="p-4">
@@ -4870,6 +5092,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
         const permission = orderTransitionPermission(perfil?.rol, sourceOrder?.estado || "En producción", "Listo para empaque");
         if (!permission.allowed) throw new Error(permission.reason);
         setExecutionLabel(`Entregando el pedido ${handoff.orderId} a Empaque…`);
+        if (db.operationalControlReady) await completarEtapaPedido(handoff.orderId, "Cocina");
         await setOrderStatusRemoto(handoff.orderId, "Listo para empaque");
         progress.ordersReady.add(handoff.orderId);
         applied.push(`${handoff.orderId} listo para empaque`);
@@ -5244,6 +5467,9 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady }) {
     // reportarse como que falló la transición de estado (juice-v1 regla 4).
     let response;
     try {
+      if (estado === "Listo para empaque" && db.operationalControlReady) {
+        await completarEtapaPedido(orderId, "Cocina");
+      }
       response = await setOrderStatusRemoto(orderId, estado);
     } catch (error) {
       setQueueBusyOrderId(null);
@@ -7087,6 +7313,7 @@ function Clientes({ db, update, user, refrescar }) {
   const [err, setErr] = useState("");
   const [aviso, setAviso] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [crmForm, setCrmForm] = useState(null);
   const hoy = hoyISO();
 
   function abrirNuevo() {
@@ -7122,6 +7349,14 @@ function Clientes({ db, update, user, refrescar }) {
     setForm(null);
   }
   const lista = db.customers.filter((c) => (c.nombre + c.telefono + (c.barrio || "")).toLowerCase().includes(q.toLowerCase()));
+  const crm = sel ? buildCustomerCrm(db, sel.id, hoy) : null;
+
+  async function ejecutarCrm(action) {
+    setEnviando(true); setErr("");
+    try { await action(); await refrescar(); setCrmForm(null); }
+    catch (e) { setErr(e.message); }
+    finally { setEnviando(false); }
+  }
 
   const alertas = [];
   db.customers.forEach((c) => {
@@ -7190,14 +7425,41 @@ function Clientes({ db, update, user, refrescar }) {
 
       {sel && (
         <Modal title={sel.nombre} onClose={() => setSel(null)}>
+          {!db.crmServerReady && <div className="text-xs font-bold p-2.5 rounded-xl mb-3" style={{ background: "#FBE8C8", color: "#96690F" }}>CRM en modo consulta. Aplicá la migración 15 para registrar contactos, activaciones y preferencias.</div>}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            {[["Compras", crm.purchases], ["Valor cliente", fmt(crm.spend)], ["Ticket", fmt(crm.averageTicket)], ["Ficha", `${crmCompleteness(crm)}%`]].map(([label, value]) => <div key={label} className="rounded-xl p-2 text-center" style={{ background: T.vainilla }}><div className="font-extrabold text-sm">{value}</div><div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{label}</div></div>)}
+          </div>
+          <div className="p-3 rounded-2xl mb-3" style={{ background: crm.nextAction.type === "blocked" ? "#F6D4CD" : "#E6F1E3", border: `1px solid ${crm.nextAction.type === "blocked" ? "#E8A697" : "#B8D2B2"}` }}>
+            <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: crm.nextAction.type === "blocked" ? "#A03B2A" : "#3F6B42" }}>Siguiente mejor acción</div>
+            <div className="font-bold text-sm mt-0.5">{crm.nextAction.label}</div><div className="text-xs mt-0.5">{crm.nextAction.detail}</div>
+          </div>
           <div className="flex gap-2 mb-3 flex-wrap"><Badge label={sel.estado} /><Badge label={sel.canal} map={CANAL_STYLE} /></div>
           <div className="text-sm space-y-1.5">
             <div>📞 {sel.telefono} {sel.instagram && <span>· {sel.instagram}</span>}</div>
             <div>📍 {sel.direccion} ({sel.barrio})</div>
-            <div>🗓️ {sel.primera ? <>Primera compra {sel.primera} · última {sel.ultima}</> : <span style={{ color: T.choco2 }}>Sin compras aún (lead cargado a mano)</span>}</div>
+            <div>🗓️ {crm.firstPurchase ? <>Primera compra {crm.firstPurchase} · última {crm.lastPurchase}</> : <span style={{ color: T.choco2 }}>Sin compras entregadas aún (lead)</span>}</div>
             {sel.cumple && <div>🎂 Cumpleaños: {sel.cumple}</div>}
             <div>💗 Favoritos: {sel.favoritos || "—"}</div>
-            <div>💰 Total: <b>{fmt(sel.total)}</b> en {sel.pedidos} pedidos (ticket {fmt(Math.round(sel.total / Math.max(sel.pedidos, 1)))})</div>
+            <div>💰 Total: <b>{fmt(crm.spend)}</b> en {crm.purchases} pedidos (ticket {fmt(crm.averageTicket)})</div>
+          </div>
+          <div className="mt-3">
+            <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>GUSTOS REALES SEGÚN COMPRAS</div>
+            {crm.automaticFavorites.length ? <div className="flex flex-wrap gap-1.5">{crm.automaticFavorites.map((favorite) => <span key={favorite.label} className="text-xs font-bold px-2 py-1 rounded-full" style={{ background: T.rosa }}>{favorite.label} · {favorite.quantity}</span>)}</div> : <div className="text-sm" style={{ color: T.choco2 }}>Aún no hay compras entregadas para aprender sus gustos.</div>}
+          </div>
+          <div className="mt-3">
+            <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>HISTORIAL DE PEDIDOS</div>
+            {crm.orders.slice(0, 8).map((order) => <div key={order.id} className="flex justify-between gap-3 text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div><b>{order.id}</b> · {order.fecha}<div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1">{fmt(order.totalCrm)}</div></div></div>)}
+            {!crm.orders.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin pedidos todavía.</div>}
+          </div>
+          <div className="mt-3">
+            <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>SEGUIMIENTO COMERCIAL</div>
+            {crm.contacts.slice(0, 6).map((contact) => <div key={contact.id} className="text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="flex justify-between gap-2"><b>{contact.channel} · {contact.reason}</b><Badge label={contact.outcome} /></div><div className="text-xs" style={{ color: T.choco2 }}>{contact.createdAt}{contact.createdByName ? ` · ${contact.createdByName}` : ""}{contact.followUpOn ? ` · seguimiento ${contact.followUpOn}` : ""}</div></div>)}
+            {!crm.contacts.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin contactos registrados.</div>}
+          </div>
+          <div className="mt-3">
+            <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>ACTIVACIONES PUNTUALES</div>
+            {crm.activations.slice(0, 6).map((activation) => <div key={activation.id} className="text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="flex justify-between gap-2"><div><b>{activation.title}</b><div className="text-xs" style={{ color: T.choco2 }}>{activation.type}{activation.expiresOn ? ` · vence ${activation.expiresOn}` : ""}{activation.convertedOrderId ? ` · pedido ${activation.convertedOrderId}` : ""}</div></div><div className="flex items-center gap-2"><Badge label={activation.status} />{!activation.convertedOrderId && <Btn small kind="ghost" onClick={() => { setErr(""); setCrmForm({ type: "conversion", activationId: activation.id, orderId: "" }); }}>Atribuir pedido</Btn>}</div></div></div>)}
+            {!crm.activations.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin activaciones creadas.</div>}
           </div>
           <div className="mt-3">
             <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>BENEFICIOS</div>
@@ -7218,9 +7480,57 @@ function Clientes({ db, update, user, refrescar }) {
             {db.claims.filter((r) => r.customerId === sel.id).length === 0 && <div className="text-sm" style={{ color: T.choco2 }}>Sin reclamos. 💛</div>}
           </div>
           {sel.notas && <div className="text-xs mt-3 p-2.5 rounded-xl" style={{ background: T.vainilla }}>📝 {sel.notas}</div>}
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-end gap-2 flex-wrap">
+            <Btn small kind="soft" disabled={!db.crmServerReady} onClick={() => { setErr(""); setCrmForm({ type: "preferences", contactAllowed: crm.profile.contactAllowed !== false, preferredChannel: crm.profile.preferredChannel || "WhatsApp", acquisitionSource: crm.profile.acquisitionSource || "", contactReason: crm.profile.contactReason || "" }); }}>Preferencias</Btn>
+            <Btn small kind="soft" disabled={!db.crmServerReady || crm.profile.contactAllowed === false} onClick={() => { setErr(""); setCrmForm({ type: "contact", channel: crm.profile.preferredChannel === "No contactar" ? "WhatsApp" : (crm.profile.preferredChannel || "WhatsApp"), reason: crm.nextAction.label, outcome: "Enviado", notes: "", followUpOn: "" }); }}>Registrar contacto</Btn>
+            <Btn small kind="soft" disabled={!db.crmServerReady || crm.profile.contactAllowed === false} onClick={() => { setErr(""); setCrmForm({ type: "activation", activationType: crm.nextAction.type === "reactivation" ? "Reactivación" : "Seguimiento", title: crm.nextAction.label, message: crm.nextAction.detail, expiresOn: dISO(7) }); }}>Nueva activación</Btn>
             <Btn small kind="rosa" onClick={() => abrirEdicion(sel)}>✏️ Editar cliente</Btn>
           </div>
+        </Modal>
+      )}
+
+      {sel && crmForm?.type === "preferences" && (
+        <Modal title="Preferencias de contacto" onClose={() => setCrmForm(null)}>
+          <label className="flex items-center gap-2 text-sm font-bold mb-3"><input type="checkbox" checked={crmForm.contactAllowed} onChange={(e) => setCrmForm({ ...crmForm, contactAllowed: e.target.checked, preferredChannel: e.target.checked ? "WhatsApp" : "No contactar" })} /> Puede recibir mensajes comerciales</label>
+          <Field label="Canal preferido"><Select options={["WhatsApp","Instagram","Llamada","No contactar"]} value={crmForm.preferredChannel} onChange={(e) => setCrmForm({ ...crmForm, preferredChannel: e.target.value, contactAllowed: e.target.value !== "No contactar" })} /></Field>
+          <Field label="Cómo llegó"><Input value={crmForm.acquisitionSource} onChange={(e) => setCrmForm({ ...crmForm, acquisitionSource: e.target.value })} placeholder="Instagram, referido, Rappi…" /></Field>
+          {!crmForm.contactAllowed && <Field label="Motivo de no contacto"><Input value={crmForm.contactReason} onChange={(e) => setCrmForm({ ...crmForm, contactReason: e.target.value })} /></Field>}
+          {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando} onClick={() => ejecutarCrm(() => guardarPreferenciasCliente(sel.id, { contact_allowed: crmForm.contactAllowed, preferred_channel: crmForm.preferredChannel, acquisition_source: crmForm.acquisitionSource, contact_reason: crmForm.contactReason }))}>Guardar</Btn></div>
+        </Modal>
+      )}
+      {sel && crmForm?.type === "contact" && (
+        <Modal title="Registrar contacto" onClose={() => setCrmForm(null)}>
+          <Field label="Canal"><Select options={["WhatsApp","Instagram","Llamada","Presencial","Otro"]} value={crmForm.channel} onChange={(e) => setCrmForm({ ...crmForm, channel: e.target.value })} /></Field>
+          <Field label="Motivo"><Input value={crmForm.reason} onChange={(e) => setCrmForm({ ...crmForm, reason: e.target.value })} /></Field>
+          <Field label="Resultado"><Select options={["Pendiente","Enviado","Respondió","Interesado","No interesado","No respondió","Venta"]} value={crmForm.outcome} onChange={(e) => setCrmForm({ ...crmForm, outcome: e.target.value })} /></Field>
+          <Field label="Próximo seguimiento"><Input type="date" value={crmForm.followUpOn} onChange={(e) => setCrmForm({ ...crmForm, followUpOn: e.target.value })} /></Field>
+          <Field label="Notas"><Input value={crmForm.notes} onChange={(e) => setCrmForm({ ...crmForm, notes: e.target.value })} /></Field>
+          {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || crmForm.reason.trim().length < 3} onClick={() => ejecutarCrm(() => registrarContactoCliente({ customer_id: sel.id, channel: crmForm.channel, reason: crmForm.reason, outcome: crmForm.outcome, notes: crmForm.notes, follow_up_on: crmForm.followUpOn }))}>Registrar</Btn></div>
+        </Modal>
+      )}
+      {sel && crmForm?.type === "activation" && (
+        <Modal title="Nueva activación puntual" onClose={() => setCrmForm(null)}>
+          <Field label="Tipo"><Select options={["Reactivación","Cumpleaños","Fidelización","Seguimiento","Recuperación","Otro"]} value={crmForm.activationType} onChange={(e) => setCrmForm({ ...crmForm, activationType: e.target.value })} /></Field>
+          <Field label="Objetivo"><Input value={crmForm.title} onChange={(e) => setCrmForm({ ...crmForm, title: e.target.value })} /></Field>
+          <Field label="Mensaje sugerido"><textarea value={crmForm.message} onChange={(e) => setCrmForm({ ...crmForm, message: e.target.value })} className={`${inputCls} min-h-24`} style={inputStyle} /></Field>
+          <Field label="Vence"><Input type="date" value={crmForm.expiresOn} onChange={(e) => setCrmForm({ ...crmForm, expiresOn: e.target.value })} /></Field>
+          {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || crmForm.title.trim().length < 3} onClick={() => ejecutarCrm(() => crearActivacionCliente({ customer_id: sel.id, type: crmForm.activationType, title: crmForm.title, message: crmForm.message, expires_on: crmForm.expiresOn }))}>Crear activación</Btn></div>
+        </Modal>
+      )}
+      {sel && crmForm?.type === "conversion" && (
+        <Modal title="Atribuir conversión" onClose={() => setCrmForm(null)}>
+          <div className="text-xs font-semibold p-2.5 rounded-xl mb-3" style={{ background: T.vainilla, color: T.choco2 }}>Elegí un pedido real del mismo cliente. El servidor rechazará pedidos cancelados, ajenos o ya atribuidos.</div>
+          <Field label="Pedido convertido">
+            <select value={crmForm.orderId} onChange={(e) => setCrmForm({ ...crmForm, orderId: e.target.value })} className={inputCls} style={inputStyle}>
+              <option value="">Elegir pedido…</option>
+              {crm.orders.filter((order) => order.estado !== "Cancelado").map((order) => <option key={order.id} value={order.id}>{order.id} · {order.fecha} · {order.estado} · {fmt(order.totalCrm)}</option>)}
+            </select>
+          </Field>
+          {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || !crmForm.orderId} onClick={() => ejecutarCrm(() => convertirActivacionCliente(crmForm.activationId, crmForm.orderId))}>Confirmar conversión</Btn></div>
         </Modal>
       )}
 
@@ -7281,9 +7591,11 @@ function labelBeneficio(b, db) {
   return (p ? p.nombre : "Producto") + " gratis";
 }
 
-function Beneficios({ db, update, user }) {
+function Beneficios({ db, update, user, refrescar }) {
   const [nuevo, setNuevo] = useState(false);
   const [form, setForm] = useState({ customerId: "", tipoBeneficio: "descuento_porcentaje", valor: 20, productoGratisId: "PR11", condicion: "Historia en Instagram", minimo: 30000, vence: dISO(15), obs: "" });
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
 
   return (
     <div>
@@ -7311,11 +7623,7 @@ function Beneficios({ db, update, user }) {
               {b.estado === "Reservado" && <div className="text-xs font-bold mt-1.5" style={{ color: "#63518A" }}>⏳ Reservado: pasará a Usado cuando el pedido {b.pedidoUso} se marque pagado, o volverá a Activo si se cancela.</div>}
               {b.obs && <div className="text-xs mt-1.5">📝 {b.obs}</div>}
               {b.estado === "Activo" && (
-                <div className="mt-3"><Btn small kind="soft" onClick={() => update((d) => {
-                  const x = d.benefits.find((y) => y.id === b.id);
-                  x.estado = "Usado"; x.pedidoUso = x.pedidoUso || "manual";
-                  addAudit(d, { user, entidad: "Beneficio", entidadId: b.id, accion: "Marcado como usado manualmente" });
-                })}>Marcar como usado</Btn></div>
+                <div className="text-[11px] font-semibold mt-2" style={{ color: T.choco2 }}>Se reserva al crear el pedido y se marca usado al confirmar el pago; no requiere ajuste manual.</div>
               )}
             </Card>
           );
@@ -7352,16 +7660,16 @@ function Beneficios({ db, update, user }) {
           <Field label="Compra mínima"><Input type="number" value={form.minimo} onChange={(e) => setForm({ ...form, minimo: +e.target.value })} /></Field>
           <Field label="Vence"><Input type="date" value={form.vence} onChange={(e) => setForm({ ...form, vence: e.target.value })} /></Field>
           <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
+          {!db.crmServerReady && <div className="text-xs font-bold mb-2" style={{ color: "#A03B2A" }}>Aplicá la migración 15 para activar beneficios de forma persistente y auditada.</div>}
+          {error && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{error}</div>}
           <div className="flex gap-2 mt-2">
-            <Btn onClick={() => {
-              if (!form.customerId) return;
-              update((d) => {
-                const id = nextId(d, "benefit", "B-");
-                const beneficio = labelBeneficio(form, d);
-                d.benefits.unshift({ id, ...form, beneficio, activacion: hoyISO(), estado: "Activo", pedidoUso: "" });
-                addAudit(d, { user, entidad: "Beneficio", entidadId: id, accion: "Beneficio activado", a: beneficio });
-              });
-              setNuevo(false);
+            <Btn disabled={!db.crmServerReady || enviando || !form.customerId} onClick={async () => {
+              setError(""); setEnviando(true);
+              try {
+                await activarBeneficioCliente({ customer_id: form.customerId, tipo_beneficio: form.tipoBeneficio, valor: form.valor, producto_gratis_id: form.tipoBeneficio === "producto_gratis" ? form.productoGratisId : "", condicion: form.condicion, minimo: form.minimo, vence: form.vence, obs: form.obs });
+                await refrescar(); setNuevo(false);
+              } catch (e) { setError(e.message); }
+              finally { setEnviando(false); }
             }}>Activar</Btn>
             <Btn kind="ghost" onClick={() => setNuevo(false)}>Cancelar</Btn>
           </div>
@@ -8854,7 +9162,7 @@ function Crecimiento({ db, update, user, go, refrescar }) {
         {seccion === "publicar" && <QuePublicar db={db} update={update} refrescar={refrescar} />}
         {seccion === "grabar" && <Guiones db={db} />}
         {seccion === "guiones" && <Guiones db={db} />}
-        {seccion === "escribir" && <AQuienEscribir db={db} go={go} />}
+        {seccion === "escribir" && <AQuienEscribir db={db} go={go} refrescar={refrescar} />}
         {seccion === "mensajes" && <MensajesWhatsApp db={db} customer={null} />}
         {seccion === "promo" && <QuePromo db={db} go={go} />}
         {seccion === "campanas" && <CampanasSimples db={db} update={update} user={user} refrescar={refrescar} />}
@@ -9026,7 +9334,7 @@ function personalizar(texto, nombre) {
   return texto.replace("¡Hola!", "¡Hola, " + (nombre ? nombre.split(" ")[0] : "") + "!").replace("¡Hola de nuevo!", "¡Hola de nuevo, " + (nombre ? nombre.split(" ")[0] : "") + "!");
 }
 
-function AQuienEscribir({ db, go }) {
+function AQuienEscribir({ db, go, refrescar }) {
   const hoy = hoyISO();
   const grupos = [];
   // cumpleaños próximos
@@ -9075,6 +9383,8 @@ function AQuienEscribir({ db, go }) {
                   const tel = (c.telefono || "").replace(/\D/g, "");
                   const url = "https://wa.me/57" + tel + "?text=" + encodeURIComponent(texto);
                   try { window.open(url, "_blank"); } catch (e) {}
+                  if (db.crmServerReady) registrarContactoCliente({ customer_id: c.id, channel: "WhatsApp", reason: motivo, outcome: "Enviado", notes: "Mensaje sugerido por A quién escribirles" })
+                    .then(() => refrescar?.()).catch((e) => toast("error", `WhatsApp abrió, pero no se pudo registrar el contacto: ${e.message}`));
                 }}>💚 Abrir WhatsApp</Btn>
               </div>
             </Card>
@@ -9584,6 +9894,7 @@ export default function MomosOps() {
   const hidratadoRef = useRef(false);
   const [masAbierto, setMasAbierto] = useState(false);
   const [sync, setSync] = useState("cargando"); // cargando | guardado | guardando | local
+  const [realtimeStatus, setRealtimeStatus] = useState("conectando"); // conectando | activo | reconectando
   const saveTimer = useRef(null);
   const saveTokenRef = useRef(0);
   const syncRef = useRef("cargando");
@@ -9597,6 +9908,39 @@ export default function MomosOps() {
     const { data: sub } = supabase.auth.onAuthStateChange((_ev, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Eventos de operación entre caja, Cocina, Empaque y Logística. Se agrupan
+  // durante 350 ms para que una RPC que modifica varias tablas produzca un solo
+  // refresco coherente y no una sucesión de estados parciales en pantalla.
+  useEffect(() => {
+    if (!session || !perfil || !db) return undefined;
+    let timer = null;
+    let alive = true;
+    const tables = ["orders", "order_items", "packing_verifications", "evidences", "deliveries"];
+    if (db.operationalControlReady) tables.push("order_stage_assignments", "order_line_progress", "order_incidents", "order_dispatch_handoffs");
+    if (db.crmServerReady) tables.push("customers", "benefits", "customer_crm_profiles", "customer_contacts", "customer_activations");
+    let channel = supabase.channel(`momos-operacion-${session.user.id}`);
+    const refresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!alive || !hidratadoRef.current) return;
+        refetchFocoRef.current?.().catch(() => setRealtimeStatus("reconectando"));
+      }, 350);
+    };
+    tables.forEach((table) => {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, refresh);
+    });
+    channel.subscribe((status) => {
+      if (!alive) return;
+      if (status === "SUBSCRIBED") setRealtimeStatus("activo");
+      else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) setRealtimeStatus("reconectando");
+    });
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -10000,6 +10344,7 @@ export default function MomosOps() {
                 <span className="momo-sync-dot" aria-hidden="true" />{syncLabel}
               </span>
               {catalogosDe && <span style={{ color: catalogosDe === "servidor" ? "#3F6B42" : "#96690F" }}> · {catalogosDe === "servidor" ? "servidor ✓" : "caché"}</span>}
+              {catalogosDe === "servidor" && <span style={{ color: realtimeStatus === "activo" ? "#3F6B42" : "#96690F" }}> · {realtimeStatus === "activo" ? "tiempo real ✓" : "reconectando"}</span>}
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">

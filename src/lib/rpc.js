@@ -17,6 +17,58 @@ export async function setOrderStatusRemoto(orderId, estado, ventaRapida = false)
   return data; // {ok, de, a, faltantes:[{producto,cant,area,item_id?}]}
 }
 
+/* Control operativo v1: todas las escrituras pasan por RPCs con RBAC,
+   bloqueo de fila y control de versión en el servidor. */
+export async function tomarEtapaPedido(orderId, stage) {
+  const { data, error } = await supabase.rpc("tomar_etapa_pedido", { p_order_id: orderId, p_stage: stage });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function liberarEtapaPedido(orderId, stage, reason = "") {
+  const { data, error } = await supabase.rpc("liberar_etapa_pedido", { p_order_id: orderId, p_stage: stage, p_reason: reason });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function setProgresoLineaPedido(orderItemId, stage, status, expectedVersion = null) {
+  const { data, error } = await supabase.rpc("set_progreso_linea_pedido", {
+    p_order_item_id: orderItemId, p_stage: stage, p_status: status, p_expected_version: expectedVersion,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function completarEtapaPedido(orderId, stage) {
+  const { data, error } = await supabase.rpc("completar_etapa_pedido", { p_order_id: orderId, p_stage: stage });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearIncidentePedido(payload) {
+  const { data, error } = await supabase.rpc("crear_incidente_pedido", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverIncidentePedido(incidentId, resolution) {
+  const { data, error } = await supabase.rpc("resolver_incidente_pedido", { p_incident_id: incidentId, p_resolution: resolution });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function ofrecerRelevoDespacho(orderId, note = "") {
+  const { data, error } = await supabase.rpc("ofrecer_relevo_despacho", { p_order_id: orderId, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function aceptarRelevoDespacho(orderId) {
+  const { data, error } = await supabase.rpc("aceptar_relevo_despacho", { p_order_id: orderId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function confirmarVerificacionEmpaque(orderId, lineIds) {
   const { data, error } = await supabase.rpc("confirmar_verificacion_empaque", {
     p_order_id: orderId,
@@ -84,6 +136,36 @@ export async function upsertCliente(customerId, payload) {
   const { data, error } = await supabase.rpc("upsert_cliente", { p_customer_id: customerId || null, p: payload });
   if (error) throw new Error(error.message);
   return data; // customer_id
+}
+
+export async function guardarPreferenciasCliente(customerId, payload) {
+  const { data, error } = await supabase.rpc("guardar_preferencias_cliente", { p_customer_id: customerId, p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearActivacionCliente(payload) {
+  const { data, error } = await supabase.rpc("crear_activacion_cliente", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function registrarContactoCliente(payload) {
+  const { data, error } = await supabase.rpc("registrar_contacto_cliente", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function convertirActivacionCliente(activationId, orderId) {
+  const { data, error } = await supabase.rpc("convertir_activacion_cliente", { p_activation_id: Number(activationId), p_order_id: orderId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function activarBeneficioCliente(payload) {
+  const { data, error } = await supabase.rpc("activar_beneficio_cliente", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 /* ── Fase 3 · slice 4: producción (lotes) e inventario (WAC) ──
