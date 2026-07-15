@@ -96,6 +96,10 @@ function productStock(db, reference, today = new Date().toISOString().slice(0, 1
   return null;
 }
 
+export function agencyProductStock(db, reference, today = new Date().toISOString().slice(0, 10)) {
+  return productStock(db, reference, today);
+}
+
 function platformMetrics(db) {
   const raw = db.creative_results || [];
   return raw.filter((metric) => metric.fuente !== "manual" || !raw.some((candidate) =>

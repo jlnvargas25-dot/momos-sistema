@@ -16,6 +16,7 @@ import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceabi
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
 import { buildCreativePackage } from "./lib/creative-package";
+import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
 import { buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
 
 /* ================================================================
@@ -9199,6 +9200,7 @@ function Creativos({ db, refrescar }) {
 
 function Calendario({ db, refrescar }) {
   const [nueva, setNueva] = useState(false);
+  const [vista, setVista] = useState("Activas");
   const vacio = { fecha: hoyISO(), hora: "12:00", canal: "Instagram", campaignId: "", creativeId: "", titulo: "", copyFinal: "", estado: "Pendiente", urlPublicacion: "", notas: "" };
   const [form, setForm] = useState(vacio);
   const cambiosRef = useRef(new Set());
@@ -9206,19 +9208,28 @@ function Calendario({ db, refrescar }) {
   const vivoRef = useRef(true);
   useEffect(() => { vivoRef.current = true; return () => { vivoRef.current = false; }; }, []);
 
-  const semana = [...Array(7)].map((_, i) => dISO(i - new Date().getDay() + 1));
-  const pubs = [...db.content_calendar].sort((a, b) => (a.fecha + a.hora) < (b.fecha + b.hora) ? -1 : 1);
-  const pendientes = pubs.filter((p) => p.estado === "Pendiente" || p.estado === "Programado");
-  const publicadas = pubs.filter((p) => p.estado === "Publicado").length;
+  const commercialCalendar = useMemo(() => buildCommercialCalendar(db, hoyISO()), [db]);
+  const formScheduleGuard = useMemo(() => form.creativeId
+    ? calendarTransitionGuard({ ...form, id: "CAL-DRAFT", estado: "Pendiente" }, "Programado", db, hoyISO())
+    : null, [form, db]);
+  const semana = commercialCalendar.weekDates;
+  const pubs = vista === "Activas" ? commercialCalendar.active : commercialCalendar.history;
+  const todos = [...db.content_calendar].sort((a, b) => `${a.fecha}${a.hora}${a.id}`.localeCompare(`${b.fecha}${b.hora}${b.id}`));
 
   function exportar() {
     downloadCSV("calendario",
       ["Id","Fecha","Hora","Canal","Campaña","Creativo","Título","Estado","URL"],
-      pubs.map((p) => { const camp = db.campaigns.find((x) => x.id === p.campaignId); const cre = db.creatives.find((x) => x.id === p.creativeId); return [p.id, p.fecha, p.hora, p.canal, camp ? camp.nombre : "", cre ? cre.titulo : "", p.titulo, p.estado, p.urlPublicacion]; }));
+      todos.map((p) => { const camp = db.campaigns.find((x) => x.id === p.campaignId); const cre = db.creatives.find((x) => x.id === p.creativeId); return [p.id, p.fecha, p.hora, p.canal, camp ? camp.nombre : "", cre ? cre.titulo : "", p.titulo, p.estado, p.urlPublicacion]; }));
+  }
+
+  function planificarCreativo(creative) {
+    setForm({ ...vacio, ...buildPostDraftFromCreative(creative, db, hoyISO()) });
+    setNueva(true);
   }
 
   async function guardar() {
     if (!form.titulo.trim()) { toast("error", "Falta el título de la publicación"); return; }
+    if (form.estado === "Programado" && formScheduleGuard && !formScheduleGuard.allowed) { toast("error", formScheduleGuard.reasons[0]); return; }
     let res;
     try {
       res = await crearPublicacion({
@@ -9235,6 +9246,8 @@ function Calendario({ db, refrescar }) {
 
   async function cambiarEstado(p, estado) {
     if (cambiosRef.current.has(p.id) || estado === p.estado) return;
+    const guard = calendarTransitionGuard(p, estado, db, hoyISO());
+    if (!guard.allowed) { toast("error", guard.reasons[0]); return; }
     cambiosRef.current.add(p.id);
     setEstadosPendientes((actuales) => ({ ...actuales, [p.id]: estado }));
     try {
@@ -9255,20 +9268,58 @@ function Calendario({ db, refrescar }) {
 
   return (
     <div>
+      <div className="rounded-[28px] p-5 sm:p-6 mb-4 relative overflow-hidden" style={{ background: "linear-gradient(135deg,#4A3028 0%,#754536 58%,#B45A42 100%)", color: "#fff" }}>
+        <div className="absolute -right-10 -top-16 w-52 h-52 rounded-full opacity-15" style={{ background: T.rosa }} aria-hidden="true" />
+        <div className="relative flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div><div className="text-[10px] uppercase tracking-[.2em] font-extrabold opacity-75">CENTRO DE EJECUCIÓN COMERCIAL</div><div className="display text-2xl sm:text-3xl font-semibold mt-1">Calendario inteligente MOMOS</div><div className="text-sm opacity-85 mt-1 max-w-2xl">Ordena la semana, valida marca y stock, y muestra exactamente qué debe ejecutar Marketing.</div></div>
+          <div className="rounded-2xl px-4 py-3 text-center" style={{ background: "rgba(255,255,255,.13)", border: "1px solid rgba(255,255,255,.14)" }}><div className="display text-2xl font-semibold">{commercialCalendar.summary.readyToday}/{commercialCalendar.summary.today}</div><div className="text-[10px] uppercase tracking-wider font-bold opacity-75">listas hoy</div></div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat icon="🗓️" label="Publicaciones hoy" value={pubs.filter((p) => p.fecha === hoyISO()).length} tone={T.coral} />
-        <Stat icon="⏳" label="Pendientes / programadas" value={pendientes.length} tone="#96690F" />
-        <Stat icon="✅" label="Publicadas" value={publicadas} tone="#3F6B42" />
-        <Stat icon="📅" label="Esta semana" value={pubs.filter((p) => semana.includes(p.fecha)).length} />
+        <Stat icon="🗓️" label="Activas esta semana" value={commercialCalendar.summary.scheduledWeek} tone={T.coral} />
+        <Stat icon="⛔" label="Bloqueadas" value={commercialCalendar.summary.blocked} sub="requieren corrección" tone="#A03B2A" />
+        <Stat icon="⏰" label="Vencidas" value={commercialCalendar.summary.overdue} sub="sin cerrar" tone="#96690F" />
+        <Stat icon="✦" label="Por programar" value={commercialCalendar.summary.unscheduledApproved} sub="creativos aprobados" tone="#3F6B42" />
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        <Btn onClick={() => setNueva(true)}>＋ Nueva publicación</Btn>
+      {commercialCalendar.summary.blocked > 0 && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF1ED", color: "#A03B2A", border: "1px solid #F0C1B8" }} role="alert"><span className="text-lg">⚠</span><div><div className="text-sm font-extrabold">{commercialCalendar.summary.blocked} publicación(es) no deberían programarse todavía</div><div className="text-xs mt-0.5">Revisá aprobación del creativo, copy, canal, campaña y disponibilidad antes de continuar.</div></div></div>}
+
+      {commercialCalendar.agenda.length > 0 && <>
+        <SectionTitle>Agenda priorizada de Marketing</SectionTitle>
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 mb-4">
+          {commercialCalendar.agenda.slice(0, 6).map((item) => <div key={item.id} className="rounded-2xl border p-4" style={{ borderColor: item.post.preflight.ready ? T.border : "#E8B7AD", background: item.post.preflight.ready ? "#fff" : "#FFF6F3" }}>
+            <div className="flex items-start justify-between gap-2"><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: item.priority >= 90 ? "#A03B2A" : T.coral }}>{item.action}</div><Badge label={item.post.estado} /></div>
+            <div className="font-bold text-sm mt-1">{item.post.titulo}</div>
+            <div className="text-xs mt-1" style={{ color: T.choco2 }}>{item.post.fecha} · {item.post.hora} · {item.post.canal}</div>
+            {!item.post.preflight.ready && <div className="text-[11px] font-bold mt-2" style={{ color: "#A03B2A" }}>⛔ {item.post.preflight.errors[0]?.message}</div>}
+          </div>)}
+        </div>
+      </>}
+
+      {commercialCalendar.planningQueue.length > 0 && <>
+        <SectionTitle>Creativos aprobados esperando fecha</SectionTitle>
+        <div className="flex gap-3 overflow-x-auto pb-3 mb-2">
+          {commercialCalendar.planningQueue.slice(0, 8).map(({ creative, draft, preflight }) => <div key={creative.id} className="w-72 shrink-0 rounded-2xl border p-4" style={{ borderColor: preflight.ready ? T.border : "#E8B7AD", background: T.soft }}>
+            <div className="flex justify-between gap-2"><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{creative.formato} · {creative.canal}</div><Badge label={creative.estado} /></div>
+            <div className="display font-semibold mt-1">{creative.titulo}</div>
+            <div className="text-xs mt-1 mb-3" style={{ color: T.choco2 }}>Sugerencia: {draft.fecha} · {draft.hora}</div>
+            <Btn small kind={preflight.ready ? "primary" : "ghost"} onClick={() => planificarCreativo(creative)}>{preflight.ready ? "Planificar" : "Revisar borrador"}</Btn>
+          </div>)}
+        </div>
+      </>}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="momo-segmented-tabs inline-flex gap-1 p-1.5 rounded-2xl" role="tablist" aria-label="Bandejas del calendario">
+          {["Activas","Historial"].map((tab) => <button key={tab} type="button" role="tab" aria-selected={vista === tab} onClick={() => setVista(tab)} className="rounded-xl border-0 px-4 py-2 text-xs font-extrabold" style={{ background: vista === tab ? T.coral : "transparent", color: vista === tab ? "#fff" : T.choco2 }}>{tab} <span className="ml-1 opacity-75">{tab === "Activas" ? commercialCalendar.active.length : commercialCalendar.history.length}</span></button>)}
+        </div>
+        <div className="flex gap-2"><Btn onClick={() => { setForm(vacio); setNueva(true); }}>＋ Nueva publicación</Btn>
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
+        </div>
       </div>
 
-      <SectionTitle>Vista por día (esta semana)</SectionTitle>
-      <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
+      <SectionTitle>{vista === "Activas" ? "Bandeja activa por día" : "Historial de publicaciones"}</SectionTitle>
+      {vista === "Activas" ? <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
         {semana.map((dia) => {
           const delDia = pubs.filter((p) => p.fecha === dia);
           const esHoy = dia === hoyISO();
@@ -9290,6 +9341,7 @@ function Calendario({ db, refrescar }) {
                       </div>
                       <div className="text-xs font-semibold mt-1 leading-tight">{p.titulo}</div>
                       {cre && <div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>🎨 {cre.titulo}</div>}
+                      <div className="mt-2 rounded-lg px-2 py-1.5 text-[10px] font-bold" style={{ background: p.preflight.ready ? "#E8F1E4" : "#F6D4CD", color: p.preflight.ready ? "#3F6B42" : "#A03B2A" }}>{p.preflight.ready ? "✓ Preflight completo" : `⛔ ${p.preflight.errors[0]?.message}`}</div>
                       <select value={estadoPendiente ?? p.estado} disabled={Boolean(estadoPendiente)} onChange={(e) => cambiarEstado(p, e.target.value)} className="mt-2 w-full rounded-lg px-1.5 py-1 text-[11px] border font-bold disabled:opacity-60" style={inputStyle}>
                         {CAL_ESTADOS.map((s) => <option key={s}>{s}</option>)}
                       </select>
@@ -9307,7 +9359,18 @@ function Calendario({ db, refrescar }) {
             </div>
           );
         })}
-      </div>
+      </div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {pubs.map((p) => {
+          const cre = db.creatives.find((creativeItem) => creativeItem.id === p.creativeId);
+          return <div key={p.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#fff" }}>
+            <div className="flex items-start justify-between gap-2"><div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{p.fecha} · {p.hora} · {p.canal}</div><div className="font-bold text-sm mt-1">{p.titulo}</div></div><Badge label={p.estado} /></div>
+            {cre && <div className="text-xs mt-2" style={{ color: T.choco2 }}>🎨 {cre.titulo}</div>}
+            {p.copyFinal && <div className="text-xs mt-2 line-clamp-2">{p.copyFinal}</div>}
+            <div className="text-[10px] font-semibold mt-3" style={{ color: p.urlPublicacion || p.externalPostId ? "#3F6B42" : "#96690F" }}>{p.urlPublicacion || p.externalPostId ? "✓ Evidencia externa registrada" : "Sin enlace externo registrado"}</div>
+          </div>;
+        })}
+        {pubs.length === 0 && <Empty icon="🗓️" text="Todavía no hay publicaciones cerradas en el historial." />}
+      </div>}
 
       {nueva && (
         <Modal title="Nueva publicación" onClose={() => setNueva(false)} wide>
@@ -9326,13 +9389,16 @@ function Calendario({ db, refrescar }) {
               <select value={form.creativeId} onChange={(e) => {
                 const id = e.target.value;
                 const cr = db.creatives.find((x) => x.id === id);
-                setForm({ ...form, creativeId: id, campaignId: (cr && cr.campaignId) ? cr.campaignId : form.campaignId });
+                const draft = cr ? buildPostDraftFromCreative(cr, db, hoyISO()) : null;
+                setForm(draft ? { ...form, ...draft } : { ...form, creativeId: "" });
               }} className={inputCls} style={inputStyle}>
                 <option value="">Sin creativo</option>
                 {db.creatives.filter((c) => !form.campaignId || c.campaignId === form.campaignId).map((c) => <option key={c.id} value={c.id}>{c.titulo}</option>)}
               </select>
             </Field>
+            <Field label="Guardar como"><Select options={["Pendiente","Programado"]} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} /></Field>
           </div>
+          {form.creativeId && <div className="rounded-2xl px-4 py-3 mb-3 text-xs font-bold" style={{ background: formScheduleGuard?.allowed ? "#E8F1E4" : "#F6D4CD", color: formScheduleGuard?.allowed ? "#3F6B42" : "#A03B2A" }}>{formScheduleGuard?.allowed ? "✓ Creativo, copy, campaña, canal y disponibilidad listos para programar." : `⛔ ${formScheduleGuard?.reasons[0] || "Falta completar el preflight."}`}</div>}
           <Field label="Copy final">
             <textarea rows={2} value={form.copyFinal} onChange={(e) => setForm({ ...form, copyFinal: e.target.value })} className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none resize-y" style={{ ...inputStyle, fontFamily: "inherit" }} />
           </Field>
