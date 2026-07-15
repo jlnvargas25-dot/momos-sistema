@@ -2831,7 +2831,7 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
   const handoffs = traces.filter((trace) => trace.order.estado === "Listo para despacho").length;
   const inRoute = traces.filter((trace) => trace.order.estado === "En ruta").length;
   const healthStyle = {
-    blocked: { bg: "#FBE3DA", color: "#A03B2A", label: "Bloqueado" },
+    blocked: { bg: "#F6D4CD", color: "#A03B2A", label: "Bloqueado" },
     attention: { bg: "#FBE8C8", color: "#96690F", label: "Requiere atención" },
     complete: { bg: "#DDEBD9", color: "#3F6B42", label: "Finalizado" },
     active: { bg: "#DCE7F2", color: "#3E5C7E", label: "En curso" },
@@ -2859,7 +2859,7 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
               const traceHealth = healthStyle[traceabilityHealth(trace)] || healthStyle.active;
               const traceCustomer = customerOf(db, trace.order.customerId);
               return <button key={trace.order.id} type="button" onClick={() => setSelectedId(trace.order.id)} className="w-full text-left rounded-2xl border p-3 transition"
-                style={{ background: trace.order.id === selected.order.id ? T.coralSoft : "#fff", borderColor: trace.order.id === selected.order.id ? "#E9A18C" : T.border }}>
+                style={{ background: trace.order.id === selected.order.id ? T.coralSoft : T.surface, borderColor: trace.order.id === selected.order.id ? "#E9A18C" : T.border }}>
                 <div className="flex items-center justify-between gap-2"><b className="text-sm">{trace.order.id}</b><span className="rounded-full px-2 py-0.5 text-[9px] font-extrabold" style={{ background: traceHealth.bg, color: traceHealth.color }}>{traceHealth.label}</span></div>
                 <div className="text-xs font-bold mt-1 truncate">{traceCustomer.nombre || "Cliente sin nombre"}</div>
                 <div className="text-[10px] font-semibold mt-1 truncate" style={{ color: T.choco2 }}>{trace.area}</div>
@@ -2875,12 +2875,11 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
               <div><div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-semibold m-0">{order.id}</h2><Badge label={order.estado} /><span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: health.bg, color: health.color }}>{health.label}</span></div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{order.fecha} · {order.hora} · {order.canal}</div></div>
               <Btn small onClick={() => onOpen(order.id)}>Abrir pedido completo</Btn>
             </div>
-            <div className="mt-4 rounded-2xl p-3" style={{ background: T.soft }}>
-              <div className="flex justify-between text-xs font-extrabold"><span>{selected.area}</span><span>{selected.flow.percent}%</span></div>
-              <div className="h-2 rounded-full mt-2 overflow-hidden" style={{ background: T.vainilla }}><div className="h-full rounded-full" style={{ width: `${selected.flow.percent}%`, background: health.color }} /></div>
+            <div className="mt-4 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+              <div className="flex justify-between text-xs font-extrabold"><span>{selected.area}</span><span style={{ color: health.color }}>{selected.flow.percent}%</span></div>
               <div className="flex justify-between mt-2 gap-1" aria-label="Etapas del pedido">{["Pago", "Cocina", "Empaque", "Despacho", "Entrega"].map((label, index) => <span key={label} className="text-[9px] font-extrabold" style={{ color: selected.flow.percent >= index * 25 ? health.color : T.choco2 }}>{label}</span>)}</div>
             </div>
-            <div className="mt-3 rounded-xl px-3 py-2 border" style={{ background: selected.openIncidents.length ? "#FBE3DA" : "#F2F8F0", borderColor: selected.openIncidents.length ? "#E3A292" : "#A7C9A4" }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: selected.openIncidents.length ? "#A03B2A" : "#3F6B42" }}>Siguiente acción</div><div className="text-sm font-bold">{selected.nextAction}</div></div>
+            <div className="mt-3 rounded-xl px-3 py-2 border" style={{ background: selected.openIncidents.length ? "#F6D4CD" : "#E3EFE0", borderColor: selected.openIncidents.length ? "#ECBBB1" : "#BFD8BE" }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: selected.openIncidents.length ? "#A03B2A" : "#3F6B42" }}>Siguiente acción</div><div className="text-sm font-bold">{selected.nextAction}</div></div>
           </Card>
 
           <div className="grid md:grid-cols-2 gap-4">
@@ -2892,7 +2891,7 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
             <div className="flex items-center justify-between gap-2 mb-3"><div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contenido y control físico</div><div className="display text-lg font-semibold">{selected.items.length} línea{selected.items.length === 1 ? "" : "s"} del pedido</div></div><span className="text-xs font-bold" style={{ color: selected.packing ? "#3F6B42" : T.choco2 }}>{selected.packing ? "Comanda verificada ✓" : "Sin verificación de Empaque"}</span></div>
             <div className="space-y-2">{selected.items.map((item) => {
               const lineProgress = selected.progress.filter((row) => row.orderItemId === item.id);
-              return <div key={item.id} className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: T.soft }}><div className="flex-1"><b className="text-sm">{item.cant}× {item.nombre}</b><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa, item.relleno].filter(Boolean).join(" · ")}</div></div><div className="flex flex-wrap gap-1">{lineProgress.map((row) => <span key={row.stage} className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: row.status === "Incidente" ? "#F8D6CF" : row.status === "Listo" || row.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{row.stage}: {row.status}</span>)}</div></div>;
+              return <div key={item.id} className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: T.soft }}><div className="flex-1"><b className="text-sm">{item.cant}× {item.nombre}</b><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa, item.relleno].filter(Boolean).join(" · ")}</div></div><div className="flex flex-wrap gap-1">{lineProgress.map((row) => <span key={row.stage} className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: row.status === "Incidente" ? "#F6D4CD" : row.status === "Listo" || row.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{row.stage}: {row.status}</span>)}</div></div>;
             })}</div>
           </Card>
 
@@ -2903,7 +2902,7 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
           <Card className="p-4 sm:p-5">
             <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Trazabilidad completa</div><div className="display text-xl font-semibold mb-4">Qué ha pasado con {order.id}</div>
             <div className="relative pl-7 space-y-4 before:absolute before:left-[10px] before:top-2 before:bottom-2 before:w-px before:bg-[#EEDFCE]">
-              {selected.events.map((event) => <div key={event.id} className="relative"><span className="absolute -left-7 top-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: event.type === "incident" ? "#F8D6CF" : T.vainilla }}>{eventIcon[event.type] || "•"}</span><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1"><div><div className="text-sm font-bold">{event.title}</div>{event.detail && <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{event.detail}</div>}<div className="text-[10px] font-bold mt-1" style={{ color: T.choco2 }}>{event.area}{event.actor ? ` · ${event.actor}` : ""}</div></div><time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{event.at || "Sin hora"}</time></div></div>)}
+              {selected.events.map((event) => <div key={event.id} className="relative"><span className="absolute -left-7 top-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: event.type === "incident" ? "#F6D4CD" : T.vainilla }}>{eventIcon[event.type] || "•"}</span><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1"><div><div className="text-sm font-bold">{event.title}</div>{event.detail && <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{event.detail}</div>}<div className="text-[10px] font-bold mt-1" style={{ color: T.choco2 }}>{event.area}{event.actor ? ` · ${event.actor}` : ""}</div></div><time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{event.at || "Sin hora"}</time></div></div>)}
             </div>
           </Card>
         </div>
