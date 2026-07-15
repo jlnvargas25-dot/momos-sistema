@@ -14,11 +14,14 @@ do $$ begin
 end $$;
 
 do $$
-declare v_actor text; v_creative text; v_product text; v_asset bigint; v_blocked bigint;
+declare v_actor text; v_creative text:='CRE-BRAND-'||pg_backend_pid()::text;
+  v_product text; v_asset bigint; v_blocked bigint;
 begin
   select id into v_actor from public.users where auth_id='992a7036-77fa-4c52-a764-e164bdc75e6e'::uuid and activo;
-  select id,producto_foco_id into v_creative,v_product from public.creatives where producto_foco_id is not null order by id limit 1;
-  assert v_actor is not null and v_creative is not null and v_product is not null, 'Falta actor o creativo con producto foco para la prueba.';
+  select id into v_product from public.products where activo order by id limit 1;
+  assert v_actor is not null and v_product is not null, 'Falta actor o producto activo para la prueba.';
+  insert into public.creatives(id,titulo,canal,formato,producto_foco_id,estado,notas)
+  values(v_creative,'Creativo biblioteca adversarial','Instagram','Reel',v_product,'Idea','Sintético; siempre rollback');
   insert into public.brand_media_assets(name,media_type,source,product_id,orientation,rights_status,ai_use_allowed,status,storage_path,
     content_hash,mime_type,size_bytes,created_by)
   values('Original adversarial','Video','MOMOS',v_product,'Vertical','Propio',true,'Activo','test/original-'||pg_backend_pid()||'.mp4',
