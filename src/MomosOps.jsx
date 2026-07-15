@@ -7,6 +7,7 @@ import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORD
 import { buildFinishedInventory } from "./lib/finished-inventory";
 import { buildIngredientLotSummary } from "./lib/ingredient-lots";
 import { inventorySupplyMode } from "./lib/inventory-supply-mode";
+import { explainOperationalError } from "./lib/operational-errors";
 import { evaluateComboVariantAvailability, evaluateExactVariantDemand } from "./lib/variant-availability";
 import { momobotContextAnswer, momobotContextSnapshot } from "./lib/momobot-context";
 import { canAutoStartMomobot, isCurrentMomobotAuthorization, momobotModeAfterExecution, momobotModeAfterReadOnly } from "./lib/momobot-session";
@@ -5411,7 +5412,8 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
       } else speak("Listo. " + text + ". Momobot queda en espera.", resumeMomobotStandby);
     } catch (e) {
       const partial = progress.bases.size || progress.runs.size || progress.frozen.size || progress.unmolded.size || progress.orders.size;
-      const detail = (partial ? "Hay pasos ya aplicados y protegidos contra duplicados. " : "") + (e?.message || "No se pudo completar el comando.");
+      const friendlyError = explainOperationalError(e, { inventory: db.inventory_items || [], subrecipes });
+      const detail = (partial ? "Hay pasos ya aplicados y protegidos contra duplicados. " : "") + friendlyError;
       setResult({ type: "error", text: detail, warnings: [] });
       setVoiceMode("idle");
       toast("error", detail);
