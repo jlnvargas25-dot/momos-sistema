@@ -1,8 +1,8 @@
 -- ============================================================================
 -- MOMOS OPS — Batería de aceptación RE-EJECUTABLE · Variantes Etapa 2
 -- (reservas contra producción: la cola de sugerencias pendientes se atiende
---  automáticamente al desmoldar — FIFO por pagado_en, sabor duro, figura
---  blanda, cobertura parcial, pedidos fuera de flujo saltados, ciclo de
+--  automáticamente al desmoldar — FIFO por pagado_en, sabor y figura duros,
+--  cobertura parcial, pedidos fuera de flujo saltados, ciclo de
 --  cancelación devuelve stock+consumidas)
 --
 -- CÓMO CORRERLA: ejecutar este archivo COMPLETO como un solo script. Patrón
@@ -36,9 +36,9 @@ declare
   v_sug_a record; v_res_a record;
 
   -- ---- Bloque B: sabor duro en la cola ----
-  v_product_b text; v_order_b text; v_item_b text; v_batch_b1 text; v_batch_b2 text;
+  v_product_b text; v_order_b text; v_item_b text; v_batch_b1 text; v_batch_b2 text; v_batch_b3 text;
 
-  -- ---- Bloque C: figura blanda en lote mixto ----
+  -- ---- Bloque C: figura exacta en lote mixto ----
   v_product_c text; v_order_c text; v_item_c text; v_batch_c text;
 
   -- ---- Bloque D: FIFO por pagado_en + cobertura parcial ----
@@ -107,8 +107,7 @@ begin
     'A9 la sugerencia debe quedar Atendida';
 
   -- ==========================================================================
-  -- B. SABOR DURO: un lote de OTRO sabor no atiende la espera; el del sabor
-  -- pedido sí — aunque su figura sea otra (figura blanda).
+  -- B. SABOR + FIGURA DUROS: ni otro sabor ni otra figura atienden la espera.
   -- ==========================================================================
   v_product_b := 'T2C-PRB';
   insert into products (id, nombre, cat, tipo, especie, precio, costo, stock)
@@ -142,18 +141,27 @@ begin
   insert into production_batches (id, fecha, product_id, figura, sabor, prod, estado, stock_contabilizado, vencimiento)
   values (v_batch_b2, current_date, v_product_b, 'OtraFiguraB2', 'Sabor T2CB', 2, 'Congelando', false, current_date + 8);
   r := desmoldar_lote(v_batch_b2, 2, 0, 0);
+  assert (r->>'asignadas_cola')::integer = 0,
+    'B5 el lote del sabor pedido pero otra figura NO atiende: asignó '||(r->>'asignadas_cola');
+  assert (select estado from production_suggestions where order_id = v_order_b) = 'Pendiente',
+    'B6 la sugerencia debe seguir esperando la figura exacta';
+
+  v_batch_b3 := 'T2C-LB3';
+  insert into production_batches (id, fecha, product_id, figura, sabor, prod, estado, stock_contabilizado, vencimiento)
+  values (v_batch_b3, current_date, v_product_b, 'FiguraB2', 'Sabor T2CB', 2, 'Congelando', false, current_date + 9);
+  r := desmoldar_lote(v_batch_b3, 2, 0, 0);
   assert (r->>'asignadas_cola')::integer = 2,
-    'B5 el lote del sabor pedido SÍ atiende aunque la figura sea otra (figura blanda): asignó '||(r->>'asignadas_cola');
-  assert (select figura from inventory_reservations where order_id = v_order_b and tipo = 'producto') = 'OtraFiguraB2',
-    'B6 la reserva lleva la figura REAL servida';
+    'B7 solo figura+sabor exactos atienden las 2 unidades';
+  assert (select figura from inventory_reservations where order_id = v_order_b and tipo = 'producto') = 'FiguraB2',
+    'B8 la reserva debe llevar la figura exacta pedida';
   assert (select estado from production_suggestions where order_id = v_order_b) = 'Atendida',
-    'B7 la sugerencia debe quedar Atendida';
-  assert (select stock from products where id = v_product_b) = 3,
-    'B8 stock final = 3 del lote de otro sabor + (2−2) del lote asignado';
+    'B9 la sugerencia debe quedar Atendida';
+  assert (select stock from products where id = v_product_b) = 5,
+    'B10 stock final conserva 3 de otro sabor + 2 de otra figura';
 
   -- ==========================================================================
-  -- C. FIGURA BLANDA EN LOTE MIXTO: el desmolde mixto sirve la figura pedida
-  -- primero y completa con la otra del MISMO lote/sabor.
+  -- C. FIGURA EXACTA EN LOTE MIXTO: solo la figura pedida atiende la cola;
+  -- las otras figuras del mismo lote/sabor quedan disponibles.
   -- ==========================================================================
   v_product_c := 'T2C-PRC';
   insert into products (id, nombre, cat, tipo, especie, precio, costo, stock)
@@ -176,20 +184,21 @@ begin
           '[{"figura":"FigC2M","cant":1},{"figura":"FigC2R","cant":2}]'::jsonb);
   r := desmoldar_lote(v_batch_c, 3, 0, 0,
         '[{"figura":"FigC2M","perfectas":1,"imperfectas":0,"descartadas":0},{"figura":"FigC2R","perfectas":2,"imperfectas":0,"descartadas":0}]'::jsonb);
-  assert (r->>'asignadas_cola')::integer = 2, 'C1 debe asignar las 2 pedidas: fue '||(r->>'asignadas_cola');
-  assert (select count(*) from inventory_reservations where order_id = v_order_c and tipo = 'producto') = 2,
-    'C2 la cobertura cruza 2 figuras → 2 filas de reserva';
+  assert (r->>'asignadas_cola')::integer = 1, 'C1 debe asignar solo la figura exacta disponible: fue '||(r->>'asignadas_cola');
+  assert (select count(*) from inventory_reservations where order_id = v_order_c and tipo = 'producto') = 1,
+    'C2 la reserva no debe cruzar a otra figura';
   assert (select cantidad from inventory_reservations where order_id = v_order_c and figura = 'FigC2M') = 1,
     'C3 la figura PEDIDA se sirve primero (1 disponible)';
-  assert (select cantidad from inventory_reservations where order_id = v_order_c and figura = 'FigC2R') = 1,
-    'C4 el resto se completa con la otra figura del mismo lote';
+  assert not exists (select 1 from inventory_reservations where order_id = v_order_c and figura = 'FigC2R'),
+    'C4 la otra figura no cubre el faltante';
   assert (select consumidas from lote_figuras where batch_id = v_batch_c and figura = 'FigC2M') = 1
-     and (select consumidas from lote_figuras where batch_id = v_batch_c and figura = 'FigC2R') = 1,
+     and (select consumidas from lote_figuras where batch_id = v_batch_c and figura = 'FigC2R') = 0,
     'C5 consumidas exactas por figura';
-  assert (select stock from products where id = v_product_c) = 1,
-    'C6 stock neto = 3 − 2 = 1';
-  assert (select estado from production_suggestions where order_id = v_order_c) = 'Atendida',
-    'C7 sugerencia Atendida';
+  assert (select stock from products where id = v_product_c) = 2,
+    'C6 stock neto = 3 − 1 = 2';
+  assert (select estado from production_suggestions where order_id = v_order_c) = 'Pendiente'
+     and (select cantidad from production_suggestions where order_id = v_order_c) = 1,
+    'C7 la sugerencia queda Pendiente por la figura exacta faltante';
 
   -- ==========================================================================
   -- D. FIFO POR PAGADO_EN + PARCIAL: dos pedidos esperan; el lote alcanza para

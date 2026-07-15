@@ -56,7 +56,7 @@ create table users (
   auth_id  uuid unique references auth.users(id), -- NUEVO: no existía en la maqueta
   nombre   text not null,
   email    text unique not null,
-  rol      text not null check (rol in ('Administrador','Cocina','Empaque','Logística','Marketing/CRM','Mensajero')),
+  rol      text not null check (rol in ('Administrador','Cajero','Coordinador de pedidos','Cocina','Empaque','Logística','Marketing/CRM','Mensajero')),
   -- 'Mensajero' (gancho ORQUESTACIÓN): identidad para deliveries.mensajero_user_id.
   -- OJO: NO crearles auth_id hasta la vista del mensajero (Fase 3) — staff_read hoy lee TODO.
   activo   boolean not null default true
@@ -110,8 +110,9 @@ create table catalog_values (
   primary key (categoria, valor)
 );
 
--- Config escalar (pedido_minimo, pauta_mensual, horas_congelacion, politicas,
--- relleno_fijo='Cheesecake con ganache', piso_volumen_semanal — §4 del diseño)
+-- Config escalar (pedido_minimo, pauta_mensual, horas_congelacion, tiempos de
+-- demora operativa, politicas, relleno_fijo='Cheesecake con ganache',
+-- piso_volumen_semanal — §4 del diseño)
 create table app_settings (
   clave text primary key,
   valor jsonb not null
@@ -445,7 +446,7 @@ create table orders (
   pago           text check (pago in ('Nequi','Daviplata','Bancolombia','Rappi (app)')),  -- Efectivo prohibido
   comprobante    boolean not null default false,
   estado         text not null default 'Nuevo' check (estado in
-    ('Nuevo','Confirmado','Pendiente de pago','Pagado','En producción','Empacado',
+    ('Nuevo','Confirmado','Pendiente de pago','Pagado','En producción','Listo para empaque','Empacado',
      'Listo para despacho','En ruta','Entregado','Cancelado','Reclamo')),
   obs            text default '',
   pagado_en      timestamptz,                      -- sello al confirmar pago
@@ -469,7 +470,7 @@ create table order_items (
   nombre         text not null,                    -- snapshot
   sabor  text default '', salsa text default '', relleno text default '', figura text default '',
   -- ↑ SNAPSHOTS a propósito (texto, sin FK): el histórico no se rompe si cambia el catálogo
-  cant           numeric not null check (cant > 0),
+  cant           numeric not null check (cant >= 1 and cant = trunc(cant)),
   precio         numeric not null default 0,       -- unitario snapshot (Rappi: precio_rappi)
   costo_unitario numeric not null default 0,       -- COGS CONGELADO al crear
   es_caja        boolean not null default false,   -- fila PADRE de combo
@@ -569,7 +570,7 @@ create table evidences (
   order_id     text not null references orders(id),
   tipo         text not null check (tipo in
     ('Pedido armado','Caja abierta','Caja cerrada con sello','Bolsa sellada','Comprobante de pago','Entrega')),
-  storage_path text not null,                      -- bucket `evidencias` (era url/dataURL — fix real del bug de cuota)
+  storage_path text not null unique,               -- bucket `evidencias`; una foto no se reutiliza entre pedidos
   fecha        timestamptz not null default now(),
   user_id      text references users(id)           -- NORMALIZADO (era nombre)
 );
@@ -743,8 +744,8 @@ create policy prod_update on production_batches for update to authenticated
 create policy sug_update on production_suggestions for update to authenticated
   using (current_rol() in ('Cocina','Empaque')) with check (current_rol() in ('Cocina','Empaque'));
 
--- Cualquier staff: sube evidencias y deja auditoría (nadie edita ni borra: solo admin)
-create policy evid_insert  on evidences  for insert to authenticated with check (is_staff());
+-- Evidencias solo se escriben por crear_evidencia(): valida Storage, pedido, ruta y rol.
+-- No crear una policy INSERT directa: permitiría fabricar filas sin archivo real.
 create policy audit_insert on audit_logs for insert to authenticated with check (is_staff());
 
 -- 4) claude_agent — el traficker (DISEÑO-TRAFICKER.md §3, traficker/AGENTE.md)
@@ -822,6 +823,7 @@ create view shop_mis_pedidos with (security_barrier) as
            when 'Pendiente de pago'   then 'Pedido recibido'
            when 'Pagado'              then 'Pago confirmado'
            when 'En producción'       then 'Preparando'
+           when 'Listo para empaque'  then 'Preparando'
            when 'Empacado'            then 'Preparando'
            when 'Listo para despacho' then 'Listo para despacho'
            when 'En ruta'             then 'En camino'

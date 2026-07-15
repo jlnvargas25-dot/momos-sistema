@@ -19,37 +19,26 @@
 -- DECISIONES DE PRODUCTO (cerradas por el dueño, NO reabrir):
 --   1. La asignación de lote físico ocurre AL PAGAR, FIFO automático por
 --      vencimiento más próximo (coalesce(vencimiento, vence) asc).
---   2. Matching (REVISADA 2026-07-12, tras validación en vivo — invierte la
---      versión original de 1b): SABOR = FILTRO DURO (jamás se asigna un lote
---      de otro sabor sin decisión consciente del humano — el cliente COME el
---      sabor), FIGURA = PREFERENCIA BLANDA (entre lotes del sabor pedido, la
---      figura exacta se antepone; si no hay, cualquier figura de ese sabor
---      sirve — la figura es la forma). Mismo pase, un solo cursor.
---   3. Si no hay stock desmoldado suficiente de ese SABOR: la venta
---      PROCEDE igual; el remanente queda SIN lote (batch_id null), exacto
---      como hoy — el modelo producir-a-pedido queda intacto. Ya NO hay
---      fallback a otro sabor: sabor sin stock = remanente a producir.
+--   2. Matching exacto: SABOR y FIGURA son FILTROS DUROS. La elección del
+--      cliente nunca se sustituye silenciosamente por otra variante.
+--   3. Si no hay stock desmoldado suficiente de esa combinación, la venta
+--      procede y el faltante va a Producción. El stock agregado anterior no
+--      se reserva como si conociera figura/sabor.
 --
--- INVARIANTE QUE ESTE ARCHIVO NO ROMPE: products.stock sigue siendo la
--- fuente agregada de verdad (se descuenta EXACTAMENTE como hoy, mismo total,
--- mismos guards de "least(stock disponible, necesidad)"). lote_figuras es el
--- DESGLOSE físico de esa misma unidad de stock — nunca una segunda fuente
--- paralela. El delta entre lo que el FIFO pudo cubrir con lote_figuras y lo
--- que efectivamente se descontó de products.stock es exactamente el stock
--- "legacy" (productos sin filas lote_figuras, ej. lotes viejos pre-1a) o el
--- "a producir" (ventas que exceden lo desmoldado — producir-a-pedido): ese
--- remanente sigue reservándose SIN batch_id, tal cual el comportamiento
--- actual, así el reporte de producción sugerida no cambia una sola fila.
+-- INVARIANTE: products.stock sigue siendo el total general disponible y
+-- lote_figuras su desglose trazable. Una elección exacta descuenta solo las
+-- unidades que ambos modelos pueden identificar; el delta anterior permanece
+-- disponible hasta reconciliarse y se crea el faltante de producción.
 --
 -- QUÉ CAMBIA / QUÉ NO CAMBIA respecto a rpc-pedidos-v1.sql:
---   - _reserve_inventory: MISMA firma, mismos guards, MISMO total descontado
---     de products.stock. Lo único que cambia es CÓMO se arman las filas de
+--   - _reserve_inventory: MISMA firma y mismos guards. Cambia CÓMO se arman las filas de
 --     inventory_reservations tipo 'producto' con origen "momo real" (sección
 --     1, momos sueltos/hijas de combo) y "componente de combo sin hijas"
 --     (sección 2, pull genérico legacy): en vez de una reserva agregada por
 --     item, se llama _asignar_variante_fifo() con la figura/sabor de ESE
---     item puntual y se reserva el remanente (si lo hay) sin batch, tal cual
---     hoy. Las reservas de EMPAQUE/INSUMO (secciones 2-empaque/extras y 3)
+--     item puntual. Si trae figura/sabor, el remanente se devuelve al stock
+--     general y pasa a Producción; solo ítems genéricos conservan la reserva
+--     sin batch. Las reservas de EMPAQUE/INSUMO (secciones 2-empaque/extras y 3)
 --     NO se tocan — variantes es un concepto de MOMO, no de insumo/empaque.
 --   - _release_reservations: MISMA firma, mismo efecto de stock. Lo único
 --     que se agrega es: si la reserva liberada tiene batch_id (vino del
@@ -108,7 +97,7 @@ alter table lote_figuras add constraint lote_figuras_consumo_valido
 alter table inventory_reservations add column if not exists figura text;
 
 comment on column inventory_reservations.figura is
-  'Figura del lote_figuras del que salió esta unidad — SOLO poblada cuando batch_id no es null (asignación FIFO de Etapa 1b). Null en reservas sin lote físico (remanente a producir, legacy sin lote_figuras, o tipo empaque/insumo).';
+  'Figura del lote_figuras del que salió esta unidad — SOLO poblada cuando batch_id no es null (asignación FIFO). Null en reservas genéricas legacy o tipo empaque/insumo.';
 
 -- ============================================================================
 -- C) Vista v_variantes_disponibles — MISMA columna/shape que variantes-v1.sql
@@ -144,21 +133,13 @@ grant select on v_variantes_disponibles to authenticated;
 -- recorre lote_figuras con lock FOR UPDATE en orden FIFO y va creando
 -- reservas 'producto' CON batch_id/figura por cada lote que toca, hasta
 -- cubrir p_cantidad o agotar stock desmoldado. Devuelve el REMANENTE no
--- cubierto (>= 0) — el caller es quien decide qué hacer con ese remanente
--- (hoy: reservarlo agregado, sin batch, igual que el comportamiento actual).
+-- cubierto (>= 0) — el caller lo convierte en faltante exacto o, solo para
+-- ítems realmente genéricos, en reserva agregada.
 --
--- FILTRO Y ORDEN DEL CURSOR (decisión 2 del dueño, REVISADA 2026-07-12 —
--- sabor duro, figura blanda): el WHERE exige `b.sabor = v_sabor` (si el item
--- trae sabor) — un lote de OTRO sabor jamás entra al cursor, sin importar su
--- vencimiento: si el sabor pedido no tiene stock desmoldado, el cursor viene
--- vacío y TODO queda como remanente a producir (ya no hay fallback de sabor).
--- El ORDER BY antepone "case when figura coincide then 0 else 1 end": entre
--- lotes del sabor pedido, la figura exacta gana aunque venza después; entre
--- dos filas del MISMO grupo de match (ambas figura-exacta, o ambas otra
--- figura) manda el vencimiento más próximo — eso ES el FIFO dentro de cada
--- grupo. Item sin sabor (null/vacío, ej. pull genérico de combo): el WHERE
--- no filtra nada y decide la preferencia de figura + vencimiento, igual que
--- el comportamiento agregado de siempre.
+-- FILTRO Y ORDEN DEL CURSOR: sabor y figura son restricciones duras cuando
+-- el ítem las trae. FIFO por vencimiento solo opera entre lotes que coinciden
+-- exactamente. Un ítem genérico (figura/sabor vacíos, por ejemplo un combo
+-- legacy sin hijas) conserva el recorrido agregado por vencimiento.
 --
 -- LOCK: FOR UPDATE OF lf — mismo objeto (lote_figuras) que ya lockea
 -- desmoldar_lote (variantes-v1.sql) vía `select ... for update` sobre
@@ -190,9 +171,9 @@ begin
       and b.estado = 'Listo'
       and b.stock_contabilizado
       and (v_sabor is null or b.sabor = v_sabor)
+      and (v_figura is null or lf.figura = v_figura)
       and (lf.perfectas - lf.consumidas) > 0
     order by
-      (case when v_figura is not null and lf.figura = v_figura then 0 else 1 end),
       coalesce(b.vencimiento, b.vence) asc nulls last,
       b.fecha asc,
       b.id asc,
@@ -230,9 +211,8 @@ revoke execute on function _asignar_variante_fifo(text, text, text, text, intege
 -- completo copiado desde ahí; los ÚNICOS bloques modificados son:
 --   (1) sección "1) Momos": la reserva de tipo 'producto' que salía de
 --       _add_reservation(...) ahora sale de _asignar_variante_fifo(...) con
---       figura/sabor de ESE order_item, y el remanente que devuelve se
---       reserva agregado SIN batch (mismo _add_reservation de siempre) —
---       la suma cubierta+remanente es SIEMPRE v_toma, igual que hoy.
+--       figura/sabor de ESE order_item. El remanente exacto no se reserva:
+--       se devuelve al stock agregado y genera faltante de Producción.
 --   (2) sección "2) Combos" — pull genérico SOLO si no tiene hijas: mismo
 --       patrón, FIFO con la figura/sabor del ITEM del combo (el pull
 --       genérico no tiene figura/sabor propios en order_items — ver nota
@@ -280,10 +260,17 @@ begin
         round(v_toma)::integer, item.nombre
       );
       if v_remanente > 0 then
-        -- Remanente sin lote físico (stock legacy sin lote_figuras, o venta
-        -- que excede lo desmoldado) — MISMO comportamiento de hoy: reserva
-        -- agregada sin batch_id/figura.
-        perform _add_reservation(p_order_id, 'producto', item.product_id, null, item.nombre, v_remanente);
+        if nullif(trim(coalesce(item.figura,'')), '') is not null
+           or nullif(trim(coalesce(item.sabor,'')), '') is not null then
+          -- Una elección concreta solo puede salir de un lote trazable que
+          -- coincida. El stock agregado anterior vuelve al disponible y el
+          -- delta pasa a Producción; nunca se promete otra figura/sabor.
+          update products set stock = coalesce(stock,0) + v_remanente where id = item.product_id;
+          v_toma := v_toma - v_remanente;
+        else
+          -- Compatibilidad para ítems realmente genéricos, sin figura/sabor.
+          perform _add_reservation(p_order_id, 'producto', item.product_id, null, item.nombre, v_remanente);
+        end if;
       end if;
     end if;
     if v_toma < item.cant then

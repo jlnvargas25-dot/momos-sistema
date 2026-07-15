@@ -203,6 +203,11 @@ insert into app_settings (clave, valor) values
   ('pedido_minimo', '25000'),
   ('pauta_mensual', '350000'),
   ('horas_congelacion', '10'),
+  ('demora_cocina_min', '15'),
+  ('demora_cocina_urgente_min', '30'),
+  ('demora_empaque_min', '10'),
+  ('demora_empaque_urgente_min', '20'),
+  ('demora_repeticion_min', '5'),
   ('relleno_fijo', '"Cheesecake con ganache"'),
   ('politicas', '"MOMOS no despacha ningún pedido sin pago confirmado: se requiere comprobante de transferencia (Nequi, Daviplata o Bancolombia) o el pago dentro de la app de Rappi. No se aceptan pagos en efectivo contra entrega. Reclamos por estado del producto: máximo 20 minutos después de recibido, salvo calidad o inocuidad. Un beneficio por pedido, no acumulable, no aplica sobre domicilio."')
 on conflict (clave) do nothing;

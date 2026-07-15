@@ -50,7 +50,7 @@ begin
     raise exception 'Falta el email del usuario';
   end if;
   -- Espejo amigable del CHECK users_rol_check (dominio cerrado en la tabla).
-  if p_rol is null or p_rol not in ('Administrador','Cocina','Empaque','Logística','Marketing/CRM','Mensajero') then
+  if p_rol is null or p_rol not in ('Administrador','Cajero','Coordinador de pedidos','Cocina','Empaque','Logística','Marketing/CRM','Mensajero') then
     raise exception 'Rol inválido: %', coalesce(p_rol, '(vacío)');
   end if;
   -- Chequeo amigable; el respaldo REAL ante la carrera es el índice único

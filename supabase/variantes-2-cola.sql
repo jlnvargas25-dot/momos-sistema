@@ -2,7 +2,7 @@
 -- MOMOS OPS — Variantes Etapa 2: reservas contra producción (2026-07-12)
 -- Target: Supabase / PostgreSQL 17. Fuentes de verdad que este archivo
 -- evoluciona: variantes-v1.sql (desmoldar_lote 5 args, lote_figuras),
--- variantes-1b-fifo.sql (_reserve_inventory con FIFO sabor-duro/figura-blanda,
+-- variantes-1b-fifo.sql (_reserve_inventory con FIFO de variante exacta,
 -- lote_figuras.consumidas, reservas con batch_id/figura). schema-v5.sql es la
 -- fuente de columnas base (production_suggestions.estado Pendiente/Atendida).
 --
@@ -18,9 +18,8 @@
 --
 -- DECISIONES DE PRODUCTO (cerradas por el dueño, NO reabrir):
 --   1. Asignación AUTOMÁTICA al desmoldar (sin confirmación humana): misma
---      política que la venta de 1b — SABOR = filtro duro (un lote de otro
---      sabor NO atiende esa espera), FIGURA = preferencia blanda (la figura
---      pedida se sirve primero; si no alcanza, otra figura del mismo lote).
+--      política que la venta de 1b — SABOR y FIGURA son filtros duros; una
+--      variante distinta no atiende ni completa esa espera.
 --   2. Orden de la cola: FIFO por orders.pagado_en (el que pagó primero,
 --      cobra primero); desempate por id de sugerencia (= orden de creación).
 --   3. La cola SIEMPRE gana al mostrador: lo asignado se descuenta de
@@ -140,17 +139,16 @@ begin
 
     v_asignadas_pedido := 0;
 
-    -- FIGURA BLANDA: dentro de ESTE lote, la figura pedida primero; después
-    -- cualquier otra (orden estable por nombre). FOR UPDATE sobre el mismo
+    -- FIGURA DURA: dentro de ESTE lote solo entra la figura pedida. FOR UPDATE sobre el mismo
     -- objeto (lote_figuras) y en el mismo orden relativo que el flujo de pago
     -- (products ya lockeado por el caller) — ver ORDEN DE LOCKS.
     for f in
       select lf.figura, (lf.perfectas - lf.consumidas) as disp
       from lote_figuras lf
       where lf.batch_id = p_batch_id
+        and (v_figura_pedida is null or lf.figura = v_figura_pedida)
         and (lf.perfectas - lf.consumidas) > 0
       order by
-        (case when v_figura_pedida is not null and lf.figura = v_figura_pedida then 0 else 1 end),
         lf.figura asc
       for update
     loop
@@ -378,7 +376,7 @@ grant execute on function desmoldar_lote(text, integer, integer, integer, jsonb)
 
 -- ============================================================================
 -- D) _reserve_inventory — MISMA firma que variantes-1b-fifo.sql. Cuerpo
--- completo copiado de ahí (versión sabor-sobre-figura); el ÚNICO cambio es
+-- completo copiado de ahí (versión de variante exacta); el ÚNICO cambio es
 -- que el faltante de momo (sección 1) puebla order_item_id en la sugerencia —
 -- así la cola sabe qué figura/sabor esperaba ese pedido. Los faltantes de
 -- combo/empaque/insumo quedan sin order_item_id (la cola no los atiende).
@@ -415,7 +413,13 @@ begin
         round(v_toma)::integer, item.nombre
       );
       if v_remanente > 0 then
-        perform _add_reservation(p_order_id, 'producto', item.product_id, null, item.nombre, v_remanente);
+        if nullif(trim(coalesce(item.figura,'')), '') is not null
+           or nullif(trim(coalesce(item.sabor,'')), '') is not null then
+          update products set stock = coalesce(stock,0) + v_remanente where id = item.product_id;
+          v_toma := v_toma - v_remanente;
+        else
+          perform _add_reservation(p_order_id, 'producto', item.product_id, null, item.nombre, v_remanente);
+        end if;
       end if;
     end if;
     if v_toma < item.cant then

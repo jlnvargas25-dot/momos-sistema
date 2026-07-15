@@ -839,8 +839,9 @@ begin
     (v_prev = 'Confirmado' and p_estado in ('Pendiente de pago','Pagado','Nuevo')) or
     (v_prev = 'Pendiente de pago' and p_estado in ('Pagado','Confirmado')) or
     (v_prev = 'Pagado' and p_estado in ('En producción','Pendiente de pago')) or
-    (v_prev = 'En producción' and p_estado in ('Empacado','Pagado')) or
-    (v_prev = 'Empacado' and p_estado in ('Listo para despacho','En ruta','En producción')) or
+    (v_prev = 'En producción' and p_estado in ('Listo para empaque','Pagado')) or
+    (v_prev = 'Listo para empaque' and p_estado in ('Empacado','En producción')) or
+    (v_prev = 'Empacado' and p_estado in ('Listo para despacho','En ruta','Listo para empaque')) or
     (v_prev = 'Listo para despacho' and p_estado in ('En ruta','Empacado')) or
     (v_prev = 'En ruta' and p_estado in ('Entregado','Listo para despacho')) or
     (v_prev = 'Reclamo' and p_estado = 'Entregado') or
@@ -852,7 +853,7 @@ begin
   end if;
 
   -- (3) gate de pago genérico
-  if p_estado in ('En producción','Empacado','Listo para despacho','En ruta','Entregado') and o.pagado_en is null then
+  if p_estado in ('En producción','Listo para empaque','Empacado','Listo para despacho','En ruta','Entregado') and o.pagado_en is null then
     raise exception 'MOMOS no produce ni despacha pedidos sin pago confirmado.';
   end if;
 
@@ -945,7 +946,7 @@ begin
   end if;
 
   -- [Red #7] cualquier transición: si operativo/entregado AND pagado_en AND NOT reservado → reservar
-  if p_estado in ('En producción','Empacado','Listo para despacho','En ruta','Entregado')
+  if p_estado in ('En producción','Listo para empaque','Empacado','Listo para despacho','En ruta','Entregado')
      and (case when p_estado = 'Pagado' then true else o.pagado_en is not null end)
      and not (case when p_estado = 'Pagado' then true else o.inventario_reservado end)
   then
@@ -1025,7 +1026,7 @@ begin
       if exists (
         select 1 from benefits where id = o.benefit_id and (
           estado = 'Reservado' or
-          (estado = 'Usado' and v_prev not in ('En producción','Empacado','Listo para despacho','En ruta','Entregado'))
+          (estado = 'Usado' and v_prev not in ('En producción','Listo para empaque','Empacado','Listo para despacho','En ruta','Entregado'))
         )
       ) then
         update benefits set estado = 'Activo', pedido_uso = null where id = o.benefit_id;
