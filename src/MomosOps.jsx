@@ -6462,7 +6462,6 @@ function Productos({ db, user, refrescar, serverDataReady }) {
   const [editandoProd, setEditandoProd] = useState(null);
   const [form, setForm] = useState(nuevoProductoVacio());
   const [errProd, setErrProd] = useState("");
-  const [guardandoProd, setGuardandoProd] = useState(false);
   const [recetaDraft, setRecetaDraft] = useState([]);
   const [recetaSucia, setRecetaSucia] = useState(false);
   const [errReceta, setErrReceta] = useState("");
@@ -6500,14 +6499,14 @@ function Productos({ db, user, refrescar, serverDataReady }) {
       if (!(form.componentProductIds || []).length) { setErrProd("Elegí al menos un momo componente."); return; }
       if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
     }
-    setGuardandoProd(true);
     try {
       await crearProducto(payloadProducto());
-      await refrescar();
       setAbrirForm(false);
       setErrProd("");
-    } catch (error) { setErrProd(error.message); }
-    finally { setGuardandoProd(false); }
+      toast("ok", "Producto creado.");
+    } catch (error) { toast("error", error.message); return; }
+    try { await refrescar(); }
+    catch { toast("error", "Producto creado, pero no se pudo refrescar el catálogo."); }
   }
 
   async function guardarEdicion() {
@@ -6521,24 +6520,30 @@ function Productos({ db, user, refrescar, serverDataReady }) {
       if (!(form.componentProductIds || []).length) { setErrProd("Elegí al menos un momo componente."); return; }
       if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
     }
-    setGuardandoProd(true);
     try {
       await editarProducto(editandoProd.id, payloadProducto());
-      await refrescar();
       setAbrirForm(false);
       setErrProd("");
-    } catch (error) { setErrProd(error.message); }
-    finally { setGuardandoProd(false); }
+      toast("ok", "Producto actualizado.");
+    } catch (error) { toast("error", error.message); return; }
+    try { await refrescar(); }
+    catch { toast("error", "Producto actualizado, pero no se pudo refrescar el catálogo."); }
   }
 
   return (
     <div>
-      <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: T.vainilla, color: T.choco2 }}>
+      <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
         🧾 Cada producto puede tener una receta (insumos por unidad). Al registrar un lote o al pasar a "En producción" un producto que se prepara al momento, los insumos se descuentan solos del inventario.
       </div>
-      {!puedeEditar && <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: "#F7ECD9", color: T.choco2 }}>{user === "Administrador" && !db.productsServerReady ? "Catálogo en modo consulta hasta aplicar la migración 13 de Productos." : "Catálogo en modo consulta. Solo Administrador puede modificar productos y recetas."}</div>}
+      {!puedeEditar && <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: T.vainilla, color: T.choco2 }}>{user === "Administrador" && !db.productsServerReady ? "Catálogo en modo consulta hasta aplicar la migración 13 de Productos." : "Catálogo en modo consulta. Solo Administrador puede modificar productos y recetas."}</div>}
       {!abrirForm && errProd && <div className="text-sm font-bold p-2.5 rounded-xl mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errProd}</div>}
-      <div className="flex justify-end mb-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Stat icon="🧾" label="Productos" value={db.products.length} tone={T.coral} />
+        <Stat icon="✅" label="Activos" value={db.products.filter((p) => p.activo).length} tone="#3F6B42" />
+        <Stat icon="⚠️" label="Sin receta" value={db.products.filter((p) => recipeLines(db, p.id).length === 0).length} tone="#96690F" />
+        <Stat icon="📈" label="Margen prom." value={db.products.length ? pct(db.products.reduce((s, p) => s + (p.precio - p.costo) / p.precio, 0) / db.products.length) : "—"} />
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
         {puedeEditar && <Btn small kind="rosa" onClick={() => { setForm(nuevoProductoVacio()); setEditandoProd(null); setErrProd(""); setAbrirForm(true); }}>＋ Nuevo producto</Btn>}
       </div>
       {cats.map((cat) => (
@@ -6550,8 +6555,10 @@ function Productos({ db, user, refrescar, serverDataReady }) {
               const disp = availability(db, p);
               return (
                 <Card key={p.id} className={`p-4 ${!p.activo ? "opacity-60" : ""}`}>
-                  <div className="h-20 rounded-xl mb-3 flex items-center justify-center text-4xl" style={{ background: `linear-gradient(135deg, ${T.vainilla}, ${T.rosa})` }} aria-hidden="true">{CAT_EMOJI[cat]}</div>
-                  <div className="font-bold text-sm">{p.nombre}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg" aria-hidden="true">{CAT_EMOJI[cat]}</span>
+                    <span className="font-bold text-sm">{p.nombre}</span>
+                  </div>
                   <div className="text-xs mt-1 leading-snug" style={{ color: T.choco2 }}>{p.desc}</div>
                   <div className="flex justify-between items-end mt-3">
                     <div>
@@ -6577,12 +6584,14 @@ function Productos({ db, user, refrescar, serverDataReady }) {
                       🧾 Receta {recipeLines(db, p.id).length > 0 && `(${recipeLines(db, p.id).length})`}
                     </Btn>
                     {puedeEditar && <Btn small kind="ghost" onClick={() => { setEditandoProd(p); setForm({ nombre: p.nombre, cat: p.cat, tipo: p.tipo, especie: p.especie || "gato", precio: p.precio, precioRappi: p.precioRappi, costo: p.costo, prep: p.prep, frio: !!p.frio, lejano: !!p.lejano, desc: p.desc || "", comboSize: p.comboSize || "", componentProductIds: [...(p.componentProductIds || [])], empaqueItem: p.empaqueItem || "", colchonProduccion: p.colchonProduccion ?? 0 }); setErrProd(""); setAbrirForm(true); }}>✏️ Editar</Btn>}
-                    {puedeEditar && <Btn small kind={p.activo ? "ghost" : "soft"} onClick={async () => {
-                      try { await setProductoActivo(p.id,!p.activo); await refrescar(); }
-                      catch (error) { setErrProd(error.message); }
+                    {puedeEditar && <BtnAsync small kind={p.activo ? "ghost" : "soft"} textoEnVuelo={p.activo ? "Desactivando…" : "Activando…"} onClick={async () => {
+                      try { await setProductoActivo(p.id, !p.activo); toast("ok", p.activo ? "Producto desactivado del menú." : "Producto activado en el menú."); }
+                      catch (error) { toast("error", error.message); return; }
+                      try { await refrescar(); }
+                      catch { toast("error", "Se actualizó, pero no se pudo refrescar la lista."); }
                     }}>
                       {p.activo ? "Desactivar del menú" : "Activar en el menú"}
-                    </Btn>}
+                    </BtnAsync>}
                   </div>
                   {recipeLines(db, p.id).length > 0 && (
                     <div className="text-[11px] font-bold mt-2" style={{ color: T.choco2 }}>
@@ -6645,7 +6654,7 @@ function Productos({ db, user, refrescar, serverDataReady }) {
                       const cur = f.componentProductIds || [];
                       return { ...f, componentProductIds: cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id] };
                     })} className="text-[11px] font-bold px-2.5 py-1 rounded-full"
-                      style={{ background: on ? T.coral : "#fff", color: on ? "#fff" : T.choco2, border: "1px solid " + (on ? T.coral : T.border) }}>
+                      style={{ background: on ? T.coral : T.surface, color: on ? "#fff" : T.choco2, border: "1px solid " + (on ? T.coral : T.border) }}>
                       {p.nombre} {momoEspecie(p) === "perro" ? "🐶" : "🐱"}
                     </button>
                   );
@@ -6667,7 +6676,7 @@ function Productos({ db, user, refrescar, serverDataReady }) {
           </Field>
           {errProd && <div className="text-sm font-bold mb-3" style={{ color: T.coral }}>{errProd}</div>}
           <div className="flex justify-end">
-            <Btn kind="rosa" disabled={guardandoProd} onClick={editandoProd ? guardarEdicion : guardarNuevo}>{guardandoProd ? "Guardando…" : "Guardar"}</Btn>
+            <BtnAsync kind="rosa" onClick={editandoProd ? guardarEdicion : guardarNuevo}>Guardar</BtnAsync>
           </div>
         </Modal>
       )}
@@ -6729,16 +6738,18 @@ function Productos({ db, user, refrescar, serverDataReady }) {
 
           {errReceta && <div className="text-sm font-bold p-2.5 rounded-xl mb-3" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errReceta}</div>}
           {puedeEditar && <div className="flex justify-end mb-3">
-            <Btn kind="rosa" disabled={!recetaSucia || guardandoReceta} onClick={async () => {
+            <BtnAsync kind="rosa" disabled={!recetaSucia || guardandoReceta} textoEnVuelo="Guardando receta…" onClick={async () => {
               if (recetaDraft.some((line) => !(Number(line.cantidad)>0))) { setErrReceta("Todas las cantidades deben ser mayores que cero."); return; }
               setGuardandoReceta(true); setErrReceta("");
               try {
-                await guardarRecetaProducto(prodReceta.id,recetaDraft);
-                await refrescar();
+                await guardarRecetaProducto(prodReceta.id, recetaDraft);
                 setRecetaSucia(false);
-              } catch (error) { setErrReceta(error.message); }
+                toast("ok", "Receta guardada.");
+              } catch (error) { toast("error", error.message); setGuardandoReceta(false); return; }
+              try { await refrescar(); }
+              catch { toast("error", "Receta guardada, pero no se pudo refrescar."); }
               finally { setGuardandoReceta(false); }
-            }}>{guardandoReceta ? "Guardando receta…" : recetaSucia ? "Guardar receta" : "Receta guardada ✓"}</Btn>
+            }}>{recetaSucia ? "Guardar receta" : "Receta guardada ✓"}</BtnAsync>
           </div>}
 
           <Card className="p-4">
@@ -6751,12 +6762,14 @@ function Productos({ db, user, refrescar, serverDataReady }) {
             </div>
             {puedeEditar && recetaDraft.length > 0 && Math.round(costoRecetaDraft) !== prodReceta.costo && (
               <div className="mt-3">
-                <Btn small kind="soft" disabled={recetaSucia || guardandoReceta} onClick={async () => {
+                <BtnAsync small kind="soft" disabled={recetaSucia || guardandoReceta} textoEnVuelo="Actualizando costo…" onClick={async () => {
                   setGuardandoReceta(true); setErrReceta("");
-                  try { await sincronizarCostoProducto(prodReceta.id); await refrescar(); }
-                  catch (error) { setErrReceta(error.message); }
+                  try { await sincronizarCostoProducto(prodReceta.id); toast("ok", "Costo del producto actualizado."); }
+                  catch (error) { toast("error", error.message); setGuardandoReceta(false); return; }
+                  try { await refrescar(); }
+                  catch { toast("error", "Costo actualizado, pero no se pudo refrescar."); }
                   finally { setGuardandoReceta(false); }
-                }}>Actualizar costo del producto con la receta</Btn>
+                }}>Actualizar costo del producto con la receta</BtnAsync>
               </div>
             )}
           </Card>
