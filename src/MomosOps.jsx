@@ -3213,6 +3213,21 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
 
   return (
     <div>
+      <SectionTitle>Pedidos</SectionTitle>
+      <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
+        Cada área confirma únicamente el paso que realmente ejecutó. Seguí cada pedido desde la agenda hasta la entrega.
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Stat icon="🧾" label="Pedidos" value={db.orders.length} sub="en el sistema" tone={T.coral} />
+        <Stat icon="⚙" label="En operación" value={orderBuckets.active.length} sub="en flujo activo" tone="#63518A" />
+        <Stat icon="◷" label="En historial" value={orderBuckets.history.length} sub="cerrados o cancelados" tone={T.choco} />
+        <Stat icon="💵" label="Ventas (filtro)" value={fmt(filtrados.reduce((s, o) => s + orderTotal(db, o), 0))} sub="según filtros aplicados" tone="#3F6B42" />
+      </div>
+      <div className="text-[11px] font-semibold mt-2 mb-4" style={{ color: T.choco2 }}>
+        <b style={{ color: T.coral }}>{orderBuckets.active.length}</b> en operación de {db.orders.length} pedidos registrados.
+      </div>
+
       <Card className="p-3 mb-3" style={{ borderColor: "#A7C9A4", background: "#F2F8F0" }}>
         <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#3F6B42" }}>Responsables del pedido</div>
         <div className="text-xs font-bold mt-1 leading-relaxed">Recepción agenda → Caja/Coordinación confirma pago → Cocina prepara → Empaque alista → Logística despacha y entrega.</div>
@@ -6598,13 +6613,51 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
       db.inventory_items.map((i) => [i.nombre, i.cat, i.unidad, i.stock, i.min, i.costo, i.proveedor, i.vence, i.ubicacion]));
   }
 
+  const totalInsumos = db.inventory_items.length;
+  const bajoMinimo = db.inventory_items.filter((i) => Number(i.min) > 0 && Number(i.stock) <= Number(i.min)).length;
+  const porVencerInv = db.inventory_items.filter((i) => {
+    if (!i.vence) return false;
+    const d = diasEntre(hoyISO(), i.vence);
+    return d != null && d <= 7;
+  }).length;
+  const valorStock = db.inventory_items.reduce((acc, i) => acc + Number(i.stock || 0) * Number(i.costo || 0), 0);
+  const reposicionPendiente = db.production_suggestions.filter((s) => s.area === "Inventario" && s.estado === "Pendiente").length;
+
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <SectionTitle>Inventario de insumos</SectionTitle>
+      <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
+        Lo que entra, se usa y se repone. El stock oficial descuenta consumos; el mínimo dispara la reposición.
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Stat icon="📦" label="Insumos" value={totalInsumos} sub="en catálogo" tone={T.coral} />
+        <Stat icon="⚠️" label="Bajo mínimo" value={bajoMinimo} sub="requieren reposición" tone="#A03B2A" />
+        <Stat icon="⏳" label="Por vencer" value={porVencerInv} sub="en 7 días o menos" tone="#96690F" />
+        <Stat icon="💰" label="Valor en stock" value={fmt(valorStock)} sub="a costo de compra" tone="#3F6B42" />
+      </div>
+      <div className="text-[11px] font-semibold mt-2 mb-4" style={{ color: T.choco2 }}>
+        Reposición sugerida: <b style={{ color: T.coral }}>{reposicionPendiente}</b> insumo(s) esperan compra o preparación.
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         <Btn onClick={() => { setFi({ nombre: "", cat: "", unidad: "und", stock: "", min: "", costoTotal: "", proveedor: "", vence: "", ubicacion: "" }); setErrIns(""); setNuevoIns(true); }}>＋ Nuevo insumo</Btn>
         <Btn kind="soft" onClick={() => setMov(true)}>＋ Registrar movimiento</Btn>
-        <MiniSelect placeholder="Categoría: todas" options={cats} value={fCat} onChange={(e) => setFCat(e.target.value)} />
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
+      </div>
+
+      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-4 rounded-2xl" role="tablist" aria-label="Categorías de insumos">
+        {[["Todas", ""], ...cats.map((c) => [c, c])].map(([label, value]) => {
+          const count = value ? db.inventory_items.filter((i) => i.cat === value).length : totalInsumos;
+          const activo = fCat === value;
+          return (
+            <button key={label} type="button" role="tab" aria-selected={activo} onClick={() => setFCat(value)}
+              className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
+              style={activo ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
+              {label} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: activo ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {(() => {
@@ -7005,6 +7058,7 @@ function Productos({ db, user, refrescar, serverDataReady }) {
   const [recetaSucia, setRecetaSucia] = useState(false);
   const [errReceta, setErrReceta] = useState("");
   const [guardandoReceta, setGuardandoReceta] = useState(false);
+  const [fCatProd, setFCatProd] = useState("");
 
   const prodReceta = recetaDe ? db.products.find((p) => p.id === recetaDe) : null;
   const puedeEditar = user === "Administrador" && serverDataReady && Boolean(db.productsServerReady);
@@ -7069,23 +7123,46 @@ function Productos({ db, user, refrescar, serverDataReady }) {
     catch { toast("error", "Producto actualizado, pero no se pudo refrescar el catálogo."); }
   }
 
+  const totalProductos = db.products.length;
+  const productosActivos = db.products.filter((p) => p.activo).length;
+  const productosSinReceta = db.products.filter((p) => recipeLines(db, p.id).length === 0).length;
+
   return (
     <div>
-      <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
+      <SectionTitle>Catálogo de productos</SectionTitle>
+      <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
         🧾 Cada producto puede tener una receta (insumos por unidad). Al registrar un lote o al pasar a "En producción" un producto que se prepara al momento, los insumos se descuentan solos del inventario.
       </div>
       {!puedeEditar && <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: T.vainilla, color: T.choco2 }}>{user === "Administrador" && !db.productsServerReady ? "Catálogo en modo consulta hasta aplicar la migración 13 de Productos." : "Catálogo en modo consulta. Solo Administrador puede modificar productos y recetas."}</div>}
       {!abrirForm && errProd && <div className="text-sm font-bold p-2.5 rounded-xl mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errProd}</div>}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat icon="🧾" label="Productos" value={db.products.length} tone={T.coral} />
-        <Stat icon="✅" label="Activos" value={db.products.filter((p) => p.activo).length} tone="#3F6B42" />
-        <Stat icon="⚠️" label="Sin receta" value={db.products.filter((p) => recipeLines(db, p.id).length === 0).length} tone="#96690F" />
-        <Stat icon="📈" label="Margen prom." value={db.products.length ? pct(db.products.reduce((s, p) => s + (p.precio - p.costo) / p.precio, 0) / db.products.length) : "—"} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Stat icon="🧾" label="Productos" value={totalProductos} sub="en catálogo" tone={T.coral} />
+        <Stat icon="✅" label="Activos" value={productosActivos} sub="a la venta" tone="#3F6B42" />
+        <Stat icon="⚠️" label="Sin receta" value={productosSinReceta} sub="no descuentan insumos" tone="#96690F" />
+        <Stat icon="📈" label="Margen prom." value={totalProductos ? pct(db.products.reduce((s, p) => s + (p.precio - p.costo) / p.precio, 0) / totalProductos) : "—"} sub="precio vs. costo" />
       </div>
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="text-[11px] font-semibold mt-2 mb-4" style={{ color: T.choco2 }}>
+        <b style={{ color: T.coral }}>{productosActivos}</b> activos de {totalProductos} · {productosSinReceta} sin receta.
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         {puedeEditar && <Btn small kind="rosa" onClick={() => { setForm(nuevoProductoVacio()); setEditandoProd(null); setErrProd(""); setAbrirForm(true); }}>＋ Nuevo producto</Btn>}
       </div>
-      {cats.map((cat) => (
+
+      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-4 rounded-2xl" role="tablist" aria-label="Categorías de productos">
+        {[["Todas", ""], ...cats.map((c) => [c, c])].map(([label, value]) => {
+          const count = value ? db.products.filter((p) => p.cat === value).length : totalProductos;
+          const activo = fCatProd === value;
+          return (
+            <button key={label} type="button" role="tab" aria-selected={activo} onClick={() => setFCatProd(value)}
+              className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
+              style={activo ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
+              {value ? `${CAT_EMOJI[value] || ""} ${label}`.trim() : label} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: activo ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+      {cats.filter((cat) => !fCatProd || cat === fCatProd).map((cat) => (
         <div key={cat}>
           <SectionTitle>{CAT_EMOJI[cat]} {cat}</SectionTitle>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -9463,10 +9540,16 @@ function AgenciaControl({ db, user, refrescar }) {
   const [briefSource, setBriefSource] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [creativeOpen, setCreativeOpen] = useState(false);
+  const [opportunityFilter, setOpportunityFilter] = useState("Todas");
+  const [expandedOpportunity, setExpandedOpportunity] = useState(null);
   const [settingsForm, setSettingsForm] = useState(settings);
   const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
   const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
   const existingKeys = new Set((db.agencyBriefs || []).map((brief) => brief.decisionKey).filter(Boolean));
+  const opportunityPillars = ["Todas", ...new Set(intelligence.recommendations.map((item) => item.pillar))];
+  const visibleRecommendations = opportunityFilter === "Todas"
+    ? intelligence.recommendations
+    : intelligence.recommendations.filter((item) => item.pillar === opportunityFilter);
 
   function openBrief(recommendation = null) {
     const source = recommendation || {
@@ -9476,9 +9559,11 @@ function AgenciaControl({ db, user, refrescar }) {
     setBriefSource(source);
     setBriefForm({
       title: source.title,
-      objective: source.type === "Contactar segmento" ? "Recompra" : source.type === "Crear contenido" ? "Contenido" : "Ventas",
-      channel: source.type === "Contactar segmento" ? "WhatsApp" : "Instagram",
-      offer: "", crmSegment: source.type === "Contactar segmento" ? "Clientes inactivos con permiso" : "",
+      objective: source.type === "Contactar segmento" ? "Recompra"
+        : source.type === "Activar cumpleaños" ? "Cumpleaños"
+          : ["Crear contenido", "Repetir creativo"].includes(source.type) ? "Contenido" : "Ventas",
+      channel: source.channel || (source.type === "Contactar segmento" ? "WhatsApp" : "Instagram"),
+      offer: source.suggestedOffer || "", crmSegment: source.crmSegment || "",
       proposedBudget: source.proposedBudget || 0, notes: source.rationale,
     });
   }
@@ -9489,7 +9574,8 @@ function AgenciaControl({ db, user, refrescar }) {
       decision_key: briefSource.id, title: briefForm.title, objective: briefForm.objective,
       campaign_id: briefSource.campaignId || null, product_id: briefSource.productId || null,
       crm_segment: briefForm.crmSegment, offer: briefForm.offer, channel: briefForm.channel,
-      deliverables: briefSource.type === "Crear contenido" ? ["Pieza principal", "Adaptación para historias"] : [],
+      deliverables: ["Crear contenido", "Repetir creativo", "Impulsar producto", "Mover inventario"].includes(briefSource.type)
+        ? ["Pieza principal", "Adaptación para historias"] : [],
       insight: briefSource.rationale, evidence: briefSource.evidence || {}, proposed_budget: Number(briefForm.proposedBudget || 0), notes: briefForm.notes,
     });
     await crearDecisionAgencia({
@@ -9562,6 +9648,21 @@ function AgenciaControl({ db, user, refrescar }) {
 
   const money = (value) => fmt(Math.round(Number(value || 0)));
   const riskStyle = (risk) => risk === "Alto" ? { bg: "#F6D4CD", fg: "#A03B2A" } : risk === "Medio" ? { bg: "#FBE8C8", fg: "#96690F" } : { bg: "#DDEBD9", fg: "#3F6B42" };
+  const pillarIcon = { Inventario: "📦", Pauta: "📣", CRM: "💗", Producto: "🍨", Contenido: "🎨", Marca: "✦", General: "◎" };
+  const evidenceValue = (value) => {
+    if (Array.isArray(value)) return `${value.length} registro(s)`;
+    if (value && typeof value === "object") return JSON.stringify(value).slice(0, 120);
+    if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
+    return String(value ?? "—");
+  };
+  const pipelineSteps = [
+    ["Oportunidades", intelligence.pipeline.opportunities, "Detectadas"],
+    ["Briefs", intelligence.pipeline.briefs, "En curso"],
+    ["Aprobaciones", intelligence.pipeline.approvals, "Humanas"],
+    ["Creativo", intelligence.pipeline.creativeReview, "En revisión"],
+    ["Programado", intelligence.pipeline.scheduled, "Próx. 7 días"],
+    ["Aprendizaje", intelligence.pipeline.learning, "Resultados"],
+  ];
 
   return (
     <section className="mb-6" aria-label="Agencia Comercial MOMOS">
@@ -9593,26 +9694,63 @@ function AgenciaControl({ db, user, refrescar }) {
 
         <div className="p-4 sm:p-5">
           {!serverReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Vista inteligente activa · aplicá <code>agencia-comercial-v1.sql</code> para guardar briefs, aprobaciones y decisiones en el servidor.</div>}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Decisiones para hoy</div><div className="text-sm" style={{ color: T.choco2 }}>Priorizadas por riesgo, evidencia y capacidad real.</div></div>
+
+          <div className="rounded-3xl border p-4 mb-5" style={{ borderColor: T.border, background: "linear-gradient(135deg,#FFF8F1,#F9EEE1)" }}>
+            <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
+              <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Cadena comercial trazable</div><div className="display text-lg font-semibold">De la señal al aprendizaje</div></div>
+              <div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>Nada se publica ni se pauta sin aprobación.</div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+              {pipelineSteps.map(([label, value, sub], index) => <div key={label} className="relative rounded-2xl border px-3 py-3" style={{ borderColor: T.border, background: index === 0 ? "#FFF" : "rgba(255,255,255,.64)" }}>
+                <div className="text-[9px] font-extrabold uppercase tracking-wider" style={{ color: T.choco2 }}>{String(index + 1).padStart(2, "0")} · {label}</div>
+                <div className="display text-2xl font-semibold" style={{ color: index === 0 ? T.coral : T.choco }}>{value}</div>
+                <div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{sub}</div>
+              </div>)}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Radar de oportunidades</div><div className="display text-xl font-semibold">Qué conviene hacer ahora</div><div className="text-sm" style={{ color: T.choco2 }}>Cruza pedidos pagados, stock, CRM, contenido y pauta; cada recomendación explica su evidencia.</div></div>
             <div className="flex gap-2"><Btn kind="soft" small onClick={() => openBrief()}>＋ Brief manual</Btn>{user === "Administrador" && <Btn kind="ghost" small onClick={() => { setSettingsForm(settings); setSettingsOpen(true); }}>⚙ Guardas</Btn>}</div>
           </div>
-          <div className="grid lg:grid-cols-3 gap-3">
-            {intelligence.recommendations.slice(0, 6).map((item) => {
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-3" role="tablist" aria-label="Filtrar oportunidades por área">
+            {opportunityPillars.map((pillar) => {
+              const active = opportunityFilter === pillar;
+              const count = pillar === "Todas" ? intelligence.recommendations.length : intelligence.recommendations.filter((item) => item.pillar === pillar).length;
+              return <button key={pillar} type="button" role="tab" aria-selected={active} onClick={() => setOpportunityFilter(pillar)} className="shrink-0 rounded-full border px-3 py-2 text-[11px] font-extrabold transition"
+                style={{ borderColor: active ? T.coral : T.border, background: active ? T.coral : "#fff", color: active ? "#fff" : T.choco }}>
+                {pillar === "Todas" ? "◎" : pillarIcon[pillar] || "◎"} {pillar} <span className="ml-1 opacity-75">{count}</span>
+              </button>;
+            })}
+          </div>
+          <div className="grid lg:grid-cols-2 gap-3">
+            {visibleRecommendations.slice(0, 8).map((item) => {
               const guard = item.guard; const risk = riskStyle(item.risk); const created = existingKeys.has(item.id);
-              return <article key={item.id} className="rounded-2xl border p-4 flex flex-col" style={{ borderColor: guard.allowed ? T.border : "#E6B7AE", background: guard.allowed ? T.soft : "#FFF5F2" }}>
-                <div className="flex items-start justify-between gap-2"><span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{item.type}</span><span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold" style={{ background: risk.bg, color: risk.fg }}>Riesgo {item.risk}</span></div>
-                <h3 className="display text-base font-semibold mt-2 mb-1">{item.title}</h3>
+              const expanded = expandedOpportunity === item.id;
+              return <article key={item.id} className="rounded-3xl border p-4 sm:p-5 flex flex-col shadow-sm" style={{ borderColor: guard.allowed ? T.border : "#E6B7AE", background: guard.allowed ? "linear-gradient(145deg,#FFF,#FFF8F2)" : "#FFF5F2" }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2"><span className="w-9 h-9 shrink-0 rounded-2xl grid place-items-center text-base" style={{ background: T.vainilla }}>{pillarIcon[item.pillar] || "◎"}</span><div><div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>{item.pillar}</div><div className="text-[11px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{item.type}</div></div></div>
+                  <div className="flex flex-wrap justify-end gap-1"><span className="px-2 py-1 rounded-full text-[9px] font-extrabold" style={{ background: T.vainilla, color: T.choco }}>Prioridad {item.priority}</span><span className="px-2 py-1 rounded-full text-[9px] font-extrabold" style={{ background: risk.bg, color: risk.fg }}>Riesgo {item.risk}</span></div>
+                </div>
+                <h3 className="display text-lg font-semibold mt-3 mb-1">{item.title}</h3>
                 <p className="text-xs leading-relaxed mb-3" style={{ color: T.choco2 }}>{item.rationale}</p>
+                <div className="flex flex-wrap gap-1.5 mb-3">{item.signals.map((itemSignal) => <span key={itemSignal} className="rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "#F5E9D8", color: T.choco }}>{itemSignal}</span>)}</div>
+                <div className="rounded-2xl px-3 py-2.5 mb-3" style={{ background: "#F8EFE4", borderLeft: `3px solid ${T.coral}` }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Siguiente paso</div><div className="text-[11px] leading-relaxed font-semibold" style={{ color: T.choco }}>{item.nextStep}</div></div>
+                <button type="button" className="self-start border-0 bg-transparent p-0 mb-3 text-[11px] font-extrabold underline" style={{ color: T.choco2 }} onClick={() => setExpandedOpportunity(expanded ? null : item.id)} aria-expanded={expanded}>{expanded ? "Ocultar evidencia" : "Ver evidencia y confianza"}</button>
+                {expanded && <div className="rounded-2xl p-3 mb-3 text-[11px]" style={{ background: "#fff", border: `1px dashed ${T.border}` }}>
+                  <div className="font-extrabold mb-2" style={{ color: T.choco }}>Confianza {item.confidence} · fuente interna de MOMO OPS</div>
+                  <div className="grid sm:grid-cols-2 gap-1.5">{Object.entries(item.evidence || {}).map(([key, value]) => <div key={key} className="flex justify-between gap-2"><span style={{ color: T.choco2 }}>{key}</span><b className="text-right break-all">{evidenceValue(value)}</b></div>)}</div>
+                </div>}
                 <div className="mt-auto">
                   <div className="rounded-xl px-3 py-2 text-[11px] mb-3" style={{ background: guard.allowed ? "#E8F1E4" : "#F6D4CD", color: guard.allowed ? "#3F6B42" : "#A03B2A" }}>
                     {guard.allowed ? "✓ Pasa las guardas; requiere aprobación según el modo." : `⛔ ${guard.reasons[0]}`}
                   </div>
-                  <Btn small kind={created ? "ghost" : "primary"} disabled={created || !serverReady} onClick={() => openBrief(item)}>{created ? "Brief creado ✓" : "Convertir en brief"}</Btn>
+                  <Btn small kind={created ? "ghost" : "primary"} disabled={created || !serverReady || !guard.allowed} onClick={() => openBrief(item)}>{created ? "Brief creado ✓" : guard.allowed ? "Convertir en brief" : "Bloqueada por guardas"}</Btn>
                 </div>
               </article>;
             })}
           </div>
+          {visibleRecommendations.length === 0 && <Empty icon="✦" text="No hay oportunidades en este frente hoy. El radar seguirá cruzando operación, clientes y campañas." />}
 
           {(db.agencyBriefs || []).length > 0 && <>
             <SectionTitle>Flujo de briefs</SectionTitle>
