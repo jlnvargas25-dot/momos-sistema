@@ -2851,7 +2851,16 @@ function DetalleTrazabilidad({ trace, db, onOpen, labelledBy }) {
         </div>
         <div className="mt-4 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
           <div className="flex justify-between text-xs font-extrabold"><span>{trace.area}</span><span style={{ color: health.color }}>{trace.flow.percent}%</span></div>
-          <div className="flex justify-between mt-2 gap-1" aria-label="Etapas del pedido">{["Pago", "Cocina", "Empaque", "Despacho", "Entrega"].map((label, index) => <span key={label} className="text-[9px] font-extrabold" style={{ color: trace.flow.percent >= index * 25 ? health.color : T.choco2 }}>{label}</span>)}</div>
+          <div className="mt-3 relative" aria-label="Etapas del pedido">
+            <div className="absolute left-[6px] right-[6px] top-[6px] h-[2px] rounded-full" style={{ background: "#EEDFCE" }} aria-hidden="true" />
+            <div className="absolute left-[6px] top-[6px] h-[2px] rounded-full" style={{ width: `calc((100% - 12px) * ${Math.min(100, Math.max(0, trace.flow.percent)) / 100})`, background: health.color, transition: "width 620ms var(--momo-spring)" }} aria-hidden="true" />
+            <div className="relative flex justify-between">
+              {["Pago", "Cocina", "Empaque", "Despacho", "Entrega"].map((label, index) => <span key={label} className="w-3 h-3 rounded-full border-2" style={{ background: trace.flow.percent >= index * 25 ? health.color : T.surface, borderColor: trace.flow.percent >= index * 25 ? health.color : "#E4D5C4", transition: "background 400ms ease, border-color 400ms ease" }} aria-hidden="true" />)}
+            </div>
+            <div className="flex justify-between mt-1.5">
+              {["Pago", "Cocina", "Empaque", "Despacho", "Entrega"].map((label, index) => <span key={label} className="text-[9px] font-extrabold" style={{ color: trace.flow.percent >= index * 25 ? health.color : T.choco2 }}>{label}</span>)}
+            </div>
+          </div>
         </div>
         <div className="mt-3 rounded-xl px-3 py-2 border" style={{ background: trace.openIncidents.length ? "#F6D4CD" : "#E3EFE0", borderColor: trace.openIncidents.length ? "#ECBBB1" : "#BFD8BE" }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: trace.openIncidents.length ? "#A03B2A" : "#3F6B42" }}>Siguiente acción</div><div className="text-sm font-bold">{trace.nextAction}</div></div>
       </Card>
