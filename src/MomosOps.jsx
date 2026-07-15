@@ -100,6 +100,8 @@ const FONTS = `
 .momo-mobile-nav[data-active="true"] { background: linear-gradient(180deg, rgba(243,215,220,.22), rgba(243,215,220,0)); }
 .momo-mobile-nav[data-active="true"] > span { animation: momo-icon-pop 380ms var(--momo-spring); }
 .momo-page-enter { animation: momo-page-in 360ms var(--momo-spring); }
+.momo-trace-open { animation: momo-page-in 320ms var(--momo-spring) both; }
+.momo-trace-chevron { transition: transform 220ms var(--momo-spring); }
 .momo-module-icon { box-shadow: inset 0 0 0 1px rgba(196,128,142,.18), 0 8px 20px rgba(196,128,142,.12); animation: momo-icon-pop 420ms var(--momo-spring) both; }
 .momo-field { transition: color 160ms ease; }
 .momo-field:focus-within > span { color: ${T.coral} !important; }
@@ -2819,30 +2821,92 @@ function Empaque({ db, update, user, refrescar, perfil }) {
   );
 }
 
+const TRACE_HEALTH_STYLE = {
+  blocked: { bg: "#F6D4CD", color: "#A03B2A", label: "Bloqueado" },
+  attention: { bg: "#FBE8C8", color: "#96690F", label: "Requiere atención" },
+  complete: { bg: "#DDEBD9", color: "#3F6B42", label: "Finalizado" },
+  active: { bg: "#DCE7F2", color: "#3E5C7E", label: "En curso" },
+};
+const TRACE_EVENT_ICON = { created: "🧾", audit: "↻", evidence: "📷", assignment: "👤", incident: "⚠", packing: "🎁", delivery: "🛵", handoff: "🤝", claim: "💬", inventory: "📦" };
+
+// Detalle completo de un pedido: se renderiza inline dentro de la fila expandida del acordeón.
+// Read-only — reusa el shape de buildOrderTraceability tal cual. labelledBy apunta al botón cabecera.
+function DetalleTrazabilidad({ trace, db, onOpen, labelledBy }) {
+  const order = trace.order;
+  const customer = customerOf(db, order.customerId);
+  const health = TRACE_HEALTH_STYLE[traceabilityHealth(trace)] || TRACE_HEALTH_STYLE.active;
+  return (
+    <div role="region" aria-labelledby={labelledBy} className="momo-trace-open space-y-4 min-w-0 pt-3">
+      <Card className="p-4 sm:p-5" style={{ borderColor: health.color + "66" }}>
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div><div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-semibold m-0">{order.id}</h2><Badge label={order.estado} /><span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: health.bg, color: health.color }}>{health.label}</span></div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{order.fecha} · {order.hora} · {order.canal}</div></div>
+          <Btn small onClick={() => onOpen(order.id)}>Abrir pedido completo</Btn>
+        </div>
+        <div className="mt-4 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
+          <div className="flex justify-between text-xs font-extrabold"><span>{trace.area}</span><span style={{ color: health.color }}>{trace.flow.percent}%</span></div>
+          <div className="flex justify-between mt-2 gap-1" aria-label="Etapas del pedido">{["Pago", "Cocina", "Empaque", "Despacho", "Entrega"].map((label, index) => <span key={label} className="text-[9px] font-extrabold" style={{ color: trace.flow.percent >= index * 25 ? health.color : T.choco2 }}>{label}</span>)}</div>
+        </div>
+        <div className="mt-3 rounded-xl px-3 py-2 border" style={{ background: trace.openIncidents.length ? "#F6D4CD" : "#E3EFE0", borderColor: trace.openIncidents.length ? "#ECBBB1" : "#BFD8BE" }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: trace.openIncidents.length ? "#A03B2A" : "#3F6B42" }}>Siguiente acción</div><div className="text-sm font-bold">{trace.nextAction}</div></div>
+      </Card>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Cliente y destino</div><div className="font-bold">{customer.nombre || "Sin nombre"}</div><div className="text-sm">{customer.telefono || "Sin teléfono"}</div><div className="text-sm mt-1">{order.direccion || customer.direccion || "Sin dirección"}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{order.barrio || customer.barrio} · {order.zona}</div></Card>
+        <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Pago y valor</div><div className="flex justify-between text-sm"><span>Total</span><b>{fmt(orderTotal(db, order))}</b></div><div className="flex justify-between text-sm mt-1"><span>Medio</span><b>{order.pago || "Pendiente"}</b></div><div className="flex justify-between text-sm mt-1"><span>Comprobante</span><b style={{ color: order.comprobante ? "#3F6B42" : "#A03B2A" }}>{order.comprobante ? "Recibido ✓" : "Pendiente"}</b></div></Card>
+      </div>
+
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-2 mb-3"><div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contenido y control físico</div><div className="display text-lg font-semibold">{trace.items.length} línea{trace.items.length === 1 ? "" : "s"} del pedido</div></div><span className="text-xs font-bold" style={{ color: trace.packing ? "#3F6B42" : T.choco2 }}>{trace.packing ? "Comanda verificada ✓" : "Sin verificación de Empaque"}</span></div>
+        <div className="space-y-2">{trace.items.map((item) => {
+          const lineProgress = trace.progress.filter((row) => row.orderItemId === item.id);
+          return <div key={item.id} className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: T.soft }}><div className="flex-1"><b className="text-sm">{item.cant}× {item.nombre}</b><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa, item.relleno].filter(Boolean).join(" · ")}</div></div><div className="flex flex-wrap gap-1">{lineProgress.map((row) => <span key={row.stage} className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: row.status === "Incidente" ? "#F6D4CD" : row.status === "Listo" || row.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{row.stage}: {row.status}</span>)}</div></div>;
+        })}</div>
+      </Card>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {[["Responsable", trace.activeAssignments.map((row) => `${row.stage}: ${row.user || "asignado"}`).join(" · ") || "Sin etapa tomada"], ["Evidencias", `${trace.evidences.length} registradas`], ["Reservas FIFO", `${trace.reservations.length} movimientos`], ["Domicilio", trace.delivery ? `${trace.delivery.proveedor} · ${trace.delivery.estado}` : "Sin solicitud"]].map(([label, value]) => <Card key={label} className="p-3"><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-xs font-bold mt-1">{value}</div></Card>)}
+      </div>
+
+      <Card className="p-4 sm:p-5">
+        <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Trazabilidad completa</div><div className="display text-xl font-semibold mb-4">Qué ha pasado con {order.id}</div>
+        <div className="relative pl-7 space-y-4 before:absolute before:left-[10px] before:top-2 before:bottom-2 before:w-px before:bg-[#EEDFCE]">
+          {trace.events.map((event) => <div key={event.id} className="relative"><span className="absolute -left-7 top-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: event.type === "incident" ? "#F6D4CD" : T.vainilla }}>{TRACE_EVENT_ICON[event.type] || "•"}</span><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1"><div><div className="text-sm font-bold">{event.title}</div>{event.detail && <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{event.detail}</div>}<div className="text-[10px] font-bold mt-1" style={{ color: T.choco2 }}>{event.area}{event.actor ? ` · ${event.actor}` : ""}</div></div><time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{event.at || "Sin hora"}</time></div></div>)}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Acordeón de pedidos: fila colapsada con lo esencial; click → despliega el detalle inline.
+// Modo normal abre uno a la vez; "Comparar" permite varios abiertos en paralelo.
 function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
   const traces = useMemo(() => orders.map((order) => buildOrderTraceability(db, order)).filter(Boolean), [db, orders]);
-  const [selectedId, setSelectedId] = useState(() => traces[0]?.order.id || "");
+  const [abiertos, setAbiertos] = useState(() => new Set());
+  const [comparar, setComparar] = useState(false);
+
+  // Purga ids abiertos que ya no existen tras un cambio de filtros/pedidos.
   useEffect(() => {
-    if (!traces.length) { setSelectedId(""); return; }
-    if (!traces.some((trace) => trace.order.id === selectedId)) setSelectedId(traces[0].order.id);
-  }, [traces, selectedId]);
-  const selected = traces.find((trace) => trace.order.id === selectedId) || traces[0] || null;
+    setAbiertos((prev) => {
+      if (!prev.size) return prev;
+      const validos = new Set(traces.map((trace) => trace.order.id));
+      const next = new Set([...prev].filter((id) => validos.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [traces]);
+
+  function toggle(id) {
+    setAbiertos((prev) => {
+      if (prev.has(id)) { const next = new Set(prev); next.delete(id); return next; }
+      return comparar ? new Set(prev).add(id) : new Set([id]);
+    });
+  }
+
   const active = traces.filter((trace) => !["Entregado", "Cancelado"].includes(trace.order.estado)).length;
   const blocked = traces.filter((trace) => traceabilityHealth(trace) === "blocked").length;
   const handoffs = traces.filter((trace) => trace.order.estado === "Listo para despacho").length;
   const inRoute = traces.filter((trace) => trace.order.estado === "En ruta").length;
-  const healthStyle = {
-    blocked: { bg: "#F6D4CD", color: "#A03B2A", label: "Bloqueado" },
-    attention: { bg: "#FBE8C8", color: "#96690F", label: "Requiere atención" },
-    complete: { bg: "#DDEBD9", color: "#3F6B42", label: "Finalizado" },
-    active: { bg: "#DCE7F2", color: "#3E5C7E", label: "En curso" },
-  };
-  const eventIcon = { created: "🧾", audit: "↻", evidence: "📷", assignment: "👤", incident: "⚠", packing: "🎁", delivery: "🛵", handoff: "🤝", claim: "💬", inventory: "📦" };
 
-  if (!selected) return <Card className="p-8 text-center"><div className="text-3xl mb-2">🔎</div><div className="font-bold">No hay pedidos que coincidan con la búsqueda</div></Card>;
-  const order = selected.order;
-  const customer = customerOf(db, order.customerId);
-  const health = healthStyle[traceabilityHealth(selected)] || healthStyle.active;
+  if (!traces.length) return <Card className="p-8 text-center"><div className="text-3xl mb-2">🔎</div><div className="font-bold">No hay pedidos que coincidan con la búsqueda</div></Card>;
+
   return (
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -2852,61 +2916,39 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
         <Stat icon="🛵" label="En ruta" value={inRoute} sub="esperan entrega" tone="#3F6B42" />
       </div>
 
-      <div className="grid lg:grid-cols-[310px_minmax(0,1fr)] gap-4 items-start">
-        <Card className="p-2 lg:sticky lg:top-20 max-h-[72vh] overflow-y-auto">
-          <div className="px-2 py-2 text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>Pedidos encontrados · {traces.length}</div>
-          <div className="space-y-2">
-            {traces.map((trace) => {
-              const traceHealth = healthStyle[traceabilityHealth(trace)] || healthStyle.active;
-              const traceCustomer = customerOf(db, trace.order.customerId);
-              return <button key={trace.order.id} type="button" onClick={() => setSelectedId(trace.order.id)} className="w-full text-left rounded-2xl border p-3 transition"
-                style={{ background: trace.order.id === selected.order.id ? T.coralSoft : T.surface, borderColor: trace.order.id === selected.order.id ? "#E9A18C" : T.border }}>
-                <div className="flex items-center justify-between gap-2"><b className="text-sm">{trace.order.id}</b><span className="rounded-full px-2 py-0.5 text-[9px] font-extrabold" style={{ background: traceHealth.bg, color: traceHealth.color }}>{traceHealth.label}</span></div>
-                <div className="text-xs font-bold mt-1 truncate">{traceCustomer.nombre || "Cliente sin nombre"}</div>
-                <div className="text-[10px] font-semibold mt-1 truncate" style={{ color: T.choco2 }}>{trace.area}</div>
-                <div className="text-[10px] font-bold mt-1 truncate" style={{ color: traceHealth.color }}>{trace.nextAction}</div>
-              </button>;
-            })}
-          </div>
-        </Card>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>Pedidos encontrados · {traces.length}</div>
+        <button type="button" onClick={() => setComparar((v) => !v)} aria-pressed={comparar}
+          className="rounded-full px-3 py-1.5 text-[11px] font-extrabold border transition"
+          style={{ background: comparar ? T.coral : T.surface, color: comparar ? "#fff" : T.choco2, borderColor: comparar ? T.coral : T.border }}>
+          {comparar ? "Comparar ✓" : "Comparar"}
+        </button>
+      </div>
 
-        <div className="space-y-4 min-w-0">
-          <Card className="p-4 sm:p-5" style={{ borderColor: health.color + "66" }}>
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-              <div><div className="flex flex-wrap items-center gap-2"><h2 className="display text-2xl font-semibold m-0">{order.id}</h2><Badge label={order.estado} /><span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: health.bg, color: health.color }}>{health.label}</span></div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{order.fecha} · {order.hora} · {order.canal}</div></div>
-              <Btn small onClick={() => onOpen(order.id)}>Abrir pedido completo</Btn>
-            </div>
-            <div className="mt-4 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
-              <div className="flex justify-between text-xs font-extrabold"><span>{selected.area}</span><span style={{ color: health.color }}>{selected.flow.percent}%</span></div>
-              <div className="flex justify-between mt-2 gap-1" aria-label="Etapas del pedido">{["Pago", "Cocina", "Empaque", "Despacho", "Entrega"].map((label, index) => <span key={label} className="text-[9px] font-extrabold" style={{ color: selected.flow.percent >= index * 25 ? health.color : T.choco2 }}>{label}</span>)}</div>
-            </div>
-            <div className="mt-3 rounded-xl px-3 py-2 border" style={{ background: selected.openIncidents.length ? "#F6D4CD" : "#E3EFE0", borderColor: selected.openIncidents.length ? "#ECBBB1" : "#BFD8BE" }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: selected.openIncidents.length ? "#A03B2A" : "#3F6B42" }}>Siguiente acción</div><div className="text-sm font-bold">{selected.nextAction}</div></div>
-          </Card>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Cliente y destino</div><div className="font-bold">{customer.nombre || "Sin nombre"}</div><div className="text-sm">{customer.telefono || "Sin teléfono"}</div><div className="text-sm mt-1">{order.direccion || customer.direccion || "Sin dirección"}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{order.barrio || customer.barrio} · {order.zona}</div></Card>
-            <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Pago y valor</div><div className="flex justify-between text-sm"><span>Total</span><b>{fmt(orderTotal(db, order))}</b></div><div className="flex justify-between text-sm mt-1"><span>Medio</span><b>{order.pago || "Pendiente"}</b></div><div className="flex justify-between text-sm mt-1"><span>Comprobante</span><b style={{ color: order.comprobante ? "#3F6B42" : "#A03B2A" }}>{order.comprobante ? "Recibido ✓" : "Pendiente"}</b></div></Card>
-          </div>
-
-          <Card className="p-4">
-            <div className="flex items-center justify-between gap-2 mb-3"><div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contenido y control físico</div><div className="display text-lg font-semibold">{selected.items.length} línea{selected.items.length === 1 ? "" : "s"} del pedido</div></div><span className="text-xs font-bold" style={{ color: selected.packing ? "#3F6B42" : T.choco2 }}>{selected.packing ? "Comanda verificada ✓" : "Sin verificación de Empaque"}</span></div>
-            <div className="space-y-2">{selected.items.map((item) => {
-              const lineProgress = selected.progress.filter((row) => row.orderItemId === item.id);
-              return <div key={item.id} className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: T.soft }}><div className="flex-1"><b className="text-sm">{item.cant}× {item.nombre}</b><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa, item.relleno].filter(Boolean).join(" · ")}</div></div><div className="flex flex-wrap gap-1">{lineProgress.map((row) => <span key={row.stage} className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: row.status === "Incidente" ? "#F6D4CD" : row.status === "Listo" || row.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{row.stage}: {row.status}</span>)}</div></div>;
-            })}</div>
-          </Card>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {[["Responsable", selected.activeAssignments.map((row) => `${row.stage}: ${row.user || "asignado"}`).join(" · ") || "Sin etapa tomada"], ["Evidencias", `${selected.evidences.length} registradas`], ["Reservas FIFO", `${selected.reservations.length} movimientos`], ["Domicilio", selected.delivery ? `${selected.delivery.proveedor} · ${selected.delivery.estado}` : "Sin solicitud"]].map(([label, value]) => <Card key={label} className="p-3"><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-xs font-bold mt-1">{value}</div></Card>)}
-          </div>
-
-          <Card className="p-4 sm:p-5">
-            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Trazabilidad completa</div><div className="display text-xl font-semibold mb-4">Qué ha pasado con {order.id}</div>
-            <div className="relative pl-7 space-y-4 before:absolute before:left-[10px] before:top-2 before:bottom-2 before:w-px before:bg-[#EEDFCE]">
-              {selected.events.map((event) => <div key={event.id} className="relative"><span className="absolute -left-7 top-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: event.type === "incident" ? "#F6D4CD" : T.vainilla }}>{eventIcon[event.type] || "•"}</span><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1"><div><div className="text-sm font-bold">{event.title}</div>{event.detail && <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{event.detail}</div>}<div className="text-[10px] font-bold mt-1" style={{ color: T.choco2 }}>{event.area}{event.actor ? ` · ${event.actor}` : ""}</div></div><time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{event.at || "Sin hora"}</time></div></div>)}
-            </div>
-          </Card>
-        </div>
+      <div className="space-y-2">
+        {traces.map((trace) => {
+          const id = trace.order.id;
+          const open = abiertos.has(id);
+          const traceHealth = TRACE_HEALTH_STYLE[traceabilityHealth(trace)] || TRACE_HEALTH_STYLE.active;
+          const traceCustomer = customerOf(db, trace.order.customerId);
+          const headerId = `trace-head-${id}`;
+          return (
+            <Card key={id} className="p-0 overflow-hidden" style={{ borderColor: open ? "#E9A18C" : T.border }}>
+              <button id={headerId} type="button" onClick={() => toggle(id)} aria-expanded={open}
+                className="w-full text-left p-3 sm:p-4 flex items-start gap-3 transition"
+                style={{ background: open ? T.coralSoft : T.surface }}>
+                <span className="momo-trace-chevron shrink-0 mt-0.5 text-lg font-bold leading-none" style={{ color: traceHealth.color, transform: open ? "rotate(90deg)" : "none" }} aria-hidden="true">›</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2"><b className="text-sm">{id}</b><span className="rounded-full px-2 py-0.5 text-[9px] font-extrabold shrink-0" style={{ background: traceHealth.bg, color: traceHealth.color }}>{traceHealth.label}</span></div>
+                  <div className="flex items-center justify-between gap-2 mt-1"><span className="text-xs font-bold truncate">{traceCustomer.nombre || "Cliente sin nombre"}</span><Badge label={trace.order.estado} /></div>
+                  <div className="text-[10px] font-semibold mt-1 truncate" style={{ color: T.choco2 }}>{trace.area}</div>
+                  <div className="text-[10px] font-bold mt-1 truncate" style={{ color: traceHealth.color }}>{trace.nextAction}</div>
+                </div>
+              </button>
+              {open && <div className="px-3 sm:px-4 pb-4"><DetalleTrazabilidad trace={trace} db={db} onOpen={onOpen} labelledBy={headerId} /></div>}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
