@@ -84,3 +84,58 @@ test("distingue imperfectas pendientes, reaprovechadas y descartadas", () => {
   assert.equal(result.summary.imperfectTotal, 7);
   assert.equal(result.summary.discarded, 8);
 });
+
+test("agrupa el stock terminado por figura y muestra todos sus sabores", () => {
+  const result = buildFinishedInventory({
+    products: [{ id: "P1", nombre: "Momo Gatito", tipo: "momo", stock: 9, activo: true }],
+    variantes: [
+      { productId: "P1", producto: "Momo Gatito", figura: "Lizi", sabor: "Limón", disponibles: 4, gramajeG: 150, vence: "2026-07-18" },
+      { productId: "P1", producto: "Momo Gatito", figura: "Lizi", sabor: "Coco", disponibles: 2, gramajeG: 150, vence: "2026-07-17" },
+      { productId: "P1", producto: "Momo Gatito", figura: "Momo", sabor: "Maracuyá", disponibles: 3, gramajeG: 180, vence: "2026-07-19" },
+    ],
+  }, { today: "2026-07-15" });
+
+  const lizi = result.figureSummaries.find((figure) => figure.figura === "Lizi");
+  assert.equal(lizi.available, 6);
+  assert.deepEqual(lizi.flavors.map((flavor) => [flavor.sabor, flavor.available]), [["Limón", 4], ["Coco", 2]]);
+  assert.equal(lizi.flavors[1].nextExpiration, "2026-07-17");
+});
+
+test("separa imperfectas por figura y cuenta las destinadas a malteadas", () => {
+  const result = buildFinishedInventory({
+    products: [],
+    production_batches: [
+      {
+        id: "L1", sabor: "Oreo", imperfectas: 3, descartadas: 1,
+        destino: "Insumo para malteadas y crepas",
+        resultadosFiguras: [
+          { figura: "Lizi", perfectas: 2, imperfectas: 1, descartadas: 0 },
+          { figura: "Momo", perfectas: 1, imperfectas: 2, descartadas: 1 },
+        ],
+      },
+      { id: "L2", sabor: "Coco", figura: "Lizi", imperfectas: 2, descartadas: 0, destino: "—" },
+    ],
+  });
+
+  const lizi = result.figureSummaries.find((figure) => figure.figura === "Lizi");
+  const momo = result.figureSummaries.find((figure) => figure.figura === "Momo");
+  assert.equal(result.summary.imperfectForShakes, 3);
+  assert.equal(lizi.imperfectForShakes, 1);
+  assert.equal(lizi.imperfectPending, 2);
+  assert.equal(momo.imperfectForShakes, 2);
+  assert.equal(momo.discarded, 1);
+});
+
+test("un lote mixto legado no atribuye imperfectas a una figura inventada", () => {
+  const result = buildFinishedInventory({
+    products: [],
+    production_batches: [{
+      id: "L1", sabor: "Milo", imperfectas: 2, descartadas: 0, destino: "—",
+      figuras: [{ figura: "Lizi", cant: 2 }, { figura: "Momo", cant: 2 }],
+    }],
+  });
+
+  assert.equal(result.figureSummaries.length, 1);
+  assert.equal(result.figureSummaries[0].figura, "Sin figura verificable");
+  assert.equal(result.figureSummaries[0].imperfectPending, 2);
+});

@@ -1,17 +1,26 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
-import { fetchCatalogos, fetchOperativo } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
-import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderTransitionPermission } from "./lib/order-workflow";
+import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
+import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
 import { buildFinishedInventory } from "./lib/finished-inventory";
 import { buildIngredientLotSummary } from "./lib/ingredient-lots";
 import { inventorySupplyMode } from "./lib/inventory-supply-mode";
+import { calculateSubrecipeBatch } from "./lib/subrecipe-scaling";
 import { explainOperationalError } from "./lib/operational-errors";
 import { evaluateComboVariantAvailability, evaluateExactVariantDemand } from "./lib/variant-availability";
 import { momobotContextAnswer, momobotContextSnapshot } from "./lib/momobot-context";
 import { canAutoStartMomobot, isCurrentMomobotAuthorization, momobotModeAfterExecution, momobotModeAfterReadOnly } from "./lib/momobot-session";
-import { buildPackingChecklistLines, findPackingVerification, packingStationProgress, packingVerificationMatchesLines } from "./lib/packing-workflow";
+import { buildPackingChecklistLines, buildPackingGuide, findPackingVerification, packingStationProgress, packingVerificationMatchesLines } from "./lib/packing-workflow";
+import { buildPackingQueue } from "./lib/packing-queue";
+import { KITCHEN_ISSUE_GUIDANCE, kitchenQuickCommandState } from "./lib/kitchen-command";
+import { buildPurchaseAssistant } from "./lib/purchase-assistant";
+import { buildSalesReceptionAssistant } from "./lib/sales-reception-assistant";
+import { buildOperationalFinance } from "./lib/operational-finance";
+import { buildKitchenProductionPlan, productionRunDraft } from "./lib/production-planner";
+import { buildAssistantControlCenter } from "./lib/assistant-control-center";
 import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgressFor, openOrderIncidents, operationalStageForOrder, STAGE_LINE_STATUSES } from "./lib/operational-control";
 import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
@@ -20,8 +29,10 @@ import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
 import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "./lib/commercial-distribution";
-import { buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
+import { buildActiveReservationDashboard, buildInventoryHistory, buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveInventoryReservation, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
 import { BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./lib/brand-studio";
+import { CREATIVE_PROVIDERS, buildCreativeProductionQueue, creativeAuthorizationGuard } from "./lib/creative-production";
+import { AGENCY_INTEGRATION_ENVIRONMENTS, agencyProviderExecutionGuard, buildAgencyIntegrationCenter } from "./lib/agency-integrations";
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -133,6 +144,11 @@ const FONTS = `
 .momo-busy-spinner { animation: momo-spin 650ms linear infinite; }
 .momo-kitchen-alert-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(5rem, calc(env(safe-area-inset-bottom) + 1rem)); z-index: 45; }
 .momo-momobot-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(9rem, calc(env(safe-area-inset-bottom) + 5rem)); z-index: 46; }
+.momo-kitchen-plan-fab { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(13.5rem, calc(env(safe-area-inset-bottom) + 9.5rem)); z-index: 47; }
+.momo-kitchen-plan-fab[data-open="true"] { bottom: max(1rem, env(safe-area-inset-bottom)); }
+.momo-kitchen-plan-orb { position: relative; box-shadow: 0 10px 24px rgba(63,107,66,.24), 0 0 0 6px rgba(221,235,217,.82), 0 0 0 7px rgba(63,107,66,.12); transition: transform 180ms var(--momo-spring), box-shadow 180ms ease; }
+.momo-kitchen-plan-orb:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 14px 30px rgba(63,107,66,.3), 0 0 0 7px rgba(221,235,217,.86); }
+.momo-kitchen-plan-panel { container-type: inline-size; }
 .momo-momobot-panel { container-type: inline-size; }
 .momo-momobot-layout { display: flex; flex-direction: column; align-items: stretch; gap: 1rem; }
 .momo-momobot-rail { display: flex; align-items: center; gap: .75rem; flex-shrink: 0; }
@@ -178,6 +194,8 @@ const FONTS = `
 .momo-crm-tile:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(84,56,43,.08); }
 .momo-crm-row { transition: background 160ms ease; border-radius: 10px; }
 .momo-crm-row:hover { background: rgba(247,236,217,.6); }
+.momo-cal-card { transition: transform 180ms var(--momo-spring), box-shadow 180ms ease; }
+.momo-cal-card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(84,56,43,.08); }
 @keyframes momo-page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes momo-sheet-in { from { opacity: 0; transform: translateY(28px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes momo-toast-in { 0% { opacity: 0; transform: translateY(18px) scale(.94); } 65% { transform: translateY(-2px) scale(1.01); } 100% { opacity: 1; transform: none; } }
@@ -189,7 +207,7 @@ const FONTS = `
 @keyframes momo-spin { to { transform: rotate(360deg); } }
 @keyframes momo-listening { from { transform: scale(.98); } to { transform: scale(1.035); } }
 @keyframes momo-wave { from { transform: scaleY(.45); } to { transform: scaleY(1); } }
-@media (min-width: 768px) { .momo-kitchen-alert-fab { bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); } .momo-momobot-fab { bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem)); } }
+@media (min-width: 768px) { .momo-kitchen-alert-fab { bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); } .momo-momobot-fab { bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem)); } .momo-kitchen-plan-fab { bottom: max(10rem, calc(env(safe-area-inset-bottom) + 9.5rem)); } .momo-kitchen-plan-fab[data-open="true"] { bottom: max(1rem, env(safe-area-inset-bottom)); } }
 @media (prefers-reduced-motion: reduce) { .momos * { transition: none !important; animation: none !important; } }
 `;
 
@@ -687,7 +705,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -709,7 +727,7 @@ function normalizeDbShape(d) {
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
     "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions",
-    "brandMediaAssets", "creativeGenerationJobs", "brandMediaUsages",
+    "brandMediaAssets", "creativeGenerationJobs", "brandMediaUsages", "agencyIntegrations", "creativeConnectorRuns",
     "marketing_ideas", "marketing_guiones", "marketing_mensajes", "marketing_tasks",
   ];
   arrayTables.forEach((k) => {
@@ -1848,7 +1866,7 @@ function Stat({ icon, label, value, sub, tone, onClick, active }) {
       <div className="flex items-center gap-2 text-xs font-bold" style={{ color: T.choco2 }}>
         <span aria-hidden="true">{icon}</span><span className="truncate">{label}</span>
       </div>
-      <div className="display text-2xl font-semibold" style={{ color: tone || T.choco }}>{value}</div>
+      <div className="display text-2xl font-semibold" style={{ color: tone || T.choco, fontVariantNumeric: "tabular-nums" }}>{value}</div>
       {sub && <div className="text-xs" style={{ color: T.choco2 }}>{sub}</div>}
     </Card>
   );
@@ -1863,13 +1881,13 @@ function SectionTitle({ children, action }) {
   );
 }
 
-function WorkScopeTabs({ value, onChange, activeCount, historyCount, activeLabel = "En curso" }) {
+function WorkScopeTabs({ value, onChange, activeCount, historyCount, activeLabel = "En curso", secondaryLabel = "Historial", activeIcon = "●", secondaryIcon = "◷", ariaLabel = "Vista de trabajo e historial" }) {
   const options = [
-    { id: "active", label: activeLabel, count: activeCount, icon: "●" },
-    { id: "history", label: "Historial", count: historyCount, icon: "◷" },
+    { id: "active", label: activeLabel, count: activeCount, icon: activeIcon },
+    { id: "history", label: secondaryLabel, count: historyCount, icon: secondaryIcon },
   ];
   return (
-    <div className="inline-flex rounded-2xl border p-1" style={{ borderColor: T.border, background: T.vainilla }} role="tablist" aria-label="Vista de trabajo e historial">
+    <div className="inline-flex rounded-2xl border p-1" style={{ borderColor: T.border, background: T.vainilla }} role="tablist" aria-label={ariaLabel}>
       {options.map((option) => {
         const selected = value === option.id;
         return (
@@ -2066,11 +2084,12 @@ function Modal({ title, onClose, children, wide, topLayer = false }) {
 }
 
 function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOpenProduction, onOpenPacking }) {
-  const operationalRole = String(perfil?.rol || "").trim();
-  const canSeeKitchenCommands = ["Administrador", "Cocina"].includes(operationalRole);
-  const canSeePackingCommands = ["Administrador", "Empaque"].includes(operationalRole);
-  const orderAlertsEnabled = canReceiveKitchenOrderAlerts(perfil?.rol);
-  const delayAlertsEnabled = canReceiveKitchenDelayReminders(perfil?.rol);
+  const operationalRoles = normalizeRoles(perfil);
+  const operationalRolesKey = operationalRoles.join("|");
+  const canSeeKitchenCommands = hasAnyRole(operationalRoles, ["Administrador", "Cocina"]);
+  const canSeePackingCommands = hasAnyRole(operationalRoles, ["Administrador", "Empaque"]);
+  const orderAlertsEnabled = canReceiveKitchenOrderAlerts(operationalRoles);
+  const delayAlertsEnabled = canReceiveKitchenDelayReminders(operationalRoles);
   const incidentAlertsEnabled = Boolean(db?.operationalControlReady);
   const enabled = orderAlertsEnabled || delayAlertsEnabled || incidentAlertsEnabled;
   const [dialogMode, setDialogMode] = useState(null);
@@ -2101,10 +2120,10 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
   const delayReminders = useMemo(() => delayAlertsEnabled ? kitchenDelayedOrderReminders(catalogs, delayClock, delayTiming) : [], [delayAlertsEnabled, catalogs, delayClock, delayTiming]);
   const operationalIncidents = useMemo(() => incidentAlertsEnabled ? (db?.order_incidents || []).filter((incident) => {
     if (incident.status !== "Abierto") return false;
-    if (["Administrador", "Coordinador de pedidos"].includes(operationalRole)) return true;
-    if (incident.area === "Recepción") return operationalRole === "Cajero";
-    return canOperateStage(operationalRole, incident.area);
-  }) : [], [incidentAlertsEnabled, db?.order_incidents, operationalRole]);
+    if (hasAnyRole(operationalRoles, ["Administrador", "Coordinador de pedidos"])) return true;
+    if (incident.area === "Recepción") return hasRole(operationalRoles, "Cajero");
+    return canOperateStage(operationalRoles, incident.area);
+  }) : [], [incidentAlertsEnabled, db?.order_incidents, operationalRolesKey]);
 
   useEffect(() => {
     const orders = db?.orders || [];
@@ -2256,7 +2275,7 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
             <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.choco2 }}>{showsIncidents ? "Centro de excepciones" : showsDelays ? "Seguimiento vivo de la operación" : "Relevo entre áreas"}</div>
             <div className="font-bold mt-0.5">{showsIncidents ? "Estas novedades detienen el avance hasta que el área responsable las resuelva." : showsDelays ? "MOMO OPS recuerda las órdenes que no han avanzado a tiempo." : "MOMO OPS conecta Caja, Cocina y Empaque sin perder la comanda."}</div>
             <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{showsDelays
-              ? `Cocina avisa desde ${delayTiming.demoraCocinaMin} min y es urgente desde ${delayTiming.demoraCocinaUrgenteMin}; Empaque avisa desde ${delayTiming.demoraEmpaqueMin} min y es urgente desde ${delayTiming.demoraEmpaqueUrgenteMin}. Repite cada ${delayTiming.demoraRepeticionMin} min.`
+              ? `Cocina cuenta desde el pago confirmado: avisa a los ${delayTiming.demoraCocinaMin} min y es urgente a los ${delayTiming.demoraCocinaUrgenteMin}; Empaque avisa desde ${delayTiming.demoraEmpaqueMin} min y es urgente desde ${delayTiming.demoraEmpaqueUrgenteMin}. Repite cada ${delayTiming.demoraRepeticionMin} min.`
               : "El aviso no depende de Momobot: Cocina recibe pagos confirmados y Empaque recibe pedidos terminados por Cocina."}</div>
             {showsDelays && <div className="flex flex-wrap gap-1.5 mt-2">
               <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>Cocina · {delayedKitchenCount}</span>
@@ -2292,7 +2311,7 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
                     </div>
                     <div className="text-right shrink-0">
                       <div className="display text-xl font-bold leading-none" style={{ color: reminder.urgent ? "#A03B2A" : T.choco }}>{reminder.elapsedMinutes} min</div>
-                      <div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>en {reminder.area}</div>
+                      <div className="text-[9px] uppercase tracking-wider font-extrabold max-w-28" style={{ color: T.choco2 }}>{reminder.phase || `en ${reminder.area}`}</div>
                     </div>
                   </div>
                   <div className="mt-2 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
@@ -2362,8 +2381,8 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
 
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <Btn kind="ghost" onClick={closeDialog}>Entendido</Btn>
-            {readyCommands.length > 0 && <Btn onClick={goToProduction}>Ir a Producción</Btn>}
-            {packingCommands.length > 0 && <Btn onClick={goToPacking}>Ir a Empaque</Btn>}
+            {(readyCommands.length > 0 || delayedKitchenCount > 0) && <Btn onClick={goToProduction}>Ir a Producción</Btn>}
+            {(packingCommands.length > 0 || delayedPackingCount > 0) && <Btn onClick={goToPacking}>Ir a Empaque</Btn>}
           </div>
         </Modal>
       )}
@@ -2371,8 +2390,40 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
   );
 }
 
-function KitchenProductionQueue({ db, onStart, onOpenAssistant, onReady, canStart, canReady, busyOrderId }) {
+function CompactQueueOrderCard({ db, orderId, eyebrow, nextAction, content, tone = T.coral, position, onOpen, footer, timing }) {
+  const order = (db.orders || []).find((item) => item.id === orderId);
+  if (!order) return null;
+  const customer = customerOf(db, order.customerId);
+  const lines = buildPackingChecklistLines(orderId, db.order_items || []);
+  const topLines = lines.filter((line) => !line.parentItemId);
+  return (
+    <Card className="momo-queue-item p-4 min-h-[188px] flex flex-col" onClick={onOpen} aria-label={`Abrir detalle del pedido ${orderId}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: tone }}>{eyebrow}</div>
+          <div className="flex flex-wrap items-center gap-2 mt-1"><h3 className="display text-lg font-semibold m-0">{orderId}</h3><Badge label={order.estado} /></div>
+        </div>
+        {timing ? <div className="text-right shrink-0">
+          {timing.urgent && <div className="text-[8px] uppercase tracking-wider font-black" style={{ color: "#A03B2A" }}>Urgente</div>}
+          <div className="display text-xl font-bold leading-none" style={{ color: timing.urgent ? "#A03B2A" : "#96690F" }}>{timing.elapsedMinutes}</div>
+          <div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>min</div>
+        </div> : <span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0" style={{ background: `${tone}18`, color: tone }}>{position || "›"}</span>}
+      </div>
+      <div className="text-xs font-semibold mt-1 truncate" style={{ color: T.choco2 }}>{customer.nombre || "Cliente"} · {order.fecha} {order.hora}</div>
+      {timing && <div className="mt-2 rounded-xl px-2.5 py-1.5 text-[10px] font-extrabold" style={{ background: timing.urgent ? "#F6D4CD" : "#FFF2D8", color: timing.urgent ? "#A03B2A" : "#7A5410" }}>⏱ {timing.elapsedMinutes} min · {timing.phase || timing.state}</div>}
+      <div className="mt-3 text-sm font-bold leading-snug line-clamp-2">{content || topLines.map((line) => line.label).join(" · ") || "Sin contenido registrado"}</div>
+      <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>{topLines.length} línea{topLines.length === 1 ? "" : "s"} principal{topLines.length === 1 ? "" : "es"} · {lines.length} control{lines.length === 1 ? "" : "es"} exacto{lines.length === 1 ? "" : "s"}</div>
+      <div className="mt-auto pt-3 flex items-end justify-between gap-3 border-t" style={{ borderColor: T.border }}>
+        <div className="min-w-0"><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: tone }}>Siguiente acción</div><div className="text-[11px] font-bold leading-snug mt-0.5">{nextAction}</div>{footer && <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>{footer}</div>}</div>
+        <span className="text-lg shrink-0" style={{ color: tone }} aria-hidden="true">›</span>
+      </div>
+    </Card>
+  );
+}
+
+function KitchenProductionQueue({ db, onOpenOrder, canStart, canReady }) {
   const [delayClock, setDelayClock] = useState(() => Date.now());
+  const [scope, setScope] = useState("active");
   useEffect(() => {
     const timer = setInterval(() => setDelayClock(Date.now()), 60000);
     return () => clearInterval(timer);
@@ -2393,126 +2444,215 @@ function KitchenProductionQueue({ db, onStart, onOpenAssistant, onReady, canStar
   const delayTiming = useMemo(() => normalizeKitchenDelaySettings(db?.settings), [db?.settings]);
   const delayReminders = useMemo(() => kitchenDelayedOrderReminders(catalogs, delayClock, delayTiming), [catalogs, delayClock, delayTiming]);
   const kitchenDelayReminders = delayReminders.filter((reminder) => reminder.area === "Cocina");
-  const urgentDelayCount = kitchenDelayReminders.filter((reminder) => reminder.urgent).length;
+  const timingByOrderId = useMemo(() => new Map(kitchenDelayReminders.map((reminder) => [String(reminder.orderId), reminder])), [kitchenDelayReminders]);
 
   return (
     <section className="mb-5" aria-labelledby="kitchen-queue-title">
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
         <div className="min-w-0">
-          <h2 id="kitchen-queue-title" className="display text-lg font-semibold m-0">Cola de pedidos para preparar</h2>
-          <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Primero el más antiguo. Figura, sabor y relleno vienen de la orden pagada.</div>
+          <h2 id="kitchen-queue-title" className="display text-lg font-semibold m-0">Comandas de Cocina</h2>
+          <div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Del pago confirmado al relevo con Empaque, sin duplicar pedidos en el panel.</div>
         </div>
-        <div className="flex flex-col items-end shrink-0 gap-0.5 text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>
-          <span><b className="text-xs" style={{ color: commands.length ? T.coral : T.choco }}>{commands.length}</b> por iniciar</span>
-          <span><b className="text-xs" style={{ color: inProduction.length ? "#3E5C7E" : T.choco }}>{inProduction.length}</b> en cocina</span>
+        <WorkScopeTabs value={scope} onChange={setScope} activeCount={commands.length} historyCount={inProduction.length}
+          activeLabel="Cola por iniciar" secondaryLabel="En preparación" activeIcon="●" secondaryIcon="◷" ariaLabel="Etapa de las comandas de Cocina" />
+      </div>
+
+      {scope === "active" ? (
+        commands.length ? <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {commands.map((command, index) => (
+            <CompactQueueOrderCard key={command.orderId} db={db} orderId={command.orderId}
+              eyebrow={index === 0 ? "Siguiente · FIFO" : `En cola · #${index + 1}`}
+              position={index + 1} tone={index === 0 ? T.coral : "#8E4B5A"} content={command.content}
+              nextAction={canStart ? "Abrir, revisar e iniciar la preparación" : "Consultar la comanda; Cocina confirma el inicio"}
+              footer={canStart ? "Dentro encontrás Momobot y la confirmación segura." : "Tu rol no altera el estado."}
+              timing={timingByOrderId.get(String(command.orderId))}
+              onOpen={() => onOpenOrder?.(command.orderId)} />
+          ))}
+        </div> : <Empty icon="✅" text="No hay pedidos esperando iniciar. Cuando un pedido quede Pagado aparecerá aquí con figura, sabor y contenido." />
+      ) : (
+        inProduction.length ? <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {inProduction.map((command) => (
+            <CompactQueueOrderCard key={command.orderId} db={db} orderId={command.orderId}
+              eyebrow="En preparación" tone="#3E5C7E" content={command.content}
+              nextAction={canReady ? "Abrir, completar líneas y entregar a Empaque" : "Consultar el avance de Cocina"}
+              footer="Empaque ya puede verlo como pedido en camino."
+              timing={timingByOrderId.get(String(command.orderId))}
+              onOpen={() => onOpenOrder?.(command.orderId)} />
+          ))}
+        </div> : <Empty icon="👩‍🍳" text="No hay comandas en preparación. Las órdenes iniciadas por Cocina aparecerán aquí hasta su relevo con Empaque." />
+      )}
+    </section>
+  );
+}
+
+function KitchenProductionAssistantFab({ plan, unplannedSuggestions = [], formatAmount, onPlanRun, onPrepare }) {
+  const [open, setOpen] = useState(false);
+  const actionCount = (plan?.plans?.length || 0) + (plan?.preparationNeeds?.length || 0);
+  const preparationNeeds = plan?.preparationNeeds || [];
+  const productionPlans = plan?.plans || [];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnEscape = (event) => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
+  function choosePlan(selectedPlan) {
+    setOpen(false);
+    onPlanRun?.(selectedPlan);
+  }
+
+  function choosePreparation(need) {
+    setOpen(false);
+    onPrepare?.(need.subrecipeId, need.recommendedGrams);
+  }
+
+  return (
+    <div className="momo-kitchen-plan-fab" data-open={open ? "true" : "false"}>
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} aria-expanded="false" aria-controls="asistente-cocina-panel"
+          data-testid="kitchen-assistant-fab" title={`Asistente de Cocina · ${actionCount} acciones`}
+          className="momo-kitchen-plan-orb w-16 h-16 rounded-full flex items-center justify-center text-2xl text-white"
+          style={{ background: "#3F6B42" }} aria-label={`Abrir Asistente de Cocina. ${actionCount} recomendaciones`}>
+          <span aria-hidden="true">🧠</span>
+          <span className="absolute -right-1 -top-1 min-w-6 h-6 px-1 rounded-full flex items-center justify-center text-[10px] font-black border-2"
+            style={{ background: T.surface, color: "#3F6B42", borderColor: "#DDEBD9" }}>{actionCount || "✓"}</span>
+        </button>
+      ) : (
+        <>
+          <button type="button" className="fixed inset-0 momo-modal-backdrop cursor-default" onClick={() => setOpen(false)}
+            style={{ background: "rgba(47,33,27,.22)" }} aria-label="Cerrar panel del Asistente de Cocina" />
+          <Card id="asistente-cocina-panel" role="dialog" aria-modal="true" aria-labelledby="asistente-cocina-title"
+            data-testid="kitchen-assistant-panel" className="momo-modal-sheet momo-kitchen-plan-panel relative p-0 overflow-hidden w-[min(94vw,980px)] max-h-[calc(100vh-2rem)] shadow-2xl"
+            style={{ background: "#FFFCF8" }}>
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b" style={{ borderColor: T.border, background: T.surface }}>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-9 h-9 rounded-2xl flex items-center justify-center text-lg shrink-0" style={{ background: "#DDEBD9" }} aria-hidden="true">🧠</span>
+                <div className="min-w-0"><div className="text-[9px] uppercase tracking-[.18em] font-extrabold" style={{ color: "#3F6B42" }}>MOMO OPS Intelligence</div><div id="asistente-cocina-title" className="font-extrabold truncate">Asistente de Cocina · plan inteligente</div></div>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Minimizar Asistente de Cocina" title="Minimizar"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border shrink-0" style={{ background: T.surface, borderColor: T.border, color: T.choco2 }}>✕</button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(100vh-5.75rem)]">
+              <div className="px-4 sm:px-5 py-5 border-b" style={{ background: "linear-gradient(135deg,#FFF4E8 0%,#FFFFFF 62%,#F5ECE3 100%)", borderColor: T.border }}>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="min-w-0"><div className="text-[10px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>Asistente de Cocina MOMOS</div><div className="display text-2xl font-semibold mt-0.5">Qué conviene producir ahora</div><div className="text-xs font-semibold mt-1 max-w-3xl leading-relaxed" style={{ color: T.choco2 }}>Agrupa pedidos compatibles, descuenta stock exacto y lotes en proceso, y usa las ventas atribuibles a pauta sin inventar demanda.</div></div>
+                  <div className="grid grid-cols-3 gap-2 shrink-0">
+                    {[["Corridas", plan?.summary?.runs || 0], ["Unidades", plan?.summary?.units || 0], ["Preparaciones", plan?.summary?.preparations || 0]].map(([label, value]) => (
+                      <div key={label} className="rounded-2xl px-3 py-2 text-center min-w-[76px]" style={{ background: "rgba(255,255,255,.82)", border: `1px solid ${T.border}`, boxShadow: "0 3px 10px rgba(84,56,43,.05)" }}><div className="display text-xl font-semibold">{value}</div><div className="text-[9px] uppercase font-extrabold tracking-wider" style={{ color: T.choco2 }}>{label}</div></div>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] font-bold" style={{ color: T.choco2 }}><span className="rounded-full px-2.5 py-1" style={{ background: "#DDEBD9", color: "#356239" }}>✓ Cruza cola, stock y producción</span><span className="rounded-full px-2.5 py-1" style={{ background: "#F4E8D3" }}>Horizonte de 3 días</span><span className="rounded-full px-2.5 py-1" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>Confirmación humana antes de registrar</span></div>
+              </div>
+
+              <div className="grid lg:grid-cols-[1.25fr_.75fr] gap-5 p-4 sm:p-5">
+                <div>
+                  <div className="flex items-end justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Corridas recomendadas</div><div className="text-sm font-bold mt-0.5">Una corrida por sabor y relleno compatibles</div></div><div className="text-[10px] font-semibold text-right hidden sm:block" style={{ color: T.choco2 }}>Primero la cola pagada<br />después el colchón</div></div>
+                  <div className="space-y-3">
+                    {productionPlans.map((productionPlan) => (
+                      <div key={productionPlan.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: T.surface, boxShadow: `inset 4px 0 0 ${productionPlan.queueUnits > 0 ? T.coral : "#A9C9A5"}, 0 4px 12px rgba(84,56,43,.04)` }}>
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="display text-xl font-semibold">{productionPlan.flavor}</span><Badge label={productionPlan.source} map={{ "Cola + demanda": { bg: "#FBE8C8", fg: "#96690F" }, "Cola pagada": { bg: "#F3D7DC", fg: "#8E4B5A" }, "Demanda proyectada": { bg: "#DDEBD9", fg: "#3F6B42" } }} /><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>Confianza {productionPlan.confidence}</span></div><div className="text-sm font-extrabold mt-2">Producir {productionPlan.totalUnits}: {productionPlan.variants.map((variant) => `${variant.recommended}× ${variant.figure}`).join(" · ")}</div><div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>{productionPlan.filling || "Sin relleno"} · {productionPlan.queueUnits} en cola · {productionPlan.availableUnits} disponibles · {productionPlan.inProcessUnits} en proceso</div>{productionPlan.suggestionIds.length > 1 && <div className="rounded-xl px-3 py-2 mt-2 text-[11px] font-bold" style={{ background: "#FFF1D6", color: "#7B5410" }}>🔗 MOMOS agrupó {productionPlan.suggestionIds.length} necesidades compatibles en esta corrida.</div>}{productionPlan.attributedUnits > 0 && <div className="text-[11px] font-bold mt-2" style={{ color: "#3E5C7E" }}>📣 {productionPlan.attributedUnits} venta{productionPlan.attributedUnits === 1 ? "" : "s"} atribuida{productionPlan.attributedUnits === 1 ? "" : "s"} a pauta{productionPlan.adSignals.length ? ` · ${productionPlan.adSignals.join(" · ")}` : ""}</div>}</div><Btn small disabled={!productionPlan.canCreate} onClick={() => choosePlan(productionPlan)}>{productionPlan.suggestionIds.length > 1 ? "Crear corrida agrupada" : "Planear lote"}</Btn></div>
+                      </div>
+                    ))}
+                    {productionPlans.length === 0 && <Empty icon="🧠" text="La cocina está cubierta: todavía no hay demanda exacta para recomendar otra corrida." />}
+                    {unplannedSuggestions.length > 0 && <div className="rounded-2xl px-4 py-3 text-xs font-bold" style={{ background: "#FFF0DD", color: "#7B5410" }}>⚠ {unplannedSuggestions.length} recomendación{unplannedSuggestions.length === 1 ? "" : "es"} no {unplannedSuggestions.length === 1 ? "tiene" : "tienen"} sabor o figura exacta. MOMOS OPS no las mezclará hasta completar el pedido.</div>}
+                  </div>
+                </div>
+
+                <div className="lg:border-l lg:pl-5" style={{ borderColor: T.border }}>
+                  <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Preparaciones necesarias</div><div className="text-sm font-bold mt-0.5 mb-3">Qué alistar antes de iniciar las corridas</div>
+                  <div className="space-y-2">
+                    {preparationNeeds.map((need) => (
+                      <div key={need.subrecipeId} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.surface, boxShadow: `inset 4px 0 0 ${need.severity === "Crítica" ? "#D97B67" : "#D9AE58"}, 0 4px 12px rgba(84,56,43,.04)` }}><div className="flex items-start justify-between gap-2"><div><div className="text-[10px] uppercase font-extrabold" style={{ color: need.severity === "Crítica" ? "#A03B2A" : "#96690F" }}>{need.severity === "Crítica" ? "Preparar primero" : "Preparar pronto"}</div><div className="font-extrabold mt-0.5">{need.subrecipeName}</div></div><span className="display text-xl" style={{ color: T.coral }}>{need.recommendedGrams} g</span></div><div className="text-[11px] font-semibold mt-2" style={{ color: T.choco2 }}>Las corridas usarán {formatAmount(need.unit, need.required)}. Hay {formatAmount(need.unit, need.current)} vigentes; quedarían {formatAmount(need.unit, Math.max(0, need.projected))}.</div><div className="flex justify-end mt-3"><Btn small kind="soft" onClick={() => choosePreparation(need)}>Preparar {need.recommendedGrams} g</Btn></div></div>
+                    ))}
+                    {preparationNeeds.length === 0 && <div className="rounded-2xl px-4 py-4 text-xs font-bold" style={{ background: "#E8F1E5", color: "#315D36" }}>✓ Las elaboraciones vigentes cubren el plan y conservan su stock mínimo.</div>}
+                  </div>
+                  <div className="rounded-2xl px-3 py-2.5 text-[10px] font-semibold mt-3 leading-relaxed" style={{ background: T.vainilla, color: T.choco2 }}>🛡️ {plan?.policy}</div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+function KitchenQuickCommand({ db, order, canStart, canReady, busyOrderId, onStart, onReady, onMomobot, onClose, refrescar, perfil }) {
+  const customer = customerOf(db, order.customerId);
+  const lines = buildPackingChecklistLines(order.id, db.order_items || []);
+  const assignment = activeStageAssignment(order.id, "Cocina", db.order_stage_assignments);
+  const incidents = openOrderIncidents(order.id, db.order_incidents);
+  const [showIssue, setShowIssue] = useState(false);
+  const [issue, setIssue] = useState({ type: "Faltante", orderItemId: "", description: "" });
+  const [issueBusy, setIssueBusy] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const canOperateKitchen = canOperateStage(perfil, "Cocina");
+  const quickState = kitchenQuickCommandState({ orderStatus: order.estado, lineCount: lines.length, incidentCount: incidents.length });
+  const isPaid = quickState.action === "start";
+  const isCooking = quickState.action === "ready";
+
+  async function registerIssue() {
+    if (issueBusy || issue.description.trim().length < 3) return;
+    setIssueBusy("create"); setFeedback("");
+    try {
+      await crearIncidentePedido({ order_id: order.id, order_item_id: issue.orderItemId || null, area: "Cocina", type: issue.type, description: issue.description.trim() });
+      await refrescar();
+      setIssue({ type: "Faltante", orderItemId: "", description: "" });
+      setShowIssue(false);
+      setFeedback("Novedad registrada. La comanda no podrá salir de Cocina hasta resolverla.");
+    } catch (error) { setFeedback(error.message); }
+    finally { setIssueBusy(""); }
+  }
+
+  async function resolveIssue(incidentId) {
+    if (issueBusy) return;
+    setIssueBusy(incidentId); setFeedback("");
+    try {
+      await resolverIncidentePedido(incidentId, "Resuelto y validado desde la comanda rápida de Cocina");
+      await refrescar();
+      setFeedback("Novedad resuelta. Ya podés terminar la comanda si todo está correcto.");
+    } catch (error) { setFeedback(error.message); }
+    finally { setIssueBusy(""); }
+  }
+
+  return (
+    <Modal title={`Comanda ${order.id}`} onClose={onClose} wide>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
+        <div><div className="flex flex-wrap items-center gap-2"><Badge label={order.estado} /><span className="text-xs font-semibold" style={{ color: T.choco2 }}>{order.fecha} · {order.hora}</span></div><div className="display text-2xl font-semibold mt-2">{customer.nombre || "Cliente"}</div><div className="text-xs font-semibold" style={{ color: T.choco2 }}>{customer.telefono || "Sin teléfono"}{order.obs ? ` · ${order.obs}` : ""}</div></div>
+        <div className="rounded-2xl px-3 py-2 border shrink-0" style={{ background: assignment ? "#F2F8F0" : T.vainilla, borderColor: assignment ? "#A7C9A4" : T.border }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: assignment ? "#3F6B42" : "#96690F" }}>{assignment ? "Responsable de Cocina" : "Comanda disponible"}</div><div className="text-xs font-bold mt-0.5">{assignment?.user || (isPaid ? "Tomala para empezar" : "Sin responsable")}</div></div>
+      </div>
+
+      <div className="rounded-3xl border p-4 sm:p-5" style={{ background: "linear-gradient(135deg,#FFF9F1,#FFFFFF)", borderColor: T.border }}>
+        <div className="flex items-start justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Qué debe preparar Cocina</div><div className="display text-xl font-semibold">Revisá y ejecutá esta comanda</div></div><span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: T.rosa, color: "#7C3F4B" }}>{lines.length} control{lines.length === 1 ? "" : "es"}</span></div>
+        <div className="space-y-2">
+          {lines.map((line) => <div key={line.id} className="rounded-2xl border px-3 py-3 flex items-start gap-3" style={{ background: "#fff", borderColor: T.border }}><span className="w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0" style={{ background: line.parentItemId ? T.rosa : T.vainilla }} aria-hidden="true">{line.parentItemId ? "↳" : "✓"}</span><div className="min-w-0"><div className="text-sm font-extrabold">{line.label}</div>{line.detail && <div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{line.detail}</div>}</div></div>)}
+          {!lines.length && <div className="rounded-2xl p-5 text-center text-sm font-bold" style={{ background: T.vainilla }}>La orden no tiene líneas para preparar. Revisala con Coordinación.</div>}
         </div>
       </div>
 
-      {kitchenDelayReminders.length > 0 && (
-        <div className="mb-4">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: urgentDelayCount ? "#A03B2A" : T.choco2 }}>⏱ Seguimiento de tiempos · {kitchenDelayReminders.length} pedido{kitchenDelayReminders.length === 1 ? "" : "s"} necesita{kitchenDelayReminders.length === 1 ? "" : "n"} atención</span>
-            {urgentDelayCount > 0 && <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{urgentDelayCount} urgente{urgentDelayCount === 1 ? "" : "s"}</span>}
-          </div>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {kitchenDelayReminders.map((reminder) => (
-              <Card key={`${reminder.orderId}-${reminder.state}`} className="p-4 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-extrabold">{reminder.orderId} · {reminder.area}</div>
-                  <div className="text-xs font-semibold mt-0.5 truncate" style={{ color: T.choco2 }}>{reminder.content}</div>
-                  <div className="text-[10px] font-bold mt-1" style={{ color: reminder.urgent ? "#A03B2A" : T.choco2 }}>{reminder.nextAction}</div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="display text-lg font-bold leading-none" style={{ color: reminder.urgent ? "#A03B2A" : T.choco }}>{reminder.elapsedMinutes}</div>
-                  <div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>min</div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
+      {incidents.length > 0 && <div className="mt-4 rounded-2xl border p-4" style={{ background: "#FFF3EF", borderColor: "#E8B7AD" }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: "#A03B2A" }}>Comanda pausada · {incidents.length} novedad{incidents.length === 1 ? "" : "es"}</div><div className="space-y-2 mt-2">{incidents.map((incident) => <div key={incident.id} className="rounded-xl bg-white px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2"><div className="flex-1 text-xs"><b>{incident.type}</b> · {incident.description}</div>{canOperateKitchen && <Btn small kind="ghost" disabled={!!issueBusy} onClick={() => resolveIssue(incident.id)}>{issueBusy === incident.id ? "Resolviendo…" : "Ya está resuelto"}</Btn>}</div>)}</div></div>}
 
-      {commands.length ? (
-        <div className="grid gap-3 mb-4">
-          {commands.map((command, index) => (
-            <Card key={command.orderId} className="momo-queue-item p-4 grid lg:grid-cols-[minmax(0,1fr)_auto] gap-4 items-center">
-              <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: index === 0 ? T.coral : T.choco2 }}>{index === 0 ? "Siguiente" : `En cola · #${index + 1}`}</div>
-                <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                  <span className="text-sm font-bold leading-tight">Pedido {command.orderId}</span>
-                  <Badge label="Pagado" />
-                </div>
-                <div className="text-xs mt-1" style={{ color: T.choco2 }}>
-                  {[command.customerName && `Cliente: ${command.customerName}`, (command.date || command.time) && `Recibido: ${[command.date, command.time].filter(Boolean).join(" · ")}`].filter(Boolean).join(" · ")}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-1.5 items-center" aria-label={`Figuras del pedido ${command.orderId}`}>
-                  <span className="text-[10px] uppercase tracking-wider font-extrabold mr-1" style={{ color: T.choco2 }}>Figuras a alistar</span>
-                  {command.figures?.length
-                    ? command.figures.map((figure) => <span key={figure} className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: T.rosa, color: "#7C3F4B" }}>🐾 {figure}</span>)
-                    : <span className="text-xs font-semibold" style={{ color: T.choco2 }}>Sin figura · preparación al momento</span>}
-                  {command.flavors?.map((flavor) => <span key={flavor} className="text-xs font-semibold" style={{ color: T.choco2 }}>· Sabor {flavor}</span>)}
-                </div>
-                <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
-                  <div className="text-[10px] font-bold mb-1" style={{ color: T.choco2 }}>PARA PREPARAR</div>
-                  <div className="text-sm leading-relaxed" style={{ color: T.choco }}>{command.content}</div>
-                </div>
-                <div className="mt-3 flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider" style={{ color: T.choco2 }}>
-                  <span>Pago ✓</span>
-                  <span aria-hidden="true">→</span>
-                  <span style={{ color: T.coral }}>Cocina</span>
-                  <span aria-hidden="true">→</span>
-                  <span className="opacity-60">Empaque</span>
-                </div>
-              </div>
-              <div className="lg:w-48">
-                {canStart
-                  ? <div className="grid gap-2"><BtnAsync textoEnVuelo="Iniciando…" disabled={busyOrderId === command.orderId} onClick={() => onStart?.(command.orderId)}>Iniciar preparación</BtnAsync><Btn kind="soft" disabled={busyOrderId === command.orderId} onClick={() => onOpenAssistant?.(command.orderId)}>Hablar con Momobot</Btn></div>
-                  : <div className="text-xs font-extrabold text-center" style={{ color: "#96690F" }}>Solo Cocina o Administración inician la preparación</div>}
-                <div className="text-[10px] font-bold mt-2 lg:text-center leading-snug" style={{ color: T.choco2 }}>{canStart ? "El botón registra el inicio ahora. Momobot queda como opción manos libres." : "Tu rol puede consultar la cola, pero no confirmar el trabajo de Cocina."}</div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Empty icon="✅" text="La cola de cocina está al día. Cuando un pedido quede Pagado aparecerá aquí con figura, sabor y contenido." />
-      )}
+      {showIssue && <div className="mt-4 rounded-2xl border p-4" style={{ background: T.coralSoft, borderColor: "#E8B5A5" }}><div className="flex items-start justify-between gap-3"><div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: "#A54830" }}>Registrar problema</div><div className="text-sm font-extrabold mt-0.5">MOMO OPS recomienda cómo actuar sin improvisar</div></div><button type="button" onClick={() => setShowIssue(false)} className="text-sm font-black" aria-label="Cerrar problema">×</button></div><div className="grid sm:grid-cols-2 gap-2 mt-3"><select aria-label="Tipo de problema" value={issue.type} onChange={(event) => setIssue({ ...issue, type: event.target.value })} className="rounded-xl border px-3 py-2 text-xs font-bold" style={inputStyle}>{Object.keys(KITCHEN_ISSUE_GUIDANCE).map((type) => <option key={type}>{type}</option>)}</select><select aria-label="Línea afectada" value={issue.orderItemId} onChange={(event) => setIssue({ ...issue, orderItemId: event.target.value })} className="rounded-xl border px-3 py-2 text-xs" style={inputStyle}><option value="">Pedido completo</option>{lines.map((line) => <option key={line.id} value={line.id}>{line.label}</option>)}</select></div><div className="rounded-xl px-3 py-2 mt-2 text-xs font-bold" style={{ background: "#FFF9F1", color: "#7B5410" }}>💡 {KITCHEN_ISSUE_GUIDANCE[issue.type]}</div><textarea value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} placeholder="Contá brevemente qué pasó…" rows="3" className="w-full rounded-xl border px-3 py-2 text-sm mt-2" style={inputStyle} /><div className="flex justify-end mt-2"><Btn disabled={issue.description.trim().length < 3 || !!issueBusy} onClick={registerIssue}>{issueBusy === "create" ? "Registrando…" : "Registrar y pausar comanda"}</Btn></div></div>}
 
-      {inProduction.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <h3 className="display text-lg font-semibold m-0">Comandas en preparación</h3>
-            <span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}><b className="text-xs" style={{ color: "#3E5C7E" }}>{inProduction.length}</b> activas</span>
-          </div>
-          <div className="grid gap-3">
-            {inProduction.map((command) => (
-              <Card key={command.orderId} className="momo-queue-item p-4 grid lg:grid-cols-[minmax(0,1fr)_auto] gap-4 items-center">
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: "#3E5C7E" }}>En cocina</div>
-                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                    <span className="text-sm font-bold leading-tight">Pedido {command.orderId}</span>
-                    <Badge label="En producción" />
-                  </div>
-                  <div className="text-xs mt-1" style={{ color: T.choco2 }}>{command.customerName ? `Cliente: ${command.customerName}` : "Comanda en cocina"}</div>
-                  <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
-                    <div className="text-[10px] font-bold mb-1" style={{ color: T.choco2 }}>PARA PREPARAR</div>
-                    <div className="text-sm leading-relaxed" style={{ color: T.choco }}>{command.content}</div>
-                  </div>
-                  <div className="mt-3 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>
-                    <span className="opacity-60">Pago</span><span aria-hidden="true">→</span><span style={{ color: "#3E5C7E" }}>Cocina</span><span aria-hidden="true">→</span><span className="opacity-60">Listo para empaque</span>
-                  </div>
-                </div>
-                <div className="lg:w-52">
-                  {canReady
-                    ? <BtnAsync textoEnVuelo="Entregando…" disabled={busyOrderId === command.orderId} onClick={() => onReady?.(command.orderId)}>Listo para empaque</BtnAsync>
-                    : <div className="text-xs font-extrabold text-center" style={{ color: "#96690F" }}>Solo Cocina o Administración entregan a Empaque</div>}
-                  <div className="text-[10px] font-bold mt-2 lg:text-center leading-snug" style={{ color: T.choco2 }}>Confirma que Cocina terminó. Empaque recibirá la alerta automáticamente.</div>
-                </div>
-              </Card>
-            ))}
-          </div>
+      {feedback && <div className="mt-3 rounded-xl px-3 py-2 text-xs font-bold" style={{ background: feedback.toLowerCase().includes("no ") || feedback.toLowerCase().includes("error") ? "#F6D4CD" : "#DDEBD9", color: feedback.toLowerCase().includes("no ") || feedback.toLowerCase().includes("error") ? "#A03B2A" : "#3F6B42" }}>{feedback}</div>}
+
+      {!showIssue && <div className="mt-5 sticky bottom-0 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: T.bg }}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <button type="button" onClick={() => setShowIssue(true)} className="text-xs font-extrabold underline" style={{ color: "#A54830" }}>⚠ Reportar problema</button>
+          <button type="button" onClick={onMomobot} className="text-xs font-extrabold underline" style={{ color: T.choco2 }}>🎙️ Pedir ayuda a Momobot</button>
         </div>
-      )}
-    </section>
+        {quickState.disabled && quickState.blockReason
+          ? <div className="rounded-xl px-3 py-2 text-xs font-bold sm:max-w-xs" style={{ background: T.vainilla, color: "#7B5410" }}>{quickState.blockReason}</div>
+          : <div className="sm:min-w-[250px] [&>button]:w-full">
+            {isPaid && <BtnAsync textoEnVuelo="Tomando comanda…" disabled={!canStart || busyOrderId === order.id} onClick={() => onStart(order.id)}>{quickState.label}</BtnAsync>}
+            {isCooking && <BtnAsync textoEnVuelo="Entregando a Empaque…" disabled={!canReady || busyOrderId === order.id} onClick={() => onReady(order.id)}>✓ {quickState.label}</BtnAsync>}
+          </div>}
+      </div>}
+    </Modal>
   );
 }
 
@@ -2575,9 +2715,16 @@ function Bars({ data, money }) {
 /* ================= DASHBOARD ================= */
 
 function Dashboard({ db, go, user }) {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
+  const [assistantCenterOpen, setAssistantCenterOpen] = useState(false);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
   const hoy = hoyISO();
+  const assistantCenter = useMemo(() => buildAssistantControlCenter(db, {
+    today: hoy,
+    now: new Date().toISOString(),
+    financeFrom: hoy,
+    financeTo: hoy,
+  }), [db, hoy, tick]);
   const deHoy = db.orders.filter((o) => o.fecha === hoy && o.estado !== "Cancelado");
   const ventasHoy = deHoy.filter(esPedidoCobrado).reduce((s, o) => s + orderTotal(db, o), 0);
   const activos = db.orders.filter((o) => !["Entregado","Cancelado"].includes(o.estado));
@@ -2625,6 +2772,12 @@ function Dashboard({ db, go, user }) {
     label: c, color: CANAL_STYLE[c].fg,
     value: db.orders.filter((o) => o.canal === c && esPedidoCobrado(o)).reduce((s, o) => s + orderTotal(db, o), 0),
   }));
+  const assistantSeverityStyle = {
+    critical: { label: "Crítica", bg: "#F6D4CD", fg: "#8F3528" },
+    high: { label: "Alta", bg: "#FFF1D6", fg: "#7A5510" },
+    medium: { label: "Media", bg: "#DCE7F2", fg: "#3E5C7E" },
+    info: { label: "Informativa", bg: "#DDEBD9", fg: "#356239" },
+  };
 
   return (
     <div>
@@ -2635,6 +2788,41 @@ function Dashboard({ db, go, user }) {
         <Stat icon="💳" label="Pendientes de pago" value={pendPago.length} sub={fmt(pendPago.reduce((s, o) => s + orderTotal(db, o), 0)) + " · toca para ver"} tone="#96690F" onClick={() => go("Pedidos", { pendientesPago: true })} />
         <Stat icon="⚠️" label="Reclamos abiertos" value={reclamosAbiertos.length} sub="requieren decisión · toca para ver" tone="#A03B2A" onClick={() => go("Reclamos", { claimId: reclamosAbiertos[0] ? reclamosAbiertos[0].id : "" })} />
       </div>
+
+      <Card className="mt-3 overflow-hidden" onClick={() => setAssistantCenterOpen(true)}
+        aria-label="Abrir Centro de asistentes MOMOS"
+        style={{ background: "linear-gradient(135deg,#FFF8F0 0%,#FFFFFF 55%,#F5EDE4 100%)", borderColor: assistantCenter.summary.health === "Bloqueado" ? "#E6AAA0" : assistantCenter.summary.health === "Atención" ? "#E5C98E" : "#BFD8BA" }}>
+        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0" aria-hidden="true"
+            style={{ background: assistantCenter.summary.health === "Bloqueado" ? "#F6D4CD" : assistantCenter.summary.health === "Atención" ? "#FFF1D6" : "#DDEBD9" }}>
+            ✦
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-[10px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>MOMOS OPS Intelligence</div>
+              <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold"
+                style={{ background: assistantCenter.summary.health === "Bloqueado" ? "#F6D4CD" : assistantCenter.summary.health === "Atención" ? "#FFF1D6" : "#DDEBD9", color: assistantCenter.summary.health === "Bloqueado" ? "#8F3528" : assistantCenter.summary.health === "Atención" ? "#7A5510" : "#356239" }}>
+                {assistantCenter.summary.health}
+              </span>
+            </div>
+            <div className="display text-xl font-semibold mt-1">Centro de asistentes MOMOS</div>
+            {assistantCenter.primary ? <>
+              <div className="text-sm font-extrabold mt-1.5">{assistantCenter.primary.title}</div>
+              <div className="text-xs mt-1 leading-relaxed" style={{ color: T.choco2 }}>
+                Responsable: {assistantCenter.primary.ownerRoles.join(" / ")} · {assistantCenter.primary.nextAction}
+              </div>
+            </> : <div className="text-sm font-semibold mt-1.5" style={{ color: "#3F6B42" }}>Los cinco asistentes están al día.</div>}
+          </div>
+          <div className="grid grid-cols-3 gap-2 shrink-0 text-center">
+            {[["Asistentes", assistantCenter.assistants.length], ["Prioridades", assistantCenter.summary.tasks], ["Críticas", assistantCenter.summary.critical]].map(([label, value]) => (
+              <div key={label} className="rounded-2xl px-3 py-2 min-w-[70px]" style={{ background: "rgba(255,255,255,.78)", border: `1px solid ${T.border}` }}>
+                <div className="display text-lg font-semibold">{value}</div>
+                <div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
 
       {sugerencias.length > 0 && (
         <div className="mt-3 text-xs font-bold p-3 rounded-xl" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>
@@ -2769,31 +2957,97 @@ function Dashboard({ db, go, user }) {
           );
         })}
       </div>
+
+      {assistantCenterOpen && (
+        <Modal title="Centro de asistentes MOMOS" onClose={() => setAssistantCenterOpen(false)} wide>
+          <div className="rounded-3xl p-4 sm:p-5 mb-4" style={{ background: "linear-gradient(135deg,#F8EBDD,#FFFDF9)", border: `1px solid ${T.border}` }}>
+            <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>Una prioridad · un responsable · una fuente</div>
+                <div className="display text-2xl font-semibold mt-1">{assistantCenter.primary ? assistantCenter.primary.title : "Operación protegida"}</div>
+                <div className="text-sm font-semibold mt-2 leading-relaxed" style={{ color: T.choco2 }}>
+                  {assistantCenter.primary ? assistantCenter.primary.detail : "No hay tareas pendientes entre Ventas, Cocina, Compras, Empaque, Logística y Finanzas."}
+                </div>
+              </div>
+              <div className="rounded-2xl px-4 py-3 text-center shrink-0" style={{ background: "rgba(255,255,255,.82)" }}>
+                <div className="display text-2xl font-semibold">{assistantCenter.summary.tasks}</div>
+                <div className="text-[10px] uppercase font-extrabold" style={{ color: T.choco2 }}>prioridades abiertas</div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-2xl px-3 py-2.5 text-xs font-bold" style={{ background: "rgba(255,255,255,.68)", color: T.choco2 }}>
+              🛡️ {assistantCenter.policy}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-5" aria-label="Estado de los asistentes">
+            {assistantCenter.assistants.map((row) => (
+              <button key={row.id} type="button" onClick={() => { setAssistantCenterOpen(false); go(row.module); }}
+                className="rounded-2xl border p-3 text-left transition hover:-translate-y-0.5"
+                style={{ background: T.surface, borderColor: row.status === "Bloqueado" ? "#E6AAA0" : row.status === "Atención" ? "#E5C98E" : "#BFD8BA" }}>
+                <div className="text-[10px] uppercase font-extrabold leading-tight" style={{ color: T.choco2 }}>{row.name}</div>
+                <div className="display text-xl font-semibold mt-1">{row.count}</div>
+                <div className="text-[10px] font-extrabold mt-0.5" style={{ color: row.status === "Bloqueado" ? "#8F3528" : row.status === "Atención" ? "#7A5510" : "#356239" }}>{row.status}</div>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <div className="display text-lg font-semibold">Qué necesita atención</div>
+              <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>Ordenado por riesgo operativo, no por el área que lo reportó.</div>
+            </div>
+            {assistantCenter.summary.blocking > 0 && <span className="rounded-full px-3 py-1 text-[10px] font-extrabold" style={{ background: "#F6D4CD", color: "#8F3528" }}>{assistantCenter.summary.blocking} bloquean</span>}
+          </div>
+
+          {assistantCenter.tasks.length === 0 ? (
+            <div className="rounded-3xl p-8 text-center" style={{ background: "#DDEBD9", color: "#356239" }}>
+              <div className="text-3xl" aria-hidden="true">✓</div>
+              <div className="display text-xl font-semibold mt-2">Operación protegida</div>
+              <div className="text-sm font-semibold mt-1">Los cinco asistentes están al día y no detectan inconsistencias.</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {assistantCenter.tasks.slice(0, 12).map((row) => {
+                const tone = assistantSeverityStyle[row.severity] || assistantSeverityStyle.medium;
+                return (
+                  <div key={row.id} className="rounded-2xl border p-4" style={{ background: T.surface, borderColor: row.blocks ? "#E6AAA0" : T.border }}>
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                          <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
+                          <span className="text-[10px] uppercase font-extrabold" style={{ color: T.coral }}>{row.area}</span>
+                          {row.entityId && <span className="text-[10px] font-bold" style={{ color: T.choco2 }}>{row.entityType} {row.entityId}</span>}
+                          <span className="text-[10px] font-bold" style={{ color: T.choco2 }}>Confianza {row.confidence.toLowerCase()}</span>
+                        </div>
+                        <div className="text-sm font-extrabold">{row.title}</div>
+                        <div className="text-xs mt-1 leading-relaxed" style={{ color: T.choco2 }}>{row.detail}</div>
+                        <div className="mt-2 space-y-1">
+                          {row.reasons.map((reason, index) => <div key={`${row.id}-reason-${index}`} className="text-[11px] font-semibold flex gap-2" style={{ color: T.choco2 }}><span aria-hidden="true">•</span><span>{reason}</span></div>)}
+                        </div>
+                        <div className="mt-3 rounded-xl px-3 py-2 text-xs font-bold" style={{ background: T.vainilla }}>
+                          Siguiente paso: {row.nextAction}
+                        </div>
+                      </div>
+                      <div className="sm:w-44 shrink-0">
+                        <div className="text-[10px] uppercase font-extrabold" style={{ color: T.choco2 }}>Responsable</div>
+                        <div className="text-xs font-extrabold mt-1">{row.ownerRoles.join(" / ")}</div>
+                        {row.confirmationRequired && <div className="text-[10px] font-bold mt-2" style={{ color: "#96690F" }}>Confirmación humana obligatoria</div>}
+                        <button type="button" onClick={() => { setAssistantCenterOpen(false); go(row.module); }} className="momo-btn w-full rounded-xl px-3 py-2 mt-3 text-xs font-extrabold" style={{ background: T.coral, color: "white" }}>Abrir {row.module}</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {assistantCenter.tasks.length > 12 && <div className="rounded-2xl px-4 py-3 text-center text-xs font-bold" style={{ background: T.vainilla, color: T.choco2 }}>Se muestran las 12 prioridades más importantes de {assistantCenter.tasks.length}. Cada asistente conserva el detalle completo en su área.</div>}
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
 
 /* ================= PEDIDOS ================= */
-
-/* Resumen de actividad por módulo (pedido del usuario 2026-07-12): últimas
-   filas del rastro que YA viaja en el read-model (audit_logs / movements) —
-   cada módulo arma sus filas {texto, meta} y esto solo las pinta. */
-function UltimosMovimientos({ filas }) {
-  if (!filas || !filas.length) return null;
-  return (
-    <>
-      <SectionTitle>🕓 Últimos movimientos</SectionTitle>
-      <Card className="p-3 mb-2">
-        {filas.slice(0, 8).map((f, i) => (
-          <div key={i} className="flex justify-between items-baseline gap-3 py-1 text-xs" style={{ borderTop: i ? `1px solid ${T.border}` : "none" }}>
-            <span className="font-semibold min-w-0">{f.texto}</span>
-            <span className="shrink-0 font-semibold text-[10px]" style={{ color: T.choco2 }}>{f.meta}</span>
-          </div>
-        ))}
-      </Card>
-    </>
-  );
-}
 
 function HistorialOperativo({ db }) {
   const entries = useMemo(() => buildOperationalHistory(db), [db.audit_logs]);
@@ -2889,21 +3143,17 @@ function Empaque({ db, update, user, refrescar, perfil }) {
   const [aviso, setAviso] = useState(null);
   const [scope, setScope] = useState("active");
   const verifications = db.packing_verifications || [];
-  const pending = db.orders
-    .filter((order) => order.estado === "Listo para empaque")
-    .sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
-  const packed = db.orders
-    .filter((order) => order.estado === "Empacado")
-    .sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
+  const packingQueue = buildPackingQueue(db.orders, db.order_dispatch_handoffs);
+  const { incoming, pending, packed, handoff: handoffQueue, activeIds: activePackingIds } = packingQueue;
   const history = db.orders
-    .filter((order) => isPackingHistoryOrder(order, db))
+    .filter((order) => isPackingHistoryOrder(order, db) && !activePackingIds.has(order.id))
     .sort((a, b) => `${b.fecha} ${b.hora}`.localeCompare(`${a.fecha} ${a.hora}`));
   const verifiedPending = pending.filter((order) => findPackingVerification(order.id, verifications)).length;
   const selected = selId ? db.orders.find((order) => order.id === selId) : null;
 
   async function cambiar(orderId, estado, opts) {
     const actual = db.orders.find((order) => order.id === orderId);
-    const permiso = orderTransitionPermission(perfil?.rol, actual?.estado, estado, { quickSale: !!(opts && opts.ventaRapida) });
+    const permiso = orderTransitionPermission(perfil, actual?.estado, estado, { quickSale: !!(opts && opts.ventaRapida) });
     if (!permiso.allowed) {
       setAviso({ titulo: "Este paso pertenece a otra área", texto: permiso.reason });
       return false;
@@ -2921,58 +3171,22 @@ function Empaque({ db, update, user, refrescar, perfil }) {
   }
 
   function OrderPackingCard({ order, index }) {
-    const customer = customerOf(db, order.customerId);
     const progress = packingStationProgress({
       orderId: order.id,
       orderItems: db.order_items,
       evidences: db.evidences,
       verifications,
     });
-    const topLines = progress.lines.filter((line) => !line.parentItemId);
-    const nextLabel = order.estado === "Empacado"
-      ? "Entregar a despacho"
-      : !progress.verified
-        ? "Comparar con la orden"
-        : progress.readyToPack
-          ? "Confirmar Empacado"
-          : "Completar evidencias";
-    return (
-      <Card className="p-4 sm:p-5" style={{ borderColor: progress.readyToPack || order.estado === "Empacado" ? "#A7C9A4" : T.border }}>
-        <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black" style={{ background: order.estado === "Empacado" ? "#E8E0F2" : T.coral, color: order.estado === "Empacado" ? "#63518A" : "#fff" }}>{index + 1}</span>
-              <h3 className="display text-lg font-semibold m-0">Pedido {order.id}</h3>
-              <Badge label={order.estado} />
-            </div>
-            <div className="text-xs font-bold mt-1" style={{ color: T.choco2 }}>{customer.nombre || "Cliente"} · recibido {order.fecha} {order.hora}</div>
-            <div className="mt-3 rounded-2xl px-3 py-2.5" style={{ background: T.soft }}>
-              {topLines.map((line) => (
-                <div key={line.id} className="text-sm font-bold py-0.5">{line.label}{line.detail && <span className="block text-[11px] font-semibold" style={{ color: T.choco2 }}>{line.detail}</span>}</div>
-              ))}
-            </div>
-          </div>
-          <div className="lg:w-72 shrink-0">
-            <div className="grid grid-cols-3 gap-1.5 mb-3" aria-label={`Avance de empaque ${order.id}`}>
-              {[
-                [progress.verified, "Orden", "○"],
-                [progress.hasOpenPhoto, "Caja abierta", "📷"],
-                [progress.hasSealPhoto, "Sello", "🔒"],
-              ].map(([done, label, icon]) => (
-                <div key={label} className="rounded-xl px-2 py-2 text-center border" style={{ background: "#fff", borderColor: done ? "#A7C9A4" : T.border }}>
-                  <div className="text-sm" aria-hidden="true" style={{ color: done ? "#3F6B42" : T.choco2 }}>{done ? "✓" : icon}</div>
-                  <div className="text-[9px] font-extrabold leading-tight" style={{ color: done ? "#3F6B42" : T.choco2 }}>{label}</div>
-                </div>
-              ))}
-            </div>
-            <Btn onClick={() => setSelId(order.id)}>{nextLabel} · {order.id}</Btn>
-            <div className="text-[10px] font-semibold mt-2 leading-snug" style={{ color: T.choco2 }}>
-              {order.estado === "Empacado" ? "Empaque ya terminó; falta el relevo formal a Logística." : `${progress.completedSteps} de 3 controles completos. Ningún pedido avanza sin los tres.`}
-            </div>
-          </div>
-        </div>
-      </Card>
-    );
+    const handoff = dispatchHandoffFor(order.id, db.order_dispatch_handoffs);
+    const guide = ["Listo para empaque", "Empacado", "Listo para despacho"].includes(order.estado)
+      ? buildPackingGuide({ orderStatus: order.estado, progress, handoff }) : null;
+    const incomingOrder = order.estado === "En producción";
+    const tone = incomingOrder ? "#3E5C7E" : order.estado === "Empacado" ? "#63518A" : order.estado === "Listo para despacho" ? "#2F6B60" : T.coral;
+    const eyebrow = incomingOrder ? "En camino desde Cocina" : order.estado === "Listo para empaque" ? (index === 0 ? "Siguiente · FIFO" : `En cola · #${index + 1}`) : order.estado === "Empacado" ? "Empacado · preparar despacho" : "Relevo a Logística";
+    const nextAction = incomingOrder ? "Cocina debe terminar y entregar la comanda" : guide?.nextAction || "Abrir y revisar el pedido";
+    const footer = incomingOrder ? "Visible para anticipar caja y espacio; todavía no es accionable." : order.estado === "Listo para empaque" ? `${progress.completedSteps}/3 controles de Empaque completos.` : handoff?.status === "Ofrecido" ? "Paquete ofrecido; espera aceptación de Logística." : "Abrí para ver dirección, etiqueta y relevo.";
+    return <CompactQueueOrderCard db={db} orderId={order.id} eyebrow={eyebrow} position={order.estado === "Listo para empaque" ? index + 1 : undefined}
+      tone={tone} nextAction={nextAction} footer={footer} onOpen={() => setSelId(order.id)} />;
   }
 
   return (
@@ -2982,45 +3196,52 @@ function Empaque({ db, update, user, refrescar, perfil }) {
         Compará cada producto, figura, sabor y cantidad. La verificación queda registrada con usuario y hora.
       </div>
 
-      <div className="mb-4"><WorkScopeTabs value={scope} onChange={setScope} activeCount={pending.length + packed.length} historyCount={history.length} activeLabel="Por atender" /></div>
+      <div className="mb-4"><WorkScopeTabs value={scope} onChange={setScope} activeCount={incoming.length + pending.length + packed.length + handoffQueue.length} historyCount={history.length} activeLabel="Cola de Empaque" /></div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
+        <Stat icon="👩‍🍳" label="En Cocina" value={incoming.length} sub="pedidos que vienen en camino" tone="#3E5C7E" />
         <Stat icon="📦" label="Por empacar" value={pending.length} sub="comandas que Cocina entregó" tone={T.coral} />
-        <Stat icon="🚚" label="A despacho" value={packed.length} sub="empacadas, esperan Logística" tone="#63518A" />
-        <Stat icon="◷" label="Historial de Empaque" value={history.length} sub="pedidos que ya salieron del área" tone="#3F6B42" onClick={() => setScope("history")} active={scope === "history"} />
+        <Stat icon="🎁" label="Empacados" value={packed.length} sub="preparan dirección y etiqueta" tone="#63518A" />
+        <Stat icon="🤝" label="En relevo" value={handoffQueue.length} sub="esperan a Logística" tone="#2F6B60" />
+        <Stat icon="◷" label="Historial" value={history.length} sub="pedidos que ya salieron del área" tone="#3F6B42" onClick={() => setScope("history")} active={scope === "history"} />
       </div>
 
       {scope === "active" ? <>
       <div className="text-[11px] font-semibold mb-4 flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: T.choco2 }}>
+        <span>En Cocina <b style={{ color: "#3E5C7E" }}>{incoming.length}</b></span>
+        <span aria-hidden="true">→</span>
         <span>Cocina entregó <b style={{ color: "#3F6B42" }}>{pending.length}</b></span>
         <span aria-hidden="true">→</span>
         <span><b style={{ color: T.coral }}>{verifiedPending}</b> comparada{verifiedPending === 1 ? "" : "s"} con la orden</span>
         <span aria-hidden="true">→</span>
-        <span><b style={{ color: "#63518A" }}>{packed.length}</b> lista{packed.length === 1 ? "" : "s"} para Logística</span>
+        <span><b style={{ color: "#63518A" }}>{packed.length}</b> empacada{packed.length === 1 ? "" : "s"}</span>
+        <span aria-hidden="true">→</span>
+        <span><b style={{ color: "#2F6B60" }}>{handoffQueue.length}</b> en relevo</span>
       </div>
 
-      <SectionTitle>📋 Cola FIFO para verificar y empacar</SectionTitle>
-      <div className="space-y-3 mb-5">
+      <SectionTitle>📋 Cola activa para verificar y empacar</SectionTitle>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-5">
         {pending.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}
-        {!pending.length && <Card className="p-8 text-center"><div className="text-3xl mb-2">✅</div><div className="font-bold">No hay comandas esperando Empaque</div><div className="text-xs mt-1" style={{ color: T.choco2 }}>Cuando Cocina marque “Listo para empaque”, aparecerán aquí automáticamente.</div></Card>}
+        {packed.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}
+        {handoffQueue.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}
+        {!pending.length && !packed.length && !handoffQueue.length && <Card className="p-8 text-center sm:col-span-2 xl:col-span-3"><div className="text-3xl mb-2">✅</div><div className="font-bold">No hay comandas accionables en Empaque</div><div className="text-xs mt-1" style={{ color: T.choco2 }}>Cuando Cocina marque “Listo para empaque”, aparecerán aquí automáticamente.</div></Card>}
       </div>
 
-      {packed.length > 0 && <>
-        <SectionTitle>🚚 Empacados para entregar a Logística</SectionTitle>
-        <div className="space-y-3">{packed.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}</div>
+      {incoming.length > 0 && <>
+        <SectionTitle>👩‍🍳 En camino desde Producción</SectionTitle>
+        <div className="text-xs font-semibold mb-3 -mt-2" style={{ color: T.choco2 }}>Sirve para anticipar espacio, cajas y carga. Empaque podrá actuar cuando Cocina confirme el relevo.</div>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">{incoming.map((order, index) => <OrderPackingCard key={order.id} order={order} index={index} />)}</div>
       </>}
       </> : <>
         <SectionTitle>◷ Historial de Empaque</SectionTitle>
         <div className="text-xs font-semibold mb-3 -mt-2" style={{ color: T.choco2 }}>Pedidos que ya fueron relevados a Logística o terminaron su recorrido. El historial es de consulta y no altera la operación.</div>
-        <div className="space-y-3">
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {history.map((order) => {
-            const customer = customerOf(db, order.customerId);
             const verification = findPackingVerification(order.id, verifications);
             const evidenceCount = evidencesOf(db, order.id).filter((evidence) => evidence.tipo !== "Comprobante de pago").length;
-            return <Card key={order.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><div className="font-bold">Pedido {order.id}</div><Badge label={order.estado} /></div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{customer.nombre || "Cliente"} · {order.fecha} {order.hora}</div></div>
-              <div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: verification ? "#DDEBD9" : T.vainilla, color: verification ? "#3F6B42" : T.choco2 }}>{verification ? "Comanda verificada ✓" : "Sin verificación"}</span><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>{evidenceCount} evidencia{evidenceCount === 1 ? "" : "s"}</span><Btn small kind="ghost" onClick={() => setSelId(order.id)}>Consultar</Btn></div>
-            </Card>;
+            return <CompactQueueOrderCard key={order.id} db={db} orderId={order.id} eyebrow="Historial de Empaque" tone="#3F6B42"
+              nextAction="Consultar detalle y trazabilidad del pedido" footer={`${verification ? "Comanda verificada" : "Sin verificación"} · ${evidenceCount} evidencia${evidenceCount === 1 ? "" : "s"}`}
+              onOpen={() => setSelId(order.id)} />;
           })}
           {!history.length && <Empty icon="◷" text="Todavía no hay pedidos en el historial de Empaque." />}
         </div>
@@ -3189,6 +3410,7 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
 
 function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [modo, setModo] = useState("kanban");
+  const [asistenteVentasAbierto, setAsistenteVentasAbierto] = useState(false);
   const orderBuckets = useMemo(() => partitionByActivity(db.orders, isActiveOrder), [db.orders]);
   const [scope, setScope] = useState(() => (focus?.estado && !isActiveOrder({ estado: focus.estado }) ? "history" : "active"));
   const [selId, setSelId] = useState(null);
@@ -3197,7 +3419,8 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [verFiltros, setVerFiltros] = useState(!!(focus && (focus.estado || focus.desde || focus.pendientesPago)));
   const [pendPago, setPendPago] = useState(!!(focus && focus.pendientesPago));
   const [f, setF] = useState({ q: "", canal: "", estado: (focus && focus.estado) || "", barrio: "", producto: "", cliente: "", desde: (focus && focus.desde) || "", hasta: (focus && focus.hasta) || "" });
-  const puedeCrearPedido = canCreateOrder(perfil?.rol);
+  const puedeCrearPedido = canCreateOrder(perfil);
+  const salesAssistant = useMemo(() => buildSalesReceptionAssistant(db, { today: hoyISO() }), [db.orders, db.order_items, db.customers, db.evidences, db.benefits, db.products, db.variantes]);
 
   const barrios = [...new Set(db.orders.map((o) => o.barrio))];
 
@@ -3224,7 +3447,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   // Fase 3: la transición vive en el SERVER (set_order_status con todas las gates). Luego re-fetch.
   async function cambiar(orderId, estado, opts) {
     const actual = db.orders.find((order) => order.id === orderId);
-    const permiso = orderTransitionPermission(perfil?.rol, actual?.estado, estado, { quickSale: !!(opts && opts.ventaRapida) });
+    const permiso = orderTransitionPermission(perfil, actual?.estado, estado, { quickSale: !!(opts && opts.ventaRapida) });
     if (!permiso.allowed) {
       setAviso({ titulo: "Este paso pertenece a otra área", texto: permiso.reason });
       return false;
@@ -3294,7 +3517,16 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
       <Card className="p-3 mb-3" style={{ borderColor: "#A7C9A4", background: "#F2F8F0" }}>
         <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#3F6B42" }}>Responsables del pedido</div>
         <div className="text-xs font-bold mt-1 leading-relaxed">Recepción agenda → Caja/Coordinación confirma pago → Cocina prepara → Empaque alista → Logística despacha y entrega.</div>
-        <div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>Tu rol: <b>{perfil?.rol}</b> · {ORDER_ROLE_SUMMARY[perfil?.rol] || "consulta operativa"}.</div>
+        <div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>Tus roles: <b>{rolesLabel(perfil)}</b> · los permisos de cada área se acumulan.</div>
+      </Card>
+      <Card className="p-4 mb-3" onClick={() => setAsistenteVentasAbierto(true)} style={{ background: "linear-gradient(135deg,#FFF4EA,#FFFFFF)", borderColor: salesAssistant.summary.evidence || salesAssistant.summary.incomplete ? "#E7B36E" : T.border }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0" style={{ background: T.coralSoft }} aria-hidden="true">💬</span>
+            <div className="min-w-0"><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Asistente de Ventas y Recepción</div><div className="display text-lg font-semibold mt-0.5">{salesAssistant.summary.attention ? `${salesAssistant.summary.attention} ${salesAssistant.summary.attention === 1 ? "conversación" : "conversaciones"} por atender` : "Recepción está al día"}</div><div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{salesAssistant.summary.attention ? `${salesAssistant.summary.evidence} comprobante${salesAssistant.summary.evidence === 1 ? "" : "s"} por verificar · ${salesAssistant.summary.incomplete} pedido${salesAssistant.summary.incomplete === 1 ? "" : "s"} incompleto${salesAssistant.summary.incomplete === 1 ? "" : "s"} · ${fmt(salesAssistant.summary.pendingValue)} pendientes` : "No hay pedidos nuevos ni pagos pendientes en la cola."}</div></div>
+          </div>
+          <span className="text-xs font-extrabold shrink-0" style={{ color: T.coral }}>{salesAssistant.summary.attention ? "Ver siguiente acción ›" : "Ver análisis ›"}</span>
+        </div>
       </Card>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {puedeCrearPedido && <Btn onClick={() => setNuevo(true)}>＋ Agendar pedido</Btn>}
@@ -3403,7 +3635,46 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
         </Card>
       )}
 
-      <UltimosMovimientos filas={db.audit_logs.filter((a) => ["Pedido", "Evidencia", "Domicilio", "Reclamo"].includes(a.entidad)).map((a) => ({ texto: `${a.accion}${a.entidadId ? ` · ${a.entidadId}` : ""}${a.a ? ` → ${a.a}` : ""}`, meta: `${a.fecha}${a.user ? ` · ${a.user}` : ""}` }))} />
+      {asistenteVentasAbierto && (
+        <Modal title="Asistente de Ventas y Recepción" onClose={() => setAsistenteVentasAbierto(false)} wide>
+          <div className="rounded-3xl border p-4 sm:p-5 mb-4" style={{ background: "linear-gradient(135deg,#FFF4EA,#FFFFFF)", borderColor: T.border }}>
+            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Atención priorizada</div>
+            <div className="display text-2xl font-semibold mt-1">Qué conversación atender ahora</div>
+            <div className="text-sm font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>MOMO OPS reúne datos faltantes, comprobantes, disponibilidad exacta y contexto del cliente. Te recomienda el siguiente paso, pero no confirma pagos, beneficios ni sustituciones sin una persona autorizada.</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>En recepción</div><div className="display text-xl mt-0.5" style={{ color: T.coral }}>{salesAssistant.summary.attention}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Comprobantes</div><div className="display text-xl mt-0.5" style={{ color: salesAssistant.summary.evidence ? "#3F6B42" : T.choco }}>{salesAssistant.summary.evidence}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Incompletos</div><div className="display text-xl mt-0.5" style={{ color: salesAssistant.summary.incomplete ? "#A03B2A" : "#3F6B42" }}>{salesAssistant.summary.incomplete}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Valor pendiente</div><div className="display text-lg mt-0.5" style={{ color: "#3F6B42" }}>{fmt(salesAssistant.summary.pendingValue)}</div></div>
+            </div>
+          </div>
+
+          {salesAssistant.queue.length === 0 ? (
+            <div className="rounded-3xl p-8 text-center" style={{ background: "#E5F0E1" }}><div className="text-3xl">✓</div><div className="display text-xl mt-2">Recepción al día</div><div className="text-sm font-semibold mt-1" style={{ color: "#3F6B42" }}>No hay pedidos nuevos, incompletos ni pagos esperando seguimiento.</div></div>
+          ) : (
+            <div className="space-y-2">
+              {salesAssistant.queue.map((row, index) => {
+                const stockTone = row.stock.status === "available" ? { bg: "#DDEBD9", fg: "#3F6B42" } : row.stock.status === "shortage" ? { bg: "#F6D4CD", fg: "#A03B2A" } : { bg: T.vainilla, fg: "#7B5410" };
+                const waitLabel = row.waitingMinutes >= 60 ? `${Math.floor(row.waitingMinutes / 60)} h ${row.waitingMinutes % 60} min` : `${row.waitingMinutes} min`;
+                return <Card key={row.orderId} className="p-4" style={{ borderColor: index === 0 ? "#E59A83" : T.border, background: index === 0 ? "#FFF8F4" : T.surface }}>
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                    <span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0" style={{ background: index === 0 ? T.coral : T.vainilla, color: index === 0 ? "#fff" : T.choco2 }}>{index + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2"><div className="font-extrabold">{row.orderId} · {row.customer.nombre || "Cliente sin nombre"}</div><Badge label={row.order.estado} /><Badge label={row.priority} map={{ Urgente: { bg: "#F6D4CD", fg: "#A03B2A" }, Alta: { bg: "#FBE8C8", fg: "#96690F" }, Normal: { bg: T.vainilla, fg: T.choco2 } }} /></div>
+                      <div className="display text-lg font-semibold mt-1">{row.action}</div>
+                      <div className="flex flex-wrap gap-1.5 mt-2"><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: stockTone.bg, color: stockTone.fg }}>{row.stock.label}</span><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: "#F2F2F2", color: T.choco2 }}>{fmt(row.total)} · espera {waitLabel}</span>{row.hasEvidence && <span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: "#E5F0E1", color: "#3F6B42" }}>Comprobante recibido</span>}</div>
+                      {row.missing.length > 0 && <div className="text-[11px] font-bold mt-2" style={{ color: "#A03B2A" }}>Falta: {row.missing.join(" · ")}</div>}
+                      {row.customerContext.length > 0 && <div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>Cliente: {row.customerContext.join(" · ")}</div>}
+                      {row.stock.status === "shortage" && <div className="text-[11px] font-semibold mt-1" style={{ color: "#A03B2A" }}>No prometas sustituciones: al pagar se generará la producción exacta faltante.</div>}
+                    </div>
+                    <div className="shrink-0"><Btn small onClick={() => { setAsistenteVentasAbierto(false); setSelId(row.orderId); }}>Abrir pedido</Btn></div>
+                  </div>
+                </Card>;
+              })}
+            </div>
+          )}
+        </Modal>
+      )}
 
       {sel && <DetallePedido db={db} o={sel} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
       {nuevo && puedeCrearPedido && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} refrescar={refrescar} />}
@@ -3423,8 +3694,8 @@ function ControlOperativoPedido({ db, order, perfil, refrescar, setAviso }) {
   const lines = stage && stage !== "Logística" ? lineProgressFor(order.id, stage, db.order_items, db.order_line_progress) : [];
   const incidents = openOrderIncidents(order.id, db.order_incidents);
   const handoff = dispatchHandoffFor(order.id, db.order_dispatch_handoffs);
-  const allowed = stage && canOperateStage(perfil?.rol, stage);
-  const owns = assignment && (assignment.userId === perfil?.id || perfil?.rol === "Administrador");
+  const allowed = stage && canOperateStage(perfil, stage);
+  const owns = assignment && (assignment.userId === perfil?.id || hasRole(perfil, "Administrador"));
   const [busy, setBusy] = useState("");
   const [issueOpen, setIssueOpen] = useState(false);
   const [issue, setIssue] = useState({ type: "Faltante", description: "", orderItemId: "" });
@@ -3445,7 +3716,7 @@ function ControlOperativoPedido({ db, order, perfil, refrescar, setAviso }) {
 
   const allKitchenReady = stage === "Cocina" && lines.length > 0 && lines.every(({ progress }) => progress.status === "Listo");
   return (
-    <div className="rounded-2xl border p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF9F1,#FFFFFF)", borderColor: T.border }}>
+    <div id={`packing-control-${order.id}`} className="rounded-2xl border p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF9F1,#FFFFFF)", borderColor: T.border }}>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Control operativo · {stage}</div>
@@ -3498,21 +3769,88 @@ function ControlOperativoPedido({ db, order, perfil, refrescar, setAviso }) {
 
       {incidents.length > 0 && <div className="mt-3 space-y-2">{incidents.map((incident) => <div key={incident.id} className="rounded-xl px-3 py-2 flex items-center gap-3" style={{ background: "#FBE3DA" }}>
         <div className="flex-1 text-xs"><b>{incident.type}</b> · {incident.description}<div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{incident.area} · {incident.createdByName || "equipo"} · {incident.createdAt}</div></div>
-        {(perfil?.rol === "Administrador" || perfil?.rol === "Coordinador de pedidos" || canOperateStage(perfil?.rol, incident.area)) && <Btn small kind="ghost" disabled={!!busy} onClick={() => act(incident.id, () => resolverIncidentePedido(incident.id, "Resuelto y validado por el área responsable"), `${incident.id} · resuelto`)}>Resolver</Btn>}
+        {(hasAnyRole(perfil, ["Administrador", "Coordinador de pedidos"]) || canOperateStage(perfil, incident.area)) && <Btn small kind="ghost" disabled={!!busy} onClick={() => act(incident.id, () => resolverIncidentePedido(incident.id, "Resuelto y validado por el área responsable"), `${incident.id} · resuelto`)}>Resolver</Btn>}
       </div>)}</div>}
 
       {order.estado === "Listo para despacho" && <div className="mt-4 rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: handoff?.status === "Aceptado" ? "#F2F8F0" : "#F7F0FF", borderColor: handoff?.status === "Aceptado" ? "#A7C9A4" : "#D8C8E8" }}>
         <div><div className="text-xs font-extrabold">Relevo físico Empaque → Logística</div><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{handoff ? `${handoff.status} · ${handoff.packingUser || "Empaque"}${handoff.logisticsUser ? ` → ${handoff.logisticsUser}` : ""}` : "Empaque debe ofrecer el paquete y Logística aceptarlo antes de iniciar ruta."}</div></div>
         <div className="flex gap-2">
-          {canOperateStage(perfil?.rol, "Empaque") && (!handoff || handoff.status !== "Aceptado") && <Btn small disabled={!!busy} onClick={() => act("offer", () => ofrecerRelevoDespacho(order.id), `${order.id} · ofrecido a Logística`)}>Ofrecer paquete</Btn>}
-          {canOperateStage(perfil?.rol, "Logística") && handoff?.status === "Ofrecido" && <Btn small disabled={!!busy} onClick={() => act("accept", () => aceptarRelevoDespacho(order.id), `${order.id} · relevo aceptado`)}>Aceptar paquete</Btn>}
+          {canOperateStage(perfil, "Empaque") && (!handoff || handoff.status !== "Aceptado") && <Btn small disabled={!!busy} onClick={() => act("offer", () => ofrecerRelevoDespacho(order.id), `${order.id} · ofrecido a Logística`)}>Ofrecer paquete</Btn>}
+          {canOperateStage(perfil, "Logística") && handoff?.status === "Ofrecido" && <Btn small disabled={!!busy} onClick={() => act("accept", () => aceptarRelevoDespacho(order.id), `${order.id} · relevo aceptado`)}>Aceptar paquete</Btn>}
         </div>
       </div>}
     </div>
   );
 }
 
-function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refrescar, perfil }) {
+function PackingCopilot({ order, progress, handoff }) {
+  const guide = buildPackingGuide({ orderStatus: order.estado, progress, handoff });
+  const current = guide.current;
+  const topLines = progress.lines.filter((line) => !line.parentItemId);
+  const targetByStep = {
+    receive: `packing-control-${order.id}`,
+    verify: `packing-checklist-${order.id}`,
+    "open-photo": `packing-evidence-${order.id}`,
+    "seal-photo": `packing-evidence-${order.id}`,
+    pack: `packing-actions-${order.id}`,
+    handoff: order.estado === "Empacado" ? `packing-delivery-${order.id}` : `packing-control-${order.id}`,
+  };
+  const actionLabel = {
+    receive: "Ir al responsable",
+    verify: "Ir a comparar",
+    "open-photo": "Ir a la foto",
+    "seal-photo": "Ir al sello",
+    pack: "Ir a confirmar",
+    handoff: order.estado === "Empacado" ? "Preparar etiqueta" : "Ir al relevo",
+  };
+
+  function focusCurrentStep() {
+    const target = current && document.getElementById(targetByStep[current.key]);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  return (
+    <div className="rounded-3xl border p-4 sm:p-5 mb-4 overflow-hidden" style={{ background: "linear-gradient(135deg,#FFF7F1 0%,#FFFFFF 58%,#F2F8F0 100%)", borderColor: "#E8CDBD" }}>
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>Copiloto de Empaque · pedido {order.id}</div>
+          <div className="display text-xl sm:text-2xl font-semibold mt-0.5">Una comanda, seis controles, cero suposiciones</div>
+          <div className="text-xs font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>Te acompaña desde la entrega de Cocina hasta el relevo físico a Logística. Cada avance usa la verificación y las evidencias oficiales del pedido.</div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2 rounded-2xl px-3 py-2 border" style={{ background: "#fff", borderColor: guide.complete ? "#A7C9A4" : T.border }}>
+          <span className="display text-2xl font-semibold" style={{ color: guide.complete ? "#3F6B42" : T.coral }}>{guide.completed}/{guide.total}</span>
+          <span className="text-[10px] font-extrabold leading-tight" style={{ color: T.choco2 }}>{guide.complete ? "RELEVO\nCOMPLETO" : "PASOS\nSEGUROS"}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2" aria-label={`Guía de Empaque para ${order.id}`}>
+        {guide.steps.map((step, index) => {
+          const done = step.status === "done";
+          const active = step.status === "current";
+          return <div key={step.key} className="rounded-2xl border px-3 py-3 min-h-[112px]" style={{ background: done ? "#F2F8F0" : active ? T.coralSoft : "#fff", borderColor: done ? "#A7C9A4" : active ? "#E59A83" : T.border, opacity: step.status === "pending" ? .72 : 1 }}>
+            <div className="flex items-center justify-between gap-2"><span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black" style={{ background: done ? "#3F6B42" : active ? T.coral : T.vainilla, color: done || active ? "#fff" : T.choco2 }}>{done ? "✓" : index + 1}</span><span aria-hidden="true">{step.icon}</span></div>
+            <div className="text-xs font-extrabold mt-2 leading-tight">{step.title}</div>
+            <div className="text-[10px] font-semibold mt-1 leading-snug" style={{ color: T.choco2 }}>{step.detail}</div>
+          </div>;
+        })}
+      </div>
+
+      <div className="mt-4 grid lg:grid-cols-[1.35fr_.65fr] gap-3">
+        <div className="rounded-2xl border px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: guide.complete ? "#E3EFE0" : "#FFF5E2", borderColor: guide.complete ? "#BFD8BE" : "#E7C078" }}>
+          <div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: guide.complete ? "#3F6B42" : "#96690F" }}>{guide.complete ? "Trabajo cerrado" : `Ahora · ${current?.title || "Completado"}`}</div><div className="text-sm font-extrabold mt-0.5">{guide.nextAction}</div></div>
+          {!guide.complete && current && <Btn small onClick={focusCurrentStep}>{actionLabel[current.key] || "Continuar"}</Btn>}
+        </div>
+        <div className="rounded-2xl border px-4 py-3" style={{ background: "#fff", borderColor: T.border }}>
+          <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contenido esperado</div>
+          <div className="text-sm font-extrabold mt-0.5">{topLines.length} línea{topLines.length === 1 ? "" : "s"} principal{topLines.length === 1 ? "" : "es"} · {progress.lines.length} control{progress.lines.length === 1 ? "" : "es"}</div>
+          <div className="text-[10px] font-semibold mt-1 line-clamp-2" style={{ color: T.choco2 }}>{topLines.map((line) => line.label).join(" · ") || "La orden no tiene líneas verificables."}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refrescar, perfil, contextActions = null }) {
   const fileRef = useRef(null);
   const tipoSubidaRef = useRef("Comprobante de pago"); // tipo fijo de la subida en curso
   const [tipoEv, setTipoEv] = useState(o.pagadoEn ? "Entrega" : "Comprobante de pago"); // solo para el modo libre (＋ otra foto)
@@ -3524,6 +3862,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
   const [etiquetaDomicilio, setEtiquetaDomicilio] = useState(false);
   const [solicitudDomicilio, setSolicitudDomicilio] = useState(false);
   const [creandoDomicilio, setCreandoDomicilio] = useState(false);
+  const [verMasAcciones, setVerMasAcciones] = useState(false);
   const [formDomicilio, setFormDomicilio] = useState(() => ({
     proveedor: db.settings.proveedores[0] || "",
     zona: o.zona || db.settings.zonas[0]?.nombre || "",
@@ -3535,16 +3874,25 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
   const packingLines = buildPackingChecklistLines(o.id, db.order_items);
   const packingVerificationCandidate = findPackingVerification(o.id, db.packing_verifications || []);
   const packingVerification = packingVerificationMatchesLines(packingVerificationCandidate, packingLines) ? packingVerificationCandidate : null;
+  const packingProgress = packingStationProgress({ orderId: o.id, orderItems: db.order_items, evidences: db.evidences, verifications: db.packing_verifications || [] });
+  const packingHandoff = dispatchHandoffFor(o.id, db.order_dispatch_handoffs);
   const [checkedPackingLines, setCheckedPackingLines] = useState(() => new Set(packingVerification ? packingLines.map((line) => line.id) : []));
   const flujo = { "Nuevo": "Confirmado", "Confirmado": "Pendiente de pago", "Pendiente de pago": "Pagado", "Pagado": "En producción", "En producción": "Listo para empaque", "Listo para empaque": "Empacado", "Empacado": "Listo para despacho", "Listo para despacho": "En ruta", "En ruta": "Entregado" };
   const siguiente = flujo[o.estado];
-  const permisoSiguiente = siguiente ? orderTransitionPermission(perfil?.rol, o.estado, siguiente) : null;
-  const permisoPago = orderTransitionPermission(perfil?.rol, o.estado, "Pagado");
-  const permisoEntregaRapida = orderTransitionPermission(perfil?.rol, o.estado, "Entregado", { quickSale: true });
-  const permisoCancelar = orderTransitionPermission(perfil?.rol, o.estado, "Cancelado");
-  const permisoReclamo = orderTransitionPermission(perfil?.rol, o.estado, "Reclamo");
-  const tiposEvidenciaPermitidos = EV_TIPOS.filter((tipo) => orderEvidencePermission(perfil?.rol, tipo).allowed);
-  const puedeGestionarRelevo = canManageDeliveryHandoff(perfil?.rol);
+  const comprobantePagoVinculado = tieneEvidencia(db, o.id, "Comprobante de pago");
+  const accionRecepcion = orderIntakePrimaryAction(perfil, o, { hasPaymentEvidence: comprobantePagoVinculado });
+  const permisoSiguiente = siguiente ? orderTransitionPermission(perfil, o.estado, siguiente) : null;
+  const permisoPago = orderTransitionPermission(perfil, o.estado, "Pagado");
+  const permisoEntregaRapida = orderTransitionPermission(perfil, o.estado, "Entregado", { quickSale: true });
+  const permisoCancelar = orderTransitionPermission(perfil, o.estado, "Cancelado");
+  const permisoReclamo = orderTransitionPermission(perfil, o.estado, "Reclamo");
+  const puedeCorregirPago = !accionRecepcion && o.estado === "En producción" && permisoPago.allowed && !comprobantePagoVinculado;
+  const puedeEntregaRapida = permisoEntregaRapida.allowed && o.pagadoEn && ["Pagado","En producción","Empacado","Listo para despacho"].includes(o.estado);
+  const puedeCrearReclamo = permisoReclamo.allowed && !["Reclamo","Cancelado"].includes(o.estado);
+  const puedeCancelarPedido = permisoCancelar.allowed && !["Entregado","Cancelado","Reclamo"].includes(o.estado);
+  const hayAccionesSecundarias = puedeCorregirPago || puedeEntregaRapida || puedeCrearReclamo || puedeCancelarPedido;
+  const tiposEvidenciaPermitidos = EV_TIPOS.filter((tipo) => orderEvidencePermission(perfil, tipo).allowed);
+  const puedeGestionarRelevo = canManageDeliveryHandoff(perfil);
   const domicilioActivo = db.deliveries.find((delivery) => delivery.orderId === o.id && deliveryBlocksNewRequest(delivery));
   const direccionParaCopiar = o.direccion || c.direccion || "";
   const textoDomicilio = [
@@ -3596,7 +3944,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const tipo = tipoSubidaRef.current;
-    const permisoEvidencia = orderEvidencePermission(perfil?.rol, tipo);
+    const permisoEvidencia = orderEvidencePermission(perfil, tipo);
     if (!permisoEvidencia.allowed) {
       setAviso({ titulo: "Esta foto pertenece a otra área", texto: permisoEvidencia.reason });
       if (fileRef.current) fileRef.current.value = "";
@@ -3613,6 +3961,14 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
+    if (tipo === "Comprobante de pago" && accionRecepcion?.type === "evidence" && accionRecepcion.autoAdvance && accionRecepcion.allowed) {
+      const pagoConfirmado = await cambiar(o.id, accionRecepcion.target);
+      if (pagoConfirmado) {
+        setSubiendo(false);
+        if (fileRef.current) fileRef.current.value = "";
+        return;
+      }
+    }
     try {
       await refrescar();
     } catch (err) {
@@ -3624,7 +3980,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
 
   // Dispara la cámara/galería para una foto con su tipo YA FIJO (evidencias guiadas por paso).
   function abrirCamara(tipo) {
-    const permiso = orderEvidencePermission(perfil?.rol, tipo);
+    const permiso = orderEvidencePermission(perfil, tipo);
     if (!permiso.allowed) {
       setAviso({ titulo: "Esta foto pertenece a otra área", texto: permiso.reason });
       return;
@@ -3640,14 +3996,16 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         <span className="text-xs font-semibold" style={{ color: T.choco2 }}>{o.fecha} · {o.hora}</span>
       </div>
 
-      {siguiente && (
+      {(accionRecepcion || siguiente) && (
         <div className="rounded-2xl border px-4 py-3 mb-4" role="note"
-          style={{ background: permisoSiguiente.allowed ? "#F2F8F0" : "#FFF9F1", borderColor: permisoSiguiente.allowed ? "#A7C9A4" : "#E7C078" }}>
-          <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: permisoSiguiente.allowed ? "#3F6B42" : "#96690F" }}>Responsable del siguiente paso</div>
-          <div className="text-sm font-extrabold mt-0.5">{o.estado} → {siguiente}: {permisoSiguiente.ownerLabel}</div>
-          <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{permisoSiguiente.allowed ? "Tu área puede confirmar este avance cuando termine el trabajo." : "Podés consultar la orden, pero la confirmación queda en manos del área que ejecuta el paso."}</div>
+          style={{ background: (accionRecepcion || permisoSiguiente).allowed ? "#F2F8F0" : "#FFF9F1", borderColor: (accionRecepcion || permisoSiguiente).allowed ? "#A7C9A4" : "#E7C078" }}>
+          <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: (accionRecepcion || permisoSiguiente).allowed ? "#3F6B42" : "#96690F" }}>{accionRecepcion ? "Una sola acción para avanzar" : "Responsable del siguiente paso"}</div>
+          <div className="text-sm font-extrabold mt-0.5">{accionRecepcion ? accionRecepcion.label : `${o.estado} → ${siguiente}: ${permisoSiguiente.ownerLabel}`}</div>
+          <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{accionRecepcion ? accionRecepcion.detail : permisoSiguiente.allowed ? "Tu área puede confirmar este avance cuando termine el trabajo." : "Podés consultar la orden, pero la confirmación queda en manos del área que ejecuta el paso."}</div>
         </div>
       )}
+
+      {["Listo para empaque", "Empacado", "Listo para despacho"].includes(o.estado) && <PackingCopilot order={o} progress={packingProgress} handoff={packingHandoff} />}
 
       <ControlOperativoPedido db={db} order={o} perfil={perfil} refrescar={refrescar} setAviso={setAviso} />
 
@@ -3685,12 +4043,12 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
             )}
           </div>
           <div className="flex justify-between py-2 mt-1 border-t display text-lg" style={{ borderColor: T.border }}><span>Total</span><b style={{ color: T.coral }}>{fmt(orderTotal(db, o))}</b></div>
-          <div className="text-xs font-semibold">{o.pago} {o.comprobante ? "· comprobante recibido ✓" : "· sin comprobante"}</div>
+          <div className="text-xs font-semibold">{o.pago} {o.canal === "Rappi" ? "· pago en la app" : comprobantePagoVinculado ? "· comprobante vinculado ✓" : "· sin comprobante"}</div>
         </Card>
       </div>
 
       {puedeGestionarRelevo && ["Listo para empaque", "Empacado", "Listo para despacho"].includes(o.estado) && (
-        <div className="mt-4 rounded-2xl border p-4" style={{ background: "#FFF9F1", borderColor: T.border }}>
+        <div id={`packing-delivery-${o.id}`} className="mt-4 rounded-2xl border p-4" style={{ background: "#FFF9F1", borderColor: T.border }}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#8E4B5A" }}>Relevo a domicilio</div>
@@ -3713,7 +4071,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
       )}
 
       {["Listo para empaque", "Empacado", "Listo para despacho"].includes(o.estado) && (
-        <div className="mt-4 rounded-2xl border p-4" style={{ background: packingVerification ? "#F2F8F0" : T.soft, borderColor: packingVerification ? "#A7C9A4" : T.border }}>
+        <div id={`packing-checklist-${o.id}`} className="mt-4 rounded-2xl border p-4" style={{ background: packingVerification ? "#F2F8F0" : T.soft, borderColor: packingVerification ? "#A7C9A4" : T.border }}>
           <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
             <div>
               <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: packingVerification ? "#3F6B42" : "#A54830" }}>Control de coincidencia</div>
@@ -3752,7 +4110,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         </div>
       )}
 
-      <div className="mt-4">
+      <div id={`packing-content-${o.id}`} className="mt-4">
         <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>PRODUCTOS</div>
         {itemsOf(db, o.id).filter((i) => !i.parentItemId).map((i) => {
           const p = productOf(db, i.productId);
@@ -3830,7 +4188,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         );
       })()}
 
-      <div className="mt-4">
+      <div id={`packing-evidence-${o.id}`} className="mt-4">
         <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>EVIDENCIAS ({evs.length})</div>
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
           {evs.map((e) => (
@@ -3847,13 +4205,14 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         {/* Evidencias guiadas por paso: cada objetivo alcanzable pide su(s) foto(s) con tipo YA FIJO */}
         {(() => {
           const objetivos = [];
-          if (siguiente) objetivos.push(siguiente);
-          const puedePagar = !o.comprobante && !["Pagado","Entregado","Cancelado","Reclamo"].includes(o.estado);
+          const objetivoPrincipal = accionRecepcion?.target || siguiente;
+          if (objetivoPrincipal) objetivos.push(objetivoPrincipal);
+          const puedePagar = !comprobantePagoVinculado && (o.estado === "Pendiente de pago" || accionRecepcion?.target === "Pagado");
           if (puedePagar && !objetivos.includes("Pagado")) objetivos.push("Pagado");
           const reqs = objetivos.flatMap((estadoObjetivo) => reqFotosPaso(o, estadoObjetivo).map((req) => ({
             ...req,
             estadoObjetivo,
-            permiso: orderTransitionPermission(perfil?.rol, o.estado, estadoObjetivo),
+            permiso: orderTransitionPermission(perfil, o.estado, estadoObjetivo),
           })));
           if (!reqs.length) return null;
           return (
@@ -3861,16 +4220,18 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
               <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>📸 Fotos necesarias para avanzar (obligatorias)</div>
               {reqs.map((req) => {
                 const hecho = req.tipos.some((t) => tieneEvidencia(db, o.id, t));
+                const evidenciaEnAccionPrincipal = accionRecepcion?.type === "evidence" && req.tipos.includes("Comprobante de pago");
                 return (
                   <div key={`${req.estadoObjetivo}-${req.label}`} className="flex flex-wrap items-center gap-2 mb-1.5">
                     <span className="text-sm font-semibold" style={{ color: hecho ? "#3F6B42" : "#A03B2A" }}>
                       {hecho ? "✓" : "○"} {req.label} <span className="text-[10px]">· para {req.estadoObjetivo}</span>
                     </span>
-                    {!hecho && req.permiso.allowed && req.tipos.map((t) => (
+                    {!hecho && req.permiso.allowed && !evidenciaEnAccionPrincipal && req.tipos.map((t) => (
                       <Btn key={t} small kind="rosa" disabled={subiendo} onClick={() => abrirCamara(t)}>
                         {subiendo ? "Procesando…" : `📷 ${req.tipos.length > 1 ? t : "Tomar foto"}`}
                       </Btn>
                     ))}
+                    {!hecho && req.permiso.allowed && evidenciaEnAccionPrincipal && <span className="text-[10px] font-bold" style={{ color: "#96690F" }}>Usá la acción principal inferior</span>}
                     {!hecho && !req.permiso.allowed && <span className="text-[10px] font-bold" style={{ color: "#96690F" }}>La sube {req.permiso.ownerLabel}</span>}
                   </div>
                 );
@@ -3883,13 +4244,13 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
           <div className="text-xs font-bold mb-2" style={{ color: "#A03B2A" }}>Para pasar a “En ruta” además: pago confirmado, domicilio asignado y costo real registrado (salvo Rappi). El sello ya se capturó en Empacado.</div>}
 
         <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
-        {tiposEvidenciaPermitidos.length > 0 && <button type="button" onClick={() => {
+        {tiposEvidenciaPermitidos.length > 0 && !accionRecepcion && <button type="button" onClick={() => {
           if (!libre) setTipoEv(tiposEvidenciaPermitidos.includes(tipoEv) ? tipoEv : tiposEvidenciaPermitidos[0]);
           setLibre((v) => !v);
         }} className="text-xs font-bold underline" style={{ color: T.choco2 }}>
           {libre ? "− ocultar" : "＋ otra foto permitida para mi área"}
         </button>}
-        {libre && tiposEvidenciaPermitidos.length > 0 && (
+        {libre && tiposEvidenciaPermitidos.length > 0 && !accionRecepcion && (
           <div className="flex flex-wrap gap-2 items-center mt-2">
             <MiniSelect options={tiposEvidenciaPermitidos} value={tipoEv} onChange={(e) => setTipoEv(e.target.value)} />
             <Btn small kind="rosa" disabled={subiendo} onClick={() => abrirCamara(tipoEv)}>
@@ -3902,12 +4263,18 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2 sticky bottom-0 py-3" style={{ background: T.bg }}>
-        {siguiente && permisoSiguiente.allowed && (siguiente !== "Empacado" || packingVerification) && <Btn disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, siguiente); setEnviando(false); }}>Confirmar “{siguiente}” · {permisoSiguiente.ownerLabel}</Btn>}
-        {siguiente === "Empacado" && permisoSiguiente.allowed && !packingVerification && <Btn disabled>Primero verificá la comanda completa</Btn>}
-        {siguiente !== "Pagado" && permisoPago.allowed && !o.comprobante && !["Pagado","Entregado","Cancelado","Reclamo"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Pagado"); setEnviando(false); }}>Confirmar pago</Btn>}
-        {permisoEntregaRapida.allowed && o.pagadoEn && ["Pagado","En producción","Empacado","Listo para despacho"].includes(o.estado) && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Entregado", { ventaRapida: true }); setEnviando(false); }}>⚡ Entrega inmediata</Btn>}
-        {permisoReclamo.allowed && !["Reclamo","Cancelado"].includes(o.estado) && (
+      <div id={`packing-actions-${o.id}`} className="mt-5 flex flex-wrap gap-2 sticky bottom-0 py-3" style={{ background: T.bg }}>
+        {contextActions}
+        {accionRecepcion?.type === "transition" && accionRecepcion.allowed && <Btn disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, accionRecepcion.target); setEnviando(false); }}>{accionRecepcion.label}</Btn>}
+        {accionRecepcion?.type === "evidence" && accionRecepcion.allowed && <Btn disabled={enviando || subiendo} onClick={() => abrirCamara("Comprobante de pago")}>{subiendo ? "Procesando comprobante…" : accionRecepcion.label}</Btn>}
+        {accionRecepcion?.type === "wait" && <Btn disabled>{accionRecepcion.label}</Btn>}
+        {!accionRecepcion && siguiente && permisoSiguiente.allowed && (siguiente !== "Empacado" || packingVerification) && <Btn disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, siguiente); setEnviando(false); }}>Confirmar “{siguiente}” · {permisoSiguiente.ownerLabel}</Btn>}
+        {!accionRecepcion && siguiente === "Empacado" && permisoSiguiente.allowed && !packingVerification && <Btn disabled>Primero verificá la comanda completa</Btn>}
+        {hayAccionesSecundarias && <button type="button" className="text-xs font-extrabold px-3 py-2 rounded-xl border" style={{ color: T.choco2, borderColor: T.border, background: T.surface }} onClick={() => setVerMasAcciones((current) => !current)}>{verMasAcciones ? "Ocultar opciones" : "Más opciones"}</button>}
+        {verMasAcciones && hayAccionesSecundarias && <div className="basis-full flex flex-wrap gap-2 rounded-2xl border p-3" style={{ background: T.soft, borderColor: T.border }}>
+        {puedeCorregirPago && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Pagado"); setEnviando(false); }}>Corregir pago faltante</Btn>}
+        {puedeEntregaRapida && <Btn kind="soft" disabled={enviando} onClick={async () => { setEnviando(true); await cambiar(o.id, "Entregado", { ventaRapida: true }); setEnviando(false); }}>⚡ Entrega inmediata</Btn>}
+        {puedeCrearReclamo && (
           <Btn kind="danger" disabled={enviando} onClick={async () => {
             setEnviando(true);
             // Fase 3: crear_reclamo ya transiciona el pedido a 'Reclamo' y audita server-side (no llamar setOrderStatusRemoto aparte).
@@ -3929,7 +4296,8 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
             setEnviando(false);
           }}>Crear reclamo</Btn>
         )}
-        {permisoCancelar.allowed && !["Entregado","Cancelado","Reclamo"].includes(o.estado) && <BtnAsync kind="ghost" confirmar="¿Cancelar el pedido? Tocá de nuevo" textoEnVuelo="Cancelando…" disabled={enviando} onClick={async () => { setEnviando(true); try { await cambiar(o.id, "Cancelado"); } finally { setEnviando(false); } }}>Cancelar pedido</BtnAsync>}
+        {puedeCancelarPedido && <BtnAsync kind="ghost" confirmar="¿Cancelar el pedido? Tocá de nuevo" textoEnVuelo="Cancelando…" disabled={enviando} onClick={async () => { setEnviando(true); try { await cambiar(o.id, "Cancelado"); } finally { setEnviando(false); } }}>Cancelar pedido</BtnAsync>}
+        </div>}
       </div>
 
       {foto && (
@@ -5381,7 +5749,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
       if (currentDraft.madeToOrder && !progress.orders.has(currentDraft.madeToOrder.orderId)) {
         const orderPreparation = currentDraft.madeToOrder;
         const sourceOrder = db.orders.find((order) => order.id === orderPreparation.orderId);
-        const permission = orderTransitionPermission(perfil?.rol, sourceOrder?.estado || "Pagado", "En producción");
+        const permission = orderTransitionPermission(perfil, sourceOrder?.estado || "Pagado", "En producción");
         if (!permission.allowed) throw new Error(permission.reason);
         setExecutionLabel(`Iniciando preparación del pedido ${orderPreparation.orderId}…`);
         const response = await setOrderStatusRemoto(orderPreparation.orderId, "En producción");
@@ -5395,7 +5763,7 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
       if (currentDraft.orderHandoff && !progress.ordersReady.has(currentDraft.orderHandoff.orderId)) {
         const handoff = currentDraft.orderHandoff;
         const sourceOrder = db.orders.find((order) => order.id === handoff.orderId);
-        const permission = orderTransitionPermission(perfil?.rol, sourceOrder?.estado || "En producción", "Listo para empaque");
+        const permission = orderTransitionPermission(perfil, sourceOrder?.estado || "En producción", "Listo para empaque");
         if (!permission.allowed) throw new Error(permission.reason);
         setExecutionLabel(`Entregando el pedido ${handoff.orderId} a Empaque…`);
         if (db.operationalControlReady) await completarEtapaPedido(handoff.orderId, "Cocina");
@@ -5671,20 +6039,29 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
   });
   const [form, setForm] = useState(formInicial);
   const [msg, setMsg] = useState("");
+  const [registroError, setRegistroError] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [enviandoBatchId, setEnviandoBatchId] = useState(null); // deshabilita solo la card del lote en vuelo
   const [desmolde, setDesmolde] = useState(null); // {batchId, prod, perfectas, imperfectas, descartadas} — mini-modal de conteos
   const [enviandoDesmolde, setEnviandoDesmolde] = useState(false);
-  const puedeIniciarPedidos = orderTransitionPermission(perfil?.rol, "Pagado", "En producción").allowed;
-  const puedeEntregarEmpaque = orderTransitionPermission(perfil?.rol, "En producción", "Listo para empaque").allowed;
+  const puedeIniciarPedidos = orderTransitionPermission(perfil, "Pagado", "En producción").allowed;
+  const puedeEntregarEmpaque = orderTransitionPermission(perfil, "En producción", "Listo para empaque").allowed;
   const [queueBusyOrderId, setQueueBusyOrderId] = useState(null);
+  const [detallePedidoCocinaId, setDetallePedidoCocinaId] = useState(null);
+  const detallePedidoCocina = detallePedidoCocinaId ? db.orders.find((order) => order.id === detallePedidoCocinaId) : null;
   const batchBuckets = useMemo(() => partitionByActivity(db.production_batches, isActiveProductionBatch), [db.production_batches]);
   const [scope, setScope] = useState("active");
+  const [detalleLoteId, setDetalleLoteId] = useState(null);
+  const detalleLote = useMemo(() => (db.production_batches || []).find((lote) => lote.id === detalleLoteId) || null, [db.production_batches, detalleLoteId]);
+  const detalleCongelacion = detalleLote ? estadoCongelacion(detalleLote) : null;
+  const detalleMerma = detalleLote && detalleLote.prod > 0 ? (detalleLote.imperfectas + detalleLote.descartadas) / detalleLote.prod : 0;
 
   // ── Componentes + BOM (hito 2): preparar bases/subrecetas ──
   const [prepBase, setPrepBase] = useState(false);
   const prepIdemKeyRef = useRef(null); // 1 por apertura del form (mismo patrón que corridaIdemKeyRef)
   const [prepForm, setPrepForm] = useState({ subrecetaId: "", nominal: 1000, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
+  const [detallePreparacionId, setDetallePreparacionId] = useState(null);
+  const [detalleCantidadFinal, setDetalleCantidadFinal] = useState(300);
   const [enviandoPrep, setEnviandoPrep] = useState(false);
   const subrecetasActivas = useMemo(() => (db.subrecetas || []).filter((sr) => sr.activo), [db.subrecetas]);
   useEffect(() => {
@@ -5694,6 +6071,19 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
   }, [focus?.subrecipeId]);
   const itemDe = useMemo(() => { const m = {}; db.inventory_items.forEach((i) => { m[i.id] = i; }); return m; }, [db.inventory_items]);
   const prepSel = subrecetasActivas.find((sr) => sr.id === prepForm.subrecetaId) || null;
+  const detallePreparacion = subrecetasActivas.find((sr) => sr.id === detallePreparacionId) || null;
+  const detalleFormula = useMemo(() => calculateSubrecipeBatch({
+    subrecipe: detallePreparacion,
+    ingredients: db.subreceta_ingredientes || [],
+    inventory: db.inventory_items || [],
+    desiredOutputGrams: detalleCantidadFinal,
+  }), [detallePreparacion, detalleCantidadFinal, db.subreceta_ingredientes, db.inventory_items]);
+  function cantidadPreparacionTexto(unidad, cantidad) {
+    const value = +cantidad || 0;
+    if (unidad === "kg" && value < 1) return `${Math.round(value * 10000) / 10} g`;
+    if (unidad === "L" && value < 1) return `${Math.round(value * 10000) / 10} ml`;
+    return `${Math.round(value * 10000) / 10000} ${unidad}`.trim();
+  }
   // Derivado en vivo: consumo escalado (cantidad × nominal/1000) + costo estimado del batch.
   const prepIngredientes = useMemo(() => {
     if (!prepSel) return [];
@@ -5703,9 +6093,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
       const req = Math.round(r.cantidad * factor * 10000) / 10000;
       // Texto para cocina: kg/L chicos se leen en g/ml (el descuento real sigue en la unidad del insumo)
       const unidad = it ? it.unidad : "";
-      const reqTxt = unidad === "kg" && req < 1 ? `${Math.round(req * 10000) / 10} g`
-        : unidad === "L" && req < 1 ? `${Math.round(req * 10000) / 10} ml`
-        : `${req} ${unidad}`;
+      const reqTxt = cantidadPreparacionTexto(unidad, req);
       return { itemId: r.itemId, nombre: it ? it.nombre : r.itemId, unidad, req, reqTxt, alcanza: it ? it.stock >= req : false, costo: it ? req * it.costo : 0 };
     });
   }, [prepSel, prepForm.nominal, db.subreceta_ingredientes, itemDe]);
@@ -5735,7 +6123,12 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
     }
   }
 
-  const sugerencias = db.production_suggestions.filter((s) => s.estado === "Pendiente" && s.area !== "Inventario");
+  const kitchenProductionPlan = useMemo(() => buildKitchenProductionPlan({ ...db, figuras: figurasProducibles }, {
+    today: hoyISO(), historyDays: 28, horizonDays: 3,
+  }), [db, figurasProducibles]);
+  const plannedSuggestionIds = new Set(kitchenProductionPlan.plans.flatMap((plan) => plan.suggestionIds));
+  const unplannedSuggestions = (db.production_suggestions || []).filter((suggestion) => suggestion.estado === "Pendiente"
+    && suggestion.area !== "Inventario" && !plannedSuggestionIds.has(suggestion.id));
 
   // Stock operativo: fuente oficial usada por ventas y reservas (products.stock de tipo momo)
   const stockOperativo = useMemo(() =>
@@ -5786,10 +6179,10 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
 
   async function cambiarPedidoDesdeCocina(orderId, estado) {
     const order = db.orders.find((item) => item.id === orderId);
-    const permiso = orderTransitionPermission(perfil?.rol, order?.estado, estado);
+    const permiso = orderTransitionPermission(perfil, order?.estado, estado);
     if (!permiso.allowed) {
       setMsg(permiso.reason);
-      return;
+      return false;
     }
     setQueueBusyOrderId(orderId);
     // Escritura y refresco en try/catch SEPARADOS: si falla refrescar() no debe
@@ -5803,7 +6196,7 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
     } catch (error) {
       setQueueBusyOrderId(null);
       toast("error", `No se pudo pasar ${orderId} a “${estado}”: ${error.message}`);
-      return;
+      return false;
     }
     const faltantes = Array.isArray(response?.faltantes) ? response.faltantes.length : 0;
     toast("ok", estado === "En producción"
@@ -5811,6 +6204,8 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
       : `${orderId} · listo para Empaque`);
     try { await refrescar(); } catch { toast("alert", `${orderId} avanzó, pero no se pudo actualizar la vista. Recargá la página.`); }
     setQueueBusyOrderId(null);
+    if (estado === "Listo para empaque") setDetallePedidoCocinaId(null);
+    return true;
   }
 
   // Genera una idempotency_key nueva cada vez que el form se abre; los reintentos
@@ -5818,27 +6213,38 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
   function abrirNuevaCorrida() {
     corridaIdemKeyRef.current = "corrida-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
     setForm(formInicial());
+    setRegistroError("");
     setNuevo(true);
   }
 
-  function abrirDesdeSugerencia(sg) {
-    // las sugerencias de Inventario no abren corrida (van a Compras sugeridas en Inventario)
-    if (sg.area === "Inventario") {
-      setMsg("Esta es una sugerencia de compra de empaque o insumo. Atiéndela en el módulo Inventario, no en Producción.");
+  function abrirDesdePlanProduccion(plan) {
+    if (!plan?.canCreate) {
+      setMsg("Esta recomendación no tiene sabor o figura exacta. Revisa el pedido antes de crear la corrida.");
       return;
     }
-    // v2: la sugerencia solo referencia un producto/cantidad — el operador elige
-    // sabor y cantidades por figura en el form; no se mapea producto→figura acá.
-    setPre(sg); abrirNuevaCorrida();
+    const base = formInicial();
+    const draft = productionRunDraft(plan, figurasProducibles, s.rellenos[0]);
+    corridaIdemKeyRef.current = "corrida-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+    setForm({ ...base, ...draft, figuras: { ...base.figuras, ...draft.figuras } });
+    setRegistroError("");
+    setPre({
+      id: plan.id, grouped: true, flavor: plan.flavor, filling: plan.filling,
+      cantidad: plan.totalUnits, suggestionIds: plan.suggestionIds,
+      queueUnits: plan.queueUnits, source: plan.source,
+      producto: plan.variants.map((variant) => `${variant.recommended}× ${variant.figure}`).join(" · "),
+    });
+    setNuevo(true);
   }
 
   async function registrarCorrida() {
     const figurasElegidas = Object.entries(form.figuras).filter(([, cant]) => +cant > 0).map(([figura, cant]) => ({ figura, cant: +cant }));
     if (!figurasElegidas.length) { setMsg("Elegí al menos una figura con cantidad mayor a 0."); return; }
+    const suggestionIds = Array.isArray(pre?.suggestionIds) ? pre.suggestionIds.filter(Boolean) : [];
+    const traceNote = suggestionIds.length > 1 ? `Sugerencias agrupadas: ${suggestionIds.join(", ")}` : "";
     const payload = {
       sabor: form.sabor, relleno: form.relleno, figuras: figurasElegidas,
       resp_user_id: respUserId(form.resp), horas_congelacion: +form.horasCongelacion || 10,
-      obs: form.obs, sugerencia_id: pre ? pre.id : undefined,
+      obs: [form.obs, traceNote].filter(Boolean).join(" · "), sugerencia_id: suggestionIds[0] || undefined,
       idempotency_key: corridaIdemKeyRef.current,
     };
     setEnviando(true);
@@ -5846,15 +6252,29 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
     try {
       resultado = await crearCorrida(payload);
     } catch (e) {
-      toast("error", "No se pudo registrar la producción: " + e.message);
+      const friendlyError = explainOperationalError(e, {
+        inventory: db.inventory_items || [],
+        subrecipes: db.subrecetas || [],
+      });
+      setRegistroError(friendlyError);
+      toast("error", friendlyError);
       setEnviando(false);
       return;
     }
+    const suggestionUpdateFailures = [];
+    for (const suggestionId of suggestionIds.slice(1)) {
+      try { await setSugerenciaEstado(suggestionId, "Atendida"); }
+      catch { suggestionUpdateFailures.push(suggestionId); }
+    }
+    setRegistroError("");
     setEnviando(false);
     setNuevo(false); setPre(null);
     corridaIdemKeyRef.current = null; // fuerza una key nueva en la próxima apertura (abrirNuevaCorrida)
     toast("ok", `Producción registrada${resultado && resultado.corrida_id ? ` (${resultado.corrida_id})` : ""}`);
     await refrescarSilencioso(() => setMsg("La producción se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+    if (suggestionUpdateFailures.length) {
+      setMsg(`La corrida quedó registrada, pero MOMOS OPS no pudo cerrar ${suggestionUpdateFailures.join(", ")}. No crees otro lote: recarga y revisa esas recomendaciones.`);
+    }
     const faltantes = resultado && resultado.faltantes;
     if (Array.isArray(faltantes) && faltantes.length) {
       const internos = faltantes.filter((f) => (db.subrecetas || []).some((subrecipe) => subrecipe.itemId === f.item_id));
@@ -5867,12 +6287,13 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
     }
   }
 
-  function abrirPrepararBase(requestedSubrecipeId = "") {
+  function abrirPrepararBase(requestedSubrecipeId = "", requestedNominal = 1000) {
     const selectedId = typeof requestedSubrecipeId === "string" && subrecetasActivas.some((subrecipe) => subrecipe.id === requestedSubrecipeId)
       ? requestedSubrecipeId
       : (subrecetasActivas[0] ? subrecetasActivas[0].id : "");
+    const nominal = +requestedNominal > 0 ? Math.round(+requestedNominal * 10) / 10 : 1000;
     prepIdemKeyRef.current = "subprod-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
-    setPrepForm({ subrecetaId: selectedId, nominal: 1000, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
+    setPrepForm({ subrecetaId: selectedId, nominal, obtenidos: "", obtenidosTocado: false, resp: "", obs: "" });
     setPrepBase(true);
   }
 
@@ -5966,54 +6387,73 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
     await refrescarSilencioso(() => setMsg("El lote se desmoldó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
   }
 
+  async function iniciarCongelacionLote(lote) {
+    setEnviandoBatchId(lote.id);
+    try {
+      await empezarCongelamiento(lote.id);
+    } catch (error) {
+      toast("error", "No se pudo empezar el congelamiento: " + error.message);
+      setEnviandoBatchId(null);
+      return;
+    }
+    toast("ok", `${lote.id} · congelamiento iniciado`);
+    await refrescarSilencioso(() => toast("alert", "El lote empezó a congelar, pero no se pudo actualizar la vista. Recargá la página."));
+    setEnviandoBatchId(null);
+  }
+
+  async function convertirImperfectasLote(lote) {
+    setEnviandoBatchId(lote.id);
+    try {
+      await convertirImperfectas(lote.id);
+    } catch (error) {
+      toast("error", "No se pudieron convertir las imperfectas: " + error.message);
+      setEnviandoBatchId(null);
+      return;
+    }
+    toast("ok", `${lote.imperfectas} imperfectas del lote ${lote.id} → insumo`);
+    await refrescarSilencioso(() => toast("alert", "Las imperfectas se convirtieron, pero no se pudo actualizar la vista. Recargá la página."));
+    setEnviandoBatchId(null);
+  }
+
+  async function cambiarEstadoLote(lote, nuevoEstado) {
+    if (nuevoEstado === "Listo") { await marcarListo(lote); return; }
+    setEnviandoBatchId(lote.id);
+    try {
+      await setLoteEstado(lote.id, nuevoEstado);
+    } catch (error) {
+      toast("error", "No se pudo cambiar el estado del lote: " + error.message);
+      setEnviandoBatchId(null);
+      return;
+    }
+    toast("ok", `${lote.id} → ${nuevoEstado}`);
+    await refrescarSilencioso(() => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
+    setEnviandoBatchId(null);
+  }
+
   return (
     <div>
       <KitchenProductionQueue
         db={db}
-        onStart={(orderId) => cambiarPedidoDesdeCocina(orderId, "En producción")}
-        onOpenAssistant={alistarPedidoDesdeCola}
-        onReady={(orderId) => cambiarPedidoDesdeCocina(orderId, "Listo para empaque")}
+        onOpenOrder={setDetallePedidoCocinaId}
         canStart={puedeIniciarPedidos}
         canReady={puedeEntregarEmpaque}
-        busyOrderId={queueBusyOrderId}
       />
+      {detallePedidoCocina && <KitchenQuickCommand db={db} order={detallePedidoCocina}
+        canStart={puedeIniciarPedidos} canReady={puedeEntregarEmpaque} busyOrderId={queueBusyOrderId}
+        onStart={(orderId) => cambiarPedidoDesdeCocina(orderId, "En producción")}
+        onReady={(orderId) => cambiarPedidoDesdeCocina(orderId, "Listo para empaque")}
+        onMomobot={() => { const orderId = detallePedidoCocina.id; setDetallePedidoCocinaId(null); alistarPedidoDesdeCola(orderId); }}
+        onClose={() => setDetallePedidoCocinaId(null)} refrescar={refrescar} perfil={perfil} />}
       <VoiceKitchenPanel db={db} perfil={perfil} flavors={sabores} figures={figurasProducibles} subrecipes={subrecetasActivas} refrescar={refrescar} serverDataReady={serverDataReady} requestedOrder={queueRequest} />
       <div className="mb-4 flex gap-2 flex-wrap"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn>{subrecetasActivas.length > 0 && <Btn kind="soft" onClick={() => abrirPrepararBase()}>🥣 Preparar elaboración</Btn>}</div>
 
-      {sugerencias.length > 0 && (
-        <>
-          <SectionTitle>Sugerencias de producción</SectionTitle>
-          <div className="grid sm:grid-cols-2 gap-2 mb-2">
-            {sugerencias.map((sg) => (
-              <Card key={sg.id} className="p-3 flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-sm font-bold">{sg.cantidad}× {sg.producto}</div>
-                  <div className="text-xs" style={{ color: T.choco2 }}>{sg.motivo}{sg.orderId && ` · pedido ${sg.orderId}`} · {sg.fecha}</div>
-                  {(() => {
-                    /* Variantes 2: qué variante espera este pedido — el desmolde
-                       la asigna solo cuando coinciden sabor y figura). */
-                    const oi = sg.orderItemId && (db.order_items || []).find((i) => i.id === sg.orderItemId);
-                    if (!oi || (!oi.sabor && !oi.figura)) return null;
-                    return <div className="text-[11px] font-bold mt-0.5" style={{ color: "#8A6D1F" }}>⏳ espera: {[oi.sabor, oi.figura].filter(Boolean).join(" · ")} — se asigna sola al desmoldar</div>;
-                  })()}
-                  {(() => {
-                    /* Variantes 3: sugerido producir = cola + colchón del producto
-                       (advisory — la cantidad adeudada de arriba no se toca). */
-                    const prod = sg.productId && db.products.find((p) => p.id === sg.productId);
-                    const colchon = (prod && prod.colchonProduccion) || 0;
-                    if (!colchon || sg.estado !== "Pendiente") return null;
-                    return <div className="text-[11px] font-bold mt-0.5" style={{ color: "#3F6B42" }}>🛡️ Sugerido producir: {sg.cantidad} en cola + {colchon} de colchón = {(+sg.cantidad) + colchon}</div>;
-                  })()}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Badge label={sg.estado} />
-                  {sg.estado === "Pendiente" && <Btn small kind="soft" onClick={() => abrirDesdeSugerencia(sg)}>Crear lote</Btn>}
-                </div>
-              </Card>
-            ))}
-          </div>
-        </>
-      )}
+      <KitchenProductionAssistantFab
+        plan={kitchenProductionPlan}
+        unplannedSuggestions={unplannedSuggestions}
+        formatAmount={cantidadPreparacionTexto}
+        onPlanRun={abrirDesdePlanProduccion}
+        onPrepare={abrirPrepararBase}
+      />
 
       <SectionTitle>✅ Stock operativo disponible</SectionTitle>
       <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>Fuente oficial usada por ventas y reservas (products.stock). Un lote suma aquí al pasar a "Listo".</div>
@@ -6050,8 +6490,9 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
             {subrecetasActivas.map((sr) => {
               const it = itemDe[sr.itemId];
               const ult = ultimaPrepDe[sr.id];
+              const formulaRows = (db.subreceta_ingredientes || []).filter((row) => row.subrecetaId === sr.id);
               return (
-                <Card key={sr.id} className="p-3">
+                <Card key={sr.id} aria-label={`Ver receta de ${sr.nombre}`} className="p-3" onClick={() => { setDetalleCantidadFinal(300); setDetallePreparacionId(sr.id); }}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs font-semibold leading-snug">{sr.nombre}</div>
                     <div className="display text-xl shrink-0" style={{ color: it && it.stock > 0 ? "#3F6B42" : "#A03B2A" }}>{it ? it.stock : "—"}</div>
@@ -6059,11 +6500,46 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
                   <div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>
                     {it ? `${it.unidad} · ${fmt(it.costo)}/${it.unidad}` : "sin item de inventario"}{ult ? ` · última: ${ult.creado || ult.fecha}` : ""}
                   </div>
+                  <div className="flex items-center justify-between gap-2 mt-2"><span className="text-[10px] font-bold" style={{ color: formulaRows.length ? "#3F6B42" : "#A03B2A" }}>{formulaRows.length ? `${formulaRows.length} insumos en fórmula` : "Sin fórmula cargada"}</span><span className="text-[10px] font-extrabold" style={{ color: T.coral }}>Ver receta ›</span></div>
                 </Card>
               );
             })}
           </div>
         </>
+      )}
+
+      {detallePreparacion && (
+        <Modal title={`Receta · ${detallePreparacion.nombre}`} onClose={() => setDetallePreparacionId(null)} wide>
+          <div className="rounded-2xl p-4 mb-3" style={{ background: T.soft, border: `1px solid ${T.border}` }}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Guía de preparación de cocina</div><div className="display text-xl font-semibold mt-1">{detallePreparacion.nombre}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>Fórmula maestra registrada por cada 1.000 g antes de merma.</div></div>
+              <div className="flex flex-wrap gap-2"><span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: T.rosa, color: "#8E4B5A" }}>{detallePreparacion.tipo.replaceAll("_", " ")}</span><span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: detalleFormula.completeFormula ? "#E6F1E3" : "#F6D4CD", color: detalleFormula.completeFormula ? "#3F6B42" : "#A03B2A" }}>{detalleFormula.components.length} insumos</span></div>
+            </div>
+            <div className="grid sm:grid-cols-[minmax(0,1fr)_220px] gap-3 items-end mt-4">
+              <div><label className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Cantidad final que Cocina necesita</label><div className="text-xs mt-1" style={{ color: T.choco2 }}>Ejemplo: 300 g de cheesecake ya terminado y utilizable.</div></div>
+              <div className="relative"><input type="number" min="1" step="10" value={detalleCantidadFinal} onChange={(event) => setDetalleCantidadFinal(Math.max(0, +event.target.value || 0))} aria-label="Cantidad final deseada en gramos" className="w-full rounded-xl border px-3 py-2.5 pr-10 text-lg font-bold outline-none" style={inputStyle} /><span className="absolute right-3 top-3 text-xs font-extrabold" style={{ color: T.choco2 }}>g</span></div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            {[["Resultado deseado", `${detalleFormula.desiredOutputGrams} g`, T.coral], ["Preparar antes de merma", `${detalleFormula.nominalInputGrams} g`, "#63518A"], ["Merma prevista", `${detalleFormula.wastePct}%`, "#96690F"], ["Costo estimado", fmt(detalleFormula.totalCost), "#3F6B42"]].map(([label, value, color]) => <div key={label} className="rounded-2xl p-3" style={{ background: T.surface, border: `1px solid ${T.border}` }}><div className="text-[10px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-xl mt-1" style={{ color }}>{value}</div></div>)}
+          </div>
+
+          <div className="rounded-2xl overflow-hidden" style={{ background: T.surface, border: `1px solid ${T.border}` }}>
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ background: T.vainilla }}><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.choco2 }}>Ingredientes escalados</div><div className="font-bold text-sm mt-0.5">Cantidades para lograr {detalleFormula.desiredOutputGrams} g finales</div></div><Badge label={detalleFormula.canPrepare ? "Stock suficiente" : "Revisar stock"} map={{ "Stock suficiente": { bg: "#E6F1E3", fg: "#3F6B42" }, "Revisar stock": { bg: "#FBE8C8", fg: "#96690F" } }} /></div>
+            {detalleFormula.components.map((component) => (
+              <div key={component.itemId} className="grid sm:grid-cols-[minmax(0,1fr)_120px_170px] gap-2 items-center px-4 py-3 border-t" style={{ borderColor: T.border }}>
+                <div className="min-w-0"><div className="font-bold text-sm truncate">{component.name}</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>Fórmula base: {cantidadPreparacionTexto(component.unit, component.baseQuantity)} por 1.000 g</div></div>
+                <div className="sm:text-right"><div className="display text-lg" style={{ color: T.coral }}>{cantidadPreparacionTexto(component.unit, component.requiredQuantity)}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>usar ahora</div></div>
+                <div className="sm:text-right"><span className="inline-block text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: component.enough ? "#E6F1E3" : "#F6D4CD", color: component.enough ? "#3F6B42" : "#A03B2A" }}>{component.enough ? "✓" : "✕"} Disponible {cantidadPreparacionTexto(component.unit, component.stock)}</span></div>
+              </div>
+            ))}
+            {!detalleFormula.hasFormula && <div className="p-4 text-sm font-bold" style={{ color: "#A03B2A" }}>Esta preparación todavía no tiene ingredientes asociados. No se puede calcular ni registrar de forma segura.</div>}
+          </div>
+
+          {!detalleFormula.canPrepare && detalleFormula.completeFormula && <div className="rounded-xl px-3 py-2.5 mt-3 text-xs font-bold" style={{ background: "#FBE8C8", color: "#96690F" }}>La receta está completa, pero uno o más insumos no alcanzan. Podés abrir el registro para planear la tanda; MOMOS OPS dejará trazado el faltante.</div>}
+          <div className="flex flex-wrap justify-end gap-2 mt-4"><Btn kind="ghost" onClick={() => setDetallePreparacionId(null)}>Cerrar</Btn><Btn disabled={!detalleFormula.completeFormula || detalleFormula.desiredOutputGrams <= 0} onClick={() => { const subrecipeId = detallePreparacion.id; const nominal = detalleFormula.nominalInputGrams; setDetallePreparacionId(null); abrirPrepararBase(subrecipeId, nominal); }}>🥣 Preparar esta cantidad</Btn></div>
+        </Modal>
       )}
 
       <SectionTitle>🧊 Lotes en proceso (aún no disponibles)</SectionTitle>
@@ -6081,135 +6557,90 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
       <div id="lotes-produccion" />
       <SectionTitle action={<div className="flex flex-wrap items-center justify-end gap-2">{foco && <button type="button" onClick={() => setFoco(null)} className="text-xs font-bold" style={{ color: T.coral }}>✕ Quitar filtro</button>}<WorkScopeTabs value={scope} onChange={(next) => { setScope(next); setFoco(null); }} activeCount={batchBuckets.active.length} historyCount={batchBuckets.history.length} activeLabel="En proceso" /></div>}>{scope === "active" ? "Lotes en proceso" : "Historial de lotes"}</SectionTitle>
       {foco && <div className="text-xs font-bold mb-3 p-2 rounded-lg" style={{ background: T.vainilla, color: T.choco2 }}>Mostrando lotes de: {focoLabel} ({lotesFiltrados.length})</div>}
-      <div className="grid lg:grid-cols-2 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {lotesFiltrados.map((l) => {
-          const merma = l.prod > 0 ? (l.imperfectas + l.descartadas) / l.prod : 0;
-          const vencimientoTexto = !isActiveProductionBatch(l) && l.vence
-            ? `Vence ${l.vence} · 3 días desde desmolde`
-            : "Vence al desmoldar · +3 días";
+          const cong = estadoCongelacion(l);
+          const figuras = Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => `${f.cant}× ${f.figura}`).join(" · ") : l.figura;
           return (
-            <Card key={l.id} className="momo-queue-item p-4">
+            <Card key={l.id} aria-label={`Abrir detalle del lote ${l.id}`} className="momo-queue-item p-4" onClick={() => setDetalleLoteId(l.id)}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Lote</span>
-                    <Badge label={l.estado} />
-                    {l.corridaId && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: T.vainilla, color: "#63518A" }}>Corrida {l.corridaId}</span>}
-                  </div>
-                  <div className="text-sm font-bold leading-tight mt-0.5">{l.id} · {l.producto}</div>
-                  <div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{l.fecha} · Resp: {l.resp || "—"} · {vencimientoTexto}</div>
+                  <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.choco2 }}>Lote {l.id}</div>
+                  <div className="font-bold text-sm mt-1 truncate">{l.producto}</div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="display text-2xl" style={{ color: T.coral }}>{l.prod || 0}</div>
-                  <div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>unidades</div>
-                </div>
+                <Badge label={l.estado} />
               </div>
-              <div className="text-xs font-semibold mt-2" style={{ color: T.choco2 }}>
-                {Array.isArray(l.figuras) && l.figuras.length ? l.figuras.map((f) => `${f.cant}× ${f.figura}`).join(" · ") : l.figura} · {l.sabor} · Relleno {l.relleno}{l.salsa ? ` · Salsa ${l.salsa}` : ""} · {l.gramaje}
+              <div className="flex items-end justify-between gap-3 mt-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold truncate" style={{ color: T.choco2 }}>{figuras || "Sin figura"} · {l.sabor || "Sin sabor"}</div>
+                  <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>{l.fecha} · {l.resp || "Sin responsable"}</div>
+                </div>
+                <div className="text-right shrink-0"><div className="display text-2xl leading-none" style={{ color: T.coral }}>{l.prod || 0}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>unidades</div></div>
               </div>
-              <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
-                <div className="flex justify-between items-baseline gap-2 text-xs">
-                  <span style={{ color: T.choco2 }}>Perfectas</span>
-                  <span className="font-bold" style={{ color: "#3F6B42" }}>{l.perfectas}</span>
+              {cong && (
+                <div className="rounded-2xl p-3 mt-3" style={{ background: cong.listo ? "#E6F1E3" : "#E7EEF6", color: cong.listo ? "#3F6B42" : "#365E87" }}>
+                  <div className="flex items-center justify-between gap-3 text-xs font-extrabold"><span>{cong.listo ? "✓ Congelación cumplida" : "❄ Congelando"}</span><span>{fmtHoras(cong.horas)}</span></div>
+                  <div className="h-1.5 rounded-full overflow-hidden mt-2" style={{ background: "rgba(255,255,255,.72)" }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, (cong.horas / Math.max(cong.objetivo, 1)) * 100)}%`, background: cong.listo ? "#5E9162" : "#5B82AA" }} /></div>
+                  <div className="text-[10px] font-bold mt-1.5">{cong.listo ? `Objetivo ${cong.objetivo} h · listo para desmolde` : `faltan ~${fmtHoras(cong.restan)} de ${cong.objetivo} h`}</div>
                 </div>
-                <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
-                  <span style={{ color: T.choco2 }}>Imperfectas</span>
-                  <span className="font-bold" style={{ color: "#96690F" }}>{l.imperfectas}</span>
-                </div>
-                <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
-                  <span style={{ color: T.choco2 }}>Descartadas</span>
-                  <span className="font-bold" style={{ color: "#A03B2A" }}>{l.descartadas}</span>
-                </div>
-              </div>
-              {(() => {
-                const cong = estadoCongelacion(l);
-                if (!cong) return null;
-                return (
-                  <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
-                    <div className="flex justify-between items-baseline gap-2 text-xs">
-                      <span style={{ color: T.choco2 }}>{cong.listo ? "Congelación cumplida" : "Congelando"}</span>
-                      <span className="font-bold" style={{ color: cong.listo ? "#3F6B42" : T.choco }}>{cong.listo ? `lleva ${fmtHoras(cong.horas)}` : `${fmtHoras(cong.horas)} · ~${fmtHoras(cong.restan)}`}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
-                      <span style={{ color: T.choco2 }}>Objetivo</span>
-                      <span className="font-bold" style={{ color: T.choco }}>{cong.objetivo} h</span>
-                    </div>
-                    <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
-                      <span style={{ color: T.choco2 }}>Inició</span>
-                      <span className="font-bold" style={{ color: T.choco }}>{l.inicioCongelacion.slice(11, 16)}</span>
-                    </div>
-                    {cong.listo && (
-                      // v2: si los conteos ya cuadran con prod, marcarListo pasa directo a 'Listo';
-                      // si no cuadran, abre el modal de desmolde para cargarlos.
-                      <div className="mt-2">
-                        <BtnAsync small textoEnVuelo="Listando…" disabled={enviandoBatchId === l.id} onClick={() => marcarListo(l)}>Marcar Listo</BtnAsync>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-              <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
-                <div className="text-xs font-bold" style={{ color: merma > 0.15 ? "#A03B2A" : T.choco2 }}>
-                  Merma: {pct(merma)} {merma > 0.15 && "· revisar proceso"}
-                </div>
-                <div className="flex gap-2">
-                  {scope === "active" && l.estado === "En preparación" && (
-                    <BtnAsync small confirmar="❄️ ¿Empezar? Tocá de nuevo" textoEnVuelo="Empezando…" disabled={enviandoBatchId === l.id} onClick={async () => {
-                      setEnviandoBatchId(l.id);
-                      try {
-                        await empezarCongelamiento(l.id);
-                      } catch (e) {
-                        toast("error", "No se pudo empezar el congelamiento: " + e.message);
-                        setEnviandoBatchId(null);
-                        return;
-                      }
-                      toast("ok", `${l.id} · congelamiento iniciado`);
-                      await refrescarSilencioso(() => toast("alert", "El lote empezó a congelar, pero no se pudo actualizar la vista. Recargá la página."));
-                      setEnviandoBatchId(null);
-                    }}>❄️ Empezar congelamiento</BtnAsync>
-                  )}
-                  {scope === "active" && l.imperfectas > 0 && !String(l.destino).includes("Insumo") && (
-                    <BtnAsync small kind="soft" confirmar="♻️ ¿Convertir a insumo? Tocá de nuevo" textoEnVuelo="Convirtiendo…" disabled={enviandoBatchId === l.id} onClick={async () => {
-                      setEnviandoBatchId(l.id);
-                      try {
-                        await convertirImperfectas(l.id);
-                      } catch (e) {
-                        toast("error", "No se pudieron convertir las imperfectas: " + e.message);
-                        setEnviandoBatchId(null);
-                        return;
-                      }
-                      toast("ok", `${l.imperfectas} imperfectas del lote ${l.id} → insumo`);
-                      await refrescarSilencioso(() => toast("alert", "Las imperfectas se convirtieron, pero no se pudo actualizar la vista. Recargá la página."));
-                      setEnviandoBatchId(null);
-                    }}>♻️ Convertir imperfectas</BtnAsync>
-                  )}
-                  <MiniSelect options={LOTE_ESTADOS} value={l.estado} disabled={enviandoBatchId === l.id || scope === "history"} onChange={async (e) => {
-                    const nuevoEstado = e.target.value;
-                    // v2: pasar a 'Listo' desde acá reusa marcarListo — si los conteos ya
-                    // cuadran con prod pasa directo (lotes viejos, re-transiciones post-reversa);
-                    // si no cuadran, recién ahí abre el modal de desmolde.
-                    if (nuevoEstado === "Listo") { await marcarListo(l); return; }
-                    setEnviandoBatchId(l.id);
-                    try {
-                      await setLoteEstado(l.id, nuevoEstado);
-                    } catch (err) {
-                      toast("error", "No se pudo cambiar el estado del lote: " + err.message);
-                      setEnviandoBatchId(null);
-                      return;
-                    }
-                    toast("ok", `${l.id} → ${nuevoEstado}`);
-                    await refrescarSilencioso(() => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
-                    setEnviandoBatchId(null);
-                  }} />
-                </div>
-              </div>
-              {l.destino !== "—" && <div className="text-xs mt-2 font-semibold" style={{ color: "#63518A" }}>Destino de imperfectas: {l.destino}</div>}
-              {l.obs && <div className="text-xs mt-1" style={{ color: T.choco2 }}>📝 {l.obs}</div>}
+              )}
+              {!cong && <div className="rounded-xl px-3 py-2 mt-3 text-xs font-bold" style={{ background: T.vainilla, color: T.choco2 }}>{l.estado === "En preparación" ? "Pendiente de iniciar congelación" : `Resultado: ${l.perfectas || 0} perfectas`}</div>}
+              <div className="text-[11px] font-extrabold mt-3" style={{ color: T.coral }}>Ver información y acciones ›</div>
             </Card>
           );
         })}
         {lotesFiltrados.length === 0 && <div className="text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>{scope === "active" ? "No hay lotes activos para este filtro." : "Todavía no hay lotes en el historial para este filtro."}</div>}
       </div>
+
+      {detalleLote && (
+        <Modal title={`Lote ${detalleLote.id}`} onClose={() => setDetalleLoteId(null)} wide>
+          <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl p-4 mb-3" style={{ background: T.soft, border: `1px solid ${T.border}` }}>
+            <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Trazabilidad de producción</div><div className="display text-xl font-semibold mt-1">{detalleLote.producto}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{detalleLote.fecha} · Responsable: {detalleLote.resp || "Sin asignar"}</div></div>
+            <div className="flex gap-2 flex-wrap"><Badge label={detalleLote.estado} />{detalleLote.corridaId && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: T.vainilla, color: "#63518A" }}>Corrida {detalleLote.corridaId}</span>}</div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            {[["Producidas", detalleLote.prod || 0, T.coral], ["Perfectas", detalleLote.perfectas || 0, "#3F6B42"], ["Imperfectas", detalleLote.imperfectas || 0, "#96690F"], ["Descartadas", detalleLote.descartadas || 0, "#A03B2A"]].map(([label, value, color]) => <div key={label} className="rounded-2xl p-3" style={{ background: T.surface, border: `1px solid ${T.border}` }}><div className="text-[10px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl mt-1" style={{ color }}>{value}</div></div>)}
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-3">
+            <div className="rounded-2xl p-4" style={{ background: T.surface, border: `1px solid ${T.border}` }}>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold mb-3" style={{ color: T.choco2 }}>Composición del lote</div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Figuras</span><b className="text-right">{Array.isArray(detalleLote.figuras) && detalleLote.figuras.length ? detalleLote.figuras.map((f) => `${f.cant}× ${f.figura}`).join(" · ") : (detalleLote.figura || "—")}</b></div>
+                <div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Sabor</span><b>{detalleLote.sabor || "—"}</b></div>
+                <div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Relleno</span><b className="text-right">{detalleLote.relleno || "—"}</b></div>
+                {detalleLote.salsa && <div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Salsa</span><b>{detalleLote.salsa}</b></div>}
+                <div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Gramaje</span><b>{detalleLote.gramaje || "—"}</b></div>
+                {(detalleLote.molde || detalleLote.ubicacion) && <div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Molde / ubicación</span><b className="text-right">{[detalleLote.molde, detalleLote.ubicacion].filter(Boolean).join(" · ")}</b></div>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl p-4" style={{ background: detalleCongelacion ? (detalleCongelacion.listo ? "#E6F1E3" : "#E7EEF6") : T.surface, border: `1px solid ${detalleCongelacion ? (detalleCongelacion.listo ? "#B8D2B2" : "#B8CADE") : T.border}` }}>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: detalleCongelacion?.listo ? "#3F6B42" : "#365E87" }}>Cronómetro de congelación</div>
+              {detalleCongelacion ? <><div className="flex items-end justify-between gap-3 mt-2"><div><div className="display text-3xl" style={{ color: detalleCongelacion.listo ? "#3F6B42" : "#365E87" }}>{fmtHoras(detalleCongelacion.horas)}</div><div className="text-xs font-bold mt-1">transcurridas</div></div><div className="text-right text-xs font-bold">Objetivo {detalleCongelacion.objetivo} h<br />{detalleCongelacion.listo ? "Tiempo cumplido" : `Faltan ~${fmtHoras(detalleCongelacion.restan)}`}</div></div><div className="h-2 rounded-full overflow-hidden mt-3" style={{ background: "rgba(255,255,255,.7)" }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, (detalleCongelacion.horas / Math.max(detalleCongelacion.objetivo, 1)) * 100)}%`, background: detalleCongelacion.listo ? "#5E9162" : "#5B82AA" }} /></div><div className="text-xs font-semibold mt-2">Inicio: {detalleLote.inicioCongelacion}</div></> : <div className="text-sm font-semibold mt-3" style={{ color: T.choco2 }}>{detalleLote.estado === "En preparación" ? "El cronómetro todavía no ha iniciado." : "Este lote ya no tiene un cronómetro activo."}</div>}
+            </div>
+
+            <div className="rounded-2xl p-4" style={{ background: T.surface, border: `1px solid ${T.border}` }}>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold mb-3" style={{ color: T.choco2 }}>Calidad y destino</div>
+              <div className="text-sm space-y-2"><div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Merma</span><b style={{ color: detalleMerma > 0.15 ? "#A03B2A" : "#3F6B42" }}>{pct(detalleMerma)}{detalleMerma > 0.15 ? " · revisar" : ""}</b></div><div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Destino imperfectas</span><b className="text-right">{detalleLote.destino && detalleLote.destino !== "—" ? detalleLote.destino : "Pendiente"}</b></div><div className="flex justify-between gap-3"><span style={{ color: T.choco2 }}>Stock contabilizado</span><b>{detalleLote.stockContabilizado ? "Sí" : "No"}</b></div></div>
+            </div>
+
+            <div className="rounded-2xl p-4" style={{ background: T.surface, border: `1px solid ${T.border}` }}>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold mb-3" style={{ color: T.choco2 }}>Vencimiento y observaciones</div>
+              <div className="text-sm font-bold">{!isActiveProductionBatch(detalleLote) && detalleLote.vence ? `Vence ${detalleLote.vence} · 3 días desde desmolde` : "Vence 3 días después del desmolde"}</div>
+              <div className="text-xs mt-3" style={{ color: T.choco2 }}>{detalleLote.obs ? `📝 ${detalleLote.obs}` : "Sin observaciones registradas."}</div>
+            </div>
+          </div>
+
+          {isActiveProductionBatch(detalleLote) && <div className="flex flex-wrap items-center justify-end gap-2 mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
+            {detalleLote.estado === "En preparación" && <BtnAsync small confirmar="❄️ ¿Empezar? Tocá de nuevo" textoEnVuelo="Empezando…" disabled={enviandoBatchId === detalleLote.id} onClick={() => iniciarCongelacionLote(detalleLote)}>❄️ Empezar congelación</BtnAsync>}
+            {detalleCongelacion?.listo && <BtnAsync small textoEnVuelo="Listando…" disabled={enviandoBatchId === detalleLote.id} onClick={() => marcarListo(detalleLote)}>Desmoldar y marcar listo</BtnAsync>}
+            {detalleLote.imperfectas > 0 && !String(detalleLote.destino).includes("Insumo") && <BtnAsync small kind="soft" confirmar="♻️ ¿Convertir a insumo? Tocá de nuevo" textoEnVuelo="Convirtiendo…" disabled={enviandoBatchId === detalleLote.id} onClick={() => convertirImperfectasLote(detalleLote)}>♻️ Convertir imperfectas</BtnAsync>}
+            <MiniSelect options={LOTE_ESTADOS} value={detalleLote.estado} disabled={enviandoBatchId === detalleLote.id} onChange={(event) => cambiarEstadoLote(detalleLote, event.target.value)} />
+          </div>}
+        </Modal>
+      )}
 
       {nuevo && (() => {
         const totalUnidades = Object.values(form.figuras).reduce((s, c) => s + (+c || 0), 0);
@@ -6223,18 +6654,12 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
           porLote[etiqueta] = (porLote[etiqueta] || 0) + (+cant);
         });
         return (
-          <Modal title={pre ? `Producción desde sugerencia ${pre.id}` : "Registrar producción"} onClose={() => { setNuevo(false); setPre(null); }} wide>
-            {pre && (() => {
-              /* Variantes 3: la cocina ve cuánto conviene producir — lo adeudado
-                 por la cola + el colchón del producto (merma y mostrador). */
-              const prod = pre.productId && db.products.find((p) => p.id === pre.productId);
-              const colchon = (prod && prod.colchonProduccion) || 0;
-              return (
-                <div className="mb-3 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: "#DDEBD9", color: "#3F6B42" }}>
-                  🛡️ {pre.cantidad}× {pre.producto} en cola{colchon > 0 ? ` + ${colchon} de colchón = sugerido producir ${(+pre.cantidad) + colchon}` : " (sin colchón configurado para este producto)"}
-                </div>
-              );
-            })()}
+          <Modal title={pre?.grouped ? `Plan de Cocina · ${pre.flavor}` : "Registrar producción"} onClose={() => { setNuevo(false); setPre(null); setRegistroError(""); }} wide>
+            {pre?.grouped && <div className="mb-3 px-3 py-3 rounded-xl text-xs font-bold" style={{ background: "#DDEBD9", color: "#315D36" }}>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold">🧠 Corrida agrupada y trazable</div>
+              <div className="mt-1">{pre.cantidad} unidades de {pre.flavor}: {pre.producto}.</div>
+              <div className="text-[10px] mt-1 opacity-80">{pre.queueUnits > 0 ? `${pre.queueUnits} vienen de la cola pagada` : "Cobertura sugerida por demanda"}{pre.suggestionIds.length > 1 ? ` · cerrará ${pre.suggestionIds.length} recomendaciones juntas` : ""}.</div>
+            </div>}
             <div className="grid sm:grid-cols-2 gap-x-4">
               <Field label="Sabor"><Select options={sabores} value={form.sabor} onChange={(e) => setForm({ ...form, sabor: e.target.value })} /></Field>
               <Field label="Relleno"><Select options={s.rellenos} value={form.relleno} onChange={(e) => setForm({ ...form, relleno: e.target.value })} /></Field>
@@ -6273,9 +6698,13 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
             </div>
             <Field label="Observaciones"><Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} /></Field>
             <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>Al registrar: se descuentan los insumos de la receta (por la cantidad producida) y se crea un lote por cada figura elegida. Las piezas perfectas se suman al stock cuando cada lote pase a "Listo" (con desmolde).</div>
+            {registroError && <div role="alert" className="rounded-2xl border px-4 py-3 mb-3" style={{ background: "#FFF2EF", borderColor: "#E8B7AD", color: "#8F3528" }}>
+              <div className="text-[10px] uppercase tracking-[.12em] font-extrabold">⚠ Stock insuficiente</div>
+              <div className="text-sm font-bold mt-1">{registroError}</div>
+            </div>}
             <div className="flex gap-2">
               <BtnAsync textoEnVuelo="Registrando…" disabled={enviando || totalUnidades === 0} onClick={registrarCorrida}>Registrar producción</BtnAsync>
-              <Btn kind="ghost" disabled={enviando} onClick={() => { setNuevo(false); setPre(null); }}>Cancelar</Btn>
+              <Btn kind="ghost" disabled={enviando} onClick={() => { setNuevo(false); setPre(null); setRegistroError(""); }}>Cancelar</Btn>
             </div>
           </Modal>
         );
@@ -6377,7 +6806,6 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
         );
       })()}
 
-      <UltimosMovimientos filas={db.audit_logs.filter((a) => ["Lote", "Producción", "Corrida", "Subreceta"].includes(a.entidad)).map((a) => ({ texto: `${a.accion}${a.entidadId ? ` · ${a.entidadId}` : ""}${a.a ? ` → ${a.a}` : ""}`, meta: `${a.fecha}${a.user ? ` · ${a.user}` : ""}` }))} />
 
       {msg && <Modal title="Aviso de producción" onClose={() => setMsg("")}><p className="text-sm m-0">{msg}</p><div className="mt-4"><Btn onClick={() => setMsg("")}>Listo</Btn></div></Modal>}
     </div>
@@ -6387,10 +6815,20 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
 /* ================= INVENTARIO TERMINADO ================= */
 
 function InventarioTerminado({ db, go }) {
-  const [tab, setTab] = useState("Disponibles");
+  const [tab, setTab] = useState("Figuras");
+  const [detalleProductoId, setDetalleProductoId] = useState(null);
+  const [detalleFiguraNombre, setDetalleFiguraNombre] = useState(null);
   const inventory = useMemo(() => buildFinishedInventory(db), [db]);
   const orderById = useMemo(() => Object.fromEntries((db.orders || []).map((order) => [order.id, order])), [db.orders]);
+  const detalleProducto = detalleProductoId ? inventory.products.find((product) => product.id === detalleProductoId) : null;
+  const detalleVariantes = detalleProducto ? inventory.variants.filter((variant) => variant.productId === detalleProducto.id) : [];
+  const detalleCuarentena = detalleProducto ? inventory.quarantinedVariants.filter((variant) => variant.productId === detalleProducto.id) : [];
+  const detalleReservas = detalleProducto ? inventory.reservations.filter((reservation) => reservation.refId === detalleProducto.id || reservation.nombre === detalleProducto.nombre) : [];
+  const detalleEnProceso = detalleProducto ? inventory.inProcess.filter((batch) => batch.producto === detalleProducto.nombre) : [];
+  const detalleImperfectas = detalleProducto ? inventory.imperfects.filter((batch) => batch.producto === detalleProducto.nombre) : [];
+  const detalleFigura = detalleFiguraNombre ? inventory.figureSummaries.find((figure) => figure.figura === detalleFiguraNombre) : null;
   const tabs = [
+    ["Figuras", inventory.figureSummaries.length],
     ["Disponibles", inventory.summary.available],
     ["Reservadas", inventory.summary.reserved],
     ["En proceso", inventory.summary.inProcess],
@@ -6404,6 +6842,7 @@ function InventarioTerminado({ db, go }) {
     { icon: "✓", label: "Disponibles para vender", value: inventory.summary.available, note: inventory.summary.quarantined > 0 ? `stock seguro · ${inventory.summary.quarantined} en cuarentena` : "stock oficial, después de reservas", color: T.coral, wash: "rgba(63,107,66,.12)", iconBg: "#E3EFE0" },
     { icon: "🏷", label: "Reservadas", value: inventory.summary.reserved, note: "separadas para pedidos pagos", color: "#63518A", wash: "rgba(99,81,138,.12)", iconBg: "#E8E0F2" },
     { icon: "❄", label: "En proceso", value: inventory.summary.inProcess, note: "todavía no se pueden vender", color: T.choco, wash: "rgba(62,92,126,.12)", iconBg: "#DCE7F2" },
+    { icon: "🥤", label: "Para malteadas", value: inventory.summary.imperfectForShakes, note: "imperfectas con ese destino", color: "#8A4D7A", wash: "rgba(138,77,122,.12)", iconBg: "#F1DFEB" },
     { icon: "♻", label: "Imperfectas pendientes", value: inventory.summary.imperfectPending, note: `${inventory.summary.imperfectReused} ya tienen destino`, color: "#96690F", wash: "rgba(150,105,15,.12)", iconBg: "#FBE8C8" },
   ];
 
@@ -6441,12 +6880,48 @@ function InventarioTerminado({ db, go }) {
         ))}
       </div>
 
+      {tab === "Figuras" && (
+        <>
+          <SectionTitle>Figuras listas y sabores exactos</SectionTitle>
+          <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
+            Cada tarjeta suma únicamente producto terminado vigente con figura y sabor verificados. Las imperfectas aparecen aparte y nunca aumentan el stock para venta.
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+            {inventory.figureSummaries.map((figure) => (
+              <Card key={figure.figura} className="momo-queue-item p-4" onClick={() => setDetalleFiguraNombre(figure.figura)} aria-label={`Abrir inventario de la figura ${figure.figura}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Figura terminada</div>
+                    <div className="display text-xl font-semibold mt-0.5">{figure.figura}</div>
+                    <div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>{figure.flavors.length} {figure.flavors.length === 1 ? "sabor disponible" : "sabores disponibles"}</div>
+                  </div>
+                  <div className="text-right shrink-0"><div className="display text-3xl" style={{ color: figure.available > 0 ? "#3F6B42" : T.choco2 }}>{figure.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>para vender</div></div>
+                </div>
+                <div className="flex gap-1.5 flex-wrap mt-3">
+                  {figure.flavors.map((flavor) => <span key={flavor.sabor} className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: "#E3EFE0", color: "#315D37" }}>{flavor.sabor} · {flavor.available}</span>)}
+                  {figure.flavors.length === 0 && <span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>Sin stock vendible exacto</span>}
+                </div>
+                {(figure.imperfectForShakes > 0 || figure.imperfectPending > 0) && <div className="grid grid-cols-2 gap-2 mt-3">
+                  <div className="rounded-xl p-2" style={{ background: "#F1DFEB" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: "#754568" }}>Para malteadas</div><div className="font-extrabold" style={{ color: "#754568" }}>{figure.imperfectForShakes}</div></div>
+                  <div className="rounded-xl p-2" style={{ background: "#FBE8C8" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: "#7A5410" }}>Por decidir</div><div className="font-extrabold" style={{ color: "#7A5410" }}>{figure.imperfectPending}</div></div>
+                </div>}
+                <div className="flex items-center justify-end mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.coral }}>Ver sabores, vencimientos e imperfectas ›</div>
+              </Card>
+            ))}
+            {inventory.figureSummaries.length === 0 && <Empty icon="🐾" text="Todavía no hay figuras terminadas con detalle verificable." />}
+          </div>
+        </>
+      )}
+
       {tab === "Disponibles" && (
         <>
           <SectionTitle>Producto disponible para venta</SectionTitle>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-            {inventory.products.map((product) => (
-              <Card key={product.id} className="momo-queue-item p-4">
+            {inventory.products.map((product) => {
+              const productVariants = inventory.variants.filter((variant) => variant.productId === product.id);
+              const coverage = product.available > 0 ? Math.round(product.exactAvailable / product.available * 100) : 0;
+              return (
+              <Card key={product.id} className="momo-queue-item p-4" onClick={() => setDetalleProductoId(product.id)} aria-label={`Abrir detalle de ${product.nombre}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: product.available <= 2 ? "#A03B2A" : T.choco2 }}>{product.available <= 2 ? "Stock por reponer" : "Disponible ahora"}</div>
@@ -6454,56 +6929,16 @@ function InventarioTerminado({ db, go }) {
                   </div>
                   <div className="text-right shrink-0"><div className="display text-2xl" style={{ color: product.available <= 2 ? "#A03B2A" : T.coral }}>{product.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>unidades</div></div>
                 </div>
-                <div className="mt-3 pl-3 border-l-2" style={{ borderColor: T.rosa }}>
-                  <div className="flex justify-between items-baseline gap-2 text-xs">
-                    <span style={{ color: T.choco2 }}>Con figura y sabor</span>
-                    <span className="font-bold" style={{ color: T.coral }}>{product.exactAvailable}</span>
-                  </div>
-                  <div className="flex justify-between items-baseline gap-2 text-xs mt-0.5">
-                    <span style={{ color: T.choco2 }}>Stock anterior <span className="opacity-70">· sin figura ni sabor</span></span>
-                    <span className="font-bold" style={{ color: T.choco }}>{product.withoutVariantDetail}</span>
-                  </div>
+                <div className="flex gap-1.5 flex-wrap mt-3">
+                  <span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: product.exactAvailable ? "#E3EFE0" : "#FBE8C8", color: product.exactAvailable ? "#3F6B42" : "#96690F" }}>{product.exactAvailable} exactas</span>
+                  <span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>{productVariants.length} {productVariants.length === 1 ? "combinación" : "combinaciones"}</span>
+                  {product.withoutVariantDetail > 0 && <span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>{product.withoutVariantDetail} sin detalle</span>}
                 </div>
-                <div className="text-[10px] font-bold mt-2" style={{ color: T.choco2 }}>{product.available > 0 ? Math.round(product.exactAvailable / product.available * 100) : 0}% del stock con figura y sabor verificables</div>
+                <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.choco2 }}><span>{coverage}% trazabilidad exacta</span><span style={{ color: T.coral }}>Ver figuras y sabores ›</span></div>
               </Card>
-            ))}
+            );})}
             {inventory.products.length === 0 && <Empty icon="🍮" text="No hay producto terminado disponible para venta." />}
           </div>
-
-          <SectionTitle>Figuras y sabores exactos</SectionTitle>
-          <div className="text-xs font-semibold mb-2" style={{ color: T.choco2 }}>
-            El stock anterior conserva el conteo físico general, pero no confirma una figura ni un sabor. Para prometer una combinación exacta debe reconciliarse o producirse con trazabilidad.
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {inventory.variants.map((variant) => {
-              const days = variant.vence ? diasEntre(hoyISO(), variant.vence) : null;
-              const expiring = days != null && days <= 3;
-              return (
-                <Card key={`${variant.productId}-${variant.figura}-${variant.sabor}-${variant.gramajeG}`} className="momo-queue-item p-4" style={{ borderColor: expiring ? "#ECBBB1" : T.border }}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: T.rosa, color: "#8E4B5A" }} aria-hidden="true">🐾</span>
-                      <div>
-                        <div className="text-sm font-bold">{variant.figura} · {variant.sabor || "Sin sabor"}</div>
-                        <div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{variant.producto}{variant.gramajeG != null ? ` · ${variant.gramajeG} g` : ""}</div>
-                      </div>
-                    </div>
-                    <div className="text-right"><div className="display text-2xl" style={{ color: T.coral }}>{variant.disponibles}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>disp.</div></div>
-                  </div>
-                  {variant.vence && <div className="text-[11px] font-bold mt-2" style={{ color: expiring ? "#A03B2A" : T.choco2 }}>Vence {variant.vence}{days != null ? ` · ${days < 0 ? "vencido" : `${days} día(s)`}` : ""}</div>}
-                </Card>
-              );
-            })}
-            {inventory.variants.length === 0 && <Empty icon="🎯" text="Los próximos desmoldes con conteo por figura aparecerán aquí." />}
-          </div>
-          {inventory.quarantinedVariants.length > 0 && (
-            <div className="mt-4 rounded-2xl p-3" style={{ background: "#FFF1EE", border: "1px solid #ECBBB1" }}>
-              <div className="text-xs font-extrabold" style={{ color: "#A03B2A" }}>Cuarentena por vencimiento</div>
-              <div className="text-xs mt-1" style={{ color: T.choco2 }}>
-                {inventory.quarantinedVariants.map((variant) => `${variant.disponibles}× ${variant.figura} · ${variant.sabor || "Sin sabor"} (${variant.producto}, venció ${variant.vence})`).join(" · ")}
-              </div>
-            </div>
-          )}
         </>
       )}
 
@@ -6593,6 +7028,9 @@ function InventarioTerminado({ db, go }) {
                     <span className="font-bold" style={{ color: "#A03B2A" }}>{batch.descartadas}</span>
                   </div>
                 </div>
+                <div className="flex gap-1.5 flex-wrap mt-2">
+                  {batch.figureOutcomes.filter((row) => row.imperfectas > 0 || row.descartadas > 0).map((row) => <span key={row.figura} className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>{row.figura}: {row.imperfectas} imperfectas{row.descartadas ? ` · ${row.descartadas} descartadas` : ""}</span>)}
+                </div>
                 <div className="text-xs font-bold mt-2" style={{ color: batch.destinationRegistered ? "#3F6B42" : "#96690F" }}>
                   {batch.destinationRegistered ? `Destino: ${batch.destino}` : "Falta definir si se reaprovechan o se descartan."}
                 </div>
@@ -6602,20 +7040,289 @@ function InventarioTerminado({ db, go }) {
           </div>
         </>
       )}
+
+      {detalleFigura && (
+        <Modal title={`Figura terminada · ${detalleFigura.figura}`} onClose={() => setDetalleFiguraNombre(null)} wide>
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Inventario exacto por figura</div>
+              <div className="display text-2xl font-semibold mt-0.5">{detalleFigura.figura}</div>
+              <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>Sabores vigentes disponibles para vender e imperfectas separadas por destino.</div>
+            </div>
+            <Badge label={detalleFigura.available > 0 ? "Disponible" : "Sin stock vendible"} map={{ Disponible: { bg: "#DDEBD9", fg: "#3F6B42" }, "Sin stock vendible": { bg: "#FBE8C8", fg: "#96690F" } }} />
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <Stat icon="✓" label="Para vender" value={detalleFigura.available} sub={`${detalleFigura.flavors.length} sabor(es)`} tone="#3F6B42" />
+            <Stat icon="🥤" label="Para malteadas" value={detalleFigura.imperfectForShakes} sub="destino ya definido" tone="#8A4D7A" />
+            <Stat icon="♻" label="Por decidir" value={detalleFigura.imperfectPending} sub="requieren destino" tone="#96690F" />
+            <Stat icon="×" label="Descartadas" value={detalleFigura.discarded} sub="no reutilizables" tone="#A03B2A" />
+          </div>
+
+          <Card className="p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF9F1,#F7ECD9)" }}>
+            <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Stock vendible</div><div className="display text-lg font-semibold">Todos los sabores de {detalleFigura.figura}</div></div><span className="text-xs font-extrabold" style={{ color: T.choco2 }}>{detalleFigura.available} unidades</span></div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {detalleFigura.flavors.map((flavor) => <div key={flavor.sabor} className="rounded-2xl border p-3 flex items-start justify-between gap-3" style={{ borderColor: T.border, background: T.surface }}><div><div className="text-sm font-extrabold">{flavor.sabor}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{flavor.gramajes.length ? flavor.gramajes.map((grams) => `${grams} g`).join(" · ") : "Gramaje sin registrar"}{flavor.nextExpiration ? ` · vence primero ${flavor.nextExpiration}` : ""}</div></div><div className="text-right shrink-0"><div className="display text-2xl" style={{ color: "#3F6B42" }}>{flavor.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>disponibles</div></div></div>)}
+              {detalleFigura.flavors.length === 0 && <div className="sm:col-span-2 text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>No hay sabores vendibles de esta figura.</div>}
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-3 mb-2"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#8A4D7A" }}>Reaprovechamiento</div><div className="display text-lg font-semibold">Imperfectas por sabor y lote</div></div><span className="text-xs font-extrabold" style={{ color: T.choco2 }}>{detalleFigura.imperfectTotal} registradas</span></div>
+            <div className="space-y-2">
+              {detalleFigura.imperfectBatches.map((batch, index) => <div key={`${batch.id}-${batch.sabor}-${index}`} className="rounded-2xl p-3 flex items-start justify-between gap-3" style={{ background: batch.forShakes ? "#F1DFEB" : batch.destinationRegistered ? "#EDF0E8" : "#FBE8C8" }}><div><div className="text-sm font-extrabold">{batch.sabor} · lote {batch.id}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{batch.forShakes ? "Para malteadas y crepas" : batch.destinationRegistered ? `Destino: ${batch.destino}` : "Destino pendiente"}{batch.fecha ? ` · ${batch.fecha}` : ""}</div></div><div className="text-right shrink-0"><div className="display text-2xl" style={{ color: batch.forShakes ? "#8A4D7A" : "#96690F" }}>{batch.imperfectas}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>imperfectas</div>{batch.descartadas > 0 && <div className="text-[9px] font-extrabold mt-0.5" style={{ color: "#A03B2A" }}>{batch.descartadas} descartadas</div>}</div></div>)}
+              {detalleFigura.imperfectBatches.length === 0 && <div className="text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>Esta figura no tiene imperfectas registradas.</div>}
+            </div>
+          </Card>
+        </Modal>
+      )}
+
+      {detalleProducto && (
+        <Modal title={`Inventario · ${detalleProducto.nombre}`} onClose={() => setDetalleProductoId(null)} wide>
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Producto terminado</div>
+              <div className="display text-2xl font-semibold mt-0.5">{detalleProducto.nombre}</div>
+              <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>Stock oficial después de reservas y cuarentena.</div>
+            </div>
+            <Badge label={detalleProducto.available > 0 ? "Disponible" : "Sin stock"} map={{ Disponible: { bg: "#DDEBD9", fg: "#3F6B42" }, "Sin stock": { bg: "#F6D4CD", fg: "#A03B2A" } }} />
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <Stat icon="✓" label="Disponibles" value={detalleProducto.available} sub="para nuevas ventas" tone="#3F6B42" />
+            <Stat icon="🐾" label="Exactas" value={detalleProducto.exactAvailable} sub="con figura y sabor" tone={T.coral} />
+            <Stat icon="◌" label="Sin detalle" value={detalleProducto.withoutVariantDetail} sub="stock legado" tone="#96690F" />
+            <Stat icon="🏷" label="Reservadas" value={detalleReservas.reduce((sum, row) => sum + Number(row.cantidad || 0), 0)} sub={`${detalleReservas.length} asignación(es)`} tone="#63518A" />
+          </div>
+
+          <Card className="p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF9F1,#F7ECD9)" }}>
+            <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Detalle vendible exacto</div><div className="display text-lg font-semibold">Figuras y sabores disponibles</div></div><span className="text-xs font-extrabold" style={{ color: T.choco2 }}>{detalleVariantes.length} {detalleVariantes.length === 1 ? "combinación" : "combinaciones"}</span></div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {detalleVariantes.map((variant) => {
+                const days = variant.vence ? diasEntre(hoyISO(), variant.vence) : null;
+                return <div key={`${variant.figura}-${variant.sabor}-${variant.gramajeG}`} className="rounded-2xl border p-3 flex items-start justify-between gap-3" style={{ borderColor: days != null && days <= 1 ? "#ECBBB1" : T.border, background: T.surface }}><div><div className="text-sm font-extrabold">{variant.figura} · {variant.sabor || "Sin sabor"}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{variant.gramajeG != null ? `${variant.gramajeG} g` : "Gramaje sin registrar"}{variant.vence ? ` · vence ${variant.vence}` : ""}</div></div><div className="text-right shrink-0"><div className="display text-2xl" style={{ color: T.coral }}>{variant.disponibles}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>disponibles</div></div></div>;
+              })}
+              {detalleVariantes.length === 0 && <div className="sm:col-span-2 rounded-2xl p-4 text-sm font-semibold" style={{ background: "#FBE8C8", color: "#7A5410" }}>Todavía no hay unidades con figura y sabor verificables para este producto. El stock sin detalle no debe prometerse como una combinación exacta.</div>}
+            </div>
+          </Card>
+
+          {detalleCuarentena.length > 0 && <Card className="p-4 mb-4" style={{ background: "#FFF5F2", borderColor: "#ECBBB1" }}><div className="text-xs font-extrabold" style={{ color: "#A03B2A" }}>Cuarentena por vencimiento</div><div className="space-y-1 mt-2">{detalleCuarentena.map((variant) => <div key={`${variant.figura}-${variant.sabor}-${variant.vence}`} className="text-xs font-semibold">{variant.disponibles}× {variant.figura} · {variant.sabor || "Sin sabor"} · venció {variant.vence}</div>)}</div></Card>}
+
+          <div className="grid lg:grid-cols-2 gap-3">
+            <Card className="p-4">
+              <div className="text-xs font-extrabold mb-2" style={{ color: T.choco2 }}>RESERVAS ACTIVAS</div>
+              <div className="space-y-2">{detalleReservas.map((reservation) => <div key={reservation.id} className="rounded-xl p-2.5 flex items-center justify-between gap-3" style={{ background: T.vainilla }}><div><div className="text-sm font-bold">{reservation.cantidad}× · pedido {reservation.orderId}</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{reservation.batchId ? `${reservation.batchId}${reservation.figuraLote ? ` · ${reservation.figuraLote}` : ""}` : "Sin lote físico exacto"}</div></div><Badge label={orderById[reservation.orderId]?.estado || "Sin pedido"} /></div>)}{detalleReservas.length === 0 && <div className="text-xs font-semibold" style={{ color: T.choco2 }}>No hay unidades reservadas.</div>}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-xs font-extrabold mb-2" style={{ color: T.choco2 }}>LOTES EN PROCESO</div>
+              <div className="space-y-2">{detalleEnProceso.map((batch) => <div key={batch.id} className="rounded-xl p-2.5 flex items-center justify-between gap-3" style={{ background: "#EDF3F8" }}><div><div className="text-sm font-bold">{batch.id} · {batch.prod || 0} unidades</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{batch.sabor || "Sin sabor"} · {Array.isArray(batch.figuras) && batch.figuras.length ? batch.figuras.map((row) => `${row.cant}× ${row.figura}`).join(" · ") : batch.figura || "Sin figura"}</div></div><Badge label={batch.estado} /></div>)}{detalleEnProceso.length === 0 && <div className="text-xs font-semibold" style={{ color: T.choco2 }}>No hay lotes activos de este producto.</div>}</div>
+            </Card>
+          </div>
+
+          {detalleImperfectas.length > 0 && <Card className="p-4 mt-3"><div className="text-xs font-extrabold mb-2" style={{ color: T.choco2 }}>IMPERFECTAS Y DESCARTADAS</div>{detalleImperfectas.map((batch) => <div key={batch.id} className="flex items-center justify-between gap-3 py-2 border-t first:border-0 text-xs" style={{ borderColor: T.border }}><span className="font-bold">{batch.id} · {batch.figura || "Sin figura"} · {batch.sabor || "Sin sabor"}</span><span style={{ color: T.choco2 }}>{batch.imperfectas} imperfectas · {batch.descartadas} descartadas</span></div>)}</Card>}
+        </Modal>
+      )}
     </div>
   );
 }
 
 /* ================= INVENTARIO DE INSUMOS ================= */
 
+function InventoryScopeTabs({ value, onChange, operationCount, reservationCount, historyCount }) {
+  const options = [
+    { id: "active", label: "Operación", count: operationCount, icon: "●" },
+    { id: "reservations", label: "Reservas", count: reservationCount, icon: "▦" },
+    { id: "history", label: "Historial", count: historyCount, icon: "◷" },
+  ];
+  return (
+    <div className="inline-flex max-w-full overflow-x-auto rounded-2xl border p-1" style={{ borderColor: T.border, background: T.vainilla }} role="tablist" aria-label="Operación, reservas e historial de Inventario">
+      {options.map((option) => {
+        const selected = value === option.id;
+        return <button key={option.id} type="button" role="tab" aria-selected={selected} onClick={() => onChange(option.id)} className="rounded-xl px-3 py-2 text-xs font-extrabold transition flex items-center gap-2 shrink-0" style={{ background: selected ? T.surface : "transparent", color: selected ? T.choco : T.choco2, boxShadow: selected ? "0 3px 10px rgba(84,56,43,.10)" : "none" }}><span aria-hidden="true" style={{ color: selected ? T.coral : T.choco2 }}>{option.icon}</span><span>{option.label}</span><span className="min-w-5 h-5 px-1 rounded-full inline-flex items-center justify-center text-[10px]" style={{ background: selected ? T.coralSoft : "rgba(255,255,255,.72)", color: selected ? "#A94D34" : T.choco2 }}>{option.count}</span></button>;
+      })}
+    </div>
+  );
+}
+
+function InventoryReservationsPanel({ dashboard, go }) {
+  const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const rowsForFilter = dashboard.reservations.filter((row) => !filter
+    || (filter === "product" && row.tipo === "producto")
+    || (filter === "supply" && row.tipo !== "producto")
+    || (filter === "attention" && row.attention));
+  const needle = query.trim().toLocaleLowerCase("es");
+  const visibleGroups = dashboard.groups.map((group) => ({
+    ...group,
+    rows: group.rows.filter((row) => rowsForFilter.includes(row)
+      && (!needle || [row.id, row.orderId, row.nombre, row.customerName, row.orderState, row.sourceLabel].join(" ").toLocaleLowerCase("es").includes(needle))),
+  })).filter((group) => group.rows.length > 0);
+  const visibleRows = visibleGroups.flatMap((group) => group.rows);
+  const productCount = dashboard.reservations.filter((row) => row.tipo === "producto").length;
+  const supplyCount = dashboard.reservations.length - productCount;
+
+  function ageLabel(hours) {
+    if (hours == null) return "antigüedad desconocida";
+    if (hours < 1) return "reservada hace menos de 1 h";
+    if (hours < 24) return `reservada hace ${hours} h`;
+    const days = Math.floor(hours / 24);
+    return `reservada hace ${days} día${days === 1 ? "" : "s"}`;
+  }
+
+  function exportReservations() {
+    downloadCSV("reservas-vigentes", ["Reserva", "Pedido", "Cliente", "Estado pedido", "Tipo", "Ítem", "Cantidad", "Fecha", "Origen", "Antigüedad horas", "Atención"], visibleRows.map((row) => [row.id, row.orderId, row.customerName, row.orderState, row.tipo, row.nombre, row.quantity, row.fecha, row.sourceLabel, row.ageHours, row.attentionReasons.join(" · ")]));
+  }
+
+  return (
+    <div className="momo-page-enter">
+      <Card className="p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF9F1,#F7ECD9)" }}>
+        <div className="grid lg:grid-cols-[1fr_auto] gap-4 items-center">
+          <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Stock comprometido</div><div className="display text-xl font-semibold mt-0.5">¿Qué es una reserva vigente?</div><div className="text-xs font-semibold mt-1 max-w-3xl" style={{ color: T.choco2 }}>Es inventario separado para un pedido pagado. Ya no está disponible para otra venta; si el pedido se cancela se libera, y cuando Cocina o Empaque lo utiliza pasa a Consumida. Aquí detectamos reservas antiguas, sin pedido o ligadas a órdenes ya cerradas.</div></div>
+          <div className="flex items-center gap-2 text-[10px] font-extrabold whitespace-nowrap"><span className="rounded-xl px-3 py-2" style={{ background: "#DDEBD9", color: "#3F6B42" }}>RESERVADA</span><span>→</span><span className="rounded-xl px-3 py-2" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>CONSUMIDA</span><span>o</span><span className="rounded-xl px-3 py-2" style={{ background: "#FBE8C8", color: "#96690F" }}>LIBERADA</span></div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Stat icon="▦" label="Reservas vigentes" value={dashboard.summary.reservations} sub="filas comprometidas" tone={T.coral} />
+        <Stat icon="🧾" label="Pedidos" value={dashboard.summary.orders} sub="órdenes con stock separado" tone="#3E5C7E" />
+        <Stat icon="#" label="Cantidad reservada" value={dashboard.summary.quantity} sub={`${dashboard.summary.exact} con lote físico exacto`} tone="#3F6B42" />
+        <Stat icon="△" label="Necesitan revisión" value={dashboard.summary.attention} sub="antiguas o inconsistentes" tone="#A03B2A" />
+      </div>
+
+      <Card className="p-3 mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {[["Todas", "", dashboard.summary.reservations], ["Producto terminado", "product", productCount], ["Insumos y empaque", "supply", supplyCount], ["Necesitan revisión", "attention", dashboard.summary.attention]].map(([label, value, count]) => {
+            const selected = filter === value;
+            return <button key={label} type="button" aria-pressed={selected} onClick={() => setFilter(value)} className="rounded-xl px-3 py-2 text-xs font-extrabold border" style={{ borderColor: selected ? T.coral : T.border, background: selected ? T.coralSoft : T.surface, color: selected ? "#A34A2A" : T.choco2 }}>{label} <span className="ml-1">{count}</span></button>;
+          })}
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pedido, cliente, ítem o lote…" className="rounded-xl px-3 py-2 text-sm border outline-none min-w-[230px] flex-1" style={inputStyle} />
+          <Btn small kind="ghost" onClick={exportReservations}>⬇ CSV</Btn>
+        </div>
+      </Card>
+
+      <div className="flex items-end justify-between gap-3 mb-3"><div><div className="display text-lg font-semibold">Reservas por pedido</div><div className="text-xs font-semibold" style={{ color: T.choco2 }}>{visibleRows.length} reserva{visibleRows.length === 1 ? "" : "s"} en {visibleGroups.length} pedido{visibleGroups.length === 1 ? "" : "s"}</div></div>{(filter || query) && <button type="button" onClick={() => { setFilter(""); setQuery(""); }} className="text-xs font-extrabold" style={{ color: T.coral }}>Limpiar filtros</button>}</div>
+      <div className="grid lg:grid-cols-2 gap-3">
+        {visibleGroups.map((group) => (
+          <Card key={group.orderId} className="momo-queue-item p-4" style={group.attention ? { borderColor: "#E9A08F", background: "#FFF9F7" } : undefined}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="display text-lg font-semibold">{group.orderId}</span><Badge label={group.orderState} />{group.attention && <span className="rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Revisar</span>}</div><div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{group.customerName} · {ageLabel(group.oldestHours)}</div></div>
+              <Btn small kind="ghost" disabled={group.orderId === "Sin pedido"} onClick={() => go?.("Pedidos", { orderId: group.orderId })}>Abrir pedido</Btn>
+            </div>
+            {group.attention && <div className="rounded-xl px-3 py-2 mt-3 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>△ {[...new Set(group.rows.flatMap((row) => row.attentionReasons))].join(" · ")}</div>}
+            <div className="mt-3 space-y-2">
+              {group.rows.map((row) => (
+                <div key={row.id} className="rounded-xl border px-3 py-2.5 flex items-start justify-between gap-3" style={{ borderColor: T.border, background: T.surface }}>
+                  <div className="min-w-0"><div className="text-sm font-bold">{row.quantity}× {row.nombre}</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{row.id} · {row.tipo === "producto" ? "Producto terminado" : "Insumo / empaque"} · {row.sourceLabel}</div></div>
+                  <time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{row.fecha}</time>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+        {!visibleGroups.length && <Empty icon="▦" text="No hay reservas vigentes con esos filtros." />}
+      </div>
+    </div>
+  );
+}
+
+function InventoryHistoryPanel({ entries, go }) {
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [limit, setLimit] = useState(50);
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase("es");
+    return entries.filter((entry) => {
+      const haystack = [entry.sourceId, entry.type, entry.item, entry.orderId, entry.status, entry.note].join(" ").toLocaleLowerCase("es");
+      const day = entry.at.slice(0, 10);
+      return (!needle || haystack.includes(needle))
+        && (!kind || entry.kind === kind)
+        && (!from || day >= from)
+        && (!to || day <= to);
+    });
+  }, [entries, query, kind, from, to]);
+  useEffect(() => { setLimit(50); }, [query, kind, from, to]);
+  const visible = filtered.slice(0, limit);
+  const movementCount = entries.filter((entry) => entry.kind === "movement").length;
+  const reservationCount = entries.filter((entry) => entry.kind === "reservation").length;
+  const wasteCount = entries.filter((entry) => entry.kind === "movement" && entry.type === "Merma").length;
+
+  function exportHistory() {
+    downloadCSV("historial-inventario", ["Fecha", "Origen", "ID", "Tipo", "Ítem", "Cantidad", "Pedido", "Estado", "Nota"], filtered.map((entry) => [entry.at, entry.kind === "movement" ? "Movimiento" : "Reserva", entry.sourceId, entry.type, entry.item, entry.quantity, entry.orderId, entry.status, entry.note]));
+  }
+
+  const statusMap = {
+    Entrada: { bg: "#DDEBD9", fg: "#3F6B42" },
+    Salida: { bg: "#DCE7F2", fg: "#3E5C7E" },
+    Ajuste: { bg: "#EBE6E0", fg: "#7A6E63" },
+    Merma: { bg: "#F6D4CD", fg: "#A03B2A" },
+    "Uso en producción": { bg: "#E8E0F2", fg: "#63518A" },
+    Consumida: { bg: "#DDEBD9", fg: "#3F6B42" },
+    Liberada: { bg: "#FBE8C8", fg: "#96690F" },
+  };
+
+  return (
+    <div className="momo-page-enter">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Stat icon="◷" label="Registros" value={entries.length} sub="rastro de inventario" tone={T.coral} />
+        <Stat icon="↕" label="Movimientos" value={movementCount} sub="entradas, usos y ajustes" tone="#3E5C7E" />
+        <Stat icon="▦" label="Reservas cerradas" value={reservationCount} sub="consumidas o liberadas" tone="#3F6B42" />
+        <Stat icon="△" label="Mermas" value={wasteCount} sub="retiros trazables" tone="#A03B2A" />
+      </div>
+
+      <Card className="p-3 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          {[["Todos", ""], ["Movimientos", "movement"], ["Reservas cerradas", "reservation"]].map(([label, value]) => {
+            const selected = kind === value;
+            const count = value === "movement" ? movementCount : value === "reservation" ? reservationCount : entries.length;
+            return <button key={label} type="button" aria-pressed={selected} onClick={() => setKind(value)} className="rounded-xl px-3 py-2 text-xs font-extrabold border" style={{ borderColor: selected ? T.coral : T.border, background: selected ? T.coralSoft : T.surface, color: selected ? "#A34A2A" : T.choco2 }}>{label} <span className="ml-1">{count}</span></button>;
+          })}
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_150px_150px_auto_auto] gap-2 items-center">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar insumo, pedido, movimiento o nota…" className="rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
+          <input type="date" aria-label="Inventario desde" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle} />
+          <input type="date" aria-label="Inventario hasta" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-xl px-3 py-2 text-xs border font-bold" style={inputStyle} />
+          <Btn small kind="ghost" onClick={exportHistory}>⬇ CSV</Btn>
+          <Btn small kind="ghost" onClick={() => go?.("Historial operativo")}>Historial central</Btn>
+        </div>
+      </Card>
+
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div><div className="display text-lg font-semibold">Bitácora de Inventario</div><div className="text-xs font-semibold" style={{ color: T.choco2 }}>{filtered.length} registro{filtered.length === 1 ? "" : "s"} · nada se elimina al salir de Operación</div></div>
+        {(query || kind || from || to) && <button type="button" className="text-xs font-extrabold" style={{ color: T.coral }} onClick={() => { setQuery(""); setKind(""); setFrom(""); setTo(""); }}>Limpiar filtros</button>}
+      </div>
+      <Card className="overflow-hidden">
+        <div className="divide-y" style={{ borderColor: T.border }}>
+          {visible.map((entry) => (
+            <div key={entry.id} className="p-3 sm:p-4 flex gap-3 items-start" style={{ borderColor: T.border }}>
+              <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center text-base font-black" style={{ background: entry.kind === "reservation" ? "#F7ECD9" : entry.type === "Merma" ? "#F6D4CD" : entry.quantity >= 0 ? "#DDEBD9" : "#DCE7F2", color: entry.kind === "reservation" ? "#96690F" : entry.type === "Merma" ? "#A03B2A" : T.choco }}>{entry.kind === "reservation" ? "▦" : entry.quantity >= 0 ? "+" : "−"}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2"><span className="font-bold text-sm">{entry.item}</span><Badge label={entry.status} map={statusMap} /></div>
+                <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{entry.kind === "reservation" ? `Reserva ${entry.sourceId}${entry.orderId ? ` · pedido ${entry.orderId}` : ""}` : `${entry.type} · ${entry.sourceId}`}{entry.note ? ` · ${entry.note}` : ""}</div>
+              </div>
+              <div className="text-right shrink-0"><div className="display text-lg" style={{ color: entry.quantity < 0 || entry.type === "Merma" ? "#A03B2A" : T.coral, fontVariantNumeric: "tabular-nums" }}>{entry.quantityLabel}</div><time className="text-[10px] font-bold block" style={{ color: T.choco2 }}>{entry.at || "Sin fecha"}</time></div>
+            </div>
+          ))}
+          {!visible.length && <div className="p-10 text-center"><div className="text-3xl mb-2">⌕</div><div className="font-bold">No hay registros con esos filtros</div><div className="text-xs mt-1" style={{ color: T.choco2 }}>Probá otra fecha, tipo o término de búsqueda.</div></div>}
+        </div>
+      </Card>
+      {visible.length < filtered.length && <div className="mt-3 text-center"><Btn kind="ghost" onClick={() => setLimit((value) => value + 50)}>Ver 50 registros más</Btn></div>}
+    </div>
+  );
+}
+
 function Inventario({ db, update, user, focus, refrescar, go }) {
+  const [scope, setScope] = useState("active");
+  const [asistenteComprasAbierto, setAsistenteComprasAbierto] = useState(false);
+  const [detalleInsumoId, setDetalleInsumoId] = useState(null);
   const [mov, setMov] = useState(false);
   const [desecharVencido, setDesecharVencido] = useState(null);
   const [motivoDesecho, setMotivoDesecho] = useState("");
   const [nuevoIns, setNuevoIns] = useState(false);
   const [fi, setFi] = useState({ nombre: "", cat: "", unidad: "und", stock: "", min: "", costoTotal: "", proveedor: "", vence: "", ubicacion: "" });
   const [errIns, setErrIns] = useState("");
-  const [form, setForm] = useState({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "" });
+  const [form, setForm] = useState({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "", suggestionIds: [] });
   const [fCat, setFCat] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [avisoInv, setAvisoInv] = useState(null);
@@ -6660,7 +7367,26 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
       proveedor: item.proveedor || "",
       ubicacion: item.ubicacion || "",
       nota: tipo === "Entrada" ? "Compra de inventario" : "",
+      suggestionIds: [],
     });
+    setMov(true);
+  }
+
+  function abrirCompraAsistida(recommendation) {
+    const item = db.inventory_items.find((candidate) => candidate.id === recommendation.itemId);
+    if (!item) return;
+    setForm({
+      tipo: "Entrada",
+      item: item.nombre,
+      cant: String(recommendation.quantity),
+      precio: "",
+      vence: "",
+      proveedor: recommendation.supplier === "Proveedor por definir" ? "" : recommendation.supplier,
+      ubicacion: recommendation.location || item.ubicacion || "",
+      nota: `Compra sugerida por MOMOS OPS · ${recommendation.reasons.join(" · ")}`,
+      suggestionIds: recommendation.suggestionIds || [],
+    });
+    setAsistenteComprasAbierto(false);
     setMov(true);
   }
 
@@ -6687,27 +7413,67 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
   }).length;
   const valorStock = db.inventory_items.reduce((acc, i) => acc + Number(i.stock || 0) * Number(i.costo || 0), 0);
   const reposicionPendiente = db.production_suggestions.filter((s) => s.area === "Inventario" && s.estado === "Pendiente").length;
+  const reservationBuckets = useMemo(() => partitionByActivity(db.inventory_reservations || [], isActiveInventoryReservation), [db.inventory_reservations]);
+  const activeReservations = useMemo(() => [...reservationBuckets.active].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || ""))), [reservationBuckets.active]);
+  const reservationDashboard = useMemo(() => buildActiveReservationDashboard(db), [db.inventory_reservations, db.orders, db.customers]);
+  const inventoryHistory = useMemo(() => buildInventoryHistory(db), [db.inventory_movements, db.inventory_reservations]);
+  const purchaseAssistant = useMemo(() => buildPurchaseAssistant({
+    inventoryItems: db.inventory_items,
+    inventoryLots: db.inventory_lots,
+    inventoryLotsReady: db.inventoryLotsReady,
+    subrecipes: db.subrecetas,
+    suggestions: db.production_suggestions,
+    movements: db.inventory_movements,
+    today: hoyISO(),
+  }), [db.inventory_items, db.inventory_lots, db.inventoryLotsReady, db.subrecetas, db.production_suggestions, db.inventory_movements]);
+  const activeAttentionCount = bajoMinimo + porVencerInv + reposicionPendiente;
+  const detalleInsumo = detalleInsumoId ? db.inventory_items.find((item) => item.id === detalleInsumoId) : null;
+
+  function estadoInsumo(item) {
+    const supply = inventorySupplyMode(item, db.subrecetas || []);
+    const lotesListos = Boolean(db.inventoryLotsReady);
+    const lotSummary = buildIngredientLotSummary(item.id, db.inventory_lots || [], hoyISO());
+    const diasVence = item.vence ? diasEntre(hoyISO(), item.vence) : null;
+    const vencidoLegacy = diasVence != null && diasVence < 0;
+    const vencido = lotesListos ? lotSummary.expiredStock > 0 : vencidoLegacy;
+    const todoVencido = lotesListos ? lotSummary.expiredStock > 0 && lotSummary.usableStock === 0 : vencidoLegacy;
+    const venceHoy = lotesListos ? lotSummary.usable.some((lot) => lot.status === "Vence hoy") : diasVence === 0;
+    const proximoVence = lotesListos ? lotSummary.nextExpiry : item.vence;
+    const diasProximo = proximoVence ? diasEntre(hoyISO(), proximoVence) : null;
+    return { supply, lotesListos, lotSummary, vencido, todoVencido, venceHoy, proximoVence, vencePronto: diasProximo != null && diasProximo > 0 && diasProximo <= 5, bajo: Number(item.min) > 0 && Number(item.stock) <= Number(item.min) };
+  }
+
+  const detalleEstado = detalleInsumo ? estadoInsumo(detalleInsumo) : null;
+  const detalleMovimientos = detalleInsumo ? (db.inventory_movements || []).filter((movement) => movement.item === detalleInsumo.nombre).slice(0, 12) : [];
+  const detalleReservas = detalleInsumo ? (db.inventory_reservations || []).filter((reservation) => isActiveInventoryReservation(reservation) && (reservation.refId === detalleInsumo.id || reservation.nombre === detalleInsumo.nombre)) : [];
 
   return (
     <div>
-      <SectionTitle>Inventario de insumos</SectionTitle>
+      <SectionTitle action={<InventoryScopeTabs value={scope} onChange={setScope} operationCount={activeAttentionCount} reservationCount={activeReservations.length} historyCount={inventoryHistory.length} />}>Inventario de insumos</SectionTitle>
       <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
-        Lo que entra, se usa y se repone. El stock oficial descuenta consumos; el mínimo dispara la reposición.
+        {scope === "active" ? "Lo que requiere atención ahora: stock, vencimientos y reposición." : scope === "reservations" ? "Stock comprometido por pedidos pagados, con su origen, antigüedad y alertas." : "Movimientos y reservas cerradas, ordenados para consultar sin cargar la operación diaria."}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {scope === "active" ? <>
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
         <Stat icon="📦" label="Insumos" value={totalInsumos} sub="en catálogo" tone={T.coral} />
         <Stat icon="⚠️" label="Bajo mínimo" value={bajoMinimo} sub="requieren reposición" tone="#A03B2A" />
         <Stat icon="⏳" label="Por vencer" value={porVencerInv} sub="en 7 días o menos" tone="#96690F" />
         <Stat icon="💰" label="Valor en stock" value={fmt(valorStock)} sub="a costo de compra" tone="#3F6B42" />
       </div>
-      <div className="text-[11px] font-semibold mt-2 mb-4" style={{ color: T.choco2 }}>
-        Reposición sugerida: <b style={{ color: T.coral }}>{reposicionPendiente}</b> insumo(s) esperan compra o preparación.
-      </div>
+      <Card className="p-4 mt-3 mb-4" onClick={() => setAsistenteComprasAbierto(true)} style={{ background: "linear-gradient(135deg,#FFF5E8,#FFFFFF)", borderColor: purchaseAssistant.summary.urgent ? "#E7B36E" : T.border }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0" style={{ background: T.vainilla }} aria-hidden="true">🛒</span>
+            <div className="min-w-0"><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Asistente de compras</div><div className="display text-lg font-semibold mt-0.5">{purchaseAssistant.summary.items ? `${purchaseAssistant.summary.items} insumo${purchaseAssistant.summary.items === 1 ? "" : "s"} para revisar` : "No hace falta comprar hoy"}</div><div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>{purchaseAssistant.summary.items ? `${purchaseAssistant.summary.urgent} urgente${purchaseAssistant.summary.urgent === 1 ? "" : "s"} · presupuesto estimado ${fmt(purchaseAssistant.summary.estimatedCost)} · nunca compra sin tu confirmación` : "El stock utilizable cubre los mínimos y no hay faltantes de pedidos."}</div></div>
+          </div>
+          <span className="text-xs font-extrabold shrink-0" style={{ color: T.coral }}>{purchaseAssistant.summary.items ? "Ver lista sugerida ›" : "Ver análisis ›"}</span>
+        </div>
+      </Card>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <Btn onClick={() => { setFi({ nombre: "", cat: "", unidad: "und", stock: "", min: "", costoTotal: "", proveedor: "", vence: "", ubicacion: "" }); setErrIns(""); setNuevoIns(true); }}>＋ Nuevo insumo</Btn>
-        <Btn kind="soft" onClick={() => setMov(true)}>＋ Registrar movimiento</Btn>
+        <Btn kind="soft" onClick={() => { setForm({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "", suggestionIds: [] }); setMov(true); }}>＋ Registrar movimiento</Btn>
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
       </div>
 
@@ -6726,11 +7492,15 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
       </div>
 
       {(() => {
-        const compras = db.production_suggestions.filter((s) => s.area === "Inventario" && s.estado === "Pendiente");
+        const compras = db.production_suggestions.filter((s) => {
+          if (s.area !== "Inventario" || s.estado !== "Pendiente") return false;
+          const item = db.inventory_items.find((candidate) => candidate.id === s.itemId || candidate.nombre === s.producto);
+          return inventorySupplyMode(item, db.subrecetas || []).kind === "prepared";
+        });
         if (compras.length === 0) return null;
         return (
           <div className="mb-4">
-            <SectionTitle>🧭 Reposición sugerida</SectionTitle>
+            <SectionTitle>🥣 Preparaciones internas pendientes</SectionTitle>
             <div className="grid sm:grid-cols-2 gap-2">
               {compras.map((sg) => {
                 const item = db.inventory_items.find((candidate) => candidate.id === sg.itemId || candidate.nombre === sg.producto);
@@ -6768,22 +7538,11 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {lista.map((i) => {
-          const supply = inventorySupplyMode(i, db.subrecetas || []);
-          const bajo = i.stock < i.min;
-          const lotesListos = Boolean(db.inventoryLotsReady);
-          const lotSummary = buildIngredientLotSummary(i.id, db.inventory_lots || [], hoyISO());
-          const diasVence = i.vence ? diasEntre(hoyISO(), i.vence) : null;
-          const vencidoLegacy = diasVence != null && diasVence < 0;
-          const vencido = lotesListos ? lotSummary.expiredStock > 0 : vencidoLegacy;
-          const todoVencido = lotesListos ? lotSummary.expiredStock > 0 && lotSummary.usableStock === 0 : vencidoLegacy;
-          const venceHoy = lotesListos ? lotSummary.usable.some((lot) => lot.status === "Vence hoy") : diasVence === 0;
-          const proximoVence = lotesListos ? lotSummary.nextExpiry : i.vence;
-          const diasProximo = proximoVence ? diasEntre(hoyISO(), proximoVence) : null;
-          const vencePronto = diasProximo != null && diasProximo > 0 && diasProximo <= 5;
+          const { supply, lotesListos, lotSummary, vencido, todoVencido, venceHoy, proximoVence, vencePronto, bajo } = estadoInsumo(i);
           const hl = highlightId === i.id;
           return (
             <div key={i.id} ref={hl ? highlightRef : null} className="rounded-2xl" style={hl ? { boxShadow: `0 0 0 3px ${T.coral}` } : undefined}>
-            <Card className="momo-queue-item p-4" style={todoVencido ? { borderColor: "#D66A59", background: "#FFF5F2" } : vencido || venceHoy ? { borderColor: "#E9A45F", background: vencido ? "#FFFAF2" : undefined } : undefined}>
+            <Card className="momo-queue-item p-4" onClick={() => setDetalleInsumoId(i.id)} aria-label={`Abrir detalle de ${i.nombre}`} style={todoVencido ? { borderColor: "#D66A59", background: "#FFF5F2" } : vencido || venceHoy ? { borderColor: "#E9A45F", background: vencido ? "#FFFAF2" : undefined } : undefined}>
               <div className="flex justify-between items-start gap-2">
                 <div className="font-bold text-sm leading-tight">{i.nombre}</div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: T.vainilla, color: T.choco2 }}>{i.cat}</span>
@@ -6791,9 +7550,6 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
               <div className="flex items-end gap-1 mt-2">
                 <span className="display text-2xl" style={{ color: bajo ? "#A03B2A" : T.coral }}>{i.stock}</span>
                 <span className="text-xs font-semibold mb-1" style={{ color: T.choco2 }}>{i.unidad} · mín {i.min}</span>
-              </div>
-              <div className="text-xs mt-1" style={{ color: T.choco2 }}>
-                {fmt(i.costo)}/{i.unidad} · {i.proveedor}<br />{i.ubicacion}{i.vence && ` · vence ${i.vence}`}
               </div>
               <div className="flex gap-1.5 mt-2 flex-wrap">
                 {supply.kind === "prepared" && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ background: "#E8E0F2", color: "#63518A" }}>🥣 Elaboración interna</span>}
@@ -6804,86 +7560,107 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
                 {vencePronto && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>Vence pronto</span>}
                 {i.costoEstimado && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>≈ costo estimado</span>}
               </div>
-              {lotesListos && lotSummary.active.length > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  {lotSummary.active.slice(0, 4).map((lot) => (
-                    <div key={lot.id} className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: lot.status === "Vencido" ? "#FFF0EC" : "#F4F8F1", color: lot.status === "Vencido" ? "#A03B2A" : "#3F6B42" }}>
-                      <span>{lot.id} · {lot.available} {i.unidad} · {lot.expiresAt ? `vence ${lot.expiresAt}` : "sin vencimiento"}</span>
-                      {lot.status === "Vencido" && ["Administrador","Cocina"].includes(user) && (
-                        <button className="underline font-extrabold" onClick={() => {
-                          setMotivoDesecho(`Vencido desde ${lot.expiresAt}`);
-                          setDesecharVencido({ ...lot, itemName: i.nombre, unit: i.unidad });
-                        }}>Desechar</button>
-                      )}
-                    </div>
-                  ))}
-                  {lotSummary.active.length > 4 && <div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>＋ {lotSummary.active.length - 4} lote(s) más</div>}
-                </div>
-              )}
-              <div className="flex gap-2 mt-3 pt-3 border-t flex-wrap" style={{ borderColor: T.border }}>
-                {supply.kind === "prepared"
-                  ? <Btn small kind="soft" disabled={!supply.canPrepare} onClick={() => abrirPreparacion(i)}>🥣 Preparar tanda</Btn>
-                  : <Btn small kind="soft" onClick={() => abrirMovimiento(i, "Entrada")}>＋ Registrar compra</Btn>}
-                <Btn small kind="ghost" onClick={() => abrirMovimiento(i, "Ajuste")}>Otro movimiento</Btn>
-                {!lotesListos && vencido && Number(i.stock) > 0 && ["Administrador","Cocina"].includes(user) && (
-                  <Btn small kind="danger" onClick={() => {
-                    setMotivoDesecho(`Vencido desde ${i.vence}`);
-                    setDesecharVencido({ itemId: i.id, itemName: i.nombre, available: Number(i.stock), unit: i.unidad, expiresAt: i.vence });
-                  }}>Desechar vencido</Btn>
-                )}
-              </div>
+              <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.choco2 }}><span>{lotesListos ? `${lotSummary.active.length} lote${lotSummary.active.length === 1 ? "" : "s"}` : "Stock consolidado"}{proximoVence ? ` · próximo ${proximoVence}` : ""}</span><span style={{ color: T.coral }}>Abrir detalle ›</span></div>
             </Card>
             </div>
           );
         })}
       </div>
 
-      <SectionTitle>Reservas de inventario por pedidos</SectionTitle>
-      {db.inventory_reservations.length === 0 ? (
-        <Card className="p-4">
-          <span className="text-sm font-semibold" style={{ color: T.choco2 }}>Sin reservas aún. Al marcar un pedido como Pagado, el stock reservado aparecerá aquí; si el pedido se cancela, la reserva se libera y el stock vuelve solo.</span>
-        </Card>
-      ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
-            <thead><tr className="text-left text-xs" style={{ color: T.choco2 }}>
-              {["Reserva","Pedido","Ítem","Cantidad","Fecha","Estado"].map((h) => <th key={h} className="px-3 py-3 font-bold">{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {db.inventory_reservations.slice(0, 20).map((r) => (
-                <tr key={r.id} className="border-t" style={{ borderColor: T.border }}>
-                  <td className="px-3 py-2 text-xs font-bold">{r.id}</td>
-                  <td className="px-3 py-2 text-xs">{r.orderId}</td>
-                  <td className="px-3 py-2 font-semibold">{r.nombre}</td>
-                  <td className="px-3 py-2 font-bold">{r.cantidad}</td>
-                  <td className="px-3 py-2 text-xs">{r.fecha}</td>
-                  <td className="px-3 py-2"><Badge label={r.estado} /></td>
-                </tr>
+      <Card className="p-4 mt-5" onClick={() => setScope("reservations")}>
+        <div className="flex items-center justify-between gap-4">
+          <div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Stock comprometido</div><div className="font-bold mt-0.5">{activeReservations.length} reserva{activeReservations.length === 1 ? "" : "s"} vigente{activeReservations.length === 1 ? "" : "s"} en {reservationDashboard.summary.orders} pedido{reservationDashboard.summary.orders === 1 ? "" : "s"}</div><div className="text-xs font-semibold mt-0.5" style={{ color: T.choco2 }}>Abrí Reservas para consultar lote físico, antigüedad y alertas por pedido.</div></div>
+          <span className="text-xl" style={{ color: T.coral }}>›</span>
+        </div>
+      </Card>
+      </> : scope === "reservations" ? <InventoryReservationsPanel dashboard={reservationDashboard} go={go} /> : <InventoryHistoryPanel entries={inventoryHistory} go={go} />}
+
+      {asistenteComprasAbierto && (
+        <Modal title="Asistente de compras" onClose={() => setAsistenteComprasAbierto(false)} wide>
+          <div className="rounded-3xl border p-4 sm:p-5 mb-4" style={{ background: "linear-gradient(135deg,#FFF5E8,#FFFFFF)", borderColor: T.border }}>
+            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Decisión explicable</div>
+            <div className="display text-2xl font-semibold mt-1">Qué conviene comprar hoy</div>
+            <div className="text-sm font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>MOMO OPS cruza stock utilizable, lotes vencidos, mínimos, consumo reciente y faltantes reales de pedidos. La cantidad queda editable y nada entra al inventario hasta que confirmes la compra física.</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Insumos</div><div className="display text-xl mt-0.5" style={{ color: T.coral }}>{purchaseAssistant.summary.items}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Urgentes</div><div className="display text-xl mt-0.5" style={{ color: purchaseAssistant.summary.urgent ? "#A03B2A" : "#3F6B42" }}>{purchaseAssistant.summary.urgent}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Proveedores</div><div className="display text-xl mt-0.5">{purchaseAssistant.suppliers.length}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Presupuesto</div><div className="display text-lg mt-0.5" style={{ color: "#3F6B42" }}>{fmt(purchaseAssistant.summary.estimatedCost)}</div></div>
+            </div>
+          </div>
+
+          {purchaseAssistant.recommendations.length === 0 ? (
+            <div className="rounded-3xl p-8 text-center" style={{ background: "#E5F0E1" }}><div className="text-3xl">✓</div><div className="display text-xl mt-2">Compras al día</div><div className="text-sm font-semibold mt-1" style={{ color: "#3F6B42" }}>No hay faltantes ni insumos externos por debajo de su cobertura mínima.</div></div>
+          ) : (
+            <div className="space-y-4">
+              {purchaseAssistant.suppliers.map((group) => (
+                <Card key={group.supplier} className="p-4">
+                  <div className="flex items-start justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Proveedor</div><div className="display text-lg font-semibold">{group.supplier}</div></div><div className="text-right"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Estimado</div><div className="font-extrabold" style={{ color: "#3F6B42" }}>{fmt(group.estimatedCost)}</div></div></div>
+                  <div className="space-y-2">
+                    {group.items.map((recommendation) => (
+                      <div key={recommendation.itemId} className="rounded-2xl border p-3 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: recommendation.priority === "Urgente" ? "#E8B7AD" : T.border, background: recommendation.priority === "Urgente" ? "#FFF7F4" : T.surface }}>
+                        <div className="flex-1 min-w-0"><div className="flex flex-wrap items-center gap-2"><div className="font-extrabold">{recommendation.name}</div><Badge label={recommendation.priority} map={{ Urgente: { bg: "#F6D4CD", fg: "#A03B2A" }, Alta: { bg: "#FBE8C8", fg: "#96690F" }, Revisar: { bg: T.vainilla, fg: T.choco2 } }} /></div><div className="text-xs font-bold mt-1" style={{ color: T.choco2 }}>Comprar <b style={{ color: T.coral }}>{recommendation.quantity} {recommendation.unit}</b> · quedan {recommendation.current} · mínimo {recommendation.minimum}</div><div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>{recommendation.reasons.join(" · ")}</div></div>
+                        <div className="flex sm:flex-col sm:items-end justify-between gap-2 shrink-0"><div className="text-xs font-extrabold" style={{ color: "#3F6B42" }}>≈ {fmt(recommendation.estimatedCost)}</div><Btn small onClick={() => abrirCompraAsistida(recommendation)}>Preparar compra</Btn></div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
               ))}
-            </tbody>
-          </table>
-        </Card>
+            </div>
+          )}
+          {purchaseAssistant.summary.internalPending > 0 && <div className="rounded-2xl px-4 py-3 mt-4 text-xs font-bold" style={{ background: "#EEE8F5", color: "#63518A" }}>🥣 {purchaseAssistant.summary.internalPending} faltante{purchaseAssistant.summary.internalPending === 1 ? "" : "s"} corresponde{purchaseAssistant.summary.internalPending === 1 ? "" : "n"} a elaboraciones internas. No aparecen como compra: se atienden preparando una tanda en Cocina.</div>}
+          {purchaseAssistant.internalNeedsSetup.length > 0 && <div className="rounded-2xl px-4 py-3 mt-3 text-xs font-bold" style={{ background: "#FFF0DD", color: "#7B5410" }}>⚙ {purchaseAssistant.internalNeedsSetup.map((row) => row.name).join(", ")} {purchaseAssistant.internalNeedsSetup.length === 1 ? "está marcada" : "están marcadas"} como producción propia, pero {purchaseAssistant.internalNeedsSetup.length === 1 ? "le falta" : "les falta"} una fórmula activa. MOMOS OPS no {purchaseAssistant.internalNeedsSetup.length === 1 ? "la" : "las"} enviará a compras hasta corregir esa ficha.</div>}
+        </Modal>
       )}
 
-      <SectionTitle>Movimientos recientes</SectionTitle>
-      <Card className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs" style={{ color: T.choco2 }}>
-            {["Fecha","Tipo","Ítem","Cantidad","Nota"].map((h) => <th key={h} className="px-3 py-3 font-bold">{h}</th>)}
-          </tr></thead>
-          <tbody>
-            {db.inventory_movements.slice(0, 25).map((m) => (
-              <tr key={m.id} className="border-t" style={{ borderColor: T.border }}>
-                <td className="px-3 py-2 text-xs">{m.fecha}</td>
-                <td className="px-3 py-2"><Badge label={m.tipo} map={{ "Entrada": { bg: "#DDEBD9", fg: "#3F6B42" }, "Salida": { bg: "#DCE7F2", fg: "#3E5C7E" }, "Ajuste": { bg: "#EBE6E0", fg: "#7A6E63" }, "Merma": { bg: "#F6D4CD", fg: "#A03B2A" }, "Uso en producción": { bg: "#E8E0F2", fg: "#63518A" } }} /></td>
-                <td className="px-3 py-2 font-semibold">{m.item}</td>
-                <td className="px-3 py-2 font-bold">{m.cant}</td>
-                <td className="px-3 py-2 text-xs" style={{ color: T.choco2 }}>{m.nota}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {detalleInsumo && detalleEstado && (
+        <Modal title={`Insumo · ${detalleInsumo.nombre}`} onClose={() => setDetalleInsumoId(null)} wide>
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>{detalleInsumo.cat}</div><div className="display text-2xl font-semibold mt-0.5">{detalleInsumo.nombre}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{detalleEstado.supply.kind === "prepared" ? "Elaboración interna preparada en Cocina" : "Insumo comprado a proveedor"}</div></div>
+            <div className="flex gap-1.5 flex-wrap">{detalleEstado.bajo && <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Stock bajo</span>}{detalleEstado.todoVencido && <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full" style={{ background: "#A03B2A", color: "#fff" }}>Vencido · no usar</span>}{detalleEstado.vencePronto && <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full" style={{ background: "#FBE8C8", color: "#96690F" }}>Vence pronto</span>}</div>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <Stat icon="📦" label="Stock total" value={`${detalleInsumo.stock} ${detalleInsumo.unidad}`} sub={`mínimo ${detalleInsumo.min}`} tone={detalleEstado.bajo ? "#A03B2A" : T.coral} />
+            <Stat icon="✓" label="Stock utilizable" value={`${detalleEstado.lotesListos ? detalleEstado.lotSummary.usableStock : detalleEstado.todoVencido ? 0 : detalleInsumo.stock} ${detalleInsumo.unidad}`} sub="vigente para operación" tone="#3F6B42" />
+            <Stat icon="△" label="En cuarentena" value={`${detalleEstado.lotesListos ? detalleEstado.lotSummary.expiredStock : detalleEstado.todoVencido ? detalleInsumo.stock : 0} ${detalleInsumo.unidad}`} sub="vencido, no utilizar" tone="#A03B2A" />
+            <Stat icon="▦" label="Reservado" value={detalleReservas.reduce((sum, row) => sum + Number(row.cantidad || 0), 0)} sub={`${detalleReservas.length} pedido(s)`} tone="#63518A" />
+          </div>
+
+          <Card className="p-4 mb-4">
+            <div className="text-xs font-extrabold mb-3" style={{ color: T.choco2 }}>FICHA DEL INSUMO</div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-3 text-xs">
+              <div><div className="font-semibold" style={{ color: T.choco2 }}>Costo unitario</div><div className="font-bold mt-0.5">{fmt(detalleInsumo.costo)} / {detalleInsumo.unidad}</div></div>
+              <div><div className="font-semibold" style={{ color: T.choco2 }}>Proveedor</div><div className="font-bold mt-0.5">{detalleInsumo.proveedor || "Sin registrar"}</div></div>
+              <div><div className="font-semibold" style={{ color: T.choco2 }}>Ubicación</div><div className="font-bold mt-0.5">{detalleInsumo.ubicacion || "Sin registrar"}</div></div>
+              <div><div className="font-semibold" style={{ color: T.choco2 }}>Próximo vencimiento</div><div className="font-bold mt-0.5">{detalleEstado.proximoVence || "Sin vencimiento"}</div></div>
+            </div>
+          </Card>
+
+          <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-3 mb-4">
+            <Card className="p-4">
+              <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-xs font-extrabold" style={{ color: T.choco2 }}>LOTES DEL INSUMO</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>FIFO usa primero el lote vigente que vence antes.</div></div><span className="text-xs font-extrabold" style={{ color: T.coral }}>{detalleEstado.lotSummary.active.length}</span></div>
+              <div className="space-y-2">{detalleEstado.lotesListos && detalleEstado.lotSummary.active.map((lot) => <div key={lot.id} className="rounded-xl border p-3" style={{ borderColor: lot.status === "Vencido" ? "#ECBBB1" : T.border, background: lot.status === "Vencido" ? "#FFF5F2" : T.surface }}><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-bold">{lot.id} · {lot.available} {detalleInsumo.unidad}</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{lot.expiresAt ? `Vence ${lot.expiresAt}` : "Sin vencimiento"}{lot.supplier ? ` · ${lot.supplier}` : ""}{lot.location ? ` · ${lot.location}` : ""}</div></div><Badge label={lot.status} map={{ Disponible: { bg: "#DDEBD9", fg: "#3F6B42" }, "Vence hoy": { bg: "#FBE8C8", fg: "#96690F" }, Vencido: { bg: "#F6D4CD", fg: "#A03B2A" } }} /></div>{lot.status === "Vencido" && ["Administrador","Cocina"].includes(user) && <div className="mt-2"><Btn small kind="danger" onClick={() => { setMotivoDesecho(`Vencido desde ${lot.expiresAt}`); setDesecharVencido({ ...lot, itemName: detalleInsumo.nombre, unit: detalleInsumo.unidad }); }}>Desechar este lote</Btn></div>}</div>)}{!detalleEstado.lotesListos && <div className="rounded-xl p-3 text-xs font-semibold" style={{ background: T.vainilla, color: T.choco2 }}>Este insumo conserva stock consolidado anterior a la trazabilidad por lotes.</div>}{detalleEstado.lotesListos && detalleEstado.lotSummary.active.length === 0 && <div className="text-xs font-semibold" style={{ color: T.choco2 }}>No hay lotes con saldo disponible.</div>}</div>
+            </Card>
+
+            <Card className="p-4">
+              <div className="text-xs font-extrabold mb-3" style={{ color: T.choco2 }}>RESERVAS VIGENTES</div>
+              <div className="space-y-2">{detalleReservas.map((reservation) => <div key={reservation.id} className="rounded-xl px-3 py-2.5 flex items-center justify-between gap-3" style={{ background: T.vainilla }}><div><div className="text-sm font-bold">{reservation.cantidad} {detalleInsumo.unidad} · {reservation.orderId}</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{reservation.id} · {reservation.fecha}</div></div><Badge label={reservation.estado} /></div>)}{detalleReservas.length === 0 && <div className="text-xs font-semibold" style={{ color: T.choco2 }}>No hay stock de este insumo comprometido por pedidos.</div>}</div>
+            </Card>
+          </div>
+
+          <Card className="p-4 mb-4">
+            <div className="flex items-center justify-between gap-3 mb-2"><div><div className="text-xs font-extrabold" style={{ color: T.choco2 }}>MOVIMIENTOS RECIENTES</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>Entradas, usos, ajustes y mermas de este insumo.</div></div><span className="text-xs font-extrabold" style={{ color: T.coral }}>{detalleMovimientos.length}</span></div>
+            <div>{detalleMovimientos.map((movement) => <div key={movement.id} className="flex items-start justify-between gap-3 py-2 border-t first:border-0 text-xs" style={{ borderColor: T.border }}><div><div className="font-bold">{movement.tipo} · {movement.cant}</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{movement.nota || "Sin nota"}</div></div><time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{movement.fecha}</time></div>)}{detalleMovimientos.length === 0 && <div className="text-xs font-semibold py-2" style={{ color: T.choco2 }}>Todavía no hay movimientos registrados.</div>}</div>
+          </Card>
+
+          <div className="flex flex-wrap gap-2 pt-4 border-t" style={{ borderColor: T.border }}>
+            {detalleEstado.supply.kind === "prepared" ? <Btn kind="soft" disabled={!detalleEstado.supply.canPrepare} onClick={() => abrirPreparacion(detalleInsumo)}>🥣 Preparar tanda</Btn> : <Btn kind="soft" onClick={() => abrirMovimiento(detalleInsumo, "Entrada")}>＋ Registrar compra</Btn>}
+            <Btn kind="ghost" onClick={() => abrirMovimiento(detalleInsumo, "Ajuste")}>Registrar otro movimiento</Btn>
+            {!detalleEstado.lotesListos && detalleEstado.vencido && Number(detalleInsumo.stock) > 0 && ["Administrador","Cocina"].includes(user) && <Btn kind="danger" onClick={() => { setMotivoDesecho(`Vencido desde ${detalleInsumo.vence}`); setDesecharVencido({ itemId: detalleInsumo.id, itemName: detalleInsumo.nombre, available: Number(detalleInsumo.stock), unit: detalleInsumo.unidad, expiresAt: detalleInsumo.vence }); }}>Desechar vencido</Btn>}
+          </div>
+        </Modal>
+      )}
 
       {nuevoIns && (
         <Modal title="Nuevo insumo" onClose={() => setNuevoIns(false)} wide>
@@ -7014,6 +7791,7 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
               const itemVencido = it.vence && diasEntre(hoyISO(), it.vence) < 0;
               if (itemVencido && ["Salida", "Uso en producción"].includes(form.tipo)) { setAvisoInv({ titulo: "Insumo vencido", texto: `${it.nombre} venció el ${it.vence}. Registrá una Merma para retirarlo; no puede usarse ni salir como inventario válido.` }); return; }
               const tipoMov = form.tipo, nombreMov = it.nombre;
+              const suggestionIds = Array.isArray(form.suggestionIds) ? form.suggestionIds : [];
               setEnviando(true);
               try {
                 if (form.tipo === "Entrada") {
@@ -7030,8 +7808,15 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
                 setEnviando(false);
                 return;
               }
+              if (form.tipo === "Entrada" && suggestionIds.length) {
+                try {
+                  await Promise.all(suggestionIds.map((suggestionId) => setSugerenciaEstado(suggestionId, "Atendida")));
+                } catch (error) {
+                  toast("alert", `La compra entró al inventario, pero una sugerencia quedó pendiente: ${error.message}`);
+                }
+              }
               setEnviando(false);
-              setMov(false); setForm({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "" });
+              setMov(false); setForm({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "", suggestionIds: [] });
               toast("ok", `✓ ${tipoMov} registrada · ${nombreMov}`);
               await refrescarSilencioso(() => toast("alert", "El movimiento se registró, pero no se pudo actualizar la vista. Recargá la página."));
             }}>Guardar</BtnAsync>
@@ -7091,8 +7876,6 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
         </Modal>
       )}
 
-      <UltimosMovimientos filas={db.inventory_movements.map((m) => ({ texto: `${m.tipo} · ${m.item} · ${m.cant}${m.nota ? ` — ${m.nota}` : ""}`, meta: m.fecha }))} />
-
       {avisoInv && (
         <Modal title={avisoInv.titulo} onClose={() => setAvisoInv(null)}>
           <p className="text-sm m-0">{avisoInv.texto}</p>
@@ -7113,6 +7896,7 @@ function nuevoProductoVacio() {
 
 function Productos({ db, user, refrescar, serverDataReady }) {
   const cats = ["Momos Signature","Cajas y Combos","Momos Cuchara","Momos Antojos","Momos Bebidas"];
+  const [detalleProductoId, setDetalleProductoId] = useState(null);
   const [recetaDe, setRecetaDe] = useState(null); // productId con receta abierta
   const [linea, setLinea] = useState({ itemId: "", cantidad: "" });
   const [abrirForm, setAbrirForm] = useState(false);
@@ -7126,11 +7910,34 @@ function Productos({ db, user, refrescar, serverDataReady }) {
   const [fCatProd, setFCatProd] = useState("");
 
   const prodReceta = recetaDe ? db.products.find((p) => p.id === recetaDe) : null;
+  const detalleProducto = detalleProductoId ? db.products.find((p) => p.id === detalleProductoId) : null;
   const puedeEditar = user === "Administrador" && serverDataReady && Boolean(db.productsServerReady);
   const costoRecetaDraft = recetaDraft.reduce((total, line) => {
     const item = db.inventory_items.find((candidate) => candidate.id === line.itemId);
     return total + Number(line.cantidad || 0) * Number(item?.costo || 0);
   }, 0);
+
+  function abrirRecetaProducto(product) {
+    setLinea({ itemId: "", cantidad: "" });
+    setRecetaDraft(recipeLines(db, product.id).map((line) => ({ ...line })));
+    setRecetaSucia(false);
+    setErrReceta("");
+    setRecetaDe(product.id);
+  }
+
+  function abrirEdicionProducto(product) {
+    setEditandoProd(product);
+    setForm({ nombre: product.nombre, cat: product.cat, tipo: product.tipo, especie: product.especie || "gato", precio: product.precio, precioRappi: product.precioRappi, costo: product.costo, prep: product.prep, frio: !!product.frio, lejano: !!product.lejano, desc: product.desc || "", comboSize: product.comboSize || "", componentProductIds: [...(product.componentProductIds || [])], empaqueItem: product.empaqueItem || "", colchonProduccion: product.colchonProduccion ?? 0 });
+    setErrProd("");
+    setAbrirForm(true);
+  }
+
+  async function cambiarProductoActivo(product) {
+    try { await setProductoActivo(product.id, !product.activo); toast("ok", product.activo ? "Producto desactivado del menú." : "Producto activado en el menú."); }
+    catch (error) { toast("error", error.message); return; }
+    try { await refrescar(); }
+    catch { toast("error", "Se actualizó, pero no se pudo refrescar la lista."); }
+  }
 
   function payloadProducto() {
     return {
@@ -7234,57 +8041,68 @@ function Productos({ db, user, refrescar, serverDataReady }) {
             {db.products.filter((p) => p.cat === cat).map((p) => {
               const margen = (p.precio - p.costo) / p.precio;
               const disp = availability(db, p);
+              const recipeCount = recipeLines(db, p.id).length;
               return (
-                <Card key={p.id} className={`p-4 ${!p.activo ? "opacity-60" : ""}`}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg" aria-hidden="true">{CAT_EMOJI[cat]}</span>
-                    <span className="font-bold text-sm">{p.nombre}</span>
-                  </div>
-                  <div className="text-xs mt-1 leading-snug" style={{ color: T.choco2 }}>{p.desc}</div>
-                  <div className="flex justify-between items-end mt-3">
-                    <div>
-                      <div className="display text-lg" style={{ color: T.coral }}>{fmt(p.precio)}</div>
-                      <div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>Rappi {fmt(p.precioRappi)} · costo {fmt(p.costo)}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-bold" style={{ color: margen > 0.6 ? "#3F6B42" : "#96690F" }}>margen {pct(margen)}</div>
-                      <div className="text-[11px] font-bold" style={{ color: isFinite(disp) && disp <= 2 ? "#A03B2A" : T.choco2 }}>
-                        {isFinite(disp) ? `${disp} disponibles` : "bajo pedido"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 mt-2 flex-wrap">
-                    {p.tipo === "combo" && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#E8E0F2", color: "#63518A" }}>Disponibilidad calculada</span>}
-                    {p.frio && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>❄️ Requiere frío</span>}
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: p.lejano ? "#DDEBD9" : "#FBE8C8", color: p.lejano ? "#3F6B42" : "#96690F" }}>
-                      {p.lejano ? "Apto domicilio lejano" : "Solo domicilio cercano"}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex gap-2 flex-wrap items-center">
-                    <Btn small kind="rosa" onClick={() => { setLinea({ itemId: "", cantidad: "" }); setRecetaDraft(recipeLines(db,p.id).map((line) => ({ ...line }))); setRecetaSucia(false); setErrReceta(""); setRecetaDe(p.id); }}>
-                      🧾 Receta {recipeLines(db, p.id).length > 0 && `(${recipeLines(db, p.id).length})`}
-                    </Btn>
-                    {puedeEditar && <Btn small kind="ghost" onClick={() => { setEditandoProd(p); setForm({ nombre: p.nombre, cat: p.cat, tipo: p.tipo, especie: p.especie || "gato", precio: p.precio, precioRappi: p.precioRappi, costo: p.costo, prep: p.prep, frio: !!p.frio, lejano: !!p.lejano, desc: p.desc || "", comboSize: p.comboSize || "", componentProductIds: [...(p.componentProductIds || [])], empaqueItem: p.empaqueItem || "", colchonProduccion: p.colchonProduccion ?? 0 }); setErrProd(""); setAbrirForm(true); }}>✏️ Editar</Btn>}
-                    {puedeEditar && <BtnAsync small kind={p.activo ? "ghost" : "soft"} textoEnVuelo={p.activo ? "Desactivando…" : "Activando…"} onClick={async () => {
-                      try { await setProductoActivo(p.id, !p.activo); toast("ok", p.activo ? "Producto desactivado del menú." : "Producto activado en el menú."); }
-                      catch (error) { toast("error", error.message); return; }
-                      try { await refrescar(); }
-                      catch { toast("error", "Se actualizó, pero no se pudo refrescar la lista."); }
-                    }}>
-                      {p.activo ? "Desactivar del menú" : "Activar en el menú"}
-                    </BtnAsync>}
-                  </div>
-                  {recipeLines(db, p.id).length > 0 && (
-                    <div className="text-[11px] font-bold mt-2" style={{ color: T.choco2 }}>
-                      Costo por receta: <span style={{ color: Math.abs(recipeCost(db, p.id) - p.costo) > p.costo * 0.15 ? "#96690F" : "#3F6B42" }}>{fmt(recipeCost(db, p.id))}</span> · costo registrado: {fmt(p.costo)}
-                    </div>
-                  )}
+                <Card key={p.id} className={`momo-queue-item p-4 ${!p.activo ? "opacity-60" : ""}`} onClick={() => setDetalleProductoId(p.id)} aria-label={`Abrir detalle de ${p.nombre}`}>
+                  <div className="flex items-start justify-between gap-3"><div className="flex items-start gap-2.5 min-w-0"><span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-lg" style={{ background: T.rosa }} aria-hidden="true">{CAT_EMOJI[cat]}</span><div className="min-w-0"><div className="font-bold text-sm leading-tight">{p.nombre}</div><div className="text-[10px] font-extrabold uppercase tracking-wider mt-1" style={{ color: p.activo ? "#3F6B42" : T.choco2 }}>{p.activo ? "Activo en el menú" : "Fuera del menú"}</div></div></div><div className="display text-lg shrink-0" style={{ color: T.coral }}>{fmt(p.precio)}</div></div>
+                  <div className="flex items-end justify-between gap-3 mt-3"><div><div className="text-xs font-bold" style={{ color: margen > 0.6 ? "#3F6B42" : "#96690F" }}>Margen {pct(margen)}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{recipeCount ? `Receta con ${recipeCount} insumo${recipeCount === 1 ? "" : "s"}` : "Sin receta registrada"}</div></div><div className="text-right text-xs font-extrabold" style={{ color: isFinite(disp) && disp <= 2 ? "#A03B2A" : T.choco2 }}>{isFinite(disp) ? `${disp} disp.` : "Bajo pedido"}</div></div>
+                  <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.choco2 }}><span>{p.tipo === "combo" ? "Combo" : p.tipo === "momo" ? "Momo" : "Preparación al momento"}{p.frio ? " · requiere frío" : ""}</span><span style={{ color: T.coral }}>Abrir detalle ›</span></div>
                 </Card>
               );
             })}
           </div>
         </div>
       ))}
+
+      {detalleProducto && (() => {
+        const lines = recipeLines(db, detalleProducto.id);
+        const margen = detalleProducto.precio > 0 ? (detalleProducto.precio - detalleProducto.costo) / detalleProducto.precio : 0;
+        const disp = availability(db, detalleProducto);
+        const comboProducts = (detalleProducto.componentProductIds || []).map((id) => db.products.find((product) => product.id === id)?.nombre).filter(Boolean);
+        const pack = db.inventory_items.find((item) => item.id === detalleProducto.empaqueItem);
+        return (
+          <Modal title={`Producto · ${detalleProducto.nombre}`} onClose={() => setDetalleProductoId(null)} wide>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+              <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>{CAT_EMOJI[detalleProducto.cat]} {detalleProducto.cat}</div><div className="display text-2xl font-semibold mt-0.5">{detalleProducto.nombre}</div><div className="text-sm font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>{detalleProducto.desc || "Sin descripción comercial registrada."}</div></div>
+              <Badge label={detalleProducto.activo ? "Activo" : "Inactivo"} map={{ Activo: { bg: "#DDEBD9", fg: "#3F6B42" }, Inactivo: { bg: "#EBE6E0", fg: "#7A6E63" } }} />
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <Stat icon="$" label="Precio directo" value={fmt(detalleProducto.precio)} sub="precio de venta" tone={T.coral} />
+              <Stat icon="R" label="Precio Rappi" value={fmt(detalleProducto.precioRappi)} sub="canal plataforma" tone="#63518A" />
+              <Stat icon="◒" label="Costo" value={fmt(detalleProducto.costo)} sub="registrado" tone={T.choco} />
+              <Stat icon="↗" label="Margen" value={pct(margen)} sub="precio vs. costo" tone={margen > 0.6 ? "#3F6B42" : "#96690F"} />
+            </div>
+
+            <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-3 mb-4">
+              <Card className="p-4">
+                <div className="text-xs font-extrabold mb-3" style={{ color: T.choco2 }}>OPERACIÓN Y VENTA</div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                  <div><div className="font-semibold" style={{ color: T.choco2 }}>Tipo</div><div className="font-bold mt-0.5">{detalleProducto.tipo === "momo" ? `Momo · ${detalleProducto.especie || "especie sin registrar"}` : detalleProducto.tipo === "combo" ? "Caja / combo" : "Preparación al momento"}</div></div>
+                  <div><div className="font-semibold" style={{ color: T.choco2 }}>Disponibilidad</div><div className="font-bold mt-0.5" style={{ color: isFinite(disp) && disp <= 2 ? "#A03B2A" : "#3F6B42" }}>{isFinite(disp) ? `${disp} unidades` : "Bajo pedido"}</div></div>
+                  <div><div className="font-semibold" style={{ color: T.choco2 }}>Preparación</div><div className="font-bold mt-0.5">{detalleProducto.prep || 0} min</div></div>
+                  <div><div className="font-semibold" style={{ color: T.choco2 }}>Cadena de frío</div><div className="font-bold mt-0.5">{detalleProducto.frio ? "Requerida" : "No requerida"}</div></div>
+                  <div><div className="font-semibold" style={{ color: T.choco2 }}>Domicilio lejano</div><div className="font-bold mt-0.5">{detalleProducto.lejano ? "Permitido" : "Solo zona cercana"}</div></div>
+                  {detalleProducto.tipo === "momo" && <div><div className="font-semibold" style={{ color: T.choco2 }}>Colchón producción</div><div className="font-bold mt-0.5">{detalleProducto.colchonProduccion || 0} unidades</div></div>}
+                </div>
+                {detalleProducto.tipo === "combo" && <div className="mt-4 pt-3 border-t" style={{ borderColor: T.border }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Composición permitida</div><div className="text-xs font-bold mt-1">{detalleProducto.comboSize || 0} momos · caja {pack?.nombre || "sin configurar"}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{comboProducts.join(" · ") || "Sin productos componentes"}</div></div>}
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-start justify-between gap-3 mb-3"><div><div className="text-xs font-extrabold" style={{ color: T.choco2 }}>RECETA POR UNIDAD</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{lines.length ? `${lines.length} insumo${lines.length === 1 ? "" : "s"} vinculados` : "No descuenta inventario todavía"}</div></div><span className="display text-lg" style={{ color: T.coral }}>{fmt(recipeCost(db, detalleProducto.id))}</span></div>
+                <div className="space-y-2">{lines.slice(0, 6).map((line) => { const item = db.inventory_items.find((candidate) => candidate.id === line.itemId); return <div key={line.id || line.itemId} className="rounded-xl px-3 py-2 flex items-center justify-between gap-3 text-xs" style={{ background: T.vainilla }}><span className="font-bold">{item?.nombre || "Insumo no encontrado"}</span><span className="font-extrabold shrink-0" style={{ color: T.choco2 }}>{line.cantidad} {item?.unidad || ""}</span></div>; })}{lines.length === 0 && <div className="rounded-xl p-3 text-xs font-semibold" style={{ background: "#FBE8C8", color: "#7A5410" }}>Falta registrar la receta para tener costo y descuento de inventario trazables.</div>}{lines.length > 6 && <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>＋ {lines.length - 6} insumo(s) más en la receta completa.</div>}</div>
+                {lines.length > 0 && <div className="text-[10px] font-bold mt-3" style={{ color: Math.abs(recipeCost(db, detalleProducto.id) - detalleProducto.costo) > detalleProducto.costo * 0.15 ? "#96690F" : "#3F6B42" }}>Costo receta {fmt(recipeCost(db, detalleProducto.id))} · registrado {fmt(detalleProducto.costo)}</div>}
+              </Card>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-4 border-t" style={{ borderColor: T.border }}>
+              <Btn kind="rosa" onClick={() => abrirRecetaProducto(detalleProducto)}>🧾 Abrir receta completa</Btn>
+              {puedeEditar && <Btn kind="ghost" onClick={() => abrirEdicionProducto(detalleProducto)}>✏️ Editar producto</Btn>}
+              {puedeEditar && <BtnAsync kind={detalleProducto.activo ? "ghost" : "soft"} textoEnVuelo={detalleProducto.activo ? "Desactivando…" : "Activando…"} onClick={() => cambiarProductoActivo(detalleProducto)}>{detalleProducto.activo ? "Desactivar del menú" : "Activar en el menú"}</BtnAsync>}
+            </div>
+          </Modal>
+        );
+      })()}
 
       {abrirForm && (
         <Modal title={editandoProd ? "Editar producto" : "Nuevo producto"} onClose={() => setAbrirForm(false)}>
@@ -7776,6 +8594,7 @@ const ESTADOS_CLIENTE = ["Nuevo", "Recurrente", "VIP", "Inactivo", "Riesgo por r
 function Clientes({ db, update, user, refrescar }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
+  const [detalleVista, setDetalleVista] = useState("resumen");
   const [form, setForm] = useState(null); // null = cerrado; objeto = alta/edición
   const [err, setErr] = useState("");
   const [aviso, setAviso] = useState(null);
@@ -7817,6 +8636,14 @@ function Clientes({ db, update, user, refrescar }) {
   }
   const lista = db.customers.filter((c) => (c.nombre + c.telefono + (c.barrio || "")).toLowerCase().includes(q.toLowerCase()));
   const crm = sel ? buildCustomerCrm(db, sel.id, hoy) : null;
+  const clientesConCompra = db.customers.filter((cliente) => (cliente.pedidos || 0) > 0).length;
+  const clientesRecurrentes = db.customers.filter((cliente) => (cliente.pedidos || 0) >= 2).length;
+  const clientesPorReactivar = db.customers.filter((cliente) => cliente.ultima && diasEntre(cliente.ultima, hoy) >= 15).length;
+
+  function abrirDetalleCliente(cliente) {
+    setDetalleVista("resumen");
+    setSel(cliente);
+  }
 
   async function ejecutarCrm(action) {
     setEnviando(true); setErr("");
@@ -7854,17 +8681,25 @@ function Clientes({ db, update, user, refrescar }) {
   return (
     <div>
       <SectionTitle action={<div className="flex gap-2"><Btn small kind="rosa" onClick={abrirNuevo}>＋ Nuevo cliente</Btn><Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn></div>}>Alertas de CRM</SectionTitle>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Stat icon="💗" label="Clientes" value={db.customers.length} sub="fichas registradas" />
+        <Stat icon="🛍️" label="Con compra" value={clientesConCompra} sub="historial comercial" tone="#3F6B42" />
+        <Stat icon="🔁" label="Recurrentes" value={clientesRecurrentes} sub="dos compras o más" tone="#63518A" />
+        <Stat icon="💬" label="Por reactivar" value={clientesPorReactivar} sub="15 días o más" tone={clientesPorReactivar ? "#96690F" : "#3F6B42"} />
+      </div>
       <div className="flex flex-col gap-1.5 mb-4">
-        {alertas.map(([t, fg, bg], i) => <div key={i} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: bg, color: fg }}>{t}</div>)}
+        {alertas.slice(0, 4).map(([t, fg, bg], i) => <div key={i} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: bg, color: fg }}>{t}</div>)}
+        {alertas.length > 4 && <div className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>+ {alertas.length - 4} alertas adicionales disponibles dentro de las fichas CRM.</div>}
         {alertas.length === 0 && <div className="text-sm" style={{ color: T.choco2 }}>Sin alertas activas.</div>}
       </div>
 
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, teléfono o barrio…"
         className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none mb-3" style={inputStyle} />
 
+      <SectionTitle>Directorio de clientes</SectionTitle>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {lista.map((c) => (
-          <Card key={c.id} className="p-4" onClick={() => setSel(c)}>
+          <Card key={c.id} aria-label={`Abrir ficha CRM de ${c.nombre}`} className="p-4" onClick={() => abrirDetalleCliente(c)}>
             <div className="flex justify-between items-start gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center display text-base shrink-0" style={{ background: T.rosa, color: "#8E4B5A" }}>
@@ -7877,21 +8712,19 @@ function Clientes({ db, update, user, refrescar }) {
               </div>
               <Badge label={c.estado} />
             </div>
-            <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-              {[["Pedidos", c.pedidos], ["Total", fmt(c.total)], ["Ticket", fmt(Math.round(c.total / Math.max(c.pedidos, 1)))]].map(([l, v]) => (
-                <div key={l} className="rounded-xl py-1.5" style={{ background: T.vainilla }}>
-                  <div className="text-xs font-bold truncate px-1">{v}</div>
-                  <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{l}</div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="rounded-xl px-3 py-2" style={{ background: T.vainilla }}><div className="text-[10px] uppercase font-extrabold" style={{ color: T.choco2 }}>Compras</div><div className="display text-lg mt-0.5">{c.pedidos || 0}</div></div>
+              <div className="rounded-xl px-3 py-2" style={{ background: T.vainilla }}><div className="text-[10px] uppercase font-extrabold" style={{ color: T.choco2 }}>Valor cliente</div><div className="font-bold text-sm mt-1 truncate">{fmt(c.total || 0)}</div></div>
             </div>
-            <div className="text-xs mt-2 truncate" style={{ color: T.choco2 }}>💗 {c.favoritos || "Sin favoritos aún"}</div>
+            <div className="flex items-center justify-between gap-3 mt-3"><div className="text-[11px] font-semibold truncate" style={{ color: T.choco2 }}>{c.ultima ? `Última compra ${c.ultima}` : "Lead sin compras"}</div><Badge label={c.canal || "WhatsApp"} map={CANAL_STYLE} /></div>
+            <div className="text-[11px] font-extrabold mt-3" style={{ color: T.coral }}>Abrir ficha CRM ›</div>
           </Card>
         ))}
+        {lista.length === 0 && <div className="sm:col-span-2 lg:col-span-3"><Empty icon="💗" text="No encontramos clientes con esa búsqueda." /></div>}
       </div>
 
       {sel && (
-        <Modal title={sel.nombre} onClose={() => setSel(null)}>
+        <Modal title={`Cliente · ${sel.nombre}`} onClose={() => setSel(null)} wide>
           {!db.crmServerReady && <div className="text-xs font-bold p-2.5 rounded-xl mb-3" style={{ background: "#FBE8C8", color: "#96690F" }}>CRM en modo consulta. Aplicá la migración 15 para registrar contactos, activaciones y preferencias.</div>}
           {/* Tira de identidad — plana, dentro de la paleta */}
           <div className="momo-trace-open flex items-center gap-3 rounded-2xl p-3 mb-3" style={{ background: T.soft, border: `1px solid ${T.border}`, animationDelay: "20ms" }}>
@@ -7912,6 +8745,12 @@ function Clientes({ db, update, user, refrescar }) {
               </div>
             ))}
           </div>
+          <div role="tablist" aria-label="Secciones de la ficha CRM" className="flex flex-wrap gap-1.5 p-1.5 rounded-2xl mb-3" style={{ background: T.vainilla }}>
+            {[["resumen", "Resumen"], ["compras", `Pedidos ${crm.orders.length}`], ["seguimiento", `Relación ${crm.contacts.length + crm.activations.length + db.benefits.filter((benefit) => benefit.customerId === sel.id).length + db.claims.filter((claim) => claim.customerId === sel.id).length}`]].map(([value, label]) => (
+              <button key={value} type="button" role="tab" aria-selected={detalleVista === value} onClick={() => setDetalleVista(value)} className="rounded-xl px-3 py-2 text-xs font-extrabold" style={{ background: detalleVista === value ? T.coral : "transparent", color: detalleVista === value ? "white" : T.choco2 }}>{label}</button>
+            ))}
+          </div>
+          {detalleVista === "resumen" && <>
           {/* Siguiente mejor acción — colores originales, sin cambios */}
           <div className="momo-trace-open p-3 rounded-2xl mb-3" style={{ background: crm.nextAction.type === "blocked" ? "#F6D4CD" : "#E6F1E3", border: `1px solid ${crm.nextAction.type === "blocked" ? "#E8A697" : "#B8D2B2"}`, animationDelay: "290ms" }}>
             <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: crm.nextAction.type === "blocked" ? "#A03B2A" : "#3F6B42" }}>Siguiente mejor acción</div>
@@ -7929,19 +8768,24 @@ function Clientes({ db, update, user, refrescar }) {
             <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>GUSTOS REALES SEGÚN COMPRAS</div>
             {crm.automaticFavorites.length ? <div className="flex flex-wrap gap-1.5">{crm.automaticFavorites.map((favorite) => <span key={favorite.label} className="text-xs font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1.5" style={{ background: T.rosa, color: "#8E4B5A" }}>{favorite.label} <span style={{ background: "rgba(255,255,255,.6)", borderRadius: "999px", padding: "0 6px", fontVariantNumeric: "tabular-nums" }}>{favorite.quantity}</span></span>)}</div> : <div className="text-sm" style={{ color: T.choco2 }}>Aún no hay compras entregadas para aprender sus gustos.</div>}
           </div>
+          {sel.notas && <div className="text-xs mt-3 p-2.5 rounded-xl" style={{ background: T.vainilla }}>📝 {sel.notas}</div>}
+          </>}
+          {detalleVista === "compras" && <>
           <div className="momo-trace-open mt-3" style={{ animationDelay: "410ms" }}>
             <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>HISTORIAL DE PEDIDOS</div>
-            {crm.orders.slice(0, 8).map((order) => <div key={order.id} className="momo-crm-row flex justify-between gap-3 text-sm px-2 py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="min-w-0"><b>{order.id}</b> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{order.fecha}</span><div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(order.totalCrm)}</div></div></div>)}
+            {crm.orders.map((order) => <div key={order.id} className="momo-crm-row flex justify-between gap-3 text-sm px-2 py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="min-w-0"><b>{order.id}</b> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{order.fecha}</span><div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(order.totalCrm)}</div></div></div>)}
             {!crm.orders.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin pedidos todavía.</div>}
           </div>
+          </>}
+          {detalleVista === "seguimiento" && <>
           <div className="mt-3">
             <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>SEGUIMIENTO COMERCIAL</div>
-            {crm.contacts.slice(0, 6).map((contact) => <div key={contact.id} className="text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="flex justify-between gap-2"><b>{contact.channel} · {contact.reason}</b><Badge label={contact.outcome} /></div><div className="text-xs" style={{ color: T.choco2 }}>{contact.createdAt}{contact.createdByName ? ` · ${contact.createdByName}` : ""}{contact.followUpOn ? ` · seguimiento ${contact.followUpOn}` : ""}</div></div>)}
+            {crm.contacts.map((contact) => <div key={contact.id} className="text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="flex justify-between gap-2"><b>{contact.channel} · {contact.reason}</b><Badge label={contact.outcome} /></div><div className="text-xs" style={{ color: T.choco2 }}>{contact.createdAt}{contact.createdByName ? ` · ${contact.createdByName}` : ""}{contact.followUpOn ? ` · seguimiento ${contact.followUpOn}` : ""}</div></div>)}
             {!crm.contacts.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin contactos registrados.</div>}
           </div>
           <div className="mt-3">
             <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>ACTIVACIONES PUNTUALES</div>
-            {crm.activations.slice(0, 6).map((activation) => <div key={activation.id} className="text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="flex justify-between gap-2"><div><b>{activation.title}</b><div className="text-xs" style={{ color: T.choco2 }}>{activation.type}{activation.expiresOn ? ` · vence ${activation.expiresOn}` : ""}{activation.convertedOrderId ? ` · pedido ${activation.convertedOrderId}` : ""}</div></div><div className="flex items-center gap-2"><Badge label={activation.status} />{!activation.convertedOrderId && <Btn small kind="ghost" onClick={() => { setErr(""); setCrmForm({ type: "conversion", activationId: activation.id, orderId: "" }); }}>Atribuir pedido</Btn>}</div></div></div>)}
+            {crm.activations.map((activation) => <div key={activation.id} className="text-sm py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="flex justify-between gap-2"><div><b>{activation.title}</b><div className="text-xs" style={{ color: T.choco2 }}>{activation.type}{activation.expiresOn ? ` · vence ${activation.expiresOn}` : ""}{activation.convertedOrderId ? ` · pedido ${activation.convertedOrderId}` : ""}</div></div><div className="flex items-center gap-2"><Badge label={activation.status} />{!activation.convertedOrderId && <Btn small kind="ghost" onClick={() => { setErr(""); setCrmForm({ type: "conversion", activationId: activation.id, orderId: "" }); }}>Atribuir pedido</Btn>}</div></div></div>)}
             {!crm.activations.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin activaciones creadas.</div>}
           </div>
           <div className="mt-3">
@@ -7962,7 +8806,7 @@ function Clientes({ db, update, user, refrescar }) {
             ))}
             {db.claims.filter((r) => r.customerId === sel.id).length === 0 && <div className="text-sm" style={{ color: T.choco2 }}>Sin reclamos. 💛</div>}
           </div>
-          {sel.notas && <div className="text-xs mt-3 p-2.5 rounded-xl" style={{ background: T.vainilla }}>📝 {sel.notas}</div>}
+          </>}
           <div className="mt-4 flex justify-end gap-2 flex-wrap">
             <Btn small kind="soft" disabled={!db.crmServerReady} onClick={() => { setErr(""); setCrmForm({ type: "preferences", contactAllowed: crm.profile.contactAllowed !== false, preferredChannel: crm.profile.preferredChannel || "WhatsApp", acquisitionSource: crm.profile.acquisitionSource || "", contactReason: crm.profile.contactReason || "" }); }}>Preferencias</Btn>
             <Btn small kind="soft" disabled={!db.crmServerReady || crm.profile.contactAllowed === false} onClick={() => { setErr(""); setCrmForm({ type: "contact", channel: crm.profile.preferredChannel === "No contactar" ? "WhatsApp" : (crm.profile.preferredChannel || "WhatsApp"), reason: crm.nextAction.label, outcome: "Enviado", notes: "", followUpOn: "" }); }}>Registrar contacto</Btn>
@@ -8167,6 +9011,8 @@ function Beneficios({ db, update, user, refrescar }) {
 function Finanzas({ db, update, user }) {
   const [desde, setDesde] = useState(dISO(-30));
   const [hasta, setHasta] = useState(hoyISO());
+  const [asistenteAbierto, setAsistenteAbierto] = useState(false);
+  const financeAssistant = useMemo(() => buildOperationalFinance(db, { from: desde, to: hasta }), [db, desde, hasta]);
 
   const enRango = db.orders.filter((o) => o.fecha >= desde && o.fecha <= hasta);
   const vendidos = enRango.filter(esPedidoCobrado);
@@ -8212,6 +9058,10 @@ function Finanzas({ db, update, user }) {
 
   return (
     <div>
+      <SectionTitle>Finanzas operativas</SectionTitle>
+      <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
+        Conciliá cobros, soportes, costos y excepciones antes de dar el periodo por cerrado.
+      </div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <span className="text-xs font-bold" style={{ color: T.choco2 }}>Rango:</span>
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-xl px-2 py-2 text-xs border font-semibold" style={inputStyle} aria-label="Desde" />
@@ -8219,11 +9069,43 @@ function Finanzas({ db, update, user }) {
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
       </div>
 
+      <Card className="p-4 mb-4" onClick={() => setAsistenteAbierto(true)} style={{ background: "linear-gradient(135deg,#FFF4EA,#FFFFFF)", borderColor: financeAssistant.summary.blocking ? "#E7B36E" : "#A7C9A4" }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0" style={{ background: financeAssistant.summary.blocking ? T.coralSoft : "#E5F0E1" }} aria-hidden="true">🧾</span>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: financeAssistant.summary.blocking ? T.coral : "#3F6B42" }}>Asistente de cierre financiero</div>
+              <div className="display text-xl font-semibold mt-0.5">{financeAssistant.summary.closeReady ? "Periodo listo para conciliar" : `${financeAssistant.summary.blocking} control${financeAssistant.summary.blocking === 1 ? "" : "es"} antes del cierre`}</div>
+              <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{fmt(financeAssistant.summary.grossCollected)} cobrados en MOMO OPS · {fmt(financeAssistant.summary.pendingValue)} por cobrar · {financeAssistant.summary.exceptions} observaciones totales</div>
+            </div>
+          </div>
+          <span className="text-xs font-extrabold shrink-0" style={{ color: T.coral }}>{financeAssistant.summary.closeReady ? "Ver conciliación ›" : "Revisar pendientes ›"}</span>
+        </div>
+      </Card>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <Stat icon="💵" label="Ventas de producto" value={fmt(ventasProductos)} sub={vendidos.length + " pedidos cobrados"} tone={T.coral} />
         <Stat icon="🧾" label="Costo de producto" value={fmt(cogs)} sub="estimado por receta" />
         <Stat icon="📈" label="Margen bruto" value={fmt(margenBruto)} sub={ventasProductos ? pct(margenBruto / ventasProductos) + " de las ventas" : "—"} tone="#3F6B42" />
         <Stat icon="✨" label="Utilidad estimada" value={fmt(utilidad)} sub="tras domicilios, pauta y reclamos" tone={utilidad >= 0 ? "#3F6B42" : "#A03B2A"} />
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-3 mb-4">
+        <Card className="p-4 lg:col-span-2">
+          <div className="flex items-start justify-between gap-3 mb-2"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Cobros para conciliar</div><div className="display text-lg font-semibold">Separados por medio de pago</div></div><div className="text-right"><div className="display text-xl font-semibold" style={{ color: "#3F6B42" }}>{fmt(financeAssistant.summary.grossCollected)}</div><div className="text-[10px] font-bold" style={{ color: T.choco2 }}>bruto registrado</div></div></div>
+          {financeAssistant.payments.length ? financeAssistant.payments.map((row) => (
+            <div key={row.method} className="flex justify-between items-center py-2 border-t" style={{ borderColor: T.border }}><div><div className="text-sm font-bold">{row.method}</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{row.orders} pedido{row.orders === 1 ? "" : "s"} · comparar con extracto</div></div><div className="font-extrabold">{fmt(row.amount)}</div></div>
+          )) : <div className="text-sm font-semibold py-4" style={{ color: T.choco2 }}>No hay cobros confirmados en este rango.</div>}
+        </Card>
+        <Card className="p-4">
+          <div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Caja operativa documentada</div>
+          <div className="display text-lg font-semibold mb-2">Movimientos que sí conocemos</div>
+          {linea("Compras de inventario", financeAssistant.summary.inventoryPurchases, { color: "#A03B2A" })}
+          {linea("Pauta con métricas", financeAssistant.summary.platformSpend, { color: "#A03B2A" })}
+          {linea("Costos de domicilios", financeAssistant.summary.deliveryCosts, { color: "#A03B2A" })}
+          {linea("Resultado operativo documentado", financeAssistant.summary.operatingResult, { strong: true, color: financeAssistant.summary.operatingResult >= 0 ? "#3F6B42" : "#A03B2A" })}
+          <div className="text-[10px] font-semibold mt-2 leading-relaxed" style={{ color: T.choco2 }}>No es saldo bancario: faltan nómina, servicios, impuestos, comisiones y otros egresos que aún no tienen libro en MOMO OPS.</div>
+        </Card>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-3">
@@ -8258,6 +9140,40 @@ function Finanzas({ db, update, user }) {
           </Card>
         </div>
       </div>
+
+      {asistenteAbierto && (
+        <Modal title="Asistente de cierre financiero" onClose={() => setAsistenteAbierto(false)} wide>
+          <div className="rounded-3xl border p-4 sm:p-5 mb-4" style={{ background: "linear-gradient(135deg,#FFF4EA,#FFFFFF)", borderColor: T.border }}>
+            <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Control del periodo · {desde} a {hasta}</div>
+            <div className="display text-2xl font-semibold mt-1">{financeAssistant.summary.closeReady ? "Los datos están listos para conciliar" : "Qué debe revisar Finanzas ahora"}</div>
+            <div className="text-sm font-semibold mt-1 max-w-3xl" style={{ color: T.choco2 }}>MOMO OPS cruza pedido, pago, evidencia, costo histórico, domicilio y reclamo. Señala diferencias, pero no confirma pagos, devuelve dinero ni inventa un saldo bancario.</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Cobrado bruto</div><div className="display text-lg mt-0.5" style={{ color: "#3F6B42" }}>{fmt(financeAssistant.summary.grossCollected)}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Por cobrar</div><div className="display text-lg mt-0.5" style={{ color: "#96690F" }}>{fmt(financeAssistant.summary.pendingValue)}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Bloquean cierre</div><div className="display text-xl mt-0.5" style={{ color: financeAssistant.summary.blocking ? "#A03B2A" : "#3F6B42" }}>{financeAssistant.summary.blocking}</div></div>
+              <div className="rounded-2xl bg-white px-3 py-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Resultado documentado</div><div className="display text-lg mt-0.5" style={{ color: financeAssistant.summary.operatingResult >= 0 ? "#3F6B42" : "#A03B2A" }}>{fmt(financeAssistant.summary.operatingResult)}</div></div>
+            </div>
+          </div>
+
+          {financeAssistant.queue.length === 0 ? (
+            <div className="rounded-3xl p-8 text-center mb-4" style={{ background: "#E5F0E1" }}><div className="text-3xl">✓</div><div className="display text-xl mt-2">Sin excepciones internas</div><div className="text-sm font-semibold mt-1" style={{ color: "#3F6B42" }}>Ya podés comparar los cobros por medio de pago contra sus extractos externos.</div></div>
+          ) : (
+            <div className="space-y-2 mb-4">
+              {financeAssistant.queue.map((task, index) => {
+                const tone = task.severity === "critical" ? { bg: "#F6D4CD", fg: "#A03B2A", label: "Crítico" } : task.severity === "high" ? { bg: "#FBE8C8", fg: "#96690F", label: "Antes de cerrar" } : { bg: T.vainilla, fg: T.choco2, label: "Revisar" };
+                return <Card key={task.id} className="p-4" style={{ borderColor: index === 0 ? "#E59A83" : T.border, background: index === 0 ? "#FFF8F4" : T.surface }}>
+                  <div className="flex items-start gap-3"><span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0" style={{ background: index === 0 ? T.coral : T.vainilla, color: index === 0 ? "#fff" : T.choco2 }}>{index + 1}</span><div className="flex-1 min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span><span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{task.category}</span>{task.orderId && <span className="text-xs font-bold">{task.orderId}</span>}</div><div className="display text-lg font-semibold mt-1">{task.title}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{task.detail}</div><div className="text-xs font-bold mt-2" style={{ color: task.blocksClose ? "#A03B2A" : "#3F6B42" }}>Siguiente paso: {task.action}</div></div>{task.amount > 0 && <div className="font-extrabold shrink-0" style={{ color: T.coral }}>{fmt(task.amount)}</div>}</div>
+                </Card>;
+              })}
+            </div>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.coral }}>Conciliación externa pendiente</div>{financeAssistant.payments.length ? financeAssistant.payments.map((row) => <div key={row.method} className="flex justify-between text-sm py-2 border-t first:border-0" style={{ borderColor: T.border }}><span className="font-bold">{row.method} · {row.orders}</span><b>{fmt(row.amount)}</b></div>) : <div className="text-sm" style={{ color: T.choco2 }}>Sin cobros para conciliar.</div>}</Card>
+            <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.coral }}>Límites de esta lectura</div>{financeAssistant.caveats.map((note) => <div key={note} className="text-xs font-semibold py-1.5 leading-relaxed" style={{ color: T.choco2 }}>• {note}</div>)}</Card>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -8717,13 +9633,35 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
       <SectionTitle>Usuarios (users · roles · permissions)</SectionTitle>
       <Card className="p-4">
         <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
-          Estructura lista para login real con backend. Mientras tanto, el selector del encabezado simula la sesión de cada rol.
+          Cada persona conserva un rol principal y puede acumular otros. Momo Ops une sus permisos sin duplicar el correo ni la cuenta de acceso.
         </div>
-        {db.users.map((u) => (
-          <div key={u.id} className="flex items-center justify-between gap-3 py-2 border-b" style={{ borderColor: T.border, opacity: u.activo ? 1 : 0.5 }}>
-            <div className="min-w-0">
+        {!db.multipleRolesReady && <div className="rounded-2xl px-3 py-2.5 mb-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#8A5D08", border: "1px solid #EDD4A8" }} role="status">
+          Aplicá la migración 21 de roles múltiples para asignar más de un área a la misma persona. La administración actual sigue funcionando con un rol por usuario.
+        </div>}
+        {db.users.map((u) => {
+          const userRoles = normalizeRoles(u);
+          return <div key={u.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 border-b" style={{ borderColor: T.border, opacity: u.activo ? 1 : 0.55 }}>
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-bold truncate">{u.nombre} <span className="text-xs font-semibold" style={{ color: T.choco2 }}>· {u.email}</span></div>
-              <div className="text-xs" style={{ color: T.choco2 }}>{u.rol} → {PERMISOS_POR_ROL[u.rol]}</div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {userRoles.map((role) => <span key={role} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: role === u.rol ? T.coralSoft : "#F4E8D3", color: role === u.rol ? "#923F2D" : T.choco2 }} title={PERMISOS_POR_ROL[role]}>
+                  {role}{role === u.rol && <span className="opacity-70">· principal</span>}
+                  {db.multipleRolesReady && userRoles.length > 1 && <button type="button" className="font-black opacity-70 hover:opacity-100" aria-label={`Quitar rol ${role} a ${u.nombre}`} onClick={async () => {
+                    if (enviandoUser) return;
+                    setEnviandoUser(true); setUserMsg("");
+                    try {
+                      const result = await quitarRolUsuario(u.id, role);
+                      await refrescar();
+                      setUserMsg(`Rol ${role} retirado de ${u.nombre}. Rol principal: ${result.rol}.`);
+                    } catch (error) {
+                      setUserMsg("⚠️ " + error.message);
+                    } finally {
+                      setEnviandoUser(false);
+                    }
+                  }}>×</button>}
+                </span>)}
+              </div>
+              <div className="text-[10px] mt-1.5 leading-relaxed" style={{ color: T.choco2 }}>{userRoles.map((role) => PERMISOS_POR_ROL[role]).filter(Boolean).join(" · ")}</div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Badge label={u.activo ? "Activo" : "Inactivo"} />
@@ -8732,21 +9670,16 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
                 setEnviandoUser(true); setUserMsg("");
                 try {
                   await setUserActivo(u.id, !u.activo);
+                  await refrescar();
                 } catch (e) {
                   setUserMsg("⚠️ " + e.message);
+                } finally {
                   setEnviandoUser(false);
-                  return;
                 }
-                try {
-                  await refrescar();
-                } catch {
-                  setUserMsg("El cambio se aplicó, pero no se pudo actualizar la vista. Recargá la página.");
-                }
-                setEnviandoUser(false);
               }}>{u.activo ? "Desactivar" : "Activar"}</Btn>
             </div>
-          </div>
-        ))}
+          </div>;
+        })}
         <div className="flex flex-wrap gap-2 pt-3 items-center">
           <input value={nuevoUser.nombre} onChange={(e) => setNuevoUser({ ...nuevoUser, nombre: e.target.value })} placeholder="Nombre"
             className="flex-1 min-w-[110px] rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
@@ -8767,12 +9700,18 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
             setNuevoUser({ nombre: "", email: "", rol: "Cocina" });
             try {
               await refrescar();
-              setUserMsg(`Usuario ${r.id} creado. Sin acceso de login hasta vincular su cuenta.`);
+              setUserMsg(r.creado === undefined
+                ? `Usuario ${r.id} creado con el rol ${nuevoUser.rol}.`
+                : r.creado
+                  ? `Usuario ${r.id} creado con el rol ${nuevoUser.rol}. Falta vincular su cuenta de acceso.`
+                  : r.agregado
+                    ? `${nuevoUser.rol} agregado al usuario ${r.id}. Ya puede operar ambas áreas con la misma cuenta.`
+                    : `${nuevoUser.rol} ya estaba asignado al usuario ${r.id}; no se duplicó nada.`);
             } catch {
-              setUserMsg(`Usuario ${r.id} creado, pero no se pudo actualizar la vista. Recargá la página.`);
+              setUserMsg(`El cambio sobre ${r.id} se guardó, pero no se pudo actualizar la vista. Recargá la página.`);
             }
             setEnviandoUser(false);
-          }}>＋ Agregar</Btn>
+          }}>＋ Crear o asignar rol</Btn>
         </div>
         {userMsg && <div className="text-xs font-bold mt-2" style={{ color: userMsg.startsWith("⚠️") ? "#A03B2A" : "#3F6B42" }}>{userMsg}</div>}
       </Card>
@@ -9397,19 +10336,19 @@ function Calendario({ db, refrescar }) {
 
   return (
     <div>
-      <div className="rounded-[28px] p-5 sm:p-6 mb-4 relative overflow-hidden" style={{ background: "linear-gradient(135deg,#4A3028 0%,#754536 58%,#B45A42 100%)", color: "#fff" }}>
-        <div className="absolute -right-10 -top-16 w-52 h-52 rounded-full opacity-15" style={{ background: T.rosa }} aria-hidden="true" />
-        <div className="relative flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div><div className="text-[10px] uppercase tracking-[.2em] font-extrabold opacity-75">CENTRO DE EJECUCIÓN COMERCIAL</div><div className="display text-2xl sm:text-3xl font-semibold mt-1">Calendario inteligente MOMOS</div><div className="text-sm opacity-85 mt-1 max-w-2xl">Ordena la semana, valida marca y stock, y muestra exactamente qué debe ejecutar Marketing.</div></div>
-          <div className="rounded-2xl px-4 py-3 text-center" style={{ background: "rgba(255,255,255,.13)", border: "1px solid rgba(255,255,255,.14)" }}><div className="display text-2xl font-semibold">{commercialCalendar.summary.readyToday}/{commercialCalendar.summary.today}</div><div className="text-[10px] uppercase tracking-wider font-bold opacity-75">listas hoy</div></div>
+      <SectionTitle action={
+        <div className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 shrink-0" style={{ background: T.soft, border: `1px solid ${T.border}` }}>
+          <span className="display font-semibold" style={{ color: T.coral, fontVariantNumeric: "tabular-nums" }}>{commercialCalendar.summary.readyToday}/{commercialCalendar.summary.today}</span>
+          <span className="text-xs font-bold" style={{ color: T.choco2 }}>listas hoy</span>
         </div>
-      </div>
+      }>Calendario inteligente MOMOS</SectionTitle>
+      <div className="text-xs font-semibold mb-4 -mt-3" style={{ color: T.choco2 }}>Ordena la semana, valida marca y stock, y muestra exactamente qué debe ejecutar Marketing.</div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat icon="🗓️" label="Activas esta semana" value={commercialCalendar.summary.scheduledWeek} tone={T.coral} />
-        <Stat icon="⛔" label="Bloqueadas" value={commercialCalendar.summary.blocked} sub="requieren corrección" tone="#A03B2A" />
-        <Stat icon="⏰" label="Vencidas" value={commercialCalendar.summary.overdue} sub="sin cerrar" tone="#96690F" />
-        <Stat icon="✦" label="Por programar" value={commercialCalendar.summary.unscheduledApproved} sub="creativos aprobados" tone="#3F6B42" />
+        <Stat icon="🗓️" label="Activas esta semana" value={<CountUp value={commercialCalendar.summary.scheduledWeek} />} tone={T.coral} />
+        <Stat icon="⛔" label="Bloqueadas" value={<CountUp value={commercialCalendar.summary.blocked} />} sub="requieren corrección" tone="#A03B2A" />
+        <Stat icon="⏰" label="Vencidas" value={<CountUp value={commercialCalendar.summary.overdue} />} sub="sin cerrar" tone="#96690F" />
+        <Stat icon="✦" label="Por programar" value={<CountUp value={commercialCalendar.summary.unscheduledApproved} />} sub="creativos aprobados" tone="#3F6B42" />
       </div>
 
       {commercialCalendar.summary.blocked > 0 && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF1ED", color: "#A03B2A", border: "1px solid #F0C1B8" }} role="alert"><span className="text-lg">⚠</span><div><div className="text-sm font-extrabold">{commercialCalendar.summary.blocked} publicación(es) no deberían programarse todavía</div><div className="text-xs mt-0.5">Revisá aprobación del creativo, copy, canal, campaña y disponibilidad antes de continuar.</div></div></div>}
@@ -9449,23 +10388,23 @@ function Calendario({ db, refrescar }) {
 
       <SectionTitle>{vista === "Activas" ? "Bandeja activa por día" : vista === "Distribución" ? "Sala de distribución comercial" : "Historial de publicaciones"}</SectionTitle>
       {vista === "Activas" ? <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
-        {semana.map((dia) => {
+        {semana.map((dia, i) => {
           const delDia = pubs.filter((p) => p.fecha === dia);
           const esHoy = dia === hoyISO();
           return (
-            <div key={dia} className="w-56 shrink-0">
+            <div key={dia} className="momo-trace-open w-56 shrink-0" style={{ animationDelay: `${i * 55}ms` }}>
               <div className="flex items-center justify-between mb-2 px-1">
                 <span className="text-xs font-bold" style={{ color: esHoy ? T.coral : T.choco2 }}>{new Date(dia + "T12:00:00").toLocaleDateString("es-CO", { weekday: "short", day: "numeric" })}{esHoy && " · hoy"}</span>
-                <span className="text-xs font-bold" style={{ color: T.choco2 }}>{delDia.length}</span>
+                <span className="text-xs font-bold" style={{ color: T.choco2, fontVariantNumeric: "tabular-nums" }}>{delDia.length}</span>
               </div>
-              <div className="flex flex-col gap-2 min-h-[60px] rounded-2xl p-2" style={{ background: T.vainilla + "80" }}>
+              <div className="flex flex-col gap-2 min-h-[60px] rounded-2xl p-2" style={{ background: esHoy ? T.vainilla : T.vainilla + "80", border: esHoy ? `1.5px solid ${T.coral}40` : "1.5px solid transparent" }}>
                 {delDia.map((p) => {
                   const cre = db.creatives.find((x) => x.id === p.creativeId);
                   const estadoPendiente = estadosPendientes[p.id];
                   return (
-                    <Card key={p.id} className="p-2.5">
+                    <Card key={p.id} className="momo-cal-card p-2.5">
                       <div className="flex justify-between items-start gap-1">
-                        <span className="text-xs font-bold">{p.hora}</span>
+                        <span className="text-xs font-bold" style={{ fontVariantNumeric: "tabular-nums" }}>{p.hora}</span>
                         <Badge label={p.canal} map={MK_CANAL_STYLE} />
                       </div>
                       <div className="text-xs font-semibold mt-1 leading-tight">{p.titulo}</div>
@@ -9491,11 +10430,11 @@ function Calendario({ db, refrescar }) {
       </div> : vista === "Distribución" ? <div>
         {!db.distributionServerReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🛡️</span><div><div className="text-sm font-extrabold">Vista previa protegida</div><div className="text-xs mt-0.5">Aplicá la migración 19 para guardar checklist, aprobación humana y evidencia externa.</div></div></div>}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
-          <Stat icon="⏱️" label="Deben salir" value={distributionRoom.summary.due} tone={T.coral} />
-          <Stat icon="✓" label="Aprobadas" value={distributionRoom.summary.ready} tone="#3F6B42" />
-          <Stat icon="👀" label="Por aprobar" value={distributionRoom.summary.awaitingApproval} tone="#3E5C7E" />
-          <Stat icon="⛔" label="Bloqueadas" value={distributionRoom.summary.blocked} tone="#A03B2A" />
-          <Stat icon="📊" label="Sin métricas" value={distributionRoom.summary.needsMetrics} tone="#96690F" />
+          <Stat icon="⏱️" label="Deben salir" value={<CountUp value={distributionRoom.summary.due} />} tone={T.coral} />
+          <Stat icon="✓" label="Aprobadas" value={<CountUp value={distributionRoom.summary.ready} />} tone="#3F6B42" />
+          <Stat icon="👀" label="Por aprobar" value={<CountUp value={distributionRoom.summary.awaitingApproval} />} tone="#3E5C7E" />
+          <Stat icon="⛔" label="Bloqueadas" value={<CountUp value={distributionRoom.summary.blocked} />} tone="#A03B2A" />
+          <Stat icon="📊" label="Sin métricas" value={<CountUp value={distributionRoom.summary.needsMetrics} />} tone="#96690F" />
         </div>
         <div className="grid lg:grid-cols-2 gap-3">
           {distributionRoom.queue.map((item) => <div key={item.post.id} className="rounded-[22px] border p-4" style={{ borderColor: item.blocked ? "#E8B7AD" : T.border, background: item.blocked ? "#FFF8F5" : "#fff", boxShadow: "0 8px 24px rgba(91,58,43,.06)" }}>
@@ -9795,8 +10734,12 @@ function resultadoSimple(m) {
 
 function AgencyBrandStudio({ db, user, refrescar }) {
   const ready = Boolean(db.brandMediaReady);
+  const productionReady = Boolean(db.creativeProductionReady);
   const canWrite = ["Administrador", "Marketing/CRM"].includes(user);
   const library = useMemo(() => buildBrandMediaLibrary(db, hoyISO()), [db]);
+  const productionQueue = useMemo(() => buildCreativeProductionQueue(db), [db]);
+  const integrationCenter = useMemo(() => buildAgencyIntegrationCenter(db, new Date()), [db]);
+  const canConfigureIntegrations = hasRole(user, "Administrador");
   const [section, setSection] = useState("Biblioteca");
   const [query, setQuery] = useState("");
   const [mediaFilter, setMediaFilter] = useState("");
@@ -9813,6 +10756,9 @@ function AgencyBrandStudio({ db, user, refrescar }) {
     creativeId: "", briefId: "", operation: "Componer", provider: "Por conectar",
     targetChannel: "Instagram", targetFormat: "Reel 9:16", assetIds: [], instructions: "",
   });
+  const [authorizationJob, setAuthorizationJob] = useState(null);
+  const [authorizationCap, setAuthorizationCap] = useState("30000");
+  const [integrationEdit, setIntegrationEdit] = useState(null);
   const visibleAssets = useMemo(() => searchBrandMediaAssets(library, query, {
     mediaType: mediaFilter, status: showArchived ? "" : "Activo",
   }), [library, query, mediaFilter, showArchived]);
@@ -9884,8 +10830,60 @@ function AgencyBrandStudio({ db, user, refrescar }) {
       });
       setStudio((current) => ({ ...current, assetIds: [], instructions: "" }));
       toast("ok", studio.provider === "Higgsfield"
-        ? "Trabajo Higgsfield preparado y auditado; falta conectar la credencial para enviarlo"
+        ? "Trabajo Higgsfield preparado y auditado; revisá y autorizá su tope antes de enviarlo"
         : "Trabajo creativo preparado con originales y marca congelados");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function authorizeJob() {
+    try {
+      const guard = creativeAuthorizationGuard(authorizationJob, { maxCostCop: authorizationCap }, db, hoyISO());
+      if (!guard.allowed) throw new Error(guard.reasons[0]);
+      await autorizarTrabajoCreativo(authorizationJob.id, guard.maxCostCop);
+      setAuthorizationJob(null);
+      toast("ok", "Trabajo autorizado con tope protegido; queda listo para el conector del motor");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function cancelJob(job) {
+    const reason = window.prompt(`Motivo para cancelar el trabajo #${job.id}`, "");
+    if (!reason) return;
+    try {
+      await cancelarTrabajoCreativo(job.id, reason);
+      toast("ok", "Trabajo creativo cancelado sin borrar su trazabilidad");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function retryJob(job) {
+    try {
+      await reintentarTrabajoCreativo(job.id);
+      toast("ok", "Trabajo devuelto a revisión antes de autorizar un nuevo intento");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function saveIntegrationReference() {
+    try {
+      if (!integrationCenter.ready) throw new Error("Aplicá primero la migración 23 de Integraciones de Agencia.");
+      await guardarReferenciaIntegracionAgencia({
+        provider: integrationEdit.provider, environment: integrationEdit.environment,
+        account_label: integrationEdit.accountLabel, external_account_id: integrationEdit.externalAccountId,
+      });
+      setIntegrationEdit(null);
+      toast("ok", "Referencia guardada. El secreto sigue protegido en el servidor.");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function pauseIntegration(integration) {
+    const reason = window.prompt(`¿Por qué vas a pausar ${integration.provider}? Los trabajos quedarán en espera.`, "Mantenimiento controlado");
+    if (!reason) return;
+    try {
+      await pausarIntegracionAgencia(integration.provider, reason);
+      toast("ok", `${integration.provider} quedó pausado sin perder su trazabilidad`);
       await refrescar();
     } catch (error) { toast("error", error.message); }
   }
@@ -9903,10 +10901,10 @@ function AgencyBrandStudio({ db, user, refrescar }) {
       <div className="px-4 sm:px-5 py-4 border-b flex flex-col lg:flex-row lg:items-center justify-between gap-3" style={{ borderColor: T.border, background: "linear-gradient(135deg,#FFF3EA,#F9E7DE)" }}>
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shadow-sm" style={{ background: T.surface, color: T.coral }}>✦</div>
-          <div><div className="text-[9px] font-extrabold tracking-[.18em] uppercase" style={{ color: T.coral }}>MOMOS BRAND INTELLIGENCE</div><div className="display text-xl font-semibold">Biblioteca + Estudio Creativo</div><div className="text-xs" style={{ color: T.choco2 }}>Originales, permisos, identidad y cada transformación en una sola trazabilidad.</div></div>
+          <div><div className="text-[9px] font-extrabold tracking-[.18em] uppercase" style={{ color: T.coral }}>MOMOS BRAND INTELLIGENCE</div><div className="display text-xl font-semibold">Biblioteca + Estudio Creativo</div><div className="text-xs" style={{ color: T.choco2 }}>Originales, producción e integraciones externas bajo una sola trazabilidad.</div></div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {["Biblioteca", "Estudio"].map((item) => <button key={item} type="button" onClick={() => setSection(item)} className="rounded-full border px-3 py-2 text-[11px] font-extrabold" style={{ borderColor: section === item ? T.coral : T.border, background: section === item ? T.coral : "#fff", color: section === item ? "#fff" : T.choco }}>{item}</button>)}
+          {["Biblioteca", "Estudio", "Producción", "Integraciones"].map((item) => <button key={item} type="button" onClick={() => setSection(item)} className="rounded-full border px-3 py-2 text-[11px] font-extrabold" style={{ borderColor: section === item ? T.coral : T.border, background: section === item ? T.coral : "#fff", color: section === item ? "#fff" : T.choco }}>{item}</button>)}
           <Btn small disabled={!ready || !canWrite} onClick={() => setUploadOpen(true)}>＋ Subir original</Btn>
         </div>
       </div>
@@ -9943,13 +10941,13 @@ function AgencyBrandStudio({ db, user, refrescar }) {
             </article>;
           })}
         </div> : <Empty icon="🖼️" text={ready ? "No hay activos que coincidan. Subí fotos, videos, audios, logos o diseños originales de MOMOS." : "La biblioteca aparecerá aquí cuando se aplique la migración 20."} />}
-      </div> : <div className="p-4 sm:p-5">
+      </div> : section === "Estudio" ? <div className="p-4 sm:p-5">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(310px,.75fr)] gap-4">
           <div>
             <div className="rounded-3xl border p-4 mb-4" style={{ borderColor: T.border, background: T.soft }}>
               <div className="text-[10px] uppercase tracking-[.14em] font-extrabold mb-3" style={{ color: T.coral }}>01 · Encargo creativo trazable</div>
               <div className="grid sm:grid-cols-2 gap-3"><Field label="Creativo base"><select className={inputCls} style={inputStyle} value={studio.creativeId} onChange={(event) => setStudio({ ...studio, creativeId: event.target.value })}><option value="">Sin creativo</option>{(db.creatives || []).map((creative) => <option key={creative.id} value={creative.id}>{creative.titulo}</option>)}</select></Field><Field label="Brief aprobado o en curso"><select className={inputCls} style={inputStyle} value={studio.briefId} onChange={(event) => setStudio({ ...studio, briefId: event.target.value })}><option value="">Sin brief</option>{(db.agencyBriefs || []).map((brief) => <option key={brief.id} value={brief.id}>#{brief.id} · {brief.title}</option>)}</select></Field></div>
-              <div className="grid sm:grid-cols-2 gap-3"><Field label="Operación"><Select options={BRAND_STUDIO_OPERATIONS} value={studio.operation} onChange={(event) => setStudio({ ...studio, operation: event.target.value })} /></Field><Field label="Motor"><Select options={["Por conectar","Higgsfield","Manual"]} value={studio.provider} onChange={(event) => setStudio({ ...studio, provider: event.target.value })} /></Field></div>
+              <div className="grid sm:grid-cols-2 gap-3"><Field label="Operación"><Select options={BRAND_STUDIO_OPERATIONS} value={studio.operation} onChange={(event) => setStudio({ ...studio, operation: event.target.value })} /></Field><Field label="Motor"><Select options={CREATIVE_PROVIDERS} value={studio.provider} onChange={(event) => setStudio({ ...studio, provider: event.target.value })} /></Field></div>
               <div className="grid sm:grid-cols-2 gap-3"><Field label="Canal"><Select options={["Instagram","TikTok","Facebook","WhatsApp","Multicanal"]} value={studio.targetChannel} onChange={(event) => setStudio({ ...studio, targetChannel: event.target.value })} /></Field><Field label="Formato"><Select options={BRAND_STUDIO_FORMATS} value={studio.targetFormat} onChange={(event) => setStudio({ ...studio, targetFormat: event.target.value })} /></Field></div>
               <Field label="Instrucciones adicionales (opcional)"><textarea className={inputCls} style={inputStyle} rows="3" value={studio.instructions} onChange={(event) => setStudio({ ...studio, instructions: event.target.value })} placeholder="Ej. conservar el close-up real, agregar fondo de cocina cálido y cerrar con logo…" /></Field>
             </div>
@@ -9983,7 +10981,74 @@ function AgencyBrandStudio({ db, user, refrescar }) {
         </div>
 
         {(db.creativeGenerationJobs || []).length > 0 && <div className="mt-5"><SectionTitle>Trabajos recientes del estudio</SectionTitle><div className="grid md:grid-cols-2 gap-2">{db.creativeGenerationJobs.slice(0, 6).map((job) => <div key={job.id} className="rounded-2xl border p-3 flex items-center gap-3" style={{ borderColor: T.border, background: "#fff" }}><div className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: T.vainilla }}>✶</div><div className="flex-1 min-w-0"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>TRABAJO #{job.id} · {job.provider}</div><div className="text-sm font-extrabold truncate">{job.operation} · {job.targetFormat}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{job.inputAssetIds.length} fuente(s) · {job.createdAt}</div></div><Badge label={job.status} /></div>)}</div></div>}
+      </div> : section === "Producción" ? <div className="p-4 sm:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-4">
+          <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Cola protegida del estudio</div><div className="display text-2xl font-semibold">De la idea al archivo revisable</div><div className="text-sm" style={{ color: T.choco2 }}>Cada trabajo conserva fuentes, marca, motor, tope de costo y aprobación humana. Autorizar no publica nada.</div></div>
+          <Btn small kind="soft" onClick={() => setSection("Estudio")}>＋ Preparar trabajo</Btn>
+        </div>
+        {!productionReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>🛡️ La cola ya está diseñada, pero falta aplicar la migración 22 de Producción Creativa para autorizar costos y conectar motores sin exponer secretos.</div>}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-5">
+          {[["Por autorizar",productionQueue.summary.prepared],["Autorizados",productionQueue.summary.authorized],["Generando",productionQueue.summary.running],["Con novedad",productionQueue.summary.failed],["Completados",productionQueue.summary.completed]].map(([label,value]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: T.coral }}>{value}</div></div>)}
+        </div>
+        {productionQueue.active.length ? <div className="grid lg:grid-cols-2 gap-3">{productionQueue.active.map((job) => {
+          const creative = (db.creatives || []).find((item) => item.id === job.creativeId);
+          const execution = agencyProviderExecutionGuard(job.provider, db, new Date());
+          return <article key={job.id} className="rounded-3xl border p-4" style={{ borderColor: job.status === "Fallido" ? "#E6B7AE" : T.border, background: "#fff" }}>
+            <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>TRABAJO #{job.id} · {job.provider}</div><div className="display text-lg font-semibold">{creative?.titulo || job.operation}</div><div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{job.targetFormat} · {job.inputAssetIds.length} fuente(s)</div></div><Badge label={job.status} /></div>
+            <div className="mt-3 pl-3 border-l-2 text-xs space-y-1" style={{ borderColor: T.rosa }}><div><b>Motor sugerido:</b> {job.recommendedProvider}</div><div><b>Tope protegido:</b> {job.maxCostCop ? fmt(job.maxCostCop) : "Sin autorizar"}</div>{job.errorMessage && <div style={{ color: "#A03B2A" }}><b>Novedad:</b> {job.errorMessage}</div>}</div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {job.status === "Preparado" && <BtnAsync small disabled={!productionReady || !canWrite || job.provider === "Por conectar"} onClick={() => { setAuthorizationJob(job); setAuthorizationCap(String(job.maxCostCop || 30000)); }}>Autorizar con tope</BtnAsync>}
+              {job.status === "Fallido" && <BtnAsync small kind="soft" disabled={!productionReady || !canWrite} onClick={() => retryJob(job)}>Revisar y reintentar</BtnAsync>}
+              {["Preparado","Autorizado","Fallido"].includes(job.status) && <BtnAsync small kind="ghost" disabled={!productionReady || !canWrite} onClick={() => cancelJob(job)}>Cancelar trabajo</BtnAsync>}
+              {job.status === "Autorizado" && <span className="rounded-full px-3 py-2 text-[10px] font-extrabold" style={{ background: execution.allowed ? "#DDEBD9" : "#FFF2D8", color: execution.allowed ? "#315B35" : "#7A5410" }}>{execution.allowed ? "Conector activo · listo para ejecutar" : `En espera · ${execution.reasons[0] || "conector pendiente"}`}</span>}
+              {job.status === "En generación" && <span className="rounded-full px-3 py-2 text-[10px] font-extrabold" style={{ background: T.vainilla, color: T.choco }}>Motor trabajando · intento {job.attemptCount || 1}</span>}
+            </div>
+          </article>;
+        })}</div> : <Empty icon="✶" text="No hay trabajos creativos activos. Prepará uno desde Estudio con sus fuentes reales y formato." />}
+        {productionQueue.history.length > 0 && <div className="mt-5"><SectionTitle>Historial creativo</SectionTitle><div className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border }}>{productionQueue.history.slice(0, 8).map((job) => <div key={job.id} className="px-4 py-3 border-t first:border-t-0 flex items-center gap-3" style={{ borderColor: T.border }}><div className="flex-1"><div className="text-sm font-bold">Trabajo #{job.id} · {job.operation}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{job.provider} · costo real {fmt(job.generationCost || 0)}</div></div><Badge label={job.status} />{job.outputAsset?.url && <a href={job.outputAsset.url} target="_blank" rel="noreferrer" className="text-xs font-bold underline" style={{ color: T.coral }}>Ver archivo</a>}</div>)}</div></div>}
+      </div> : <div className="p-4 sm:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-4">
+          <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Centro de integraciones</div><div className="display text-2xl font-semibold">Qué puede ejecutar Agencia MOMOS ahora</div><div className="text-sm max-w-2xl" style={{ color: T.choco2 }}>MOMO OPS muestra la cuenta, salud y último contacto de cada motor. Los tokens nunca llegan a esta pantalla ni se guardan en tablas públicas.</div></div>
+          <span className="rounded-full px-3 py-2 text-[10px] font-extrabold" style={{ background: integrationCenter.summary.needsAttention ? "#F6D4CD" : "#DDEBD9", color: integrationCenter.summary.needsAttention ? "#A03B2A" : "#315B35" }}>{integrationCenter.summary.operational} de {integrationCenter.summary.total} operativas</span>
+        </div>
+        {!integrationCenter.ready && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>🛡️ Aplicá <code>integraciones-agencia-v1.sql</code> después de la migración 22. Hasta entonces ningún proveedor externo se considera conectado.</div>}
+        {integrationCenter.ready && !db.higgsfieldConnectorReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>✦ Higgsfield sigue en modo protegido. Aplicá <code>higgsfield-conector-v1.sql</code> para instalar el worker privado, el costo máximo y la conciliación de resultados.</div>}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-5">
+          {[["Operativas",integrationCenter.summary.operational,"Heartbeat ≤ 30 min"],["Requieren atención",integrationCenter.summary.needsAttention,"Error o trabajo detenido"],["Trabajo esperando",integrationCenter.summary.waiting,"Autorizado, no ejecutado"],["Piezas generadas",integrationCenter.summary.completed,`${integrationCenter.summary.failed} intentos fallidos`]].map(([label,value,sub]) => <div key={label} className="momo-metric-card rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft, "--metric-tone": label === "Requieren atención" ? "#C4808E" : T.coral }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: label === "Piezas generadas" ? "#3F6B42" : T.coral }}>{value}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{sub}</div></div>)}
+        </div>
+        <div className="grid lg:grid-cols-2 gap-3">
+          {integrationCenter.integrations.map((integration) => {
+            const tone = integration.operational ? { border: "#B8D3B2", bg: "#F4FAF2", fg: "#315B35" }
+              : integration.status === "Con error" || integration.needsAttention ? { border: "#E6B7AE", bg: "#FFF7F4", fg: "#A03B2A" }
+                : { border: T.border, bg: "#fff", fg: "#7A5410" };
+            return <article key={integration.provider} className="rounded-3xl border p-4 shadow-sm" style={{ borderColor: tone.border, background: tone.bg }}>
+              <div className="flex items-start gap-3"><div className="w-11 h-11 shrink-0 rounded-2xl grid place-items-center text-xl" style={{ background: integration.operational ? "#DDEBD9" : T.vainilla, color: tone.fg }}>{integration.icon}</div><div className="flex-1 min-w-0"><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{integration.kind}</div><div className="display text-lg font-semibold">{integration.provider}</div></div><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: integration.operational ? "#DDEBD9" : integration.status === "Con error" ? "#F6D4CD" : "#FFF2D8", color: tone.fg }}>{integration.operational ? "● OPERATIVA" : integration.status.toUpperCase()}</span></div><p className="text-xs mt-1 mb-0" style={{ color: T.choco2 }}>{integration.purpose}</p></div></div>
+              <div className="grid grid-cols-2 gap-2 my-3"><div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,.7)" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Cuenta</div><div className="text-xs font-extrabold truncate">{integration.accountLabel || "Sin referencia"}</div><div className="text-[9px]" style={{ color: T.choco2 }}>{integration.environment}</div></div><div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,.7)" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Salud privada</div><div className="text-xs font-extrabold">{integration.heartbeatMinutes == null ? "Sin heartbeat" : `Hace ${integration.heartbeatMinutes} min`}</div><div className="text-[9px]" style={{ color: integration.secretConfigured ? "#315B35" : "#A03B2A" }}>{integration.secretConfigured ? "OAuth confirmado" : "Autenticación pendiente"}</div></div></div>
+              <div className="flex flex-wrap gap-1.5">{integration.capabilities.map((capability) => <span key={capability} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{capability}</span>)}{integration.waiting > 0 && <span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>{integration.waiting} esperando</span>}</div>
+              {integration.provider === "Higgsfield" && integration.bridgeInstalled && <div className="rounded-2xl px-3 py-2 mt-3 grid grid-cols-3 gap-2" style={{ background: "rgba(255,255,255,.72)" }}><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Worker</div><div className="text-[10px] font-bold truncate">{integration.workerVersion || "Sin versión"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Último intento</div><div className="text-[10px] font-bold">{integration.lastRun?.state || "Sin trabajos"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Costo</div><div className="text-[10px] font-bold">{integration.lastRun ? fmt(integration.lastRun.actualCostCop || integration.lastRun.estimatedCostCop || 0) : "—"}</div></div></div>}
+              {!integration.operational && <div className="rounded-2xl px-3 py-2 mt-3 text-[11px] font-bold" style={{ background: integration.needsAttention ? "#F6D4CD" : "#FFF2D8", color: tone.fg }}>Siguiente paso: {integration.reasons[0]}</div>}
+              <div className="flex flex-wrap gap-2 mt-3"><Btn small kind="soft" disabled={!integrationCenter.ready || !canConfigureIntegrations} onClick={() => setIntegrationEdit({ provider: integration.provider, environment: integration.environment, accountLabel: integration.accountLabel, externalAccountId: integration.externalAccountId })}>{integration.accountLabel ? "Editar referencia" : "Configurar cuenta"}</Btn>{integration.status === "Activa" && <Btn small kind="ghost" disabled={!canConfigureIntegrations} onClick={() => pauseIntegration(integration)}>Pausar</Btn>}</div>
+            </article>;
+          })}
+        </div>
+        <div className="rounded-2xl px-4 py-3 mt-4 text-xs" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Activación segura:</b> Administración registra aquí la cuenta; Higgsfield se autentica por OAuth únicamente en el runtime privado del worker. MOMO OPS exige heartbeat reciente, tope de costo y revisión humana de cada salida antes de habilitar cualquier publicación.</div>
       </div>}
+
+      {integrationEdit && <Modal title={`Configurar ${integrationEdit.provider}`} onClose={() => setIntegrationEdit(null)} topLayer>
+        <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Acá no se pegan tokens ni contraseñas.</b> Solo identificamos la cuenta que MOMO OPS debe usar. La sesión OAuth se concede después en el runtime privado del worker.</div>
+        <div className="grid sm:grid-cols-2 gap-3"><Field label="Proveedor"><Input value={integrationEdit.provider} disabled /></Field><Field label="Entorno"><Select options={AGENCY_INTEGRATION_ENVIRONMENTS} value={integrationEdit.environment} onChange={(event) => setIntegrationEdit({ ...integrationEdit, environment: event.target.value })} /></Field></div>
+        <Field label="Nombre visible de la cuenta"><Input value={integrationEdit.accountLabel} onChange={(event) => setIntegrationEdit({ ...integrationEdit, accountLabel: event.target.value })} placeholder="Ej. Instagram D'Momos Sweet Love" /></Field>
+        <Field label="ID externo de cuenta (opcional)"><Input value={integrationEdit.externalAccountId} onChange={(event) => setIntegrationEdit({ ...integrationEdit, externalAccountId: event.target.value })} placeholder="ID entregado por el proveedor" /></Field>
+        <div className="rounded-2xl px-3 py-2 mb-4 text-xs" style={{ background: T.vainilla }}><b>Guardar no activa el conector.</b> El estado cambiará a Activa únicamente cuando el servidor compruebe la credencial y logre contactar al proveedor.</div>
+        <div className="flex flex-wrap gap-2"><BtnAsync onClick={saveIntegrationReference} disabled={integrationEdit.accountLabel.trim().length < 2} textoEnVuelo="Protegiendo referencia…">Guardar referencia</BtnAsync><Btn kind="ghost" onClick={() => setIntegrationEdit(null)}>Cancelar</Btn></div>
+      </Modal>}
+
+      {authorizationJob && <Modal title={`Autorizar trabajo #${authorizationJob.id}`} onClose={() => setAuthorizationJob(null)} topLayer>
+        <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: T.vainilla }}><b>Confirmación humana obligatoria.</b> El motor no podrá superar este tope. La salida quedará En revisión y nunca se publicará sola.</div>
+        <div className="grid sm:grid-cols-2 gap-3"><Field label="Motor"><Input value={authorizationJob.provider} disabled /></Field><Field label="Tope máximo (COP)"><Input type="number" min="0" step="1000" value={authorizationCap} onChange={(event) => setAuthorizationCap(event.target.value)} /></Field></div>
+        {(() => { const guard = creativeAuthorizationGuard(authorizationJob, { maxCostCop: authorizationCap }, db, hoyISO()); return !guard.allowed && <div className="rounded-2xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>⛔ {guard.reasons.join(" ")}</div>; })()}
+        <div className="flex gap-2"><BtnAsync onClick={authorizeJob} confirmar disabled={!creativeAuthorizationGuard(authorizationJob, { maxCostCop: authorizationCap }, db, hoyISO()).allowed} textoEnVuelo="Autorizando…">Autorizar gasto protegido</BtnAsync><Btn kind="ghost" onClick={() => setAuthorizationJob(null)}>Volver</Btn></div>
+      </Modal>}
 
       {uploadOpen && <Modal title="Nuevo original de marca" onClose={() => { setUploadOpen(false); setFile(null); }} wide topLayer>
         <div className="rounded-2xl p-3 mb-4 text-xs" style={{ background: T.vainilla }}><b>El original nunca se sobrescribe.</b> MOMO OPS guardará su huella digital, procedencia, permisos y cada uso creativo posterior.</div>
@@ -11273,6 +12338,8 @@ export default function MomosOps() {
     if (db.agencyServerReady) tables.push("campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks", "agency_settings", "agency_briefs", "agency_decisions", "agency_creative_versions");
     if (db.distributionServerReady) tables.push("content_distributions");
     if (db.brandMediaReady) tables.push("brand_media_assets", "creative_generation_jobs", "brand_media_usages");
+    if (db.agencyIntegrationsReady) tables.push("agency_integrations");
+    if (db.higgsfieldConnectorReady) tables.push("creative_connector_runs");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = () => {
       if (timer) clearTimeout(timer);
@@ -11294,7 +12361,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.brandMediaReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -11302,16 +12369,15 @@ export default function MomosOps() {
     if (!authUserId) { setPerfil(null); setPerfilError(null); return; }
     let vivo = true;
     (async () => {
-      const { data, error } = await supabase
-        .from("users")
-        .select("id,nombre,rol,activo")
-        .eq("auth_id", authUserId)
-        .maybeSingle();
-      if (!vivo) return;
-      if (error) setPerfilError("No se pudo cargar tu perfil: " + error.message);
-      else if (!data) setPerfilError("Tu usuario no está vinculado al equipo. Avisale al administrador.");
-      else if (!data.activo) setPerfilError("Tu usuario está desactivado. Avisale al administrador.");
-      else { setPerfil(data); setPerfilError(null); }
+      try {
+        const data = await fetchUserProfile(authUserId);
+        if (!vivo) return;
+        if (!data) setPerfilError("Tu usuario no está vinculado al equipo. Avisale al administrador.");
+        else if (!data.activo) setPerfilError("Tu usuario está desactivado. Avisale al administrador.");
+        else { setPerfil(data); setPerfilError(null); }
+      } catch (error) {
+        if (vivo) setPerfilError("No se pudo cargar tu perfil: " + error.message);
+      }
     })();
     return () => { vivo = false; };
   }, [authUserId]);
@@ -11328,6 +12394,7 @@ export default function MomosOps() {
       d.inventoryLotsReady = Boolean(cat.inventoryLotsReady);
       d.recipes = cat.recipes;
       d.users = cat.users;
+      d.multipleRolesReady = Boolean(cat.multipleRolesReady);
       d.figuras = cat.figuras || []; // catálogo figuras con product_id/gramaje (Producción v2)
       d.subrecetas = cat.subrecetas || []; // Componentes+BOM: bases (mousses/cheesecake/ganache/salsas/crocante)
       d.subreceta_ingredientes = cat.subreceta_ingredientes || []; // receta maestra por 1000 g
@@ -11339,9 +12406,14 @@ export default function MomosOps() {
       d.distributionServerReady = Boolean(cat.distributionServerReady);
       d.content_distributions = cat.content_distributions || [];
       d.brandMediaReady = Boolean(cat.brandMediaReady);
+      d.creativeProductionReady = Boolean(cat.creativeProductionReady);
       d.brandMediaAssets = cat.brandMediaAssets || [];
       d.creativeGenerationJobs = cat.creativeGenerationJobs || [];
       d.brandMediaUsages = cat.brandMediaUsages || [];
+      d.agencyIntegrationsReady = Boolean(cat.agencyIntegrationsReady);
+      d.agencyIntegrations = cat.agencyIntegrations || [];
+      d.higgsfieldConnectorReady = Boolean(cat.higgsfieldConnectorReady);
+      d.creativeConnectorRuns = cat.creativeConnectorRuns || [];
       d.agencyServerReady = Boolean(cat.agencyServerReady);
       d.agencySettings = cat.agencySettings || d.agencySettings || DEFAULT_AGENCY_SETTINGS;
       d.agencyBriefs = cat.agencyBriefs || [];
@@ -11658,8 +12730,9 @@ export default function MomosOps() {
     );
   }
 
-  const rol = perfil.rol; // el rol ya no se simula: viene del perfil real
-  const visibles = MODULOS.filter((m) => m.roles.includes(rol));
+  const roles = normalizeRoles(perfil); // roles reales acumulables del perfil autenticado
+  const rol = primaryRole(perfil); // compatibilidad: auditorías y textos conservan un rol principal
+  const visibles = MODULOS.filter((m) => hasAnyRole(roles, m.roles));
   const activa = visibles.some((m) => m.id === vista) ? vista : visibles[0].id;
   const navPrincipal = visibles.slice(0, 4);
   const navExtra = visibles.slice(4);
@@ -11726,7 +12799,7 @@ export default function MomosOps() {
           <div className="ml-auto flex items-center gap-2">
             <div className="text-right hidden sm:block">
               <div className="text-xs font-bold leading-tight">{perfil.nombre}</div>
-              <div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{perfil.rol}</div>
+              <div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{rolesLabel(perfil)}</div>
             </div>
             <button onClick={() => supabase.auth.signOut()}
               className="rounded-xl px-2.5 py-2 text-xs border font-bold" style={inputStyle} aria-label="Cerrar sesión">Salir</button>

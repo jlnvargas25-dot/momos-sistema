@@ -1,3 +1,5 @@
+import { hasAnyRole } from "./user-roles.js";
+
 export const OPERATIONAL_STAGES = ["Cocina", "Empaque", "Logística"];
 
 const STAGE_ROLES = {
@@ -21,7 +23,7 @@ export function operationalStageForOrder(order) {
 }
 
 export function canOperateStage(role, stage) {
-  return Boolean(STAGE_ROLES[stage]?.has(String(role || "").trim()));
+  return Boolean(STAGE_ROLES[stage] && hasAnyRole(role, STAGE_ROLES[stage]));
 }
 
 export function activeStageAssignment(orderId, stage, assignments = []) {

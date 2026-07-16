@@ -14,7 +14,9 @@ begin
     '20260714_13_productos_servidor','20260714_14_control_operativo',
     '20260714_15_crm_clientes','20260714_16_agencia_comercial',
     '20260715_17_vencimiento_terminado','20260715_18_abastecimiento_interno',
-    '20260715_19_distribucion_comercial','20260715_20_biblioteca_creativa'
+    '20260715_19_distribucion_comercial','20260715_20_biblioteca_creativa',
+    '20260715_21_roles_multiples','20260715_22_produccion_creativa',
+    '20260715_23_integraciones_agencia','20260715_24_higgsfield_conector'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -31,6 +33,10 @@ begin
   assert to_regclass('public.content_distributions') is not null, 'falta distribución comercial';
   assert to_regclass('public.brand_media_assets') is not null, 'falta biblioteca inteligente de marca';
   assert to_regclass('public.creative_generation_jobs') is not null, 'falta estudio creativo trazable';
+  assert exists(select 1 from information_schema.columns where table_schema='public' and table_name='users' and column_name='roles'), 'falta roles múltiples';
+  assert has_function_privilege('authenticated','public.quitar_rol_usuario(text,text)','EXECUTE'), 'falta RPC para retirar roles';
+  assert public.roles_multiples_disponible(), 'falta sonda de roles múltiples';
+  assert not exists(select 1 from public.users where public.valid_user_roles(roles,rol) is not true), 'hay usuarios con roles inválidos';
   assert exists(
     select 1 from information_schema.columns
     where table_schema='public' and table_name='production_batches' and column_name='desmoldado_en'
@@ -55,6 +61,20 @@ begin
   assert has_function_privilege('authenticated','public.resolver_decision_agencia(bigint,text,text)','EXECUTE'), 'falta RPC de decisiones comerciales';
   assert has_function_privilege('authenticated','public.cerrar_distribucion_publicacion(text,text,text,text,text)','EXECUTE'), 'falta RPC de cierre comercial';
   assert has_function_privilege('authenticated','public.crear_trabajo_creativo(jsonb)','EXECUTE'), 'falta RPC del estudio creativo';
+  assert has_function_privilege('authenticated','public.autorizar_trabajo_creativo(bigint,numeric)','EXECUTE'), 'falta autorizacion protegida del estudio';
+  assert not has_function_privilege('authenticated','public.tomar_trabajo_creativo_conector(bigint,text)','EXECUTE'), 'conector creativo privado expuesto';
+  assert to_regclass('public.agency_integrations') is not null, 'falta centro de integraciones de Agencia';
+  assert public.integraciones_agencia_disponibles(), 'falta sonda de integraciones de Agencia';
+  assert not has_table_privilege('authenticated','public.agency_integrations','UPDATE'), 'salud de integraciones permite UPDATE directo';
+  assert not has_function_privilege('authenticated','public.reportar_integracion_agencia_conector(text,text,boolean,text,jsonb,text,text,boolean)','EXECUTE'), 'heartbeat privado de integraciones expuesto';
+  assert to_regclass('public.creative_connector_runs') is not null, 'falta ejecución trazable de Higgsfield';
+  assert public.higgsfield_conector_disponible(), 'falta sonda del worker Higgsfield';
+  assert not has_table_privilege('authenticated','public.creative_connector_runs','INSERT'), 'staff puede insertar ejecuciones del conector';
+  assert not has_table_privilege('authenticated','public.creative_connector_runs','UPDATE'), 'staff puede alterar ejecuciones del conector';
+  assert not has_function_privilege('authenticated','public.reclamar_trabajo_higgsfield(text,integer)','EXECUTE'), 'lease Higgsfield privado expuesto';
+  assert not has_function_privilege('authenticated','public.marcar_despacho_higgsfield(bigint,uuid)','EXECUTE'), 'inicio de despacho Higgsfield privado expuesto';
+  assert not has_function_privilege('authenticated','public.confirmar_despacho_higgsfield(bigint,uuid,text,numeric,jsonb)','EXECUTE'), 'despacho Higgsfield privado expuesto';
+  assert not has_function_privilege('authenticated','public.registrar_salida_higgsfield(bigint,uuid,jsonb)','EXECUTE'), 'salida Higgsfield privada expuesta';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -86,5 +106,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-20 PASS, rollback total' as resultado;
-  rollback;
+select 'TESTS_OK — migraciones ordenadas 01-24 PASS, rollback total' as resultado;
+rollback;

@@ -1,3 +1,5 @@
+import { hasAnyRole } from "./user-roles.js";
+
 const SMALL_NUMBERS = {
   cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
   seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12,
@@ -305,11 +307,11 @@ function catalogEntry(value) {
 const KITCHEN_UNPAID_ORDER_STATES = new Set(["Nuevo", "Confirmado", "Pendiente de pago"]);
 
 export function canReceiveKitchenOrderAlerts(role) {
-  return ["Administrador", "Cocina", "Empaque"].includes(String(role || "").trim());
+  return hasAnyRole(role, ["Administrador", "Cocina", "Empaque"]);
 }
 
 export function canReceiveKitchenDelayReminders(role) {
-  return ["Administrador", "Cocina", "Empaque"].includes(String(role || "").trim());
+  return hasAnyRole(role, ["Administrador", "Cocina", "Empaque"]);
 }
 
 export function kitchenOrderStateEvents(orders = [], knownStates = new Map()) {
@@ -451,7 +453,9 @@ export function kitchenDelayedOrderReminders(catalogs = {}, now = Date.now(), se
   const reminders = [];
 
   orders.forEach((order) => {
-    const isKitchen = order?.estado === "En producción";
+    const isKitchenWaiting = order?.estado === "Pagado";
+    const isKitchenActive = order?.estado === "En producción";
+    const isKitchen = isKitchenWaiting || isKitchenActive;
     const isPacking = order?.estado === "Listo para empaque" || order?.estado === "Empacado";
     const thresholdMinutes = isKitchen
       ? timing.demoraCocinaMin
@@ -474,18 +478,29 @@ export function kitchenDelayedOrderReminders(catalogs = {}, now = Date.now(), se
         const latestMs = bogotaOperationalTime(latest?.fecha);
         return !latest || (Number.isFinite(auditMs) && (!Number.isFinite(latestMs) || auditMs > latestMs)) ? audit : latest;
       }, null);
-    const sinceMs = bogotaOperationalTime(stateAudit?.fecha);
+    const paidSinceMs = isKitchenWaiting ? bogotaOperationalTime(order?.pagadoEn) : Number.NaN;
+    const auditSinceMs = bogotaOperationalTime(stateAudit?.fecha);
+    const sinceMs = Number.isFinite(paidSinceMs) ? paidSinceMs : auditSinceMs;
     if (!Number.isFinite(sinceMs) || !Number.isFinite(nowMs) || nowMs < sinceMs) return;
     const elapsedMinutes = Math.floor((nowMs - sinceMs) / 60000);
     if (elapsedMinutes < thresholdMinutes) return;
 
     const urgent = elapsedMinutes >= urgentMinutes;
     const area = isKitchen ? "Cocina" : "Empaque";
-    const nextAction = isKitchen
-      ? "Revisen la preparación y confirmen Listo para empaque apenas termine."
+    const nextAction = isKitchenWaiting
+      ? "Cocina debe tomar la comanda e iniciar la preparación."
+      : isKitchenActive
+        ? "Revisen la preparación y confirmen Listo para empaque apenas termine."
       : order.estado === "Listo para empaque"
         ? "Empaque debe tomar la comanda y confirmar Empacado cuando termine."
         : "Revisen el empaque y pásenlo a Listo para despacho o En ruta según corresponda.";
+    const phase = isKitchenWaiting
+      ? "esperando inicio de Cocina"
+      : isKitchenActive
+        ? "en preparación"
+        : order.estado === "Listo para empaque"
+          ? "esperando inicio de Empaque"
+          : "en Empaque";
     const alert = kitchenOrderAlert(order, catalogs);
     reminders.push({
       orderId: order.id,
@@ -493,7 +508,8 @@ export function kitchenDelayedOrderReminders(catalogs = {}, now = Date.now(), se
       content: alert?.content || "productos todavía sin detalle",
       state: order.estado,
       area,
-      since: stateAudit.fecha,
+      since: isKitchenWaiting && order?.pagadoEn ? order.pagadoEn : stateAudit?.fecha,
+      phase,
       elapsedMinutes,
       thresholdMinutes,
       urgentMinutes,
@@ -501,7 +517,7 @@ export function kitchenDelayedOrderReminders(catalogs = {}, now = Date.now(), se
       urgent,
       repeatBucket: Math.floor((elapsedMinutes - thresholdMinutes) / timing.demoraRepeticionMin),
       nextAction,
-      text: `${urgent ? "Urgente" : "Recordatorio"}: el pedido ${order.id} lleva ${elapsedMinutes} minutos en ${area}. Puede haberse quedado olvidado. ${nextAction}`,
+      text: `${urgent ? "Urgente" : "Recordatorio"}: el pedido ${order.id} lleva ${elapsedMinutes} minutos ${phase}. Puede haberse quedado olvidado. ${nextAction}`,
     });
   });
 

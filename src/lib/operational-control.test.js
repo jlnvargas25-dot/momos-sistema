@@ -19,6 +19,13 @@ test("separa quién puede tomar cada etapa", () => {
   assert.equal(canOperateStage("Mensajero", "Logística"), true);
 });
 
+test("acumula Cocina y Empaque sobre la misma identidad", () => {
+  const roles = ["Cocina", "Empaque"];
+  assert.equal(canOperateStage(roles, "Cocina"), true);
+  assert.equal(canOperateStage(roles, "Empaque"), true);
+  assert.equal(canOperateStage(roles, "Logística"), false);
+});
+
 test("un pedido conserva un único responsable activo por etapa", () => {
   const assignments = [
     { orderId: "P1", stage: "Cocina", status: "Liberada", user: "Ana" },

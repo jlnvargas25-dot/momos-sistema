@@ -265,7 +265,13 @@ export async function sincronizarCostoProducto(productId) {
 export async function crearUsuarioStaff(nombre, email, rol) {
   const { data, error } = await supabase.rpc("crear_usuario_staff", { p_nombre: nombre, p_email: email, p_rol: rol });
   if (error) throw new Error(error.message);
-  return data; // {ok, id} — fila staff sin login (auth_id NULL) hasta vincular cuenta
+  return data; // Crea el usuario o acumula el rol sobre el correo existente.
+}
+
+export async function quitarRolUsuario(userId, rol) {
+  const { data, error } = await supabase.rpc("quitar_rol_usuario", { p_user_id: userId, p_rol: rol });
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 export async function setUserActivo(userId, activo) {
@@ -448,6 +454,38 @@ export async function archivarActivoMarca(assetId, reason) {
 
 export async function crearTrabajoCreativo(payload) {
   const { data, error } = await supabase.rpc("crear_trabajo_creativo", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function autorizarTrabajoCreativo(jobId, maxCostCop) {
+  const { data, error } = await supabase.rpc("autorizar_trabajo_creativo", {
+    p_job_id: jobId, p_max_cost_cop: maxCostCop,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function cancelarTrabajoCreativo(jobId, reason) {
+  const { data, error } = await supabase.rpc("cancelar_trabajo_creativo", { p_job_id: jobId, p_reason: reason });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function reintentarTrabajoCreativo(jobId) {
+  const { data, error } = await supabase.rpc("reintentar_trabajo_creativo", { p_job_id: jobId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function guardarReferenciaIntegracionAgencia(payload) {
+  const { data, error } = await supabase.rpc("guardar_referencia_integracion_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function pausarIntegracionAgencia(provider, reason) {
+  const { data, error } = await supabase.rpc("pausar_integracion_agencia", { p_provider: provider, p_reason: reason });
   if (error) throw new Error(error.message);
   return data;
 }

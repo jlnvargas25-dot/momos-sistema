@@ -111,16 +111,32 @@ test("recuerda pedidos demorados en Cocina y Empaque con escalamiento controlado
   const now = Date.parse("2026-07-14T11:30:00-05:00");
   const reminders = kitchenDelayedOrderReminders(reminderCatalogs, now);
 
-  assert.deepEqual(reminders.map((reminder) => reminder.orderId), ["P-2001", "P-2002"]);
-  assert.deepEqual(reminders.map((reminder) => reminder.elapsedMinutes), [32, 13]);
+  assert.deepEqual(reminders.map((reminder) => reminder.orderId), ["P-2004", "P-2001", "P-2002"]);
+  assert.deepEqual(reminders.map((reminder) => reminder.elapsedMinutes), [90, 32, 13]);
   assert.equal(reminders[0].area, "Cocina");
   assert.equal(reminders[0].urgent, true);
-  assert.equal(reminders[0].repeatBucket, 3);
-  assert.match(reminders[0].text, /Urgente.*32 minutos en Cocina.*olvidado/i);
-  assert.equal(reminders[1].area, "Empaque");
-  assert.equal(reminders[1].urgent, false);
-  assert.equal(reminders[1].repeatBucket, 0);
-  assert.match(reminders[1].nextAction, /Listo para despacho.*En ruta/i);
+  assert.equal(reminders[0].phase, "esperando inicio de Cocina");
+  assert.match(reminders[0].nextAction, /tomar la comanda.*iniciar/i);
+  assert.equal(reminders[1].repeatBucket, 3);
+  assert.match(reminders[1].text, /Urgente.*32 minutos en preparación.*olvidado/i);
+  assert.equal(reminders[2].area, "Empaque");
+  assert.equal(reminders[2].urgent, false);
+  assert.equal(reminders[2].repeatBucket, 0);
+  assert.match(reminders[2].nextAction, /Listo para despacho.*En ruta/i);
+});
+
+test("empieza a medir una comanda pagada aunque todavía no tenga auditoría de Cocina", () => {
+  const reminders = kitchenDelayedOrderReminders({
+    ...catalogs,
+    orders: [{ id: "P-2010", customerId: "C01", estado: "Pagado", pagadoEn: "2026-07-14 11:00" }],
+    auditLogs: [],
+  }, Date.parse("2026-07-14T11:16:00-05:00"));
+
+  assert.equal(reminders.length, 1);
+  assert.equal(reminders[0].orderId, "P-2010");
+  assert.equal(reminders[0].elapsedMinutes, 16);
+  assert.equal(reminders[0].urgent, false);
+  assert.equal(reminders[0].phase, "esperando inicio de Cocina");
 });
 
 test("respeta tiempos configurables distintos para Cocina, Empaque, urgencia y repetición", () => {

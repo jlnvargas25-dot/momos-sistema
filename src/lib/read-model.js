@@ -15,13 +15,32 @@ const horaBogota = (ts) => (ts ? new Date(ts).toLocaleTimeString("en-GB", { time
 const tsBogota = (ts) => (ts ? fechaBogota(ts) + " " + horaBogota(ts) : "");
 const hhmm = (t) => (t ? String(t).slice(0, 5) : ""); // time 'HH:MM:SS' → 'HH:MM'
 
+async function multipleRolesCapability() {
+  const result = await supabase.rpc("roles_multiples_disponible");
+  const missing = result.error && (result.error.code === "PGRST202"
+    || /could not find the function|schema cache/i.test(result.error.message || ""));
+  if (result.error && !missing) throw new Error(result.error.message);
+  return !missing && result.data === true;
+}
+
+export async function fetchUserProfile(authUserId) {
+  const multipleRolesReady = await multipleRolesCapability();
+  const columns = multipleRolesReady ? "id,nombre,rol,roles,activo" : "id,nombre,rol,activo";
+  const { data, error } = await supabase.from("users").select(columns).eq("auth_id", authUserId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { ...data, roles: multipleRolesReady && Array.isArray(data.roles) ? data.roles : [data.rol], multipleRolesReady };
+}
+
 export async function fetchCatalogos() {
+  const multipleRolesReady = await multipleRolesCapability();
+  const userColumns = multipleRolesReady ? "id,nombre,email,rol,roles,activo" : "id,nombre,email,rol,activo";
   const q = await Promise.all([
     supabase.from("products").select("id,nombre,cat,tipo,especie,precio,precio_rappi,costo,stock,prep,frio,lejano,activo,descr,combo_size,empaque_item_id,colchon_produccion").order("id"),
     supabase.from("combo_components").select("combo_id,component_id").order("component_id"),
     supabase.from("inventory_items").select("id,nombre,cat,unidad,stock,minimo,costo,proveedor,vence,ubicacion,compra,costo_estimado").order("id"),
     supabase.from("recipes").select("id,product_id,item_id,cantidad").order("id"),
-    supabase.from("users").select("id,nombre,email,rol,activo").order("id"),
+    supabase.from("users").select(userColumns).order("id"),
     supabase.from("toppings").select("nombre,precio,insumo_id,insumo_cant").eq("activo", true).order("orden"),
     supabase.from("figuras").select("nombre,especie,gramaje_g,product_id,activo").order("orden"),
     supabase.from("catalog_values").select("categoria,valor").eq("activo", true).order("orden"),
@@ -108,7 +127,10 @@ export async function fetchCatalogos() {
 
   const recipes = recs.map((r) => ({ id: r.id, productId: r.product_id, itemId: r.item_id, cantidad: r.cantidad }));
 
-  const users = usrs.map((u) => ({ id: u.id, nombre: u.nombre, email: u.email, rol: u.rol, activo: u.activo }));
+  const users = usrs.map((u) => ({
+    id: u.id, nombre: u.nombre, email: u.email, rol: u.rol,
+    roles: multipleRolesReady && Array.isArray(u.roles) ? u.roles : [u.rol], activo: u.activo,
+  }));
 
   const porCat = {};
   cats.forEach((c) => { (porCat[c.categoria] = porCat[c.categoria] || []).push(c.valor); });
@@ -288,6 +310,14 @@ export async function fetchCatalogos() {
     (brandMediaProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandMediaProbe.error.message || ""));
   if (brandMediaProbe.error && !brandMediaProbeMissing) throw new Error(brandMediaProbe.error.message);
   const brandMediaReady = !brandMediaProbeMissing && brandMediaProbe.data === true;
+  let creativeProductionReady = false;
+  if (brandMediaReady) {
+    const productionProbe = await supabase.rpc("produccion_creativa_disponible");
+    const productionProbeMissing = productionProbe.error &&
+      (productionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(productionProbe.error.message || ""));
+    if (productionProbe.error && !productionProbeMissing) throw new Error(productionProbe.error.message);
+    creativeProductionReady = !productionProbeMissing && productionProbe.data === true;
+  }
   let brandMediaAssets = []; let creativeGenerationJobs = []; let brandMediaUsages = [];
   if (brandMediaReady) {
     const brandMediaResults = await Promise.all([
@@ -295,7 +325,9 @@ export async function fetchCatalogos() {
         .select("id,name,media_type,source,product_id,figure,flavor,shot_type,orientation,contains_people,rights_status,rights_expires_at,ai_use_allowed,allowed_channels,status,storage_path,content_hash,mime_type,size_bytes,width,height,duration_seconds,tags,notes,original_asset_id,generation_meta,created_by,created_at,archived_by,archived_at")
         .order("created_at", { ascending: false }),
       supabase.from("creative_generation_jobs")
-        .select("id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,created_by,created_at,updated_at")
+        .select(creativeProductionReady
+          ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,created_by,created_at,updated_at"
+          : "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,created_by,created_at,updated_at")
         .order("created_at", { ascending: false }),
       supabase.from("brand_media_usages")
         .select("id,asset_id,job_id,creative_version_id,role,start_second,end_second,created_by,created_at")
@@ -330,6 +362,9 @@ export async function fetchCatalogos() {
       negativePrompt: nz(row.negative_prompt), brandSnapshot: row.brand_snapshot || {}, outputSpec: row.output_spec || {},
       providerJobId: nz(row.provider_job_id), outputAssetId: row.output_asset_id,
       generationCost: Number(row.generation_cost), errorMessage: nz(row.error_message),
+      maxCostCop: Number(row.max_cost_cop), authorizedBy: nz(row.authorized_by), authorizedAt: tsBogota(row.authorized_at),
+      cancelledBy: nz(row.cancelled_by), cancelledAt: tsBogota(row.cancelled_at), cancellationReason: nz(row.cancellation_reason),
+      attemptCount: Number(row.attempt_count), startedAt: tsBogota(row.started_at), completedAt: tsBogota(row.completed_at),
       createdBy: row.created_by, createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at),
     }));
     brandMediaUsages = usageRows.map((row) => ({
@@ -340,9 +375,56 @@ export async function fetchCatalogos() {
     }));
   }
 
-  return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
+  // Centro de Integraciones (migración 23). La app solo lee estado, salud y
+  // referencia de cuenta; los secretos permanecen en el runtime del servidor.
+  let agencyIntegrationsReady = false; let agencyIntegrations = []; let creativeConnectorRuns = [];
+  let higgsfieldConnectorReady = false;
+  if (creativeProductionReady) {
+    const integrationsProbe = await supabase.rpc("integraciones_agencia_disponibles");
+    const integrationsProbeMissing = integrationsProbe.error &&
+      (integrationsProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(integrationsProbe.error.message || ""));
+    if (integrationsProbe.error && !integrationsProbeMissing) throw new Error(integrationsProbe.error.message);
+    agencyIntegrationsReady = !integrationsProbeMissing && integrationsProbe.data === true;
+    if (agencyIntegrationsReady) {
+      const higgsfieldProbe = await supabase.rpc("higgsfield_conector_disponible");
+      const higgsfieldProbeMissing = higgsfieldProbe.error &&
+        (higgsfieldProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(higgsfieldProbe.error.message || ""));
+      if (higgsfieldProbe.error && !higgsfieldProbeMissing) throw new Error(higgsfieldProbe.error.message);
+      higgsfieldConnectorReady = !higgsfieldProbeMissing && higgsfieldProbe.data === true;
+      const integrationsResult = await supabase.from("agency_integrations")
+        .select(higgsfieldConnectorReady
+          ? "provider,kind,status,environment,account_label,external_account_id,capabilities,secret_configured,last_heartbeat_at,last_sync_at,last_error,configured_by,updated_at,worker_version,last_job_at,successful_jobs,failed_jobs"
+          : "provider,kind,status,environment,account_label,external_account_id,capabilities,secret_configured,last_heartbeat_at,last_sync_at,last_error,configured_by,updated_at")
+        .order("provider");
+      if (integrationsResult.error) throw new Error(integrationsResult.error.message);
+      agencyIntegrations = (integrationsResult.data || []).map((row) => ({
+        provider: row.provider, kind: row.kind, status: row.status, environment: row.environment,
+        accountLabel: nz(row.account_label), externalAccountId: nz(row.external_account_id),
+        capabilities: row.capabilities || [], secretConfigured: row.secret_configured,
+        lastHeartbeatAt: nz(row.last_heartbeat_at), lastSyncAt: nz(row.last_sync_at),
+        lastError: nz(row.last_error), configuredBy: nz(row.configured_by), updatedAt: nz(row.updated_at),
+        workerVersion: nz(row.worker_version), lastJobAt: nz(row.last_job_at),
+        successfulJobs: Number(row.successful_jobs || 0), failedJobs: Number(row.failed_jobs || 0),
+      }));
+      if (higgsfieldConnectorReady) {
+        const runsResult = await supabase.from("creative_connector_runs")
+          .select("id,job_id,provider,worker_id,state,provider_job_id,estimated_cost_cop,actual_cost_cop,error_message,metadata,leased_at,lease_expires_at,started_at,finished_at")
+          .order("leased_at", { ascending: false }).limit(50);
+        if (runsResult.error) throw new Error(runsResult.error.message);
+        creativeConnectorRuns = (runsResult.data || []).map((row) => ({
+          id: row.id, jobId: row.job_id, provider: row.provider, workerId: row.worker_id, state: row.state,
+          providerJobId: nz(row.provider_job_id), estimatedCostCop: Number(row.estimated_cost_cop || 0),
+          actualCostCop: Number(row.actual_cost_cop || 0), errorMessage: nz(row.error_message), metadata: row.metadata || {},
+          leasedAt: nz(row.leased_at), leaseExpiresAt: nz(row.lease_expires_at), startedAt: nz(row.started_at), finishedAt: nz(row.finished_at),
+        }));
+      }
+    }
+  }
+
+  return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
-    distributionServerReady, content_distributions, brandMediaReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages };
+    distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, creativeConnectorRuns };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──
@@ -372,12 +454,13 @@ export async function fetchOperativo() {
     supabase.from("inventory_items").select("id,nombre,unidad"),
     supabase.from("products").select("id,nombre"),
     supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras").order("id", { ascending: false }),
+    supabase.from("lote_figuras").select("batch_id,figura,cant,perfectas,imperfectas,descartadas,consumidas").order("batch_id", { ascending: false }),
     supabase.from("subreceta_producciones").select("id,fecha,subreceta_id,gramos_nominales,gramos_obtenidos,costo_batch,faltantes,resp_user_id,obs,created_at").order("created_at", { ascending: false }).limit(50),
     supabase.from("v_variantes_disponibles").select("product_id,producto,figura,sabor,gramaje_g,disponibles,vencimiento_proximo").order("producto").order("figura").order("sabor"),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches, subProds, variantesRows] = q.map((r) => r.data);
+  const [ords, items, adics, custs, delivs, evids, bens, clms, movs, resvs, sugs, audits, usrs, invs, prods, batches, loteFiguraRows, subProds, variantesRows] = q.map((r) => r.data);
 
   // Empaque trazable se despliega después del paquete 01-08. Mientras la
   // migración 09 todavía no exista, la lectura opcional queda vacía y no rompe
@@ -609,8 +692,18 @@ export async function fetchOperativo() {
   // producto/resp son STRINGS (nombre), no ids — el server normalizó a FK
   // (product_id, resp_user_id) pero el front sigue leyendo por nombre.
   // gramaje: la maqueta guarda "150 g" (texto); el server normalizó a integer (gramaje_g).
+  const resultadosFiguraPorLote = (loteFiguraRows || []).reduce((index, row) => {
+    if (!index[row.batch_id]) index[row.batch_id] = [];
+    index[row.batch_id].push({
+      figura: nz(row.figura), cant: Number(row.cant), perfectas: Number(row.perfectas),
+      imperfectas: Number(row.imperfectas), descartadas: Number(row.descartadas),
+      consumidas: Number(row.consumidas || 0),
+    });
+    return index;
+  }, {});
   const production_batches = batches.map((b) => ({
     id: b.id, fecha: b.fecha,
+    productId: b.product_id,
     producto: productoDe[b.product_id] ? productoDe[b.product_id].nombre : "",
     figura: nz(b.figura), sabor: nz(b.sabor), relleno: nz(b.relleno), salsa: nz(b.salsa),
     gramaje: b.gramaje_g != null ? `${b.gramaje_g} g` : "",
@@ -622,6 +715,7 @@ export async function fetchOperativo() {
     inicioCongelacion: b.inicio_congelacion ? tsBogota(b.inicio_congelacion) : "",
     molde: nz(b.molde), ubicacion: nz(b.ubicacion), obs: nz(b.obs),
     corridaId: b.corrida_id || "", figuras: Array.isArray(b.figuras) ? b.figuras : [],
+    resultadosFiguras: resultadosFiguraPorLote[b.id] || [],
   }));
 
   // Componentes + BOM (hito 2): historial de preparaciones de bases (últimas 50).

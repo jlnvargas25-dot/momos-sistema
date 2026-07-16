@@ -36,6 +36,129 @@ export function isActiveClaim(claim) {
   return Boolean(claim) && !CLAIM_TERMINAL.has(claim.estado);
 }
 
+export function isActiveInventoryReservation(reservation) {
+  return clean(reservation?.estado).toLocaleLowerCase("es") === "reservada";
+}
+
+export function buildInventoryHistory(db = {}) {
+  const movements = (db.inventory_movements || []).map((movement) => {
+    const quantityLabel = clean(movement.cant);
+    const quantity = Number.parseFloat(quantityLabel.replace(",", "."));
+    return {
+      id: `movement:${movement.id}`,
+      sourceId: clean(movement.id),
+      at: clean(movement.fecha),
+      kind: "movement",
+      type: clean(movement.tipo) || "Movimiento",
+      item: clean(movement.item) || "Insumo",
+      quantity: Number.isFinite(quantity) ? quantity : 0,
+      quantityLabel: quantityLabel || "0",
+      orderId: "",
+      status: clean(movement.tipo) || "Movimiento",
+      note: clean(movement.nota),
+    };
+  });
+
+  const reservations = (db.inventory_reservations || [])
+    .filter((reservation) => !isActiveInventoryReservation(reservation))
+    .map((reservation) => ({
+      id: `reservation:${reservation.id}`,
+      sourceId: clean(reservation.id),
+      at: clean(reservation.fecha),
+      kind: "reservation",
+      type: "Reserva",
+      item: clean(reservation.nombre) || "Inventario reservado",
+      quantity: Number(reservation.cantidad || 0),
+      quantityLabel: clean(reservation.cantidad) || "0",
+      orderId: clean(reservation.orderId),
+      status: clean(reservation.estado) || "Cerrada",
+      note: reservation.orderId ? `Pedido ${reservation.orderId}` : "Reserva sin pedido asociado",
+    }));
+
+  return [...movements, ...reservations]
+    .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+}
+
+function operationalTimestamp(value) {
+  const raw = clean(value);
+  if (!raw) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(raw)
+    ? raw.replace(" ", "T") + (/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) ? "" : "-05:00")
+    : raw;
+  const timestamp = new Date(normalized).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function buildActiveReservationDashboard(db = {}, now = new Date()) {
+  const orders = new Map((db.orders || []).map((order) => [order.id, order]));
+  const customers = new Map((db.customers || []).map((customer) => [customer.id, customer]));
+  const nowTimestamp = now instanceof Date ? now.getTime() : operationalTimestamp(now);
+  const terminalStates = new Set(["Entregado", "Cancelado", "Reclamo"]);
+  const reservations = (db.inventory_reservations || [])
+    .filter(isActiveInventoryReservation)
+    .map((reservation) => {
+      const order = orders.get(reservation.orderId) || null;
+      const customer = order ? customers.get(order.customerId) : null;
+      const createdAt = operationalTimestamp(reservation.fecha);
+      const ageHours = createdAt != null && nowTimestamp != null
+        ? Math.max(0, Math.floor((nowTimestamp - createdAt) / 3600000))
+        : null;
+      const reasons = [];
+      if (!order) reasons.push("Pedido inexistente");
+      else if (terminalStates.has(order.estado)) reasons.push(`Pedido ${order.estado.toLocaleLowerCase("es")}`);
+      if (ageHours != null && ageHours >= 8) reasons.push(`Lleva ${ageHours} h reservada`);
+      return {
+        ...reservation,
+        quantity: Number(reservation.cantidad || 0),
+        order,
+        orderState: order?.estado || "Sin pedido",
+        customerName: customer?.nombre || order?.cliente || "Cliente sin identificar",
+        ageHours,
+        exactSource: Boolean(reservation.batchId),
+        sourceLabel: reservation.batchId
+          ? `Lote ${reservation.batchId}${reservation.figuraLote ? ` · ${reservation.figuraLote}` : ""}`
+          : reservation.tipo === "producto" ? "Sin lote físico exacto" : "Stock de insumo o empaque",
+        attention: reasons.length > 0,
+        attentionReasons: reasons,
+      };
+    })
+    .sort((a, b) => Number(b.attention) - Number(a.attention)
+      || (b.ageHours ?? -1) - (a.ageHours ?? -1)
+      || String(b.fecha || "").localeCompare(String(a.fecha || "")));
+
+  const grouped = [...reservations.reduce((groups, reservation) => {
+    const key = reservation.orderId || `missing:${reservation.id}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        orderId: reservation.orderId || "Sin pedido",
+        orderState: reservation.orderState,
+        customerName: reservation.customerName,
+        rows: [], quantity: 0, attention: false, reasons: new Set(), oldestHours: null,
+      });
+    }
+    const group = groups.get(key);
+    group.rows.push(reservation);
+    group.quantity += reservation.quantity;
+    group.attention ||= reservation.attention;
+    reservation.attentionReasons.forEach((reason) => group.reasons.add(reason));
+    if (reservation.ageHours != null) group.oldestHours = Math.max(group.oldestHours ?? 0, reservation.ageHours);
+    return groups;
+  }, new Map()).values()].map((group) => ({ ...group, reasons: [...group.reasons] }))
+    .sort((a, b) => Number(b.attention) - Number(a.attention) || (b.oldestHours ?? -1) - (a.oldestHours ?? -1));
+
+  return {
+    reservations,
+    groups: grouped,
+    summary: {
+      reservations: reservations.length,
+      orders: grouped.length,
+      quantity: reservations.reduce((sum, reservation) => sum + reservation.quantity, 0),
+      exact: reservations.filter((reservation) => reservation.exactSource).length,
+      attention: reservations.filter((reservation) => reservation.attention).length,
+    },
+  };
+}
+
 export function partitionByActivity(rows = [], predicate) {
   return rows.reduce((result, row) => {
     result[predicate(row) ? "active" : "history"].push(row);

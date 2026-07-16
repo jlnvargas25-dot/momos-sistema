@@ -25,9 +25,19 @@ un advisory lock; un error hace rollback completo del paso actual.
 17. `../agencia-comercial-v1.sql` — agencia comercial y decisiones protegidas.
 18. `../vencimiento-producto-terminado-v1.sql` — sella desmolde y vencimiento automático a 3 días.
 19. `../abastecimiento-elaboraciones-internas-v1.sql` — separa compra de preparación y bloquea comprar mousses, cheesecake, ganache y salsas internas.
-20. `../tests/test-vencimiento-producto-terminado.sql` — prueba adversarial específica; siempre hace rollback.
-21. `../tests/test-abastecimiento-elaboraciones-internas.sql` — prueba que las elaboraciones solo entren por producción y las compras externas sigan funcionando.
-22. `../tests/test-migraciones-ordenadas.sql` — aceptación completa; devuelve `TESTS_OK` y hace rollback explícito.
+20. `../distribucion-comercial-v1.sql` — checklist, aprobación humana y evidencia de publicación.
+21. `../biblioteca-creativa-v1.sql` — originales, derechos, trazabilidad y estudio creativo.
+22. `../roles-multiples-v1.sql` — acumula roles por usuario sin duplicar su correo ni debilitar RBAC.
+23. `../produccion-creativa-v1.sql` — autoriza trabajos creativos con tope de costo y contrato privado para conectores.
+24. `../integraciones-agencia-v1.sql` — registra salud y cuentas de Higgsfield, HeyGen, Meta y TikTok sin guardar secretos en tablas públicas.
+25. `../higgsfield-conector-v1.sql` — instala el worker privado con lease único, idempotencia, costo protegido y salida en revisión humana.
+26. `../tests/test-vencimiento-producto-terminado.sql` — prueba adversarial específica; siempre hace rollback.
+27. `../tests/test-abastecimiento-elaboraciones-internas.sql` — prueba que las elaboraciones solo entren por producción y las compras externas sigan funcionando.
+28. `../tests/test-roles-multiples-v2.sql` — prueba roles acumulables, no duplicados y anti-lockout; siempre hace rollback.
+29. `../tests/test-produccion-creativa-v1.sql` — prueba autorización, costos, reintentos, conector y RBAC; siempre hace rollback.
+30. `../tests/test-integraciones-agencia-v1.sql` — prueba salud, secretos, heartbeat y RBAC; siempre hace rollback.
+31. `../tests/test-higgsfield-conector-v1.sql` — prueba doble despacho, tope, salida privada, revisión humana y RBAC; siempre hace rollback.
+32. `../tests/test-migraciones-ordenadas.sql` — aceptación completa; devuelve `TESTS_OK` y hace rollback explícito.
 
 Después de cada paso ejecutá:
 

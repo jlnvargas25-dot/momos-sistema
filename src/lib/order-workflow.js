@@ -1,3 +1,5 @@
+import { hasAnyRole, normalizeRoles } from "./user-roles.js";
+
 export const ORDER_WORKFLOW_ROLES = [
   "Administrador",
   "Cajero",
@@ -27,11 +29,11 @@ const CLAIM_ROLES = new Set(["Administrador", "Coordinador de pedidos", "Empaque
 const DELIVERY_HANDOFF_ROLES = new Set(["Administrador", "Empaque", "Logística"]);
 
 export function canCreateOrder(role) {
-  return ORDER_INTAKE_ROLES.has(String(role || "").trim());
+  return hasAnyRole(role, ORDER_INTAKE_ROLES);
 }
 
 export function canManageDeliveryHandoff(role) {
-  return DELIVERY_HANDOFF_ROLES.has(String(role || "").trim());
+  return hasAnyRole(role, DELIVERY_HANDOFF_ROLES);
 }
 
 export function deliveryBlocksNewRequest(delivery) {
@@ -39,7 +41,7 @@ export function deliveryBlocksNewRequest(delivery) {
 }
 
 export function orderEvidencePermission(role, evidenceType) {
-  const normalizedRole = String(role || "").trim();
+  const normalizedRoles = normalizeRoles(role);
   const type = String(evidenceType || "").trim();
   let roles = new Set();
   let ownerLabel = "un área autorizada";
@@ -53,7 +55,7 @@ export function orderEvidencePermission(role, evidenceType) {
     roles = new Set([...PAYMENT_ROLES, ...DELIVERY_ROLES]);
     ownerLabel = "Administrador, Caja, Coordinación o Logística";
   }
-  const allowed = roles.has(normalizedRole);
+  const allowed = hasAnyRole(normalizedRoles, roles);
   return {
     allowed,
     ownerLabel,
@@ -77,19 +79,66 @@ function transitionOwner(from, to, quickSale) {
 }
 
 export function orderTransitionPermission(role, from, to, options = {}) {
-  const normalizedRole = String(role || "").trim();
+  const normalizedRoles = normalizeRoles(role);
   const quickSale = Boolean(options.quickSale);
   if (from && from === to) {
-    const allowed = ORDER_WORKFLOW_ROLES.includes(normalizedRole);
+    const allowed = hasAnyRole(normalizedRoles, ORDER_WORKFLOW_ROLES);
     return { allowed, ownerLabel: "el equipo de MOMOS", reason: allowed ? "El pedido ya está en ese estado." : "No hay un rol operativo activo." };
   }
   const owner = transitionOwner(from, to, quickSale);
-  const allowed = owner.roles.has(normalizedRole);
+  const allowed = hasAnyRole(normalizedRoles, owner.roles);
   return {
     allowed,
     ownerLabel: owner.label,
     reason: allowed
       ? `${owner.label} puede confirmar este paso.`
-      : `Solo ${owner.label} puede confirmar el paso a “${to}”. Tu rol actual es ${normalizedRole || "sin rol"}.`,
+      : `Solo ${owner.label} puede confirmar el paso a “${to}”. Tus roles actuales son ${normalizedRoles.join(" + ") || "sin rol"}.`,
+  };
+}
+
+const ORDER_INTAKE_STATES = new Set(["Nuevo", "Confirmado", "Pendiente de pago"]);
+
+// Una sola decisión visible para Recepción/Caja. El estado Confirmado se conserva
+// por compatibilidad e historial, pero deja de ser un clic obligatorio del camino feliz.
+export function orderIntakePrimaryAction(role, order, options = {}) {
+  if (!order || !ORDER_INTAKE_STATES.has(order.estado)) return null;
+  const hasPaymentEvidence = Boolean(options.hasPaymentEvidence);
+  const paidInPlatform = String(order.canal || "").trim() === "Rappi" || String(order.pago || "").toLowerCase().includes("rappi");
+  const paymentReady = paidInPlatform || hasPaymentEvidence;
+
+  if (paymentReady) {
+    const permission = orderTransitionPermission(role, order.estado, "Pagado");
+    return {
+      type: permission.allowed ? "transition" : "wait",
+      target: "Pagado",
+      label: permission.allowed ? "Confirmar pago · enviar a Cocina" : "Pago listo · requiere Caja",
+      detail: paidInPlatform
+        ? "Rappi confirma el pago en su plataforma; Caja registra el relevo a la operación."
+        : "El comprobante ya está vinculado. Caja verifica valor, referencia y cuenta antes de confirmar.",
+      ...permission,
+    };
+  }
+
+  if (order.estado === "Nuevo" || order.estado === "Confirmado") {
+    const permission = orderTransitionPermission(role, order.estado, "Pendiente de pago");
+    return {
+      type: permission.allowed ? "transition" : "wait",
+      target: "Pendiente de pago",
+      label: permission.allowed ? "Pedido revisado · solicitar pago" : "Pedido pendiente de Recepción",
+      detail: "Revisa cliente, productos, entrega y total. Después solo quedará recibir y verificar el pago.",
+      ...permission,
+    };
+  }
+
+  const permission = orderEvidencePermission(role, "Comprobante de pago");
+  return {
+    type: permission.allowed ? "evidence" : "wait",
+    target: "Pagado",
+    autoAdvance: permission.allowed,
+    label: permission.allowed ? "Tomar comprobante y confirmar pago" : "Esperando comprobante y verificación",
+    detail: permission.allowed
+      ? "La foto se vincula al pedido y, si el servidor la valida, el pedido pasa a Cocina en el mismo flujo."
+      : "Caja o Coordinación debe registrar el soporte y confirmar el pago.",
+    ...permission,
   };
 }
