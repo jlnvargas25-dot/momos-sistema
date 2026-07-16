@@ -10,6 +10,17 @@ App de operación de **D'Momos Sweet Love** (cocina oculta, El Caney, Cali).
 Hoy: app React **en plena Fase 3 (front async contra Supabase)** — pedidos, domicilios, reclamos, clientes, producción, inventario, Configuración>Usuarios y **Marketing (campaigns)** ya leen/escriben contra RPCs del server. Sigue local: Crecimiento (ideas/tareas), Creativos, Calendario, Resultados — slice posterior.
 Objetivo: volverla app oficial de uso operativo 100% sobre Supabase.
 
+## 🆕 Hito 28 — Cerebro gobernado de Agencia MOMOS (2026-07-15)
+
+- Implementado y aplicado en Supabase: [`supabase/orquestador-agencia-v1.sql`](supabase/orquestador-agencia-v1.sql), migración `20260715_28_orquestador_agencia` después del paso 27.
+- Agrega corridas y propuestas selladas del orquestador (`agency_agent_runs` / `agency_agent_proposals`) con clave idempotente, evidencia, confianza 0–1, herramientas MCP requeridas, modo de ejecución, costo estimado y tope en COP.
+- Contrato privado `registrar_corrida_orquestador_agente(jsonb)` solo para `service_role`; el navegador no puede suplantar un agente ni escribir las tablas directamente. Rechaza secretos, más de 20 propuestas, sobrepresupuesto y payloads inválidos.
+- El equipo Admin/Marketing también puede enviar una señal calculada por MOMO OPS mediante `registrar_recomendacion_orquestador(jsonb)`. `resolver_propuesta_orquestador(...)` exige una única decisión humana y verifica la huella antes de convertirla en `agency_decisions`.
+- Aprobar **no ejecuta**: crea una decisión `Aprobada` con autor `ia`, pero pauta, publicación, contacto, gasto y creativos siguen en las guardas y confirmaciones existentes. La UI lo repite explícitamente.
+- Nueva bandeja visual **Cerebro de Agencia MOMOS** dentro de Agencia: pendientes, acciones externas, costo máximo, confianza, herramientas, huella, aprobar/descartar. Las oportunidades del radar tienen `Enviar al cerebro` y conservan `Crear brief directo` como camino manual.
+- Prueba SQL: [`supabase/tests/test-orquestador-agencia-v1.sql`](supabase/tests/test-orquestador-agencia-v1.sql). Cubre MCP privado, secretos, idempotencia, presupuesto, doble veredicto, RBAC y cero publicación automática. Cadena ordenada preparada hasta 01-28.
+- Verificación cerrada: **317/317 tests locales PASS**, build Vite PASS, prueba adversarial del orquestador PASS y migraciones ordenadas **01-28 PASS**, ambas SQL con rollback total.
+
 ## Estado actual
 - **Fase 0 (scaffolding) HECHA:** proyecto Vite + React 18 + Tailwind v4 en esta carpeta.
   Corre con `npm run dev` → http://localhost:5173 (el usuario ya lo levantó y funciona).

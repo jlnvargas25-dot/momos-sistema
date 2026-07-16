@@ -283,6 +283,38 @@ export async function fetchCatalogos() {
       responsable: nz(row.responsable), origen: row.origen, recommendationId: row.recommendation_id }));
   }
 
+  const orchestratorProbe = await supabase.rpc("orquestador_agencia_disponible");
+  const orchestratorProbeMissing = orchestratorProbe.error &&
+    (orchestratorProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(orchestratorProbe.error.message || ""));
+  if (orchestratorProbe.error && !orchestratorProbeMissing) throw new Error(orchestratorProbe.error.message);
+  const agencyOrchestratorReady = !orchestratorProbeMissing && orchestratorProbe.data === true;
+  let agencyAgentRuns = []; let agencyAgentProposals = [];
+  if (agencyOrchestratorReady) {
+    const [runResult, proposalResult] = await Promise.all([
+      supabase.from("agency_agent_runs").select("id,run_key,trigger_type,status,focus,context_snapshot,agent_name,agent_version,requested_by,requested_at,completed_at,error_message").order("requested_at", { ascending: false }).limit(50),
+      supabase.from("agency_agent_proposals").select("id,run_id,proposal_key,sealed_payload,payload_fingerprint,status,decision_id,resolved_by,resolved_at,resolution_note,created_at").order("created_at", { ascending: false }).limit(100),
+    ]);
+    if (runResult.error) throw new Error(runResult.error.message);
+    if (proposalResult.error) throw new Error(proposalResult.error.message);
+    agencyAgentRuns = (runResult.data || []).map((row) => ({
+      id: row.id, runKey: row.run_key, triggerType: row.trigger_type, status: row.status, focus: nz(row.focus),
+      contextSnapshot: row.context_snapshot || {}, agentName: row.agent_name, agentVersion: row.agent_version,
+      requestedBy: nz(row.requested_by), requestedAt: tsBogota(row.requested_at), completedAt: tsBogota(row.completed_at), errorMessage: nz(row.error_message),
+    }));
+    agencyAgentProposals = (proposalResult.data || []).map((row) => {
+      const payload = row.sealed_payload || {};
+      return {
+        id: row.id, runId: row.run_id, proposalKey: row.proposal_key, fingerprint: row.payload_fingerprint,
+        status: row.status, decisionId: row.decision_id, resolvedBy: nz(row.resolved_by), resolvedAt: tsBogota(row.resolved_at),
+        resolutionNote: nz(row.resolution_note), createdAt: tsBogota(row.created_at), sealedPayload: payload,
+        decisionType: payload.decision_type, title: payload.title, rationale: payload.rationale, evidence: payload.evidence || {},
+        proposedAction: payload.proposed_action || {}, requiredTools: payload.required_tools || [], confidence: Number(payload.confidence || 0),
+        riskLevel: payload.risk_level, estimatedCostCop: Number(payload.estimated_cost_cop || 0), costCapCop: Number(payload.cost_cap_cop || 0),
+        executionMode: payload.execution_mode, source: payload.source,
+      };
+    });
+  }
+
   const distributionProbe = await supabase.rpc("distribucion_comercial_disponible");
   const distributionProbeMissing = distributionProbe.error &&
     (distributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(distributionProbe.error.message || ""));
@@ -450,6 +482,7 @@ export async function fetchCatalogos() {
 
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
+    agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals,
     distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }

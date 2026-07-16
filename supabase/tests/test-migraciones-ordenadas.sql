@@ -18,7 +18,7 @@ begin
     '20260715_21_roles_multiples','20260715_22_produccion_creativa',
     '20260715_23_integraciones_agencia','20260715_24_higgsfield_conector',
     '20260715_25_kling_conector','20260715_26_revision_creativa',
-    '20260715_27_versiones_creativas'
+    '20260715_27_versiones_creativas','20260715_28_orquestador_agencia'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -92,6 +92,12 @@ begin
   assert public.versiones_creativas_disponibles(), 'falta sonda de versiones creativas';
   assert has_function_privilege('authenticated','public.crear_revision_salida_creativa(bigint)','EXECUTE'), 'falta creación protegida de versiones';
   assert exists(select 1 from information_schema.columns where table_schema='public' and table_name='creative_generation_jobs' and column_name='revision_of_job_id'), 'falta cadena de versiones creativas';
+  assert public.orquestador_agencia_disponible(), 'falta sonda del orquestador de Agencia';
+  assert to_regclass('public.agency_agent_runs') is not null and to_regclass('public.agency_agent_proposals') is not null, 'falta bandeja del cerebro de Agencia';
+  assert has_function_privilege('authenticated','public.resolver_propuesta_orquestador(bigint,text,text)','EXECUTE'), 'falta aprobación humana del orquestador';
+  assert has_function_privilege('service_role','public.registrar_corrida_orquestador_agente(jsonb)','EXECUTE'), 'falta contrato privado MCP';
+  assert not has_function_privilege('authenticated','public.registrar_corrida_orquestador_agente(jsonb)','EXECUTE'), 'contrato MCP expuesto al navegador';
+  assert not has_table_privilege('authenticated','public.agency_agent_proposals','UPDATE'), 'propuestas del agente admiten escritura directa';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -123,5 +129,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-27 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-28 PASS, rollback total' as resultado;
 rollback;

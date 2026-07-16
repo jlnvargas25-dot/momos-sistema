@@ -400,6 +400,18 @@ export async function resolverDecisionAgencia(decisionId, status, result = "") {
   return data;
 }
 
+export async function registrarRecomendacionOrquestador(payload) {
+  const { data, error } = await supabase.rpc("registrar_recomendacion_orquestador", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverPropuestaOrquestador(proposalId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_propuesta_orquestador", { p_proposal_id: proposalId, p_decision: decision, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function crearVersionCreativaAgencia(payload) {
   const { data, error } = await supabase.rpc("crear_version_creativa_agencia", { p: payload });
   if (error) throw new Error(error.message);

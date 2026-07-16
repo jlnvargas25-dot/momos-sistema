@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -25,6 +25,7 @@ import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgres
 import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { agencyDecisionType, buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS, guardAgencyAction } from "./lib/agency-intelligence";
+import { buildOrchestratorInbox, orchestratorProposalPayload } from "./lib/agency-orchestrator";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -11138,6 +11139,7 @@ function AgenciaControl({ db, user, refrescar }) {
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
   const intelligence = useMemo(() => buildAgencyIntelligence(db, settings, hoyISO()), [db, settings]);
   const learning = useMemo(() => buildCommercialLearning(db, hoyISO()), [db]);
+  const orchestrator = useMemo(() => buildOrchestratorInbox(db), [db]);
   const [briefSource, setBriefSource] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [creativeOpen, setCreativeOpen] = useState(false);
@@ -11149,6 +11151,7 @@ function AgenciaControl({ db, user, refrescar }) {
   const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
   const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
   const existingKeys = new Set((db.agencyBriefs || []).map((brief) => brief.decisionKey).filter(Boolean));
+  const orchestratedKeys = new Set((db.agencyAgentProposals || []).map((proposal) => proposal.proposalKey));
   const opportunityPillars = ["Todas", ...new Set(intelligence.recommendations.map((item) => item.pillar))];
   const visibleRecommendations = opportunityFilter === "Todas"
     ? intelligence.recommendations
@@ -11227,6 +11230,24 @@ function AgenciaControl({ db, user, refrescar }) {
     if (!result) return;
     await resolverDecisionAgencia(decision.id, "Ejecutada", result);
     toast("ok", `Resultado de decisión #${decision.id} registrado`); await refrescar();
+  }
+
+  async function sendToOrchestrator(recommendation) {
+    if (!db.agencyOrchestratorReady) throw new Error("Aplicá la migración 28 del Orquestador de Agencia.");
+    await registrarRecomendacionOrquestador(orchestratorProposalPayload(recommendation));
+    toast("ok", "Propuesta sellada en el Cerebro de Agencia; todavía no ejecutó ninguna acción.");
+    await refrescar();
+  }
+
+  async function resolveOrchestratorProposal(proposal, decision) {
+    let note = "Aprobación humana desde Agencia MOMOS";
+    if (decision === "Descartar") {
+      note = window.prompt("¿Por qué descartamos esta propuesta?", "No corresponde al momento comercial actual") || "";
+      if (!note) return;
+    }
+    await resolverPropuestaOrquestador(proposal.id, decision, note);
+    toast("ok", decision === "Aprobar" ? "Propuesta convertida en decisión aprobada; aún no se ejecutó." : "Propuesta descartada con trazabilidad.");
+    await refrescar();
   }
 
   function openCreativeVersion() {
@@ -11373,6 +11394,28 @@ function AgenciaControl({ db, user, refrescar }) {
             </div>
           </div>
 
+          <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+            <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>🧠</div>
+                <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Orquestador protegido · MCP</div><div className="display text-xl font-semibold">Cerebro de Agencia MOMOS</div><div className="text-xs opacity-80 max-w-2xl">Recibe señales y propuestas de agentes, declara qué herramientas necesita y sella evidencia, confianza y costo. Nunca publica ni gasta por sí solo.</div></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 shrink-0">
+                {[["Pendientes",orchestrator.summary.pending],["Externas",orchestrator.summary.externalActions],["Costo máx.",money(orchestrator.summary.estimatedCost)]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[76px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}
+              </div>
+            </div>
+            {!db.agencyOrchestratorReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>orquestador-agencia-v1.sql</code> para habilitar la bandeja gobernada y el contrato para MCP.</div> : orchestrator.pending.length === 0 ? <div className="px-4 py-4 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Bandeja al día.</b> Enviá una oportunidad del radar o conectá un agente MCP para recibir propuestas trazables.</div> : <div className="p-3 grid lg:grid-cols-2 gap-2">
+              {orchestrator.pending.slice(0, 4).map((proposal) => <article key={proposal.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}>
+                <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{proposal.decisionType} · riesgo {proposal.riskLevel}</div><div className="font-extrabold text-sm">{proposal.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold shrink-0" style={{ background: "#E5EEF7", color: "#315A7D" }}>{Math.round(proposal.confidence * 100)}% confianza</span></div>
+                <p className="text-[11px] leading-relaxed my-2" style={{ color: T.choco2 }}>{proposal.rationale}</p>
+                <div className="flex flex-wrap gap-1 mb-2">{proposal.requiredTools.map((tool) => <span key={tool} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{tool}</span>)}</div>
+                <div className="rounded-xl px-2.5 py-2 mb-2 text-[10px]" style={{ background: "#F5E9D8" }}><b>{proposal.executionMode}</b> · costo máximo {money(proposal.costCapCop)} · huella {proposal.fingerprint.slice(0, 8)}</div>
+                <div className="flex flex-wrap gap-2"><BtnAsync small onClick={() => resolveOrchestratorProposal(proposal, "Aprobar")}>Aprobar propuesta</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveOrchestratorProposal(proposal, "Descartar")}>Descartar</BtnAsync></div>
+              </article>)}
+            </div>}
+            <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Aprobar crea una decisión comercial aprobada, no una ejecución. Pauta, publicación, contacto y gasto conservan su confirmación y sus guardas.</div>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Radar de oportunidades</div><div className="display text-xl font-semibold">Qué conviene hacer ahora</div><div className="text-sm" style={{ color: T.choco2 }}>Cruza pedidos pagados, stock, CRM, contenido y pauta; cada recomendación explica su evidencia.</div></div>
             <div className="flex gap-2"><Btn kind="soft" small onClick={() => openBrief()}>＋ Brief manual</Btn>{user === "Administrador" && <Btn kind="ghost" small onClick={() => { setSettingsForm(settings); setSettingsOpen(true); }}>⚙ Guardas</Btn>}</div>
@@ -11409,7 +11452,10 @@ function AgenciaControl({ db, user, refrescar }) {
                   <div className="rounded-xl px-3 py-2 text-[11px] mb-3" style={{ background: guard.allowed ? "#E8F1E4" : "#F6D4CD", color: guard.allowed ? "#3F6B42" : "#A03B2A" }}>
                     {guard.allowed ? "✓ Pasa las guardas; requiere aprobación según el modo." : `⛔ ${guard.reasons[0]}`}
                   </div>
-                  <Btn small kind={created ? "ghost" : "primary"} disabled={created || !serverReady || !guard.allowed} onClick={() => openBrief(item)}>{created ? "Brief creado ✓" : guard.allowed ? "Convertir en brief" : "Bloqueada por guardas"}</Btn>
+                  <div className="flex flex-wrap gap-2">
+                    <BtnAsync small disabled={orchestratedKeys.has(`momos:${item.id}`) || !db.agencyOrchestratorReady || !guard.allowed} onClick={() => sendToOrchestrator(item)}>{orchestratedKeys.has(`momos:${item.id}`) ? "En el cerebro ✓" : "Enviar al cerebro"}</BtnAsync>
+                    <Btn small kind="ghost" disabled={created || !serverReady || !guard.allowed} onClick={() => openBrief(item)}>{created ? "Brief creado ✓" : guard.allowed ? "Crear brief directo" : "Bloqueada por guardas"}</Btn>
+                  </div>
                 </div>
               </article>;
             })}
@@ -12487,6 +12533,9 @@ export default function MomosOps() {
       d.agencyBriefs = cat.agencyBriefs || [];
       d.agencyDecisions = cat.agencyDecisions || [];
       d.agencyCreativeVersions = cat.agencyCreativeVersions || [];
+      d.agencyOrchestratorReady = Boolean(cat.agencyOrchestratorReady);
+      d.agencyAgentRuns = cat.agencyAgentRuns || [];
+      d.agencyAgentProposals = cat.agencyAgentProposals || [];
       if (cat.marketingIdeas) d.marketing_ideas = cat.marketingIdeas;
       if (cat.marketingGuiones) d.marketing_guiones = cat.marketingGuiones;
       if (cat.marketingMensajes) d.marketing_mensajes = cat.marketingMensajes;
