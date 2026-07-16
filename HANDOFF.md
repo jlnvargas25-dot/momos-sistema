@@ -10,6 +10,17 @@ App de operación de **D'Momos Sweet Love** (cocina oculta, El Caney, Cali).
 Hoy: app React **en plena Fase 3 (front async contra Supabase)** — pedidos, domicilios, reclamos, clientes, producción, inventario, Configuración>Usuarios y **Marketing (campaigns)** ya leen/escriben contra RPCs del server. Sigue local: Crecimiento (ideas/tareas), Creativos, Calendario, Resultados — slice posterior.
 Objetivo: volverla app oficial de uso operativo 100% sobre Supabase.
 
+## 🆕 Hito 29 — Distribución Comercial por conectores (2026-07-16)
+
+- Implementación local lista, **pendiente de aplicar y validar en Supabase**: [`supabase/distribucion-conectores-v1.sql`](supabase/distribucion-conectores-v1.sql), migración `20260716_29_distribucion_conectores` después del hito 28.
+- Extiende la Sala de Distribución sin quitar el respaldo manual. Después del checklist y la aprobación humana, Meta puede recibir una autorización de publicación directa únicamente si su conector declara esa capacidad; TikTok inicia de forma conservadora como borrador.
+- La nueva `distribution_connector_jobs` es una outbox sellada: snapshot exacto del post/creativo/aprobación, huella, intento, clave idempotente, horario, lease privado, identidad externa, costo real y estado conciliado. Tokens y secretos están prohibidos por constraints y RPCs.
+- El navegador solo puede autorizar o reintentar un fallo explícito. Reclamar, marcar el despacho **antes** del HTTP, confirmar recepción y conciliar son contratos exclusivos de `service_role` para worker/MCP.
+- Un timeout posterior al envío queda `Incierto`: no se reenvía, no admite retry y bloquea el cierre manual hasta consultar la plataforma. El guard no usa banderas de sesión reutilizables: la propia transición sellada del job prueba la conciliación. Una conciliación repetida es idempotente y una publicación confirmada actualiza job, distribución, calendario y creativo en una sola transacción.
+- UI: un CTA contextual (`Autorizar envío por Meta` / `Autorizar borrador TikTok`), estado del conector e intento, reintento solo tras fallo y registro manual como fallback. Lectura y realtime incluidos.
+- Pruebas locales: [`src/lib/commercial-dispatch.test.js`](src/lib/commercial-dispatch.test.js). Prueba SQL pendiente: [`supabase/tests/test-distribucion-conectores-v1.sql`](supabase/tests/test-distribucion-conectores-v1.sql); luego correr [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql), preparada hasta 01-29. Ambas hacen rollback total.
+- Verificación local: **323/323 tests PASS**, build Vite PASS y `git diff --check` PASS. No commitear el hito hasta que las dos pruebas SQL pasen en Supabase.
+
 ## 🆕 Hito 28 — Cerebro gobernado de Agencia MOMOS (2026-07-15)
 
 - Implementado y aplicado en Supabase: [`supabase/orquestador-agencia-v1.sql`](supabase/orquestador-agencia-v1.sql), migración `20260715_28_orquestador_agencia` después del paso 27.

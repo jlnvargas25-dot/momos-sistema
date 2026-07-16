@@ -369,6 +369,19 @@ export async function cerrarDistribucionPublicacion(postId, result, externalUrl 
   return data;
 }
 
+/* ── Distribución por conectores MOMOS v1 (migración 29) ── */
+export async function autorizarDespachoDistribucion(postId, mode = null) {
+  const { data, error } = await supabase.rpc("autorizar_despacho_distribucion", { p_post_id: postId, p_mode: mode });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function reintentarDespachoDistribucion(jobId) {
+  const { data, error } = await supabase.rpc("reintentar_despacho_distribucion", { p_job_id: jobId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 /* ── Agencia Comercial MOMOS v1 (migración 16) ── */
 export async function guardarConfiguracionAgencia(payload) {
   const { data, error } = await supabase.rpc("guardar_configuracion_agencia", { p: payload });

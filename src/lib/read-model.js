@@ -333,6 +333,26 @@ export async function fetchCatalogos() {
       externalPostId: nz(row.external_post_id), failureReason: nz(row.failure_reason), notes: nz(row.notes), updatedAt: tsBogota(row.updated_at),
     }));
   }
+  const connectorDistributionProbe = await supabase.rpc("distribucion_conectores_disponible");
+  const connectorDistributionProbeMissing = connectorDistributionProbe.error &&
+    (connectorDistributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(connectorDistributionProbe.error.message || ""));
+  if (connectorDistributionProbe.error && !connectorDistributionProbeMissing) throw new Error(connectorDistributionProbe.error.message);
+  const distributionConnectorReady = !connectorDistributionProbeMissing && connectorDistributionProbe.data === true;
+  let distributionConnectorJobs = [];
+  if (distributionConnectorReady) {
+    const connectorJobsResult = await supabase.from("distribution_connector_jobs")
+      .select("id,distribution_id,post_id,provider,mode,attempt,idempotency_key,status,authorized_by,authorized_at,scheduled_at,worker_id,dispatched_at,provider_job_id,external_url,actual_cost_cop,error_message,completed_at,updated_at")
+      .order("updated_at", { ascending: false });
+    if (connectorJobsResult.error) throw new Error(connectorJobsResult.error.message);
+    distributionConnectorJobs = (connectorJobsResult.data || []).map((row) => ({
+      id: row.id, distributionId: row.distribution_id, postId: row.post_id, provider: row.provider, mode: row.mode,
+      attempt: Number(row.attempt), idempotencyKey: row.idempotency_key, status: row.status,
+      authorizedBy: row.authorized_by, authorizedAt: tsBogota(row.authorized_at), scheduledAt: nz(row.scheduled_at),
+      workerId: nz(row.worker_id), dispatchedAt: tsBogota(row.dispatched_at), providerJobId: nz(row.provider_job_id),
+      externalUrl: nz(row.external_url), actualCostCop: Number(row.actual_cost_cop || 0), errorMessage: nz(row.error_message),
+      completedAt: tsBogota(row.completed_at), updatedAt: tsBogota(row.updated_at),
+    }));
+  }
 
   // Biblioteca Inteligente + Estudio Creativo (migración 20). Durante el
   // rollout la sonda puede no existir: Agencia sigue operativa y muestra la
@@ -483,7 +503,7 @@ export async function fetchCatalogos() {
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
     agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals,
-    distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }
 

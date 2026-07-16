@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -30,6 +30,7 @@ import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
 import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "./lib/commercial-distribution";
+import { enrichDistributionWithDispatch } from "./lib/commercial-dispatch";
 import { buildActiveReservationDashboard, buildInventoryHistory, buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveInventoryReservation, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
 import { BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./lib/brand-studio";
 import { CREATIVE_PROVIDERS, buildCreativeProductionQueue, creativeAuthorizationGuard } from "./lib/creative-production";
@@ -706,7 +707,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -727,7 +728,7 @@ function normalizeDbShape(d) {
     "orders", "order_items", "customers", "products", "production_batches",
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
-    "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions",
+    "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions", "distributionConnectorJobs",
     "brandMediaAssets", "creativeGenerationJobs", "brandMediaUsages", "agencyIntegrations", "creativeConnectorRuns",
     "marketing_ideas", "marketing_guiones", "marketing_mensajes", "marketing_tasks",
   ];
@@ -10230,6 +10231,7 @@ function Calendario({ db, refrescar }) {
 
   const commercialCalendar = useMemo(() => buildCommercialCalendar(db, hoyISO()), [db]);
   const distributionRoom = useMemo(() => buildDistributionRoom(db, hoyISO(), new Date().toLocaleTimeString("en-GB", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit" })), [db]);
+  const distributionQueue = useMemo(() => distributionRoom.queue.map((item) => enrichDistributionWithDispatch(item, db)), [distributionRoom, db]);
   const formScheduleGuard = useMemo(() => form.creativeId
     ? calendarTransitionGuard({ ...form, id: "CAL-DRAFT", estado: "Pendiente" }, "Programado", db, hoyISO())
     : null, [form, db]);
@@ -10255,7 +10257,24 @@ function Calendario({ db, refrescar }) {
   }
 
   function abrirCierre(item, mode = "publish") {
-    setDistributionDraft({ mode, item, checklist: item.run?.checklist || {}, notes: "", externalUrl: item.run?.externalUrl || "", externalPostId: item.run?.externalPostId || "", reason: item.run?.failureReason || "" });
+    setDistributionDraft({ mode, item, checklist: item.run?.checklist || {}, notes: "", externalUrl: item.dispatch?.job?.externalUrl || item.run?.externalUrl || "", externalPostId: item.dispatch?.job?.providerJobId || item.run?.externalPostId || "", reason: item.run?.failureReason || "" });
+  }
+
+  async function autorizarSalidaConector(item) {
+    const eligibility = item.dispatch?.eligibility;
+    if (!eligibility?.allowed) { toast("error", eligibility?.reasons?.[0] || "El conector todavía no está listo."); return; }
+    try {
+      const result = await autorizarDespachoDistribucion(item.post.id, eligibility.mode);
+      toast("ok", result.duplicate ? `El despacho ya estaba ${result.status}` : `${eligibility.provider} autorizado · MOMO OPS lo enviará una sola vez`);
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function reintentarSalidaConector(item) {
+    const job = item.dispatch?.job;
+    if (!job) return;
+    try { await reintentarDespachoDistribucion(job.id); toast("ok", "Nuevo intento autorizado con una clave idempotente nueva"); await refrescar(); }
+    catch (error) { toast("error", error.message); }
   }
 
   async function guardarPreparacionComercial() {
@@ -10430,6 +10449,7 @@ function Calendario({ db, refrescar }) {
         })}
       </div> : vista === "Distribución" ? <div>
         {!db.distributionServerReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🛡️</span><div><div className="text-sm font-extrabold">Vista previa protegida</div><div className="text-xs mt-0.5">Aplicá la migración 19 para guardar checklist, aprobación humana y evidencia externa.</div></div></div>}
+        {db.distributionServerReady && !db.distributionConnectorReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🔌</span><div><div className="text-sm font-extrabold">Distribución manual activa</div><div className="text-xs mt-0.5">La migración 29 habilita la cola protegida para Meta y borradores de TikTok; hasta entonces el registro manual sigue disponible.</div></div></div>}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
           <Stat icon="⏱️" label="Deben salir" value={<CountUp value={distributionRoom.summary.due} />} tone={T.coral} />
           <Stat icon="✓" label="Aprobadas" value={<CountUp value={distributionRoom.summary.ready} />} tone="#3F6B42" />
@@ -10438,7 +10458,7 @@ function Calendario({ db, refrescar }) {
           <Stat icon="📊" label="Sin métricas" value={<CountUp value={distributionRoom.summary.needsMetrics} />} tone="#96690F" />
         </div>
         <div className="grid lg:grid-cols-2 gap-3">
-          {distributionRoom.queue.map((item) => <div key={item.post.id} className="rounded-[22px] border p-4" style={{ borderColor: item.blocked ? "#E8B7AD" : T.border, background: item.blocked ? "#FFF8F5" : "#fff", boxShadow: "0 8px 24px rgba(91,58,43,.06)" }}>
+          {distributionQueue.map((item) => <div key={item.post.id} className="rounded-[22px] border p-4" style={{ borderColor: item.blocked ? "#E8B7AD" : T.border, background: item.blocked ? "#FFF8F5" : "#fff", boxShadow: "0 8px 24px rgba(91,58,43,.06)" }}>
             <div className="flex items-start justify-between gap-3"><div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: item.due ? T.coral : T.choco2 }}>{item.post.fecha} · {item.post.hora} · {item.post.canal}</div><div className="display font-semibold text-lg mt-1">{item.post.titulo}</div></div><Badge label={item.run?.status || item.post.estado} /></div>
             <div className="mt-3 rounded-2xl p-3" style={{ background: T.soft }}>
               <div className="flex justify-between gap-2 text-xs font-bold"><span>Checklist operativo</span><span style={{ color: item.readiness.checklistComplete ? "#3F6B42" : T.coral }}>{item.readiness.checked}/{item.readiness.total}</span></div>
@@ -10447,16 +10467,22 @@ function Calendario({ db, refrescar }) {
             <div className="mt-3 text-sm font-extrabold" style={{ color: item.blocked ? "#A03B2A" : T.choco }}>→ {item.action}</div>
             {item.readiness.errors[0] && <div className="text-[11px] mt-1" style={{ color: "#A03B2A" }}>{item.readiness.errors[0]}</div>}
             {item.run?.failureReason && <div className="text-xs mt-2 rounded-xl px-3 py-2" style={{ background: "#F6D4CD", color: "#8D3427" }}>Último fallo: {item.run.failureReason}</div>}
+            {item.dispatch?.presentation && <div className="mt-3 rounded-2xl px-3 py-2.5" style={{ background: item.dispatch.job.status === "Incierto" ? "#FFF1ED" : item.dispatch.job.status === "Publicado" ? "#E8F1E4" : "#E9F0F7", color: item.dispatch.job.status === "Incierto" ? "#A03B2A" : item.dispatch.job.status === "Publicado" ? "#3F6B42" : "#3E5C7E" }}><div className="text-xs font-extrabold">{item.dispatch.presentation.label}</div><div className="text-[10px] mt-0.5">{item.dispatch.presentation.help} · intento {item.dispatch.job.attempt}</div></div>}
             <div className="flex flex-wrap gap-2 mt-4">
               {["Preparar salida","Completar checklist","Marcar lista"].includes(item.action) && <Btn small onClick={() => abrirPreparacion(item)} disabled={!item.readiness.readyToPrepare || !db.distributionServerReady}>Abrir checklist</Btn>}
               {item.action === "Aprobar salida" && <BtnAsync small onClick={() => aprobarSalidaComercial(item)} disabled={!db.distributionServerReady} textoEnVuelo="Aprobando…">Aprobar salida</BtnAsync>}
-              {item.action === "Publicar y registrar evidencia" && <Btn small onClick={() => abrirCierre(item, "publish")} disabled={!db.distributionServerReady}>Registrar publicación</Btn>}
+              {["Autorizar envío por Meta","Autorizar borrador TikTok"].includes(item.action) && <BtnAsync small onClick={() => autorizarSalidaConector(item)} textoEnVuelo="Autorizando…">{item.action}</BtnAsync>}
+              {item.action === "Publicar y registrar evidencia" && <Btn small onClick={() => abrirCierre(item, "publish")} disabled={!db.distributionServerReady}>Registrar publicación manual</Btn>}
+              {item.dispatch?.job?.status === "Fallido" && <BtnAsync small onClick={() => reintentarSalidaConector(item)} textoEnVuelo="Autorizando…">Reintentar conector</BtnAsync>}
+              {item.dispatch?.job?.status === "Fallido" && <Btn small kind="ghost" onClick={() => abrirCierre(item, "publish")}>Registrar manualmente</Btn>}
+              {item.dispatch?.job?.status === "Borrador listo" && <Btn small onClick={() => abrirCierre(item, "publish")}>Registrar publicación final</Btn>}
               {item.action === "Esperar horario" && <span className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: "#E9F0F7", color: "#3E5C7E" }}>Programada · todavía no ejecutar</span>}
               {item.action === "Revisar fallo" && <span className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>Volvé a Pendiente y reprogramá para reintentar</span>}
-              {item.run && !["Publicada","Cancelada","Fallida"].includes(item.run.status) && <Btn small kind="ghost" onClick={() => abrirCierre(item, "fail")} disabled={!db.distributionServerReady}>Registrar fallo</Btn>}
+              {!item.dispatch?.job && item.run && !["Publicada","Cancelada","Fallida"].includes(item.run.status) && <Btn small kind="ghost" onClick={() => abrirCierre(item, "fail")} disabled={!db.distributionServerReady}>Registrar fallo</Btn>}
             </div>
+            {!item.dispatch?.job && item.run?.status === "Aprobada" && item.dispatch?.eligibility?.provider && !item.dispatch.eligibility.allowed && <div className="text-[10px] mt-2" style={{ color: T.choco2 }}>Conector no disponible: {item.dispatch.eligibility.reasons[0]} Podés registrar la publicación manualmente.</div>}
           </div>)}
-          {distributionRoom.queue.length === 0 && <Empty icon="🚀" text="No hay publicaciones pendientes de distribución." />}
+          {distributionQueue.length === 0 && <Empty icon="🚀" text="No hay publicaciones pendientes de distribución." />}
         </div>
         {distributionRoom.needsMetrics.length > 0 && <div className="rounded-2xl px-4 py-3 mt-4" style={{ background: "#FFF5E4", color: "#7B5410" }}><b>{distributionRoom.needsMetrics.length} publicación(es)</b> ya salieron y esperan captura de métricas en Resultados.</div>}
       </div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -12448,6 +12474,7 @@ export default function MomosOps() {
     if (db.crmServerReady) tables.push("customers", "benefits", "customer_crm_profiles", "customer_contacts", "customer_activations");
     if (db.agencyServerReady) tables.push("campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks", "agency_settings", "agency_briefs", "agency_decisions", "agency_creative_versions");
     if (db.distributionServerReady) tables.push("content_distributions");
+    if (db.distributionConnectorReady) tables.push("distribution_connector_jobs");
     if (db.brandMediaReady) tables.push("brand_media_assets", "creative_generation_jobs", "brand_media_usages");
     if (db.agencyIntegrationsReady) tables.push("agency_integrations");
     if (db.higgsfieldConnectorReady || db.klingConnectorReady) tables.push("creative_connector_runs");
@@ -12472,7 +12499,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.distributionConnectorReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -12516,6 +12543,8 @@ export default function MomosOps() {
       d.creative_results = cat.creative_results || []; // Resultados → metrics_daily (sin pedidos/ventas manuales)
       d.distributionServerReady = Boolean(cat.distributionServerReady);
       d.content_distributions = cat.content_distributions || [];
+      d.distributionConnectorReady = Boolean(cat.distributionConnectorReady);
+      d.distributionConnectorJobs = cat.distributionConnectorJobs || [];
       d.brandMediaReady = Boolean(cat.brandMediaReady);
       d.creativeProductionReady = Boolean(cat.creativeProductionReady);
       d.creativeReviewReady = Boolean(cat.creativeReviewReady);
