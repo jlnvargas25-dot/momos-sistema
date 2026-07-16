@@ -20,7 +20,7 @@ begin
     '20260715_25_kling_conector','20260715_26_revision_creativa',
     '20260715_27_versiones_creativas','20260715_28_orquestador_agencia',
     '20260716_29_distribucion_conectores','20260716_30_mesa_agencia',
-    '20260716_31_estudio_escenas'
+    '20260716_31_estudio_escenas','20260716_32_enrutador_escenas'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -124,6 +124,13 @@ begin
   assert has_function_privilege('authenticated','public.resolver_storyboard_agencia(bigint,text,text)','EXECUTE'), 'falta aprobación humana del storyboard';
   assert not has_table_privilege('authenticated','public.agency_storyboards','INSERT'), 'storyboards admiten inserción directa';
   assert not has_table_privilege('authenticated','public.agency_storyboard_shots','UPDATE'), 'tomas admiten reescritura directa';
+  assert public.enrutador_escenas_disponible(), 'falta sonda del Enrutador de escenas';
+  assert to_regclass('public.agency_scene_routing_plans') is not null, 'falta enrutamiento multimotor sellado';
+  assert has_function_privilege('authenticated','public.preparar_enrutamiento_escenas(jsonb)','EXECUTE'), 'falta preparación humana de rutas';
+  assert has_function_privilege('authenticated','public.resolver_enrutamiento_escenas(bigint,text,text)','EXECUTE'), 'falta autorización humana de rutas';
+  assert has_function_privilege('service_role','public.registrar_plan_enrutamiento_agente(jsonb)','EXECUTE'), 'falta propuesta privada del cerebro MCP';
+  assert not has_function_privilege('authenticated','public.registrar_plan_enrutamiento_agente(jsonb)','EXECUTE'), 'propuesta MCP expuesta al navegador';
+  assert not has_table_privilege('authenticated','public.agency_scene_routing_plans','UPDATE'), 'planes de motor admiten reescritura directa';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -155,5 +162,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-31 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-32 PASS, rollback total' as resultado;
 rollback;

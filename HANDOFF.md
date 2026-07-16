@@ -1,5 +1,22 @@
 # HANDOFF — MOMOS OPS (léelo al empezar una sesión nueva)
 
+## ✅ Hito 32 — Enrutador creativo multimotor (2026-07-16 · validado)
+
+- Nuevo panel **Enrutador de escenas MOMOS** entre Estudio y Orquestador: propone Higgsfield/Kling por toma, permite revisar estimado y tope y muestra disponibilidad real de cada conector.
+- Nuevo contrato `agency_scene_routing_plans`: una ruta sellada por toma vigente, huellas de storyboard/toma, activos heredados del Estudio, riesgo, prompt y costo. Preparar no crea trabajos ni gasta.
+- Una confirmación humana crea atómicamente un `creative_generation_job` autorizado por toma. Un conector pausado, sin secreto o con heartbeat vencido bloquea el conjunto completo; reintentar es idempotente.
+- MCP/service role puede leer contexto seguro y proponer planes, pero no autorizar. El navegador no puede suplantar al agente ni escribir las tablas. El Enrutador nunca publica.
+- Runway no aparece como operativo porque todavía no existe un adaptador privado real; se usan las colas protegidas ya existentes de Kling e Higgsfield.
+- Nueva prueba adversarial: `supabase/tests/test-enrutador-escenas-v1.sql`. La aceptación ordenada ahora exige 01–32.
+- Regresión local: `npm test` **338/338 PASS** y `npm run build` **PASS** (solo conserva el aviso conocido de chunk grande).
+- Supabase validado: prueba adversarial del Enrutador **PASS con rollback total** y cadena de migraciones ordenadas **01–32 PASS con rollback total**.
+
+## 🆕 Skill — Dirección natural de cámara y luz (2026-07-16)
+
+- Skill personal validada en `C:\Users\Windows 11\.codex\skills\direct-natural-camera-lighting`.
+- Cubre ángulos, trayectoria con inercia, microvibración motivada, blur/foco, mapa de luz y sombras, continuidad física, prompt ordenado y QA de producto/manos/rellenos.
+- Es neutral al proveedor y alimenta la futura skill de marca `direct-momos-motion`; no convierte presets de Higgsfield/Kling en reglas de negocio.
+
 > Para retomar: abrir sesión nueva en `C:\Users\Windows 11\momo sistema` y decir
 > **"leé HANDOFF.md y seguí"**. Una sesión nueva NO hereda la charla anterior; esto es la fuente de verdad.
 >
@@ -18,7 +35,7 @@ Objetivo: volverla app oficial de uso operativo 100% sobre Supabase.
 - Convierte únicamente contratos creativos `Aprobado` en storyboards versionados. Sella canal, formato, proporción, duración, hook, payoff, CTA, loop de retención, tesis visual y costo estimado.
 - Cada toma registra propósito, duración, sujeto, acción, física, entorno, cámara, luz, audio, texto, continuidad, restricciones, costo y referencias exactas de la Biblioteca. Solo acepta originales activos, autorizados, con permiso IA y derechos vigentes.
 - Las revisiones son inmutables: corregir una toma crea R2/R3 y conserva la anterior como `Sustituida`. El servidor exige numeración consecutiva, suma de duración, dirección mínima, loop cerrado y referencias válidas antes de permitir revisión/aprobación.
-- Flujo humano protegido: `Borrador → En revisión → Aprobado` o `Devolver`. Aprobar **no crea trabajos, no llama a Kling/Higgsfield, no gasta y no publica**; el Hito 32 será el enrutador que traduzca cada toma aprobada a una ejecución con autorización independiente.
+- Flujo humano protegido: `Borrador → En revisión → Aprobado` o `Devolver`. Aprobar **no crea trabajos, no llama a Kling/Higgsfield, no gasta y no publica**; el Hito 32 ya traduce cada toma aprobada a una ruta multimotor con autorización independiente.
 - UI premium dentro de Agencia MOMOS: tablero compacto, creación desde contrato, editor por toma, activos autorizados, control de continuidad/duración/costo y aprobación/devolución en un único detalle.
 - Pruebas: [`src/lib/agency-scene-studio.test.js`](src/lib/agency-scene-studio.test.js), [`supabase/tests/test-estudio-escenas-v1.sql`](supabase/tests/test-estudio-escenas-v1.sql) y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) 01-31. Prueba adversarial y cadena ordenada **PASS**, ambas con rollback total.
 - Verificación local conjunta H30+H31: **332/332 tests PASS**, build Vite PASS y `git diff --check` PASS.

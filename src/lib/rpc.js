@@ -571,6 +571,20 @@ export async function crearRevisionSalidaCreativa(jobId) {
   return data;
 }
 
+export async function prepararEnrutamientoEscenas(payload) {
+  const { data, error } = await supabase.rpc("preparar_enrutamiento_escenas", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverEnrutamientoEscenas(planId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_enrutamiento_escenas", {
+    p_plan_id: planId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function guardarReferenciaIntegracionAgencia(payload) {
   const { data, error } = await supabase.rpc("guardar_referencia_integracion_agencia", { p: payload });
   if (error) throw new Error(error.message);

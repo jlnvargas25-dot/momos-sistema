@@ -26,12 +26,15 @@
 - El gate humano `Borrador → En revisión → Aprobado` no genera, no gasta y no publica. La ejecución por motores continúa en el Hito 32.
 - Migración `20260716_31_estudio_escenas` aplicada. La prueba adversarial de storyboard/tomas/continuidad/derechos/costo/aprobación/RBAC y la cadena ordenada 01–31 pasaron con rollback total.
 
-### Hito 32 — MCP creativo y enrutador multimotor
+### Hito 32 — MCP creativo y enrutador multimotor (implementado y validado)
 
-- Exponer herramientas MOMOS de solo lectura para contexto, marca, activos y contrato.
-- Elegir Higgsfield, Kling o Runway según la toma, no por preferencia fija.
-- Estimar costo, revisar saldo, aplicar lease/idempotencia y conciliar cada resultado.
-- Prohibir secretos en navegador, prompts y tablas públicas.
+- La migración `20260716_32_enrutador_escenas` sella exactamente una ruta por toma vigente de un storyboard aprobado.
+- MOMO OPS recomienda Higgsfield o Kling por capacidad, pero el humano puede revisar motor, estimado y tope antes de autorizar. Runway no se declara operativo hasta contar con adaptador privado real.
+- Preparar una ruta no gasta ni crea trabajos. Una autorización humana crea atómicamente un trabajo `Autorizado` por toma en las colas existentes; si un motor falla, está pausado o tiene heartbeat vencido, no queda una ejecución parcial.
+- La huella del storyboard, la huella de cada toma, sus activos, prompts, riesgos, costos y topes quedan sellados e idempotentes.
+- El contrato privado MCP expone contexto seguro sin secretos y permite proponer; el navegador no puede suplantar al agente ni escribir tablas directamente.
+- Generación, revisión creativa y distribución siguen separadas. El Enrutador nunca publica.
+- Migración `20260716_32_enrutador_escenas` aplicada. La prueba adversarial de multimotor/costo/idempotencia/atomicidad/no publicación/RBAC y la cadena ordenada 01–32 pasaron con rollback total.
 
 ### Hito 33 — Calidad, continuidad y postproducción
 
@@ -82,6 +85,8 @@ La skill se crea al final de la construcción de Agencia, cuando exista experien
 ### Hito 36 — Experiencia de dirección de motion
 
 Construir primero el contrato, la interfaz y la telemetría que alimentarán la futura skill `direct-momos-motion`. No copiar la skill promocional del proveedor: adaptar sus principios al producto real, la identidad y los resultados económicos de MOMOS.
+
+Fundación práctica ya creada: skill personal `$direct-natural-camera-lighting`, validada localmente. Dirige ángulos naturales, trayectoria con inercia, microvibración motivada, blur/foco, luz, sombras y continuidad física. Es neutral al proveedor; la futura `direct-momos-motion` incorporará además la identidad y los aprendizajes económicos propios de MOMOS.
 
 #### Modelo operativo
 

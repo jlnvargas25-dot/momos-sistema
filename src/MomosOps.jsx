@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -28,6 +28,7 @@ import { agencyDecisionType, buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS, g
 import { buildOrchestratorInbox, orchestratorProposalPayload } from "./lib/agency-orchestrator";
 import { AGENCY_COLLABORATION_ENTRY_TYPES, AGENCY_CONTRACT_KPIS, agencyContractConstraints, agencyContractDirection, agencyRoomPayload, buildAgencyCollaborationDesk } from "./lib/agency-collaboration";
 import { STORYBOARD_ASPECT_RATIOS, STORYBOARD_CHANNELS, STORYBOARD_FORMATS, buildAgencySceneStudio, shotPayload, storyboardPayload } from "./lib/agency-scene-studio";
+import { SCENE_ROUTE_PROVIDERS, buildAgencySceneRouter, buildSceneRoutingDraft, sceneRoutingPayload } from "./lib/agency-scene-router";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -709,7 +710,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -11412,6 +11413,58 @@ function AgencySceneStudio({ db, refrescar }) {
   </div>;
 }
 
+function AgencySceneRouter({ db, refrescar }) {
+  const center = useMemo(() => buildAgencySceneRouter(db), [db]);
+  const [boardId, setBoardId] = useState("");
+  const [overrides, setOverrides] = useState({});
+  const board = center.eligibleStoryboards.find((item) => String(item.id) === String(boardId)) || null;
+  const draft = useMemo(() => board
+    ? buildSceneRoutingDraft(board, db.agencyStoryboardShots || [], db, overrides)
+    : null, [board, db, overrides]);
+
+  function patchRoute(shotId, values) {
+    setOverrides((current) => ({ ...current, [shotId]: { ...(current[shotId] || {}), ...values } }));
+  }
+
+  async function prepareRoutes() {
+    if (!db.agencySceneRouterReady) throw new Error("Aplicá la migración 32 del Enrutador de escenas.");
+    if (!draft?.ready) throw new Error(draft?.reasons?.[0] || "El plan no está listo.");
+    const result = await prepararEnrutamientoEscenas(sceneRoutingPayload(draft, "MOMO OPS Router"));
+    setBoardId(""); setOverrides({});
+    toast("ok", result.duplicate ? "Ese enrutamiento ya estaba sellado." : "Ruta preparada. Ningún motor fue llamado todavía.");
+    await refrescar();
+  }
+
+  async function resolvePlan(plan, decision) {
+    const note = decision === "Descartar"
+      ? (window.prompt("¿Por qué descartamos este enrutamiento?", "Se ajustará la dirección o el costo") || "")
+      : "Autorización humana de motores y topes por escena";
+    if (!note) return;
+    const result = await resolverEnrutamientoEscenas(plan.id, decision, note);
+    toast("ok", decision === "Autorizar"
+      ? `${result.job_ids?.length || 0} toma(s) autorizadas para la cola privada. Aún no se publicó nada.`
+      : "Enrutamiento descartado con trazabilidad.");
+    await refrescar();
+  }
+
+  return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#243D37,#355E53)", color: "#fff" }}>
+      <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Dirección aprobada → motor controlado</div><div className="display text-xl font-semibold">Enrutador de escenas MOMOS</div><div className="text-xs opacity-80 max-w-2xl">Elige el motor por capacidad, sella costo y riesgo por toma y exige una sola confirmación humana. Los workers ejecutan después; publicar sigue siendo otro paso.</div></div>
+      <div className="grid grid-cols-3 gap-2 shrink-0">{[["Por autorizar",center.summary.prepared],["Autorizados",center.summary.authorized],["Trabajos",center.summary.jobs]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[74px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencySceneRouterReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>enrutador-escenas-v1.sql</code>. Hasta entonces MOMO OPS no creará trabajos desde storyboards.</div> : <>
+      <div className="p-4 border-b" style={{ borderColor: T.border }}>
+        <div className="flex flex-wrap items-end gap-2"><Field label="Storyboard aprobado"><select className={inputCls} style={{ ...inputStyle, minWidth: 280 }} value={boardId} onChange={(event) => { setBoardId(event.target.value); setOverrides({}); }}><option value="">Elegí una pieza sin enrutar…</option>{center.eligibleStoryboards.map((item) => <option key={item.id} value={item.id}>#{item.id} · {item.title} · {item.channel}</option>)}</select></Field>{draft && <div className="pb-3 text-[10px] font-bold" style={{ color: draft.operational ? "#315B35" : "#9A5B16" }}>{draft.operational ? "● Motores disponibles ahora" : `● Plan documentable; ${draft.operationalReasons[0] || "conector no disponible"}`}</div>}</div>
+        {draft && <div className="space-y-2 mt-1">{draft.routes.map((route) => <article key={route.shotId} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}>
+          <div className="grid lg:grid-cols-[1fr_160px_140px_140px] gap-2 items-end"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Toma {route.shotNumber} · riesgo {route.riskLevel}</div><div className="font-extrabold text-sm">{route.title}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{route.capability} · {route.rationale}</div></div><Field label="Motor"><Select options={SCENE_ROUTE_PROVIDERS} value={route.provider} onChange={(event) => patchRoute(route.shotId, { provider: event.target.value })} /></Field><Field label="Estimado COP"><Input type="number" min="1" value={route.estimatedCostCop || ""} onChange={(event) => patchRoute(route.shotId, { estimatedCostCop: event.target.value })} /></Field><Field label="Tope COP"><Input type="number" min="1" value={route.maxCostCop || ""} onChange={(event) => patchRoute(route.shotId, { maxCostCop: event.target.value })} /></Field></div>
+        </article>)}<div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl px-3 py-3" style={{ background: T.vainilla }}><div className="text-xs"><b>{draft.routes.length} toma(s)</b> · estimado {fmt(draft.totalEstimatedCostCop)} · tope {fmt(draft.totalCostCapCop)}{draft.reasons.map((reason) => <div key={reason} className="text-red-700">× {reason}</div>)}</div><BtnAsync onClick={prepareRoutes} disabled={!draft.ready}>Sellar ruta multimotor</BtnAsync></div></div>}
+      </div>
+      <div className="p-3 grid lg:grid-cols-2 gap-2">{center.plans.slice(0, 8).map((plan) => { const routes = plan.snapshot?.routes || []; const tone = statusTone(plan.status); return <article key={plan.id} className="rounded-2xl border p-3" style={{ borderColor: plan.status === "Preparado" ? "#E8C98B" : T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Ruta #{plan.id} · V{plan.version}</div><div className="font-extrabold text-sm">{plan.storyboard?.title || `Storyboard #${plan.storyboardId}`}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{plan.status}</span></div><div className="flex flex-wrap gap-1 my-2">{routes.map((route) => <span key={route.shot_id} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: route.provider === "Kling" ? "#E5EEF7" : "#F3D7DC" }}>T{route.shot_number} · {route.provider}</span>)}</div><div className="text-[10px] mb-2" style={{ color: T.choco2 }}>Estimado {fmt(plan.totalEstimatedCostCop)} · tope humano {fmt(plan.totalCostCapCop)} · huella {plan.fingerprint?.slice(0, 8)}</div>{plan.status === "Preparado" && <div className="flex gap-2"><BtnAsync small confirmar onClick={() => resolvePlan(plan, "Autorizar")}>Autorizar {routes.length} toma(s)</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolvePlan(plan, "Descartar")}>Descartar</BtnAsync></div>}{plan.status === "Autorizado" && <div className="rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ {plan.jobIds.length} trabajo(s) en colas privadas · publicación: bloqueada</div>}</article>; })}{center.plans.length === 0 && <div className="p-2 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>No hay rutas selladas.</b> Aprobá un storyboard y asigná su motor por toma.</div>}</div>
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Arquitectura segura: preparar no gasta; autorizar crea la cola atómicamente; el worker genera; Revisión Creativa decide; Distribución publica por separado.</div>
+  </div>;
+}
+
 function AgenciaControl({ db, user, refrescar }) {
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
@@ -11674,6 +11727,7 @@ function AgenciaControl({ db, user, refrescar }) {
 
           <AgencyCollaborationDesk db={db} refrescar={refrescar} />
           <AgencySceneStudio db={db} refrescar={refrescar} />
+          <AgencySceneRouter db={db} refrescar={refrescar} />
 
           <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
             <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
@@ -12735,6 +12789,7 @@ export default function MomosOps() {
     if (db.higgsfieldConnectorReady || db.klingConnectorReady) tables.push("creative_connector_runs");
     if (db.agencyCollaborationReady) tables.push("agency_collaboration_rooms", "agency_collaboration_entries", "agency_creative_contracts");
     if (db.agencySceneStudioReady) tables.push("agency_storyboards", "agency_storyboard_shots");
+    if (db.agencySceneRouterReady) tables.push("agency_scene_routing_plans");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = () => {
       if (timer) clearTimeout(timer);
@@ -12756,7 +12811,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.distributionConnectorReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.distributionConnectorReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady), Boolean(db?.agencyCollaborationReady), Boolean(db?.agencySceneStudioReady), Boolean(db?.agencySceneRouterReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -12829,6 +12884,8 @@ export default function MomosOps() {
       d.agencySceneStudioReady = Boolean(cat.agencySceneStudioReady);
       d.agencyStoryboards = cat.agencyStoryboards || [];
       d.agencyStoryboardShots = cat.agencyStoryboardShots || [];
+      d.agencySceneRouterReady = Boolean(cat.agencySceneRouterReady);
+      d.agencySceneRoutingPlans = cat.agencySceneRoutingPlans || [];
       if (cat.marketingIdeas) d.marketing_ideas = cat.marketingIdeas;
       if (cat.marketingGuiones) d.marketing_guiones = cat.marketingGuiones;
       if (cat.marketingMensajes) d.marketing_mensajes = cat.marketingMensajes;

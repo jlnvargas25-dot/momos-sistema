@@ -379,6 +379,26 @@ export async function fetchCatalogos() {
     }));
   }
 
+  const sceneRouterProbe = await supabase.rpc("enrutador_escenas_disponible");
+  const sceneRouterProbeMissing = sceneRouterProbe.error &&
+    (sceneRouterProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(sceneRouterProbe.error.message || ""));
+  if (sceneRouterProbe.error && !sceneRouterProbeMissing) throw new Error(sceneRouterProbe.error.message);
+  const agencySceneRouterReady = !sceneRouterProbeMissing && sceneRouterProbe.data === true;
+  let agencySceneRoutingPlans = [];
+  if (agencySceneRouterReady) {
+    const routeResult = await supabase.from("agency_scene_routing_plans")
+      .select("id,plan_key,storyboard_id,version,status,plan_snapshot,plan_fingerprint,total_estimated_cost_cop,total_cost_cap_cop,prepared_by,prepared_by_agent,created_at,resolved_by,resolved_at,resolution_note,job_ids")
+      .order("created_at", { ascending: false }).limit(100);
+    if (routeResult.error) throw new Error(routeResult.error.message);
+    agencySceneRoutingPlans = (routeResult.data || []).map((row) => ({
+      id: row.id, planKey: row.plan_key, storyboardId: row.storyboard_id, version: Number(row.version), status: row.status,
+      snapshot: row.plan_snapshot || {}, fingerprint: row.plan_fingerprint,
+      totalEstimatedCostCop: Number(row.total_estimated_cost_cop || 0), totalCostCapCop: Number(row.total_cost_cap_cop || 0),
+      preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent), createdAt: tsBogota(row.created_at),
+      resolvedBy: nz(row.resolved_by), resolvedAt: tsBogota(row.resolved_at), resolutionNote: nz(row.resolution_note), jobIds: row.job_ids || [],
+    }));
+  }
+
   const distributionProbe = await supabase.rpc("distribucion_comercial_disponible");
   const distributionProbeMissing = distributionProbe.error &&
     (distributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(distributionProbe.error.message || ""));
@@ -568,7 +588,7 @@ export async function fetchCatalogos() {
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
     agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals,
     agencyCollaborationReady, agencyCollaborationRooms, agencyCollaborationEntries, agencyCreativeContracts,
-    agencySceneStudioReady, agencyStoryboards, agencyStoryboardShots,
+    agencySceneStudioReady, agencyStoryboards, agencyStoryboardShots, agencySceneRouterReady, agencySceneRoutingPlans,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }
