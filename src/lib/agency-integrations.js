@@ -1,5 +1,12 @@
 const INTEGRATION_CATALOG = [
   {
+    provider: "Kling",
+    kind: "Generación",
+    icon: "◆",
+    purpose: "Genera video Kling 3.0 desde un prompt o una imagen de marca aprobada.",
+    capabilities: ["Video", "Imagen a video", "Audio nativo"],
+  },
+  {
     provider: "Higgsfield",
     kind: "Generación",
     icon: "✦",
@@ -72,8 +79,12 @@ export function buildAgencyIntegrationCenter(db = {}, nowValue = new Date()) {
     const heartbeatMinutes = minutesBetween(now, stored.lastHeartbeatAt);
     const heartbeatFresh = heartbeatMinutes !== null && heartbeatMinutes <= 30;
     const secretConfigured = stored.secretConfigured === true;
-    const bridgeRequired = definition.provider === "Higgsfield";
-    const bridgeInstalled = !bridgeRequired || db.higgsfieldConnectorReady === true;
+    const bridgeRequired = ["Higgsfield", "Kling"].includes(definition.provider);
+    const bridgeInstalled = definition.provider === "Higgsfield"
+      ? db.higgsfieldConnectorReady === true
+      : definition.provider === "Kling"
+        ? db.klingConnectorReady === true
+        : true;
     const operational = Boolean(db.agencyIntegrationsReady) && bridgeInstalled && status === "Activa" && secretConfigured && heartbeatFresh;
     const { jobs, distributions } = rowsForProvider(db, definition.provider);
     const runs = (db.creativeConnectorRuns || []).filter((run) => run.provider === definition.provider);
@@ -84,7 +95,9 @@ export function buildAgencyIntegrationCenter(db = {}, nowValue = new Date()) {
     const reasons = [];
     if (!db.agencyIntegrationsReady) reasons.push("Falta aplicar la migración 23.");
     else if (status === "Pausada") reasons.push("La integración está pausada por el equipo.");
-    else if (!bridgeInstalled) reasons.push("Falta aplicar la migración 24 del worker Higgsfield.");
+    else if (!bridgeInstalled) reasons.push(definition.provider === "Kling"
+      ? "Falta aplicar la migración 25 del worker Kling."
+      : "Falta aplicar la migración 24 del worker Higgsfield.");
     else if (status === "Con error") reasons.push(stored.lastError || "El último chequeo del conector falló.");
     else if (!secretConfigured) reasons.push("Falta autenticar la credencial privada del conector.");
     else if (status !== "Activa") reasons.push("El conector todavía no confirmó que está activo.");

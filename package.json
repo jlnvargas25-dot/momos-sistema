@@ -11,7 +11,10 @@
     "test:voice": "node --test src/lib/kitchen-voice.test.js",
     "test:workflow": "node --test src/lib/order-workflow.test.js",
     "worker:higgsfield": "node scripts/higgsfield-worker.mjs",
-    "worker:higgsfield:once": "node scripts/higgsfield-worker.mjs --once"
+    "worker:higgsfield:once": "node scripts/higgsfield-worker.mjs --once",
+    "worker:kling": "node scripts/kling-worker.mjs",
+    "worker:kling:once": "node scripts/kling-worker.mjs --once",
+    "worker:kling:health": "node scripts/kling-worker.mjs --once --health-only"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",

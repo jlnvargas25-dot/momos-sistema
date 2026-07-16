@@ -705,7 +705,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -10829,8 +10829,8 @@ function AgencyBrandStudio({ db, user, refrescar }) {
         output_spec: { ...freshDraft.spec, output_mode: "new_asset", preserve_originals: true },
       });
       setStudio((current) => ({ ...current, assetIds: [], instructions: "" }));
-      toast("ok", studio.provider === "Higgsfield"
-        ? "Trabajo Higgsfield preparado y auditado; revisá y autorizá su tope antes de enviarlo"
+      toast("ok", ["Higgsfield", "Kling"].includes(studio.provider)
+        ? `Trabajo ${studio.provider} preparado y auditado; revisá y autorizá su tope antes de enviarlo`
         : "Trabajo creativo preparado con originales y marca congelados");
       await refrescar();
     } catch (error) { toast("error", error.message); }
@@ -10974,7 +10974,7 @@ function AgencyBrandStudio({ db, user, refrescar }) {
               {studioDraft.audit.warnings.length > 0 && <div className="rounded-2xl p-3 mb-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>⚠ {studioDraft.audit.warnings.join(" · ")}</div>}
               {studioDraft.audit.passed && <div className="rounded-2xl p-3 mb-3 text-xs font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ Derechos, producto real, marca y formato validados.</div>}
               <div className="rounded-2xl p-3 mb-3 text-[11px] leading-relaxed" style={{ background: "rgba(255,255,255,.1)" }}>{studioDraft.prompt}</div>
-              {studio.provider === "Higgsfield" && <div className="text-[10px] mb-3 opacity-80">Higgsfield queda seleccionado como proveedor, pero este hito solo prepara el trabajo: no se envía nada hasta instalar su conector y secreto del servidor.</div>}
+              {["Higgsfield", "Kling"].includes(studio.provider) && <div className="text-[10px] mb-3 opacity-80">{studio.provider} queda seleccionado como proveedor. Preparar conserva las fuentes y el brief; nada se envía hasta la autorización humana y la validación del conector privado.</div>}
               <BtnAsync onClick={prepareJob} disabled={!ready || !canWrite || !studioDraft.audit.passed} textoEnVuelo="Protegiendo trabajo…">Preparar trabajo creativo</BtnAsync>
             </div>
           </div>
@@ -11013,6 +11013,7 @@ function AgencyBrandStudio({ db, user, refrescar }) {
         </div>
         {!integrationCenter.ready && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>🛡️ Aplicá <code>integraciones-agencia-v1.sql</code> después de la migración 22. Hasta entonces ningún proveedor externo se considera conectado.</div>}
         {integrationCenter.ready && !db.higgsfieldConnectorReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>✦ Higgsfield sigue en modo protegido. Aplicá <code>higgsfield-conector-v1.sql</code> para instalar el worker privado, el costo máximo y la conciliación de resultados.</div>}
+        {integrationCenter.ready && !db.klingConnectorReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>◆ Kling está preparado pero cerrado. Aplicá <code>kling-conector-v1.sql</code> para habilitar API Key privada, costo protegido, idempotencia y conciliación.</div>}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-5">
           {[["Operativas",integrationCenter.summary.operational,"Heartbeat ≤ 30 min"],["Requieren atención",integrationCenter.summary.needsAttention,"Error o trabajo detenido"],["Trabajo esperando",integrationCenter.summary.waiting,"Autorizado, no ejecutado"],["Piezas generadas",integrationCenter.summary.completed,`${integrationCenter.summary.failed} intentos fallidos`]].map(([label,value,sub]) => <div key={label} className="momo-metric-card rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft, "--metric-tone": label === "Requieren atención" ? "#C4808E" : T.coral }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: label === "Piezas generadas" ? "#3F6B42" : T.coral }}>{value}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{sub}</div></div>)}
         </div>
@@ -11023,19 +11024,19 @@ function AgencyBrandStudio({ db, user, refrescar }) {
                 : { border: T.border, bg: "#fff", fg: "#7A5410" };
             return <article key={integration.provider} className="rounded-3xl border p-4 shadow-sm" style={{ borderColor: tone.border, background: tone.bg }}>
               <div className="flex items-start gap-3"><div className="w-11 h-11 shrink-0 rounded-2xl grid place-items-center text-xl" style={{ background: integration.operational ? "#DDEBD9" : T.vainilla, color: tone.fg }}>{integration.icon}</div><div className="flex-1 min-w-0"><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{integration.kind}</div><div className="display text-lg font-semibold">{integration.provider}</div></div><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: integration.operational ? "#DDEBD9" : integration.status === "Con error" ? "#F6D4CD" : "#FFF2D8", color: tone.fg }}>{integration.operational ? "● OPERATIVA" : integration.status.toUpperCase()}</span></div><p className="text-xs mt-1 mb-0" style={{ color: T.choco2 }}>{integration.purpose}</p></div></div>
-              <div className="grid grid-cols-2 gap-2 my-3"><div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,.7)" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Cuenta</div><div className="text-xs font-extrabold truncate">{integration.accountLabel || "Sin referencia"}</div><div className="text-[9px]" style={{ color: T.choco2 }}>{integration.environment}</div></div><div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,.7)" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Salud privada</div><div className="text-xs font-extrabold">{integration.heartbeatMinutes == null ? "Sin heartbeat" : `Hace ${integration.heartbeatMinutes} min`}</div><div className="text-[9px]" style={{ color: integration.secretConfigured ? "#315B35" : "#A03B2A" }}>{integration.secretConfigured ? "OAuth confirmado" : "Autenticación pendiente"}</div></div></div>
+              <div className="grid grid-cols-2 gap-2 my-3"><div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,.7)" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Cuenta</div><div className="text-xs font-extrabold truncate">{integration.accountLabel || "Sin referencia"}</div><div className="text-[9px]" style={{ color: T.choco2 }}>{integration.environment}</div></div><div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,.7)" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Salud privada</div><div className="text-xs font-extrabold">{integration.heartbeatMinutes == null ? "Sin heartbeat" : `Hace ${integration.heartbeatMinutes} min`}</div><div className="text-[9px]" style={{ color: integration.secretConfigured ? "#315B35" : "#A03B2A" }}>{integration.secretConfigured ? (integration.provider === "Kling" ? "API Key confirmada" : "Autenticación confirmada") : "Autenticación pendiente"}</div></div></div>
               <div className="flex flex-wrap gap-1.5">{integration.capabilities.map((capability) => <span key={capability} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{capability}</span>)}{integration.waiting > 0 && <span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>{integration.waiting} esperando</span>}</div>
-              {integration.provider === "Higgsfield" && integration.bridgeInstalled && <div className="rounded-2xl px-3 py-2 mt-3 grid grid-cols-3 gap-2" style={{ background: "rgba(255,255,255,.72)" }}><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Worker</div><div className="text-[10px] font-bold truncate">{integration.workerVersion || "Sin versión"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Último intento</div><div className="text-[10px] font-bold">{integration.lastRun?.state || "Sin trabajos"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Costo</div><div className="text-[10px] font-bold">{integration.lastRun ? fmt(integration.lastRun.actualCostCop || integration.lastRun.estimatedCostCop || 0) : "—"}</div></div></div>}
+              {["Higgsfield", "Kling"].includes(integration.provider) && integration.bridgeInstalled && <div className="rounded-2xl px-3 py-2 mt-3 grid grid-cols-3 gap-2" style={{ background: "rgba(255,255,255,.72)" }}><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Worker</div><div className="text-[10px] font-bold truncate">{integration.workerVersion || "Sin versión"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Último intento</div><div className="text-[10px] font-bold">{integration.lastRun?.state || "Sin trabajos"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Costo</div><div className="text-[10px] font-bold">{integration.lastRun ? fmt(integration.lastRun.actualCostCop || integration.lastRun.estimatedCostCop || 0) : "—"}</div></div></div>}
               {!integration.operational && <div className="rounded-2xl px-3 py-2 mt-3 text-[11px] font-bold" style={{ background: integration.needsAttention ? "#F6D4CD" : "#FFF2D8", color: tone.fg }}>Siguiente paso: {integration.reasons[0]}</div>}
               <div className="flex flex-wrap gap-2 mt-3"><Btn small kind="soft" disabled={!integrationCenter.ready || !canConfigureIntegrations} onClick={() => setIntegrationEdit({ provider: integration.provider, environment: integration.environment, accountLabel: integration.accountLabel, externalAccountId: integration.externalAccountId })}>{integration.accountLabel ? "Editar referencia" : "Configurar cuenta"}</Btn>{integration.status === "Activa" && <Btn small kind="ghost" disabled={!canConfigureIntegrations} onClick={() => pauseIntegration(integration)}>Pausar</Btn>}</div>
             </article>;
           })}
         </div>
-        <div className="rounded-2xl px-4 py-3 mt-4 text-xs" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Activación segura:</b> Administración registra aquí la cuenta; Higgsfield se autentica por OAuth únicamente en el runtime privado del worker. MOMO OPS exige heartbeat reciente, tope de costo y revisión humana de cada salida antes de habilitar cualquier publicación.</div>
+        <div className="rounded-2xl px-4 py-3 mt-4 text-xs" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Activación segura:</b> Administración solo identifica aquí la cuenta. Kling usa una API Key y los demás proveedores su autenticación correspondiente, siempre en el runtime privado. MOMO OPS exige heartbeat reciente, tope de costo y revisión humana antes de publicar.</div>
       </div>}
 
       {integrationEdit && <Modal title={`Configurar ${integrationEdit.provider}`} onClose={() => setIntegrationEdit(null)} topLayer>
-        <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Acá no se pegan tokens ni contraseñas.</b> Solo identificamos la cuenta que MOMO OPS debe usar. La sesión OAuth se concede después en el runtime privado del worker.</div>
+        <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Acá no se pegan tokens, API Keys ni contraseñas.</b> Solo identificamos la cuenta que MOMO OPS debe usar. La credencial se configura después en el runtime privado del worker.</div>
         <div className="grid sm:grid-cols-2 gap-3"><Field label="Proveedor"><Input value={integrationEdit.provider} disabled /></Field><Field label="Entorno"><Select options={AGENCY_INTEGRATION_ENVIRONMENTS} value={integrationEdit.environment} onChange={(event) => setIntegrationEdit({ ...integrationEdit, environment: event.target.value })} /></Field></div>
         <Field label="Nombre visible de la cuenta"><Input value={integrationEdit.accountLabel} onChange={(event) => setIntegrationEdit({ ...integrationEdit, accountLabel: event.target.value })} placeholder="Ej. Instagram D'Momos Sweet Love" /></Field>
         <Field label="ID externo de cuenta (opcional)"><Input value={integrationEdit.externalAccountId} onChange={(event) => setIntegrationEdit({ ...integrationEdit, externalAccountId: event.target.value })} placeholder="ID entregado por el proveedor" /></Field>
@@ -12339,7 +12340,7 @@ export default function MomosOps() {
     if (db.distributionServerReady) tables.push("content_distributions");
     if (db.brandMediaReady) tables.push("brand_media_assets", "creative_generation_jobs", "brand_media_usages");
     if (db.agencyIntegrationsReady) tables.push("agency_integrations");
-    if (db.higgsfieldConnectorReady) tables.push("creative_connector_runs");
+    if (db.higgsfieldConnectorReady || db.klingConnectorReady) tables.push("creative_connector_runs");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = () => {
       if (timer) clearTimeout(timer);
@@ -12361,7 +12362,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -12413,6 +12414,7 @@ export default function MomosOps() {
       d.agencyIntegrationsReady = Boolean(cat.agencyIntegrationsReady);
       d.agencyIntegrations = cat.agencyIntegrations || [];
       d.higgsfieldConnectorReady = Boolean(cat.higgsfieldConnectorReady);
+      d.klingConnectorReady = Boolean(cat.klingConnectorReady);
       d.creativeConnectorRuns = cat.creativeConnectorRuns || [];
       d.agencyServerReady = Boolean(cat.agencyServerReady);
       d.agencySettings = cat.agencySettings || d.agencySettings || DEFAULT_AGENCY_SETTINGS;

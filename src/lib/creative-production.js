@@ -2,7 +2,7 @@ const list = (value) => Array.isArray(value) ? value : [];
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const clean = (value) => String(value || "").trim();
 
-export const CREATIVE_PROVIDERS = Object.freeze(["Por conectar", "Higgsfield", "HeyGen", "Manual"]);
+export const CREATIVE_PROVIDERS = Object.freeze(["Por conectar", "Kling", "Higgsfield", "HeyGen", "Manual"]);
 export const CREATIVE_JOB_STATES = Object.freeze([
   "Preparado", "Autorizado", "En generación", "Completado", "Fallido", "Cancelado",
 ]);
@@ -10,7 +10,7 @@ export const CREATIVE_JOB_STATES = Object.freeze([
 export function recommendedCreativeProvider(job = {}) {
   const text = [job.operation, job.targetFormat, job.prompt].map(clean).join(" ").toLocaleLowerCase("es");
   if (/avatar|presentador|hablando|voz a cámara|vocero/.test(text)) return "HeyGen";
-  if (/generar video|reel|tiktok|cinem|producto|transición/.test(text)) return "Higgsfield";
+  if (/generar video|reel|tiktok|cinem|producto|transición/.test(text)) return "Kling";
   return "Manual";
 }
 

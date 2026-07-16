@@ -7,7 +7,7 @@ const job = { id: 8, status: "Preparado", provider: "Higgsfield", operation: "Ge
 
 test("recomienda proveedor según el trabajo sin confundir avatar con producto", () => {
   assert.equal(recommendedCreativeProvider({ operation: "Generar video", prompt: "avatar hablando a cámara" }), "HeyGen");
-  assert.equal(recommendedCreativeProvider({ operation: "Generar video", prompt: "close-up cinematográfico del producto" }), "Higgsfield");
+  assert.equal(recommendedCreativeProvider({ operation: "Generar video", prompt: "close-up cinematográfico del producto" }), "Kling");
   assert.equal(recommendedCreativeProvider({ operation: "Editar", targetFormat: "Post 4:5" }), "Manual");
 });
 

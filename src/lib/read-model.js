@@ -378,7 +378,7 @@ export async function fetchCatalogos() {
   // Centro de Integraciones (migración 23). La app solo lee estado, salud y
   // referencia de cuenta; los secretos permanecen en el runtime del servidor.
   let agencyIntegrationsReady = false; let agencyIntegrations = []; let creativeConnectorRuns = [];
-  let higgsfieldConnectorReady = false;
+  let higgsfieldConnectorReady = false; let klingConnectorReady = false;
   if (creativeProductionReady) {
     const integrationsProbe = await supabase.rpc("integraciones_agencia_disponibles");
     const integrationsProbeMissing = integrationsProbe.error &&
@@ -391,8 +391,13 @@ export async function fetchCatalogos() {
         (higgsfieldProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(higgsfieldProbe.error.message || ""));
       if (higgsfieldProbe.error && !higgsfieldProbeMissing) throw new Error(higgsfieldProbe.error.message);
       higgsfieldConnectorReady = !higgsfieldProbeMissing && higgsfieldProbe.data === true;
+      const klingProbe = await supabase.rpc("kling_conector_disponible");
+      const klingProbeMissing = klingProbe.error &&
+        (klingProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(klingProbe.error.message || ""));
+      if (klingProbe.error && !klingProbeMissing) throw new Error(klingProbe.error.message);
+      klingConnectorReady = !klingProbeMissing && klingProbe.data === true;
       const integrationsResult = await supabase.from("agency_integrations")
-        .select(higgsfieldConnectorReady
+        .select(higgsfieldConnectorReady || klingConnectorReady
           ? "provider,kind,status,environment,account_label,external_account_id,capabilities,secret_configured,last_heartbeat_at,last_sync_at,last_error,configured_by,updated_at,worker_version,last_job_at,successful_jobs,failed_jobs"
           : "provider,kind,status,environment,account_label,external_account_id,capabilities,secret_configured,last_heartbeat_at,last_sync_at,last_error,configured_by,updated_at")
         .order("provider");
@@ -406,7 +411,7 @@ export async function fetchCatalogos() {
         workerVersion: nz(row.worker_version), lastJobAt: nz(row.last_job_at),
         successfulJobs: Number(row.successful_jobs || 0), failedJobs: Number(row.failed_jobs || 0),
       }));
-      if (higgsfieldConnectorReady) {
+      if (higgsfieldConnectorReady || klingConnectorReady) {
         const runsResult = await supabase.from("creative_connector_runs")
           .select("id,job_id,provider,worker_id,state,provider_job_id,estimated_cost_cop,actual_cost_cop,error_message,metadata,leased_at,lease_expires_at,started_at,finished_at")
           .order("leased_at", { ascending: false }).limit(50);
@@ -424,7 +429,7 @@ export async function fetchCatalogos() {
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
     distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
-    agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, creativeConnectorRuns };
+    agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──

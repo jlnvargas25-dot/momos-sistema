@@ -16,7 +16,8 @@ begin
     '20260715_17_vencimiento_terminado','20260715_18_abastecimiento_interno',
     '20260715_19_distribucion_comercial','20260715_20_biblioteca_creativa',
     '20260715_21_roles_multiples','20260715_22_produccion_creativa',
-    '20260715_23_integraciones_agencia','20260715_24_higgsfield_conector'
+    '20260715_23_integraciones_agencia','20260715_24_higgsfield_conector',
+    '20260715_25_kling_conector'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -75,6 +76,14 @@ begin
   assert not has_function_privilege('authenticated','public.marcar_despacho_higgsfield(bigint,uuid)','EXECUTE'), 'inicio de despacho Higgsfield privado expuesto';
   assert not has_function_privilege('authenticated','public.confirmar_despacho_higgsfield(bigint,uuid,text,numeric,jsonb)','EXECUTE'), 'despacho Higgsfield privado expuesto';
   assert not has_function_privilege('authenticated','public.registrar_salida_higgsfield(bigint,uuid,jsonb)','EXECUTE'), 'salida Higgsfield privada expuesta';
+  assert public.kling_conector_disponible(), 'falta sonda del worker Kling';
+  assert exists(select 1 from public.agency_integrations where provider='Kling'), 'falta Kling en el catálogo protegido';
+  assert not has_function_privilege('authenticated','public.reclamar_trabajo_kling(text,integer)','EXECUTE'), 'lease Kling privado expuesto';
+  assert not has_function_privilege('authenticated','public.marcar_despacho_kling(bigint,uuid,text,numeric,jsonb)','EXECUTE'), 'inicio de despacho Kling privado expuesto';
+  assert not has_function_privilege('authenticated','public.conciliar_despacho_kling(bigint,uuid,text)','EXECUTE'), 'conciliación Kling privada expuesta';
+  assert not has_function_privilege('authenticated','public.registrar_salida_kling(bigint,uuid,jsonb)','EXECUTE'), 'salida Kling privada expuesta';
+  assert has_function_privilege('service_role','public.reportar_worker_kling(text,text,text,text,boolean)','EXECUTE'), 'worker Kling sin permiso de salud';
+  assert has_function_privilege('service_role','public.reclamar_trabajo_kling(text,integer)','EXECUTE'), 'worker Kling sin permiso de cola';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -106,5 +115,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-24 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-25 PASS, rollback total' as resultado;
 rollback;

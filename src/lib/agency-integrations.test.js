@@ -7,7 +7,7 @@ const NOW = new Date("2026-07-15T15:00:00-05:00");
 test("mantiene cerrados todos los conectores antes de la migración", () => {
     const center = buildAgencyIntegrationCenter({}, NOW);
     assert.equal(center.ready, false);
-    assert.equal(center.integrations.length, 4);
+    assert.equal(center.integrations.length, 5);
     assert.equal(center.summary.operational, 0);
     assert.equal(center.integrations.every((item) => item.reasons[0].includes("migración 23")), true);
   });
@@ -53,6 +53,18 @@ test("no declara Higgsfield operativo hasta instalar el worker protegido", () =>
   const guard = agencyProviderExecutionGuard("Higgsfield", db, NOW);
   assert.equal(guard.allowed, false);
   assert.match(guard.reasons[0], /migración 24/);
+});
+
+test("Kling exige su worker privado y queda operativo con API Key confirmada", () => {
+  const base = {
+    agencyIntegrationsReady: true,
+    agencyIntegrations: [{
+      provider: "Kling", status: "Activa", secretConfigured: true,
+      lastHeartbeatAt: "2026-07-15T14:55:00-05:00",
+    }],
+  };
+  assert.match(agencyProviderExecutionGuard("Kling", base, NOW).reasons[0], /migración 25/);
+  assert.equal(agencyProviderExecutionGuard("Kling", { ...base, klingConnectorReady: true }, NOW).allowed, true);
 });
 
 test("cuenta publicaciones aprobadas por canal sin confundir Meta con TikTok", () => {
