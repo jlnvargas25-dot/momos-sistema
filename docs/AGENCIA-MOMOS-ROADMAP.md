@@ -265,11 +265,15 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Archivos: `supabase/postproduccion-exportacion-v1.sql`, `supabase/tests/test-postproduccion-exportacion-v1.sql`, `src/lib/agency-postproduction-export.js` y su prueba.
 - Prueba adversarial H47 **PASS** y cadena ordenada 01–47 **PASS**, ambas con rollback total. Suite local **420/420 PASS**, build Vite **PASS** y los SQL pasan parser PostgreSQL.
 
-### Hito 48 — Worker local FFmpeg de postproducción (siguiente)
+### Hito 48 — Worker local FFmpeg de postproducción (implementado y validado localmente)
 
-- Instalar y fijar una versión conocida de FFmpeg/ffprobe en el entorno privado; nunca en el navegador.
-- Consumir la cola H47, descargar fuentes mediante URLs firmadas de corta duración, normalizar video/audio, aplicar decisiones selladas, exportar en una carpeta temporal aislada y subir el MP4 final al bucket privado.
-- Verificar bytes, SHA-256, duración, streams, FPS, códecs, color, loudness y peso antes de registrar el resultado. Limpiar temporales incluso ante fallo y reportar salud del worker.
+- FFmpeg y ffprobe quedaron versionados en el proyecto mediante dependencias bloqueadas; no dependen de una instalación global ni llegan al navegador.
+- `scripts/postproduction-worker.mjs` consume la cola H47 con lease, URLs firmadas de 15 minutos, verificación SHA-256 de cada fuente, límites de bytes/duración y temporales aislados que se eliminan incluso ante fallo.
+- Cada toma se normaliza al perfil sellado y el máster completo queda MP4/H.264/AAC/BT.709 con resolución, FPS y sonoridad objetivo. Una toma sin audio recibe un tramo silencioso para conservar continuidad; si ninguna fuente contiene audio original, el worker falla cerrado hasta disponer de una pista licenciada sellada.
+- Los subtítulos solo pueden quemarse cuando el contrato trae cues temporizados sellados. Sin cues no inventa textos: la opción queda apagada por defecto.
+- Antes de Storage verifica probe, LUFS, peso y duración; después registra ruta `exports/{id}/{sha256}.mp4`. Si el upload pudo ocurrir pero la confirmación resulta incierta, concilia el estado y bloquea cualquier reenvío inseguro.
+- Comandos privados: `npm run worker:postproduction:health`, `npm run worker:postproduction:once` y `npm run worker:postproduction`. El health real contra Supabase y un ciclo vacío pasaron; Meta permanece apagado.
+- Validación local: suite completa **425/425 PASS**, build Vite **PASS**, health FFmpeg/ffprobe **PASS** y cola vacía **PASS**. La primera exportación real continuará requiriendo una autorización H47 y control humano posterior.
 
 ### Hito 49 — Mutación Meta mínima y reversible (aplazado; cerrado hasta autorización explícita)
 

@@ -11,6 +11,7 @@ import {
 test("deriva un máster vertical verificable desde el paquete aprobado", () => {
   const spec = postproductionExportSpec({ snapshot: { export_spec: { aspect_ratio: "9:16" } } });
   assert.deepEqual({ width: spec.width, height: spec.height, fps: spec.fps }, { width: 1080, height: 1920, fps: 30 });
+  assert.equal(spec.burn_subtitles, false);
   assert.equal(validatePostproductionExportSpec(spec).valid, true);
 });
 

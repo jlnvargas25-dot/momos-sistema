@@ -717,6 +717,20 @@ vuelven al cancelar. Base correcta para toppings/adiciones (#2).
 - La UI muestra V2/V3, trabajo de origen, corrección humana y el botón para crear
   la versión siguiente. Pruebas SQL y cadena ordenada avanzan a 01-27.
 
+## Agencia MOMOS · Worker de postproducción (hito 48, 2026-07-16)
+
+- H47 y migraciones ordenadas 01-47 quedaron validadas en Supabase con rollback total.
+- FFmpeg/ffprobe están fijados en el lockfile y el worker privado vive en
+  `scripts/postproduction-worker.mjs`; Meta continúa apagado.
+- Health real contra Supabase PASS y ciclo `--once` sin trabajos PASS. Comandos:
+  `npm run worker:postproduction:health`, `npm run worker:postproduction:once` y
+  `npm run worker:postproduction`.
+- El worker verifica fuentes por SHA-256, normaliza MP4/H.264/AAC/BT.709, mide LUFS,
+  limita peso/duración, limpia temporales y registra el archivo real bajo
+  `exports/{id}/{sha256}.mp4`. Subtítulos y audio faltante fallan cerrado.
+- Regresión local 425/425 PASS y build Vite PASS. Falta ejecutar una primera
+  exportación real autorizada H47 y aprobarla humanamente para cerrar el smoke E2E.
+
 ## Inventario adversarial 2026-07-14
 
 - Front aplicado: vencido = `Vencido · no usar`, vence hoy separado de vence pronto;

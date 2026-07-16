@@ -26,7 +26,7 @@ export function postproductionExportSpec(pkg = {}, overrides = {}) {
     color_space: clean(overrides.colorSpace || "bt709").toLowerCase(),
     loudness_lufs: finite(overrides.loudnessLufs, -14),
     max_size_bytes: Math.round(finite(overrides.maxSizeBytes, 100 * 1024 * 1024)),
-    burn_subtitles: overrides.burnSubtitles !== false,
+    burn_subtitles: overrides.burnSubtitles === true,
     final_qc_required: true,
   };
 }
