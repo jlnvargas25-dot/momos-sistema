@@ -1,5 +1,14 @@
 # HANDOFF — MOMOS OPS (léelo al empezar una sesión nueva)
 
+## ✅ Hito 47 — Postproducción/exportación verificable (2026-07-16 · validado)
+
+- Estado estable anterior commiteado en `2be078c` (`feat(agencia): cerrar aprendizaje y acciones verificables`).
+- H47 implementado localmente: cola privada de exportación, lease, bloqueo de inciertos, registro de MP4 real con hash/probe y QA humano final.
+- Migración aplicada: `supabase/postproduccion-exportacion-v1.sql`.
+- Prueba adversarial H47 **PASS** y cadena ordenada 01–47 **PASS**, ambas con rollback total.
+- FFmpeg no está instalado en esta máquina. La UI lo declara como worker pendiente; ninguna fila puede simular que existe un máster.
+- Meta continúa apagado y su primera mutación sigue aplazada hasta autorización explícita.
+
 ## ✅ Hito 46 — Resultados verificables de Agencia (2026-07-16 · validado)
 
 - Nueva migración [`supabase/resultados-verificables-agencia-v1.sql`](supabase/resultados-verificables-agencia-v1.sql): una decisión aprobada solo cierra con resultado estructurado, costo real y evidencia interna validada por el servidor.

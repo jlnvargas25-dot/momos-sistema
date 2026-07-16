@@ -27,7 +27,8 @@ begin
     '20260716_39_escenarios_inversion','20260716_40_autorizacion_inversion',
     '20260716_41_meta_conector_dry_run','20260716_42_mcp_agency_gateway',
     '20260716_43_ciclo_cooperativo_mcp','20260716_44_bandeja_semantica_agencia',
-    '20260716_45_centro_acciones_agencia','20260716_46_resultados_verificables_agencia'
+    '20260716_45_centro_acciones_agencia','20260716_46_resultados_verificables_agencia',
+    '20260716_47_postproduccion_exportacion'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -209,6 +210,13 @@ begin
   assert not has_table_privilege('authenticated','public.agency_action_outcomes','INSERT'), 'resultados de Agencia permiten INSERT directo';
   assert not has_table_privilege('authenticated','public.agency_action_outcomes','UPDATE'), 'resultados de Agencia permiten UPDATE directo';
   assert exists(select 1 from pg_trigger where tgname='agency_decisions_outcome_guard' and not tgisinternal), 'falta guard contra cierre libre de decisiones';
+  assert public.postproduccion_exportacion_disponible(), 'falta exportación verificable de postproducción';
+  assert to_regclass('public.agency_postproduction_exports') is not null, 'falta cola de exportación de másters';
+  assert has_function_privilege('authenticated','public.autorizar_exportacion_postproduccion(jsonb)','EXECUTE'), 'falta autorización humana de exportación';
+  assert has_function_privilege('service_role','public.reclamar_exportacion_postproduccion(text,integer)','EXECUTE'), 'worker de exportación sin lease';
+  assert not has_function_privilege('authenticated','public.reclamar_exportacion_postproduccion(text,integer)','EXECUTE'), 'lease de exportación expuesto al navegador';
+  assert not has_table_privilege('authenticated','public.agency_postproduction_exports','INSERT'), 'exportaciones admiten inserción directa';
+  assert not has_table_privilege('authenticated','public.agency_postproduction_exports','UPDATE'), 'exportaciones admiten reescritura directa';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -240,5 +248,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-46 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-47 PASS, rollback total' as resultado;
 rollback;

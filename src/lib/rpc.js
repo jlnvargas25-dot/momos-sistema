@@ -707,6 +707,28 @@ export async function resolverPaquetePostproduccion(packageId, decision, note = 
   return data;
 }
 
+export async function autorizarExportacionPostproduccion(payload) {
+  const { data, error } = await supabase.rpc("autorizar_exportacion_postproduccion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverControlMasterPostproduccion(exportId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_control_master_postproduccion", {
+    p_export_id: exportId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function reintentarExportacionPostproduccion(exportId, note = "") {
+  const { data, error } = await supabase.rpc("reintentar_exportacion_postproduccion", {
+    p_export_id: exportId, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function prepararGuionRetencion(payload) {
   const { data, error } = await supabase.rpc("preparar_guion_retencion", { p: payload });
   if (error) throw new Error(error.message);

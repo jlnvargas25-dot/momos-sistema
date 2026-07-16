@@ -504,6 +504,38 @@ export async function fetchCatalogos() {
     }));
   }
 
+  const exportProbe = await supabase.rpc("postproduccion_exportacion_disponible");
+  const exportProbeMissing = exportProbe.error &&
+    (exportProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(exportProbe.error.message || ""));
+  if (exportProbe.error && !exportProbeMissing) throw new Error(exportProbe.error.message);
+  const agencyPostproductionExportReady = !exportProbeMissing && exportProbe.data === true;
+  let agencyPostproductionExports = []; let agencyPostproductionWorkers = [];
+  if (agencyPostproductionExportReady) {
+    const [exportResult, workerResult] = await Promise.all([
+      supabase.from("agency_postproduction_exports")
+        .select("id,export_key,package_id,version,status,export_snapshot,export_fingerprint,requested_by,requested_at,worker_id,leased_at,lease_expires_at,attempts,output_asset_id,result_snapshot,result_fingerprint,error_message,started_at,exported_at,reviewed_by,reviewed_at,review_note")
+        .order("requested_at", { ascending: false }).limit(200),
+      supabase.from("agency_postproduction_worker_health")
+        .select("worker_id,version,status,ffmpeg_available,ffmpeg_version,last_error,heartbeat_at")
+        .order("heartbeat_at", { ascending: false }).limit(20),
+    ]);
+    if (exportResult.error) throw new Error(exportResult.error.message);
+    if (workerResult.error) throw new Error(workerResult.error.message);
+    agencyPostproductionExports = (exportResult.data || []).map((row) => ({
+      id: row.id, exportKey: row.export_key, packageId: row.package_id, version: Number(row.version), status: row.status,
+      snapshot: row.export_snapshot || {}, fingerprint: row.export_fingerprint, requestedBy: row.requested_by,
+      requestedAt: tsBogota(row.requested_at), workerId: nz(row.worker_id), leasedAt: tsBogota(row.leased_at),
+      leaseExpiresAt: tsBogota(row.lease_expires_at), attempts: Number(row.attempts || 0), outputAssetId: row.output_asset_id,
+      result: row.result_snapshot || {}, resultFingerprint: nz(row.result_fingerprint), errorMessage: nz(row.error_message),
+      startedAt: tsBogota(row.started_at), exportedAt: tsBogota(row.exported_at), reviewedBy: nz(row.reviewed_by),
+      reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+    }));
+    agencyPostproductionWorkers = (workerResult.data || []).map((row) => ({
+      workerId: row.worker_id, version: row.version, status: row.status, ffmpegAvailable: Boolean(row.ffmpeg_available),
+      ffmpegVersion: nz(row.ffmpeg_version), lastError: nz(row.last_error), heartbeatAt: tsBogota(row.heartbeat_at),
+    }));
+  }
+
   const retentionProbe = await supabase.rpc("retencion_guiones_disponible");
   const retentionProbeMissing = retentionProbe.error &&
     (retentionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(retentionProbe.error.message || ""));
@@ -965,6 +997,7 @@ export async function fetchCatalogos() {
     agencySceneStudioReady, agencyStoryboards, agencyStoryboardShots, agencyMotionReady, agencyMotionPlans, agencyMotionRecipes,
     agencyMotionObservations, agencySceneRouterReady, agencySceneRoutingPlans,
     agencyQualityReady, agencySceneQualityReviews, agencyPostproductionPackages,
+    agencyPostproductionExportReady, agencyPostproductionExports, agencyPostproductionWorkers,
     agencyRetentionReady, agencyRetentionScripts, agencyRetentionHooks, agencyRetentionLoops, agencyRetentionExperiments, agencyRetentionMeasurements,
     agencyLoopLearningReady, agencyRetentionDiagnostics, agencyRetentionLearnings,
     agencyMetaReady, agencyMetaPolicies, agencyMetaSnapshots, agencyMetaDiagnostics,

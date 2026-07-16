@@ -255,7 +255,23 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Archivos: `supabase/resultados-verificables-agencia-v1.sql`, `src/lib/agency-action-outcome.js` y sus pruebas.
 - Prueba adversarial H46 **PASS** y cadena ordenada 01–46 **PASS**, ambas con rollback total. Suite local **414/414 PASS** y build Vite **PASS**.
 
-### Hito 47 — Mutación Meta mínima y reversible (aplazado; cerrado hasta autorización explícita)
+### Hito 47 — Postproducción y exportación verificable (implementado y validado)
+
+- Un corte aprobado ya puede convertirse en una autorización de exportación con especificación cerrada: MP4, H.264, AAC, BT.709, resolución, FPS, sonoridad y peso máximo.
+- La autorización solo crea una cola privada. No inventa un archivo, no publica y no distribuye. El worker debe tomar un lease, exportar fuera del navegador, subir un archivo real a Storage y registrar SHA-256 más probe técnico.
+- Un resultado incierto queda bloqueado y nunca se reenvía. Solo un fallo definitivo puede reintentarse con decisión humana y máximo de intentos.
+- El máster exportado exige una segunda revisión humana de archivo, resolución, FPS, audio, color y peso antes de quedar `Aprobada`. Distribución Comercial continúa siendo un paso separado.
+- La interfaz muestra con honestidad que esta máquina todavía no dispone de FFmpeg; por eso no habrá falsos “másters listos” hasta instalar y activar el worker privado.
+- Archivos: `supabase/postproduccion-exportacion-v1.sql`, `supabase/tests/test-postproduccion-exportacion-v1.sql`, `src/lib/agency-postproduction-export.js` y su prueba.
+- Prueba adversarial H47 **PASS** y cadena ordenada 01–47 **PASS**, ambas con rollback total. Suite local **420/420 PASS**, build Vite **PASS** y los SQL pasan parser PostgreSQL.
+
+### Hito 48 — Worker local FFmpeg de postproducción (siguiente)
+
+- Instalar y fijar una versión conocida de FFmpeg/ffprobe en el entorno privado; nunca en el navegador.
+- Consumir la cola H47, descargar fuentes mediante URLs firmadas de corta duración, normalizar video/audio, aplicar decisiones selladas, exportar en una carpeta temporal aislada y subir el MP4 final al bucket privado.
+- Verificar bytes, SHA-256, duración, streams, FPS, códecs, color, loudness y peso antes de registrar el resultado. Limpiar temporales incluso ante fallo y reportar salud del worker.
+
+### Hito 49 — Mutación Meta mínima y reversible (aplazado; cerrado hasta autorización explícita)
 
 - No se habilitará con las credenciales de lectura. Requerirá permiso `ads_management` independiente, lista blanca exacta, nueva autorización humana vigente y un único tipo de cambio reversible.
 - Antes de cualquier escritura se leerá y sellará el estado previo; después se conciliará el estado real. Una respuesta incierta bloquea el reenvío y exige intervención humana.
