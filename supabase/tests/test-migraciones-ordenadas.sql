@@ -19,7 +19,8 @@ begin
     '20260715_23_integraciones_agencia','20260715_24_higgsfield_conector',
     '20260715_25_kling_conector','20260715_26_revision_creativa',
     '20260715_27_versiones_creativas','20260715_28_orquestador_agencia',
-    '20260716_29_distribucion_conectores'
+    '20260716_29_distribucion_conectores','20260716_30_mesa_agencia',
+    '20260716_31_estudio_escenas'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -108,6 +109,21 @@ begin
   assert has_function_privilege('service_role','public.conciliar_despacho_distribucion(bigint,text,text,text,text,numeric,jsonb)','EXECUTE'), 'worker de distribución sin conciliación';
   assert not has_function_privilege('authenticated','public.reclamar_despacho_distribucion(text,integer)','EXECUTE'), 'lease de distribución expuesto al navegador';
   assert exists(select 1 from pg_trigger where tgname='content_distributions_connector_completion' and not tgisinternal), 'borrador no se concilia con cierre humano';
+  assert public.mesa_agencia_disponible(), 'falta sonda de Mesa cooperativa';
+  assert to_regclass('public.agency_collaboration_rooms') is not null and to_regclass('public.agency_creative_contracts') is not null, 'falta Mesa o contrato creativo';
+  assert has_function_privilege('authenticated','public.abrir_mesa_agencia(jsonb)','EXECUTE'), 'falta apertura humana de Mesa';
+  assert has_function_privilege('authenticated','public.aprobar_contrato_creativo(bigint,text)','EXECUTE'), 'falta aprobación humana del contrato';
+  assert has_function_privilege('service_role','public.registrar_aporte_agente_mesa(jsonb)','EXECUTE'), 'falta aporte privado del agente';
+  assert not has_function_privilege('authenticated','public.registrar_aporte_agente_mesa(jsonb)','EXECUTE'), 'aporte del agente expuesto al navegador';
+  assert not has_table_privilege('authenticated','public.agency_creative_contracts','UPDATE'), 'contrato creativo admite aprobación directa';
+  assert public.estudio_escenas_disponible(), 'falta sonda del Estudio por escenas';
+  assert to_regclass('public.agency_storyboards') is not null and to_regclass('public.agency_storyboard_shots') is not null, 'falta storyboard o tomas versionadas';
+  assert has_function_privilege('authenticated','public.crear_storyboard_agencia(jsonb)','EXECUTE'), 'falta apertura gobernada del storyboard';
+  assert has_function_privilege('authenticated','public.guardar_toma_storyboard(jsonb)','EXECUTE'), 'falta versionado gobernado de tomas';
+  assert has_function_privilege('authenticated','public.enviar_storyboard_revision(bigint)','EXECUTE'), 'falta envío humano a revisión';
+  assert has_function_privilege('authenticated','public.resolver_storyboard_agencia(bigint,text,text)','EXECUTE'), 'falta aprobación humana del storyboard';
+  assert not has_table_privilege('authenticated','public.agency_storyboards','INSERT'), 'storyboards admiten inserción directa';
+  assert not has_table_privilege('authenticated','public.agency_storyboard_shots','UPDATE'), 'tomas admiten reescritura directa';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -139,5 +155,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-29 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-31 PASS, rollback total' as resultado;
 rollback;

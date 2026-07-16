@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -26,6 +26,8 @@ import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceabi
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { agencyDecisionType, buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS, guardAgencyAction } from "./lib/agency-intelligence";
 import { buildOrchestratorInbox, orchestratorProposalPayload } from "./lib/agency-orchestrator";
+import { AGENCY_COLLABORATION_ENTRY_TYPES, AGENCY_CONTRACT_KPIS, agencyContractConstraints, agencyContractDirection, agencyRoomPayload, buildAgencyCollaborationDesk } from "./lib/agency-collaboration";
+import { STORYBOARD_ASPECT_RATIOS, STORYBOARD_CHANNELS, STORYBOARD_FORMATS, buildAgencySceneStudio, shotPayload, storyboardPayload } from "./lib/agency-scene-studio";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -707,7 +709,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -11160,6 +11162,256 @@ function AgencyBrandStudio({ db, user, refrescar }) {
   );
 }
 
+function AgencyCollaborationDesk({ db, refrescar }) {
+  const desk = useMemo(() => buildAgencyCollaborationDesk(db), [db]);
+  const [openForm, setOpenForm] = useState(false);
+  const [activeRoomId, setActiveRoomId] = useState(null);
+  const [sourceKey, setSourceKey] = useState("");
+  const [objective, setObjective] = useState("");
+  const [entryType, setEntryType] = useState("Aporte");
+  const [entryBody, setEntryBody] = useState("");
+  const [contractForm, setContractForm] = useState({
+    concept: "", audience: "", channel: "Instagram", primaryKpi: "Beneficio incremental",
+    humanIntent: "", callToAction: "", mustInclude: "", mustAvoid: "",
+  });
+  const [approvalNote, setApprovalNote] = useState("");
+  const [contractEditing, setContractEditing] = useState(false);
+  const linkedDecisions = new Set((db.agencyCollaborationRooms || []).map((room) => String(room.decisionId || "")).filter(Boolean));
+  const linkedBriefs = new Set((db.agencyCollaborationRooms || []).map((room) => String(room.briefId || "")).filter(Boolean));
+  const sources = useMemo(() => [
+    ...(db.agencyDecisions || []).filter((item) => item.status === "Aprobada" && !linkedDecisions.has(String(item.id))).map((item) => ({ ...item, kind: "decision", key: `decision-${item.id}`, label: `Decisión #${item.id} · ${item.title}` })),
+    ...(db.agencyBriefs || []).filter((item) => ["Aprobado", "En producción"].includes(item.status) && !linkedBriefs.has(String(item.id))).map((item) => ({ ...item, kind: "brief", key: `brief-${item.id}`, label: `Brief #${item.id} · ${item.title}` })),
+  ], [db.agencyDecisions, db.agencyBriefs, db.agencyCollaborationRooms]);
+  const activeRoom = desk.rooms.find((room) => String(room.id) === String(activeRoomId)) || null;
+  const activeEntries = activeRoom ? (db.agencyCollaborationEntries || []).filter((entry) => String(entry.roomId) === String(activeRoom.id)) : [];
+  const activeContracts = activeRoom ? (db.agencyCreativeContracts || []).filter((contract) => String(contract.roomId) === String(activeRoom.id)).sort((a, b) => Number(b.version || 0) - Number(a.version || 0)) : [];
+  const latestContract = activeContracts.find((contract) => contract.status !== "Sustituido") || null;
+
+  function startRoom() {
+    const first = sources[0];
+    setSourceKey(first?.key || "");
+    setObjective(first?.rationale || first?.insight || "Convertir esta oportunidad en una acción creativa rentable y fiel a MOMOS.");
+    setOpenForm(true);
+  }
+
+  async function createRoom() {
+    const source = sources.find((item) => item.key === sourceKey);
+    if (!source) throw new Error("Elegí una decisión o brief aprobado.");
+    const result = await abrirMesaAgencia(agencyRoomPayload(source, objective));
+    setOpenForm(false);
+    setActiveRoomId(result.room_id);
+    toast("ok", result.duplicate ? "La mesa ya existía; abrimos su conversación." : "Mesa cooperativa abierta con contexto sellado.");
+    await refrescar();
+  }
+
+  async function addHumanEntry() {
+    if (!activeRoom || entryBody.trim().length < 3) throw new Error("Escribí el criterio que querés aportar.");
+    await agregarAporteMesaAgencia(activeRoom.id, `human-${activeRoom.id}-${Date.now()}`, entryType, entryBody.trim(), { ui: "agency-collaboration-desk" });
+    setEntryBody("");
+    toast("ok", "Tu criterio quedó firmado en la mesa.");
+    await refrescar();
+  }
+
+  async function prepareContract() {
+    if (!activeRoom) return;
+    const result = await prepararContratoCreativo(activeRoom.id, agencyContractDirection(contractForm, activeRoom), agencyContractConstraints(contractForm));
+    setContractEditing(false);
+    toast("ok", result.duplicate ? "Ese contrato ya estaba sellado." : "Contrato creativo preparado; falta aprobación humana.");
+    await refrescar();
+  }
+
+  async function approveContract() {
+    if (!latestContract) return;
+    await aprobarContratoCreativo(latestContract.id, approvalNote || "Aprobación humana desde la Mesa de Agencia MOMOS");
+    setApprovalNote("");
+    toast("ok", "Contrato creativo aprobado. No generó, gastó ni publicó nada.");
+    await refrescar();
+  }
+
+  const statusTone = (status) => status === "Aprobado" ? { bg: "#DDEBD9", fg: "#315B35" } : status === "En revisión" ? { bg: "#FFF2D8", fg: "#7A5410" } : { bg: "#E5EEF7", fg: "#315A7D" };
+
+  return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#713E35,#B85845)", color: "#fff" }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.15)" }}>✦</div><div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Humano + cerebro de Agencia</div><div className="display text-xl font-semibold">Mesa cooperativa MOMOS</div><div className="text-xs opacity-85 max-w-2xl">La data fija el terreno, el agente propone y vos aportás el criterio de marca. El acuerdo final queda sellado antes de crear una pieza.</div></div></div>
+      <div className="flex items-center gap-2"><div className="grid grid-cols-2 gap-2">{[["Mesas",desk.summary.open],["Contratos",desk.summary.approved]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[72px] text-center" style={{ background: "rgba(255,255,255,.13)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div><Btn small kind="soft" disabled={!db.agencyCollaborationReady || sources.length === 0} onClick={startRoom}>＋ Abrir mesa</Btn></div>
+    </div>
+    {!db.agencyCollaborationReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>mesa-agencia-v1.sql</code> después de la migración 29. Hasta entonces no se puede sellar la colaboración.</div> : <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 border-b" style={{ borderColor: T.border, background: "#FFF8F1" }}>
+        {[["Abiertas",desk.summary.open],["Falta humano",desk.summary.waitingForHuman],["Falta agente",desk.summary.waitingForAgent],["Por aprobar",desk.summary.pendingApproval]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2" style={{ borderColor: T.border, background: "#fff" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-xl font-semibold">{value}</div></div>)}
+      </div>
+      {desk.open.length === 0 ? <div className="p-4 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>No hay mesas abiertas.</b> Elegí una decisión o brief aprobado para reunir la data, el criterio humano y la propuesta del agente.</div> : <div className="p-3 grid lg:grid-cols-2 gap-2">
+        {desk.open.slice(0, 6).map((room) => <button type="button" key={room.id} onClick={() => setActiveRoomId(room.id)} className="text-left rounded-2xl border p-3 transition hover:-translate-y-0.5" style={{ borderColor: room.readiness.readyForContract ? "#B8D3B2" : T.border, background: room.readiness.readyForContract ? "#F4FAF2" : "#FFF9F2" }}>
+          <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Mesa #{room.id} · {room.status}</div><div className="font-extrabold text-sm">{room.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: room.readiness.readyForContract ? "#DDEBD9" : "#FFF2D8", color: room.readiness.readyForContract ? "#315B35" : "#7A5410" }}>{room.readiness.readyForContract ? "ACUERDO POSIBLE" : "EN CONVERSACIÓN"}</span></div>
+          <p className="text-[11px] my-2 line-clamp-2" style={{ color: T.choco2 }}>{room.objective}</p><div className="flex gap-1.5"><span className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: "#F3D7DC" }}>Humano {room.readiness.humanCount}</span><span className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: "#E5EEF7" }}>Agente {room.readiness.agentCount}</span><span className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>Contrato {room.readiness.hasApprovedContract ? "aprobado" : "pendiente"}</span></div>
+        </button>)}
+      </div>}
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>La mesa no ejecuta herramientas. El contrato aprobado será la entrada gobernada de generación, revisión humana y distribución.</div>
+
+    {openForm && <Modal title="Abrir Mesa cooperativa" onClose={() => setOpenForm(false)} topLayer>
+      <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: T.vainilla }}><b>El contexto comercial se captura ahora y queda inmutable.</b> Nuevos datos requerirán una nueva mesa o una versión posterior del contrato.</div>
+      <Field label="Oportunidad aprobada"><select className={inputCls} style={inputStyle} value={sourceKey} onChange={(event) => { const next = sources.find((item) => item.key === event.target.value); setSourceKey(event.target.value); if (next) setObjective(next.rationale || next.insight || objective); }}><option value="">Elegí una fuente…</option>{sources.map((source) => <option key={source.key} value={source.key}>{source.label}</option>)}</select></Field>
+      <Field label="Objetivo de la mesa"><textarea className={inputCls} style={inputStyle} rows="4" value={objective} onChange={(event) => setObjective(event.target.value)} /></Field>
+      <div className="flex gap-2"><BtnAsync onClick={createRoom} disabled={!sourceKey || objective.trim().length < 5}>Abrir con contexto sellado</BtnAsync><Btn kind="ghost" onClick={() => setOpenForm(false)}>Cancelar</Btn></div>
+    </Modal>}
+
+    {activeRoom && <Modal title={`Mesa #${activeRoom.id} · ${activeRoom.title}`} onClose={() => setActiveRoomId(null)} wide topLayer>
+      <div className="rounded-2xl px-4 py-3 mb-4" style={{ background: "#F5E9D8" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Objetivo sellado</div><div className="text-sm font-bold">{activeRoom.objective}</div><div className="text-[9px] mt-1" style={{ color: T.choco2 }}>Huella {String(activeRoom.contextFingerprint || "").slice(0, 12)} · este contexto no se puede reemplazar.</div></div>
+      <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-4">
+        <div><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Conversación trazable</div><div className="rounded-3xl border p-3 min-h-[220px] max-h-[420px] overflow-y-auto space-y-2" style={{ borderColor: T.border, background: "#FFFAF5" }}>
+          {activeEntries.length === 0 && <div className="text-sm p-3" style={{ color: T.choco2 }}>Empezá dejando el criterio humano de marca. El agente se incorpora mediante el Orquestador/MCP seguro.</div>}
+          {activeEntries.map((entry) => <div key={entry.id} className={`flex ${entry.authorKind === "Humano" ? "justify-end" : "justify-start"}`}><div className="rounded-2xl px-3 py-2 max-w-[88%]" style={{ background: entry.authorKind === "Humano" ? "#F3D7DC" : entry.authorKind === "Agente" ? "#E5EEF7" : T.vainilla }}><div className="text-[8px] uppercase font-extrabold" style={{ color: entry.authorKind === "Humano" ? "#8E4B5A" : "#315A7D" }}>{entry.authorKind} · {entry.entryType}{entry.agentName ? ` · ${entry.agentName}` : ""}</div><div className="text-xs leading-relaxed">{entry.body}</div><div className="text-[8px] mt-1 opacity-60">{entry.createdAt} · {String(entry.fingerprint || "").slice(0, 8)}</div></div></div>)}
+        </div>
+          {!["Cerrada","Cancelada"].includes(activeRoom.status) && <div className="rounded-2xl border p-3 mt-3" style={{ borderColor: T.border }}><div className="grid sm:grid-cols-[160px_1fr] gap-2"><Select options={AGENCY_COLLABORATION_ENTRY_TYPES} value={entryType} onChange={(event) => setEntryType(event.target.value)} /><textarea className={inputCls} style={inputStyle} rows="3" value={entryBody} onChange={(event) => setEntryBody(event.target.value)} placeholder="Tu intención, objeción o decisión de marca…" /></div><BtnAsync small onClick={addHumanEntry} disabled={entryBody.trim().length < 3}>Firmar aporte humano</BtnAsync></div>}
+        </div>
+        <div><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Contrato creativo</div>
+          {!activeRoom.readiness.readyForContract && <div className="rounded-2xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>{activeRoom.readiness.reasons.join(" ")} El agente solo puede firmar su lado mediante el canal MCP protegido.</div>}
+          {latestContract && !contractEditing ? <div className="rounded-3xl border p-4 mb-3" style={{ borderColor: statusTone(latestContract.status).fg, background: statusTone(latestContract.status).bg }}><div className="flex justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold">Versión {latestContract.version}</div><div className="display text-lg font-semibold">{latestContract.sealedPayload?.creative_direction?.concept || "Contrato creativo MOMOS"}</div></div><span className="rounded-full bg-white/70 px-2 py-1 h-fit text-[9px] font-extrabold">{latestContract.status}</span></div><div className="text-xs mt-2"><b>KPI:</b> {latestContract.sealedPayload?.primary_kpi}<br /><b>Canal:</b> {latestContract.sealedPayload?.creative_direction?.channel}<br /><b>Huella:</b> {String(latestContract.fingerprint || "").slice(0, 12)}</div>{latestContract.status === "En revisión" && <><Field label="Nota de aprobación"><Input value={approvalNote} onChange={(event) => setApprovalNote(event.target.value)} placeholder="Qué validaste como dueño de marca" /></Field><div className="flex flex-wrap gap-2"><BtnAsync confirmar onClick={approveContract}>Aprobar contrato humano + agente</BtnAsync><Btn small kind="ghost" onClick={() => setContractEditing(true)}>Preparar nueva versión</Btn></div></>}</div> : <div className="space-y-2"><Field label="Concepto acordado"><Input value={contractForm.concept} onChange={(event) => setContractForm({ ...contractForm, concept: event.target.value })} placeholder="La idea central que debe recordar el cliente" /></Field><div className="grid sm:grid-cols-2 gap-2"><Field label="Audiencia"><Input value={contractForm.audience} onChange={(event) => setContractForm({ ...contractForm, audience: event.target.value })} /></Field><Field label="Canal"><Input value={contractForm.channel} onChange={(event) => setContractForm({ ...contractForm, channel: event.target.value })} /></Field></div><Field label="KPI principal"><Select options={AGENCY_CONTRACT_KPIS} value={contractForm.primaryKpi} onChange={(event) => setContractForm({ ...contractForm, primaryKpi: event.target.value })} /></Field><Field label="Intención humana de marca"><textarea className={inputCls} style={inputStyle} rows="2" value={contractForm.humanIntent} onChange={(event) => setContractForm({ ...contractForm, humanIntent: event.target.value })} /></Field><Field label="Llamado a la acción"><Input value={contractForm.callToAction} onChange={(event) => setContractForm({ ...contractForm, callToAction: event.target.value })} /></Field><div className="grid sm:grid-cols-2 gap-2"><Field label="Debe incluir"><textarea className={inputCls} style={inputStyle} rows="2" value={contractForm.mustInclude} onChange={(event) => setContractForm({ ...contractForm, mustInclude: event.target.value })} /></Field><Field label="Debe evitar"><textarea className={inputCls} style={inputStyle} rows="2" value={contractForm.mustAvoid} onChange={(event) => setContractForm({ ...contractForm, mustAvoid: event.target.value })} /></Field></div><div className="flex gap-2"><BtnAsync onClick={prepareContract} disabled={!activeRoom.readiness.readyForContract || contractForm.concept.trim().length < 3 || contractForm.audience.trim().length < 3 || contractForm.humanIntent.trim().length < 3}>Preparar contrato sellado</BtnAsync>{latestContract && <Btn kind="ghost" onClick={() => setContractEditing(false)}>Conservar versión {latestContract.version}</Btn>}</div></div>}
+          <div className="rounded-2xl px-3 py-2 mt-3 text-[10px] font-semibold" style={{ background: "#E5EEF7", color: "#315A7D" }}>Aprobar este contrato no llama a Kling, no crea pauta y no publica. Solo fija la intención compartida para los siguientes motores.</div>
+        </div>
+      </div>
+    </Modal>}
+  </div>;
+}
+
+function AgencySceneStudio({ db, refrescar }) {
+  const studio = useMemo(() => buildAgencySceneStudio(db), [db]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
+  const [contractId, setContractId] = useState("");
+  const [boardForm, setBoardForm] = useState({
+    title: "", channel: "Instagram", format: "Reel", aspectRatio: "9:16", targetDurationSec: 15,
+    hook: "", payoff: "", callToAction: "Pedí el tuyo", visualThesis: "", estimatedCostCop: 0,
+  });
+  const emptyShot = (number = 1) => ({
+    shotNumber: number, title: "", purpose: "", durationSec: 3, subject: "", action: "", physics: "",
+    environment: "", camera: "", lighting: "", audio: "", onScreenText: "", continuityIn: "",
+    continuityOut: "", avoid: "", assetIds: [], estimatedCostCop: 0,
+  });
+  const [shotForm, setShotForm] = useState(emptyShot());
+  const [shotEditing, setShotEditing] = useState(false);
+  const selected = studio.storyboards.find((item) => String(item.id) === String(selectedId)) || null;
+  const authorizedAssets = (db.brandMediaAssets || []).filter((asset) => asset.status === "Activo"
+    && asset.rightsStatus === "Autorizado" && asset.aiUseAllowed);
+
+  function startStoryboard() {
+    const contract = studio.eligibleContracts[0];
+    setContractId(contract ? String(contract.id) : "");
+    setBoardForm({
+      title: contract?.sealedPayload?.creative_direction?.concept || "", channel: "Instagram", format: "Reel",
+      aspectRatio: "9:16", targetDurationSec: 15, hook: "", payoff: "",
+      callToAction: contract?.sealedPayload?.creative_direction?.call_to_action || "Pedí el tuyo",
+      visualThesis: "Producto real, iluminación cálida y lenguaje visual MOMOS.", estimatedCostCop: 0,
+    });
+    setCreateOpen(true);
+  }
+
+  async function createStoryboard() {
+    const contract = studio.eligibleContracts.find((item) => String(item.id) === String(contractId));
+    if (!contract) throw new Error("Elegí un contrato creativo aprobado.");
+    const result = await crearStoryboardAgencia(storyboardPayload(boardForm, contract));
+    setCreateOpen(false); setSelectedId(result.storyboard_id);
+    toast("ok", result.duplicate ? "Ese storyboard ya estaba sellado." : "Storyboard abierto. Todavía no generó ni gastó nada.");
+    await refrescar();
+  }
+
+  function newShot() {
+    const next = (selected?.readiness?.activeShots?.length || 0) + 1;
+    setShotForm(emptyShot(next)); setShotEditing(true);
+  }
+
+  function editShot(shot) {
+    const payload = shot.payload || {};
+    setShotForm({
+      shotNumber: shot.shotNumber, title: shot.title, purpose: shot.purpose, durationSec: shot.durationSec,
+      subject: payload.subject || "", action: payload.action || "", physics: payload.physics || "",
+      environment: payload.environment || "", camera: payload.camera || "", lighting: payload.lighting || "",
+      audio: payload.audio || "", onScreenText: payload.on_screen_text || "", continuityIn: payload.continuity_in || "",
+      continuityOut: payload.continuity_out || "", avoid: payload.avoid || "", assetIds: shot.assetIds || [],
+      estimatedCostCop: shot.estimatedCostCop || 0,
+    });
+    setShotEditing(true);
+  }
+
+  async function saveShot() {
+    if (!selected) return;
+    const result = await guardarTomaStoryboard(shotPayload(shotForm, selected));
+    setShotEditing(false);
+    toast("ok", result.duplicate ? "La toma ya estaba guardada." : `Toma ${shotForm.shotNumber} versionada y sellada.`);
+    await refrescar();
+  }
+
+  async function submitStoryboard() {
+    if (!selected) return;
+    await enviarStoryboardRevision(selected.id);
+    toast("ok", "Storyboard enviado a revisión humana. No inició generación.");
+    await refrescar();
+  }
+
+  async function resolveStoryboard(decision) {
+    if (!selected) return;
+    const fallback = decision === "Aprobar" ? "Aprobado por marca para preparar la generación controlada."
+      : "Ajustar la toma indicada antes de generar.";
+    const note = window.prompt(decision === "Aprobar" ? "¿Qué validaste antes de aprobar?" : "¿Qué debe corregirse?", fallback) || "";
+    if (!note) return;
+    await resolverStoryboardAgencia(selected.id, decision, note);
+    toast("ok", decision === "Aprobar" ? "Storyboard aprobado. Aún no llamó a ningún proveedor." : "Storyboard devuelto a edición con trazabilidad.");
+    await refrescar();
+  }
+
+  const statusTone = (status) => status === "Aprobado" ? { bg: "#DDEBD9", fg: "#315B35" }
+    : status === "En revisión" ? { bg: "#E5EEF7", fg: "#315A7D" } : { bg: "#FFF2D8", fg: "#7A5410" };
+  const money = (value) => fmt(Math.round(Number(value || 0)));
+
+  return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#315A57,#47766C)", color: "#fff" }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.15)" }}>🎬</div><div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Contrato aprobado → dirección por tomas</div><div className="display text-xl font-semibold">Estudio creativo MOMOS</div><div className="text-xs opacity-85 max-w-2xl">Guion visual, retención, física, continuidad, activos y costo quedan revisables antes de llamar a Kling, Higgsfield o cualquier motor.</div></div></div>
+      <div className="flex items-center gap-2"><div className="grid grid-cols-3 gap-2">{[["Borrador",studio.summary.drafting],["Revisión",studio.summary.reviewing],["Tomas",studio.summary.shots]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[68px] text-center" style={{ background: "rgba(255,255,255,.13)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div><Btn small kind="soft" onClick={startStoryboard} disabled={!db.agencySceneStudioReady || studio.eligibleContracts.length === 0}>＋ Nuevo storyboard</Btn></div>
+    </div>
+    {!db.agencySceneStudioReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>estudio-escenas-v1.sql</code> después de la Mesa de Agencia. El Estudio permanecerá apagado hasta que el servidor confirme el contrato.</div>
+      : studio.storyboards.length === 0 ? <div className="p-4 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Todavía no hay storyboards.</b> Aprobá primero un contrato en la Mesa cooperativa; luego convertí ese acuerdo en tomas verificables.</div>
+        : <div className="p-3 grid lg:grid-cols-2 gap-2">{studio.storyboards.slice(0, 8).map((board) => { const tone = statusTone(board.status); return <button type="button" key={board.id} onClick={() => setSelectedId(board.id)} className="text-left rounded-2xl border p-3 transition hover:-translate-y-0.5" style={{ borderColor: board.readiness.ready ? "#B8D3B2" : T.border, background: "#FFF9F2" }}>
+          <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold tracking-wider" style={{ color: T.coral }}>Storyboard #{board.id} · V{board.version}</div><div className="font-extrabold text-sm">{board.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{board.status}</span></div>
+          <div className="flex flex-wrap gap-1.5 my-2"><span className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: "#E5EEF7" }}>{board.channel} · {board.format}</span><span className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{board.aspectRatio} · {board.targetDurationSec}s</span><span className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: "#F3D7DC" }}>{board.readiness.activeShots.length} toma(s)</span></div>
+          <div className="text-[10px]" style={{ color: T.choco2 }}>{board.readiness.ready ? `Listo para revisión · ${money(board.readiness.estimatedCostCop)} estimados` : board.readiness.reasons[0]}</div>
+        </button>; })}</div>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Separación de responsabilidades: el Estudio diseña y aprueba; el siguiente hito autorizará qué motor puede ejecutar cada toma y con qué tope.</div>
+
+    {createOpen && <Modal title="Abrir storyboard desde contrato aprobado" onClose={() => setCreateOpen(false)} wide topLayer>
+      <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: T.vainilla }}><b>Primero fijamos la película en papel.</b> Hook, payoff y CTA se sellan aquí; ninguna llamada externa ocurre al guardar.</div>
+      <Field label="Contrato creativo"><select className={inputCls} style={inputStyle} value={contractId} onChange={(event) => setContractId(event.target.value)}><option value="">Elegí un contrato…</option>{studio.eligibleContracts.map((contract) => <option key={contract.id} value={contract.id}>Contrato #{contract.id} · {contract.sealedPayload?.creative_direction?.concept || `Versión ${contract.version}`}</option>)}</select></Field>
+      <Field label="Nombre de la pieza"><Input value={boardForm.title} onChange={(event) => setBoardForm({ ...boardForm, title: event.target.value })} /></Field>
+      <div className="grid sm:grid-cols-4 gap-2"><Field label="Canal"><Select options={STORYBOARD_CHANNELS} value={boardForm.channel} onChange={(event) => setBoardForm({ ...boardForm, channel: event.target.value })} /></Field><Field label="Formato"><Select options={STORYBOARD_FORMATS} value={boardForm.format} onChange={(event) => setBoardForm({ ...boardForm, format: event.target.value })} /></Field><Field label="Proporción"><Select options={STORYBOARD_ASPECT_RATIOS} value={boardForm.aspectRatio} onChange={(event) => setBoardForm({ ...boardForm, aspectRatio: event.target.value })} /></Field><Field label="Duración (s)"><Input type="number" min="1" max="600" value={boardForm.targetDurationSec} onChange={(event) => setBoardForm({ ...boardForm, targetDurationSec: event.target.value })} /></Field></div>
+      <div className="grid sm:grid-cols-2 gap-2"><Field label="Hook · promesa abierta"><textarea className={inputCls} style={inputStyle} rows="2" value={boardForm.hook} onChange={(event) => setBoardForm({ ...boardForm, hook: event.target.value })} /></Field><Field label="Payoff · respuesta"><textarea className={inputCls} style={inputStyle} rows="2" value={boardForm.payoff} onChange={(event) => setBoardForm({ ...boardForm, payoff: event.target.value })} /></Field></div>
+      <Field label="Llamado a la acción"><Input value={boardForm.callToAction} onChange={(event) => setBoardForm({ ...boardForm, callToAction: event.target.value })} /></Field>
+      <Field label="Tesis visual"><textarea className={inputCls} style={inputStyle} rows="2" value={boardForm.visualThesis} onChange={(event) => setBoardForm({ ...boardForm, visualThesis: event.target.value })} /></Field>
+      <Field label="Costo total estimado (COP, informativo)"><Input type="number" min="0" value={boardForm.estimatedCostCop} onChange={(event) => setBoardForm({ ...boardForm, estimatedCostCop: event.target.value })} /></Field>
+      <div className="flex gap-2"><BtnAsync onClick={createStoryboard} disabled={!contractId || boardForm.title.trim().length < 3 || boardForm.hook.trim().length < 2 || boardForm.payoff.trim().length < 2 || boardForm.callToAction.trim().length < 2}>Sellar storyboard</BtnAsync><Btn kind="ghost" onClick={() => setCreateOpen(false)}>Cancelar</Btn></div>
+    </Modal>}
+
+    {selected && <Modal title={`Storyboard #${selected.id} · ${selected.title}`} onClose={() => { setSelectedId(null); setShotEditing(false); }} wide topLayer>
+      <div className="grid lg:grid-cols-[1fr_300px] gap-4">
+        <div><div className="flex flex-wrap items-center justify-between gap-2 mb-3"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>{selected.channel} · {selected.format} · {selected.aspectRatio}</div><div className="display text-lg font-semibold">{selected.targetDurationSec}s de historia dirigida</div></div>{selected.status === "Borrador" && <Btn small onClick={newShot}>＋ Agregar toma</Btn>}</div>
+          <div className="space-y-2">{selected.readiness.activeShots.length === 0 ? <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: T.border, color: T.choco2 }}>Empezá con la toma 1. Cada toma necesita sujeto, acción, cámara y una salida de continuidad para que la siguiente escena sepa dónde retomar.</div> : selected.readiness.activeShots.map((shot) => <button type="button" key={shot.id} onClick={() => selected.status === "Borrador" && editShot(shot)} className="w-full text-left rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Toma {shot.shotNumber} · R{shot.revision} · {shot.durationSec}s</div><div className="font-extrabold text-sm">{shot.title}</div></div><span className="text-[10px] font-bold">{money(shot.estimatedCostCop)}</span></div><div className="text-[11px] mt-1" style={{ color: T.choco2 }}>{shot.purpose}</div><div className="rounded-xl px-2 py-1.5 mt-2 text-[10px]" style={{ background: "#E5EEF7", color: "#315A7D" }}>{shot.payload?.camera} → {shot.payload?.continuity_out}</div></button>)}</div>
+        </div>
+        <aside><div className="rounded-3xl p-4 border mb-3" style={{ borderColor: selected.readiness.ready ? "#B8D3B2" : "#E8C98B", background: selected.readiness.ready ? "#F4FAF2" : "#FFF8E8" }}><div className="text-[9px] uppercase font-extrabold">Control antes de generar</div><div className="display text-xl font-semibold">{selected.readiness.totalDurationSec.toFixed(1)} / {selected.targetDurationSec}s</div><div className="text-xs mb-2">{selected.readiness.activeShots.length} toma(s) · {money(selected.readiness.estimatedCostCop)}</div>{selected.readiness.reasons.map((reason) => <div key={reason} className="text-[10px] mb-1">• {reason}</div>)}</div>
+          <div className="rounded-2xl px-3 py-2 mb-3 text-[10px]" style={{ background: T.vainilla }}><b>Hook:</b> {selected.creativeBrief?.hook}<br /><b>Payoff:</b> {selected.creativeBrief?.payoff}<br /><b>CTA:</b> {selected.creativeBrief?.call_to_action}</div>
+          {selected.status === "Borrador" && <BtnAsync onClick={submitStoryboard} disabled={!selected.readiness.ready}>Enviar a revisión humana</BtnAsync>}
+          {selected.status === "En revisión" && <div className="flex flex-col gap-2"><BtnAsync confirmar onClick={() => resolveStoryboard("Aprobar")}>Aprobar dirección</BtnAsync><BtnAsync kind="ghost" onClick={() => resolveStoryboard("Devolver")}>Devolver a edición</BtnAsync></div>}
+          {selected.status === "Aprobado" && <div className="rounded-2xl px-3 py-3 text-xs font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ Dirección aprobada y sellada. No se ha generado ni publicado ninguna toma.</div>}
+        </aside>
+      </div>
+      {shotEditing && selected.status === "Borrador" && <div className="rounded-3xl border p-4 mt-5" style={{ borderColor: "#D7C5B2", background: "#FFFAF5" }}><div className="flex items-center justify-between gap-2 mb-3"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Dirección verificable</div><div className="display text-lg font-semibold">Toma {shotForm.shotNumber}</div></div><Btn small kind="ghost" onClick={() => setShotEditing(false)}>Cerrar editor</Btn></div>
+        <div className="grid sm:grid-cols-3 gap-2"><Field label="Número"><Input type="number" min="1" value={shotForm.shotNumber} onChange={(event) => setShotForm({ ...shotForm, shotNumber: event.target.value })} /></Field><Field label="Duración (s)"><Input type="number" min="0.1" step="0.1" value={shotForm.durationSec} onChange={(event) => setShotForm({ ...shotForm, durationSec: event.target.value })} /></Field><Field label="Costo estimado"><Input type="number" min="0" value={shotForm.estimatedCostCop} onChange={(event) => setShotForm({ ...shotForm, estimatedCostCop: event.target.value })} /></Field></div>
+        <div className="grid sm:grid-cols-2 gap-2"><Field label="Título"><Input value={shotForm.title} onChange={(event) => setShotForm({ ...shotForm, title: event.target.value })} /></Field><Field label="Propósito"><Input value={shotForm.purpose} onChange={(event) => setShotForm({ ...shotForm, purpose: event.target.value })} /></Field><Field label="Sujeto"><Input value={shotForm.subject} onChange={(event) => setShotForm({ ...shotForm, subject: event.target.value })} /></Field><Field label="Acción"><Input value={shotForm.action} onChange={(event) => setShotForm({ ...shotForm, action: event.target.value })} /></Field><Field label="Física y movimiento"><Input value={shotForm.physics} onChange={(event) => setShotForm({ ...shotForm, physics: event.target.value })} /></Field><Field label="Entorno"><Input value={shotForm.environment} onChange={(event) => setShotForm({ ...shotForm, environment: event.target.value })} /></Field><Field label="Cámara"><Input value={shotForm.camera} onChange={(event) => setShotForm({ ...shotForm, camera: event.target.value })} /></Field><Field label="Iluminación"><Input value={shotForm.lighting} onChange={(event) => setShotForm({ ...shotForm, lighting: event.target.value })} /></Field><Field label="Audio"><Input value={shotForm.audio} onChange={(event) => setShotForm({ ...shotForm, audio: event.target.value })} /></Field><Field label="Texto en pantalla"><Input value={shotForm.onScreenText} onChange={(event) => setShotForm({ ...shotForm, onScreenText: event.target.value })} /></Field><Field label="Continuidad de entrada"><Input value={shotForm.continuityIn} onChange={(event) => setShotForm({ ...shotForm, continuityIn: event.target.value })} /></Field><Field label="Continuidad de salida"><Input value={shotForm.continuityOut} onChange={(event) => setShotForm({ ...shotForm, continuityOut: event.target.value })} /></Field></div>
+        <Field label="Evitar"><Input value={shotForm.avoid} onChange={(event) => setShotForm({ ...shotForm, avoid: event.target.value })} placeholder="Deformaciones, texto ilegible, producto distinto…" /></Field>
+        {authorizedAssets.length > 0 && <Field label="Referencias de marca autorizadas"><div className="flex flex-wrap gap-2">{authorizedAssets.slice(0, 20).map((asset) => { const checked = shotForm.assetIds.includes(Number(asset.id)); return <label key={asset.id} className="rounded-full px-3 py-2 text-[10px] font-bold cursor-pointer" style={{ background: checked ? "#DDEBD9" : T.vainilla }}><input type="checkbox" className="mr-1" checked={checked} onChange={() => setShotForm({ ...shotForm, assetIds: checked ? shotForm.assetIds.filter((id) => id !== Number(asset.id)) : [...shotForm.assetIds, Number(asset.id)] })} />{asset.name}</label>; })}</div></Field>}
+        <BtnAsync onClick={saveShot} disabled={shotForm.title.trim().length < 2 || shotForm.purpose.trim().length < 2 || shotForm.subject.trim().length < 2 || shotForm.action.trim().length < 2 || shotForm.camera.trim().length < 2 || shotForm.continuityOut.trim().length < 2}>Guardar revisión de toma</BtnAsync>
+      </div>}
+    </Modal>}
+  </div>;
+}
+
 function AgenciaControl({ db, user, refrescar }) {
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
@@ -11419,6 +11671,9 @@ function AgenciaControl({ db, user, refrescar }) {
               </div>)}
             </div>
           </div>
+
+          <AgencyCollaborationDesk db={db} refrescar={refrescar} />
+          <AgencySceneStudio db={db} refrescar={refrescar} />
 
           <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
             <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
@@ -12478,6 +12733,8 @@ export default function MomosOps() {
     if (db.brandMediaReady) tables.push("brand_media_assets", "creative_generation_jobs", "brand_media_usages");
     if (db.agencyIntegrationsReady) tables.push("agency_integrations");
     if (db.higgsfieldConnectorReady || db.klingConnectorReady) tables.push("creative_connector_runs");
+    if (db.agencyCollaborationReady) tables.push("agency_collaboration_rooms", "agency_collaboration_entries", "agency_creative_contracts");
+    if (db.agencySceneStudioReady) tables.push("agency_storyboards", "agency_storyboard_shots");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = () => {
       if (timer) clearTimeout(timer);
@@ -12565,6 +12822,13 @@ export default function MomosOps() {
       d.agencyOrchestratorReady = Boolean(cat.agencyOrchestratorReady);
       d.agencyAgentRuns = cat.agencyAgentRuns || [];
       d.agencyAgentProposals = cat.agencyAgentProposals || [];
+      d.agencyCollaborationReady = Boolean(cat.agencyCollaborationReady);
+      d.agencyCollaborationRooms = cat.agencyCollaborationRooms || [];
+      d.agencyCollaborationEntries = cat.agencyCollaborationEntries || [];
+      d.agencyCreativeContracts = cat.agencyCreativeContracts || [];
+      d.agencySceneStudioReady = Boolean(cat.agencySceneStudioReady);
+      d.agencyStoryboards = cat.agencyStoryboards || [];
+      d.agencyStoryboardShots = cat.agencyStoryboardShots || [];
       if (cat.marketingIdeas) d.marketing_ideas = cat.marketingIdeas;
       if (cat.marketingGuiones) d.marketing_guiones = cat.marketingGuiones;
       if (cat.marketingMensajes) d.marketing_mensajes = cat.marketingMensajes;

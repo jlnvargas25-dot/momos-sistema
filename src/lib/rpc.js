@@ -425,6 +425,60 @@ export async function resolverPropuestaOrquestador(proposalId, decision, note = 
   return data;
 }
 
+export async function abrirMesaAgencia(payload) {
+  const { data, error } = await supabase.rpc("abrir_mesa_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function agregarAporteMesaAgencia(roomId, entryKey, entryType, body, payload = {}) {
+  const { data, error } = await supabase.rpc("agregar_aporte_mesa_agencia", {
+    p_room_id: roomId, p_entry_key: entryKey, p_entry_type: entryType, p_body: body, p_payload: payload,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function prepararContratoCreativo(roomId, direction, constraints = {}) {
+  const { data, error } = await supabase.rpc("preparar_contrato_creativo", {
+    p_room_id: roomId, p_direction: direction, p_constraints: constraints,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function aprobarContratoCreativo(contractId, note = "") {
+  const { data, error } = await supabase.rpc("aprobar_contrato_creativo", { p_contract_id: contractId, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearStoryboardAgencia(payload) {
+  const { data, error } = await supabase.rpc("crear_storyboard_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function guardarTomaStoryboard(payload) {
+  const { data, error } = await supabase.rpc("guardar_toma_storyboard", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function enviarStoryboardRevision(storyboardId) {
+  const { data, error } = await supabase.rpc("enviar_storyboard_revision", { p_storyboard_id: storyboardId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverStoryboardAgencia(storyboardId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_storyboard_agencia", {
+    p_storyboard_id: storyboardId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function crearVersionCreativaAgencia(payload) {
   const { data, error } = await supabase.rpc("crear_version_creativa_agencia", { p: payload });
   if (error) throw new Error(error.message);

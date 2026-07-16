@@ -4,22 +4,47 @@
 > **"leé HANDOFF.md y seguí"**. Una sesión nueva NO hereda la charla anterior; esto es la fuente de verdad.
 >
 > 📋 **Backlog priorizado de Fase 0:** ver [`BACKLOG.md`](BACKLOG.md) — qué falta, con prioridad y esfuerzo.
+> 🎬 **Roadmap vigente de Agencia Digital:** ver [`docs/AGENCIA-MOMOS-ROADMAP.md`](docs/AGENCIA-MOMOS-ROADMAP.md) — hitos 31–36 y skills finales.
+> 🎥 **Playbook creativo de Agencia:** ver [`docs/AGENCIA-CREATIVE-PLAYBOOK.md`](docs/AGENCIA-CREATIVE-PLAYBOOK.md) — retención, storyboard, tomas, motion gobernado, voz, VFX, QA y aprendizaje comercial.
 
 ## Qué es esto
 App de operación de **D'Momos Sweet Love** (cocina oculta, El Caney, Cali).
 Hoy: app React **en plena Fase 3 (front async contra Supabase)** — pedidos, domicilios, reclamos, clientes, producción, inventario, Configuración>Usuarios y **Marketing (campaigns)** ya leen/escriben contra RPCs del server. Sigue local: Crecimiento (ideas/tareas), Creativos, Calendario, Resultados — slice posterior.
 Objetivo: volverla app oficial de uso operativo 100% sobre Supabase.
 
+## 🆕 Hito 31 — Estudio creativo por escenas (2026-07-16)
+
+- Implementado, aplicado y validado en Supabase después del hito 30: [`supabase/estudio-escenas-v1.sql`](supabase/estudio-escenas-v1.sql), migración `20260716_31_estudio_escenas`.
+- Convierte únicamente contratos creativos `Aprobado` en storyboards versionados. Sella canal, formato, proporción, duración, hook, payoff, CTA, loop de retención, tesis visual y costo estimado.
+- Cada toma registra propósito, duración, sujeto, acción, física, entorno, cámara, luz, audio, texto, continuidad, restricciones, costo y referencias exactas de la Biblioteca. Solo acepta originales activos, autorizados, con permiso IA y derechos vigentes.
+- Las revisiones son inmutables: corregir una toma crea R2/R3 y conserva la anterior como `Sustituida`. El servidor exige numeración consecutiva, suma de duración, dirección mínima, loop cerrado y referencias válidas antes de permitir revisión/aprobación.
+- Flujo humano protegido: `Borrador → En revisión → Aprobado` o `Devolver`. Aprobar **no crea trabajos, no llama a Kling/Higgsfield, no gasta y no publica**; el Hito 32 será el enrutador que traduzca cada toma aprobada a una ejecución con autorización independiente.
+- UI premium dentro de Agencia MOMOS: tablero compacto, creación desde contrato, editor por toma, activos autorizados, control de continuidad/duración/costo y aprobación/devolución en un único detalle.
+- Pruebas: [`src/lib/agency-scene-studio.test.js`](src/lib/agency-scene-studio.test.js), [`supabase/tests/test-estudio-escenas-v1.sql`](supabase/tests/test-estudio-escenas-v1.sql) y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) 01-31. Prueba adversarial y cadena ordenada **PASS**, ambas con rollback total.
+- Verificación local conjunta H30+H31: **332/332 tests PASS**, build Vite PASS y `git diff --check` PASS.
+
+## 🆕 Hito 30 — Mesa cooperativa humano + agente (2026-07-16)
+
+- Implementado, aplicado y validado en Supabase: [`supabase/mesa-agencia-v1.sql`](supabase/mesa-agencia-v1.sql), migración `20260716_30_mesa_agencia` después del hito 29.
+- Agencia MOMOS agrega una Mesa cooperativa por decisión/brief aprobado: MOMO OPS sella los hechos determinísticos, el dueño de marca aporta intención y objeciones, y el Cerebro de Agencia aporta mediante el runtime privado MCP. El navegador no puede suplantar al agente.
+- El contrato creativo exige por servidor al menos un aporte humano y uno del agente. Fija concepto, audiencia, canal, KPI orientado a beneficio, CTA y restricciones; conserva huella, versiones e inmutabilidad. Un aporte nuevo sustituye cualquier contrato pendiente para impedir aprobar una conversación vieja.
+- Aprobar un contrato **no genera, no gasta y no distribuye**. Solo habilita el siguiente hito gobernado; Kling, pauta y publicación conservan sus autorizaciones independientes.
+- UI premium dentro de Agencia: abrir mesa desde fuente aprobada, conversación trazable, estados humano/agente, preparación/versionado del contrato y aprobación explícita.
+- Pruebas: [`src/lib/agency-collaboration.test.js`](src/lib/agency-collaboration.test.js) y [`supabase/tests/test-mesa-agencia-v1.sql`](supabase/tests/test-mesa-agencia-v1.sql). Mesa cooperativa/hechos/contrato/inmutabilidad/RBAC **PASS** con rollback total.
+- Verificación local conjunta tras H31: **332/332 tests PASS**, build Vite PASS y `git diff --check` PASS.
+- Las skills de dirección de marca, loops de retención y motion se crean **al final** de la construcción de Agencia, por decisión del usuario; primero acumular experiencia y telemetría real. Especificación: [`docs/AGENCIA-MOMOS-ROADMAP.md`](docs/AGENCIA-MOMOS-ROADMAP.md).
+- Base creativa consolidada desde las guías aportadas por el usuario: [`docs/AGENCIA-CREATIVE-PLAYBOOK.md`](docs/AGENCIA-CREATIVE-PLAYBOOK.md). No es una skill todavía; orientará H31–H36 y se validará con datos reales antes de empaquetarse.
+
 ## 🆕 Hito 29 — Distribución Comercial por conectores (2026-07-16)
 
-- Implementación local lista, **pendiente de aplicar y validar en Supabase**: [`supabase/distribucion-conectores-v1.sql`](supabase/distribucion-conectores-v1.sql), migración `20260716_29_distribucion_conectores` después del hito 28.
+- Implementado, aplicado y validado en Supabase: [`supabase/distribucion-conectores-v1.sql`](supabase/distribucion-conectores-v1.sql), migración `20260716_29_distribucion_conectores` después del hito 28.
 - Extiende la Sala de Distribución sin quitar el respaldo manual. Después del checklist y la aprobación humana, Meta puede recibir una autorización de publicación directa únicamente si su conector declara esa capacidad; TikTok inicia de forma conservadora como borrador.
 - La nueva `distribution_connector_jobs` es una outbox sellada: snapshot exacto del post/creativo/aprobación, huella, intento, clave idempotente, horario, lease privado, identidad externa, costo real y estado conciliado. Tokens y secretos están prohibidos por constraints y RPCs.
 - El navegador solo puede autorizar o reintentar un fallo explícito. Reclamar, marcar el despacho **antes** del HTTP, confirmar recepción y conciliar son contratos exclusivos de `service_role` para worker/MCP.
 - Un timeout posterior al envío queda `Incierto`: no se reenvía, no admite retry y bloquea el cierre manual hasta consultar la plataforma. El guard no usa banderas de sesión reutilizables: la propia transición sellada del job prueba la conciliación. Una conciliación repetida es idempotente y una publicación confirmada actualiza job, distribución, calendario y creativo en una sola transacción.
 - UI: un CTA contextual (`Autorizar envío por Meta` / `Autorizar borrador TikTok`), estado del conector e intento, reintento solo tras fallo y registro manual como fallback. Lectura y realtime incluidos.
-- Pruebas locales: [`src/lib/commercial-dispatch.test.js`](src/lib/commercial-dispatch.test.js). Prueba SQL pendiente: [`supabase/tests/test-distribucion-conectores-v1.sql`](supabase/tests/test-distribucion-conectores-v1.sql); luego correr [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql), preparada hasta 01-29. Ambas hacen rollback total.
-- Verificación local: **323/323 tests PASS**, build Vite PASS y `git diff --check` PASS. No commitear el hito hasta que las dos pruebas SQL pasen en Supabase.
+- Pruebas: [`src/lib/commercial-dispatch.test.js`](src/lib/commercial-dispatch.test.js) y [`supabase/tests/test-distribucion-conectores-v1.sql`](supabase/tests/test-distribucion-conectores-v1.sql). Prueba adversarial y migraciones ordenadas **01-29 PASS**, ambas con rollback total.
+- Commit del hito: `03451eb feat(agencia): proteger distribución por conectores`.
 
 ## 🆕 Hito 28 — Cerebro gobernado de Agencia MOMOS (2026-07-15)
 

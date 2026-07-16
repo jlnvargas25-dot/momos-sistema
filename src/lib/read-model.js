@@ -315,6 +315,70 @@ export async function fetchCatalogos() {
     });
   }
 
+  const collaborationProbe = await supabase.rpc("mesa_agencia_disponible");
+  const collaborationProbeMissing = collaborationProbe.error &&
+    (collaborationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(collaborationProbe.error.message || ""));
+  if (collaborationProbe.error && !collaborationProbeMissing) throw new Error(collaborationProbe.error.message);
+  const agencyCollaborationReady = !collaborationProbeMissing && collaborationProbe.data === true;
+  let agencyCollaborationRooms = []; let agencyCollaborationEntries = []; let agencyCreativeContracts = [];
+  if (agencyCollaborationReady) {
+    const [roomResult, entryResult, contractResult] = await Promise.all([
+      supabase.from("agency_collaboration_rooms").select("id,room_key,title,objective,status,brief_id,decision_id,context_snapshot,context_fingerprint,created_by,created_at,updated_at").order("updated_at", { ascending: false }).limit(100),
+      supabase.from("agency_collaboration_entries").select("id,room_id,entry_key,author_kind,entry_type,body,payload,payload_fingerprint,created_by,agent_name,created_at").order("created_at", { ascending: true }).limit(500),
+      supabase.from("agency_creative_contracts").select("id,contract_key,room_id,version,status,sealed_payload,contract_fingerprint,prepared_by,prepared_at,approved_by,approved_at,approval_note,approval_snapshot").order("prepared_at", { ascending: false }).limit(100),
+    ]);
+    if (roomResult.error) throw new Error(roomResult.error.message);
+    if (entryResult.error) throw new Error(entryResult.error.message);
+    if (contractResult.error) throw new Error(contractResult.error.message);
+    agencyCollaborationRooms = (roomResult.data || []).map((row) => ({
+      id: row.id, roomKey: row.room_key, title: row.title, objective: row.objective, status: row.status,
+      briefId: row.brief_id, decisionId: row.decision_id, contextSnapshot: row.context_snapshot || {},
+      contextFingerprint: row.context_fingerprint, createdBy: row.created_by,
+      createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at),
+    }));
+    agencyCollaborationEntries = (entryResult.data || []).map((row) => ({
+      id: row.id, roomId: row.room_id, entryKey: row.entry_key, authorKind: row.author_kind,
+      entryType: row.entry_type, body: row.body, payload: row.payload || {}, fingerprint: row.payload_fingerprint,
+      createdBy: nz(row.created_by), agentName: nz(row.agent_name), createdAt: tsBogota(row.created_at),
+    }));
+    agencyCreativeContracts = (contractResult.data || []).map((row) => ({
+      id: row.id, contractKey: row.contract_key, roomId: row.room_id, version: Number(row.version), status: row.status,
+      sealedPayload: row.sealed_payload || {}, fingerprint: row.contract_fingerprint, preparedBy: row.prepared_by,
+      preparedAt: tsBogota(row.prepared_at), approvedBy: nz(row.approved_by), approvedAt: tsBogota(row.approved_at),
+      approvalNote: nz(row.approval_note), approvalSnapshot: row.approval_snapshot || {},
+    }));
+  }
+
+  const sceneStudioProbe = await supabase.rpc("estudio_escenas_disponible");
+  const sceneStudioProbeMissing = sceneStudioProbe.error &&
+    (sceneStudioProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(sceneStudioProbe.error.message || ""));
+  if (sceneStudioProbe.error && !sceneStudioProbeMissing) throw new Error(sceneStudioProbe.error.message);
+  const agencySceneStudioReady = !sceneStudioProbeMissing && sceneStudioProbe.data === true;
+  let agencyStoryboards = []; let agencyStoryboardShots = [];
+  if (agencySceneStudioReady) {
+    const [storyboardResult, shotResult] = await Promise.all([
+      supabase.from("agency_storyboards").select("id,storyboard_key,contract_id,version,title,status,channel,format,aspect_ratio,target_duration_sec,creative_brief,retention_plan,source_fingerprint,estimated_cost_cop,created_by,created_at,submitted_by,submitted_at,reviewed_by,reviewed_at,review_note").order("created_at", { ascending: false }).limit(100),
+      supabase.from("agency_storyboard_shots").select("id,storyboard_id,shot_number,revision,status,title,purpose,duration_sec,shot_payload,input_asset_ids,estimated_cost_cop,shot_fingerprint,created_by,created_at").order("shot_number", { ascending: true }).limit(1000),
+    ]);
+    if (storyboardResult.error) throw new Error(storyboardResult.error.message);
+    if (shotResult.error) throw new Error(shotResult.error.message);
+    agencyStoryboards = (storyboardResult.data || []).map((row) => ({
+      id: row.id, storyboardKey: row.storyboard_key, contractId: row.contract_id, version: Number(row.version),
+      title: row.title, status: row.status, channel: row.channel, format: row.format, aspectRatio: row.aspect_ratio,
+      targetDurationSec: Number(row.target_duration_sec || 0), creativeBrief: row.creative_brief || {},
+      retentionPlan: row.retention_plan || {}, fingerprint: row.source_fingerprint,
+      estimatedCostCop: Number(row.estimated_cost_cop || 0), createdBy: row.created_by, createdAt: tsBogota(row.created_at),
+      submittedBy: nz(row.submitted_by), submittedAt: tsBogota(row.submitted_at), reviewedBy: nz(row.reviewed_by),
+      reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+    }));
+    agencyStoryboardShots = (shotResult.data || []).map((row) => ({
+      id: row.id, storyboardId: row.storyboard_id, shotNumber: Number(row.shot_number), revision: Number(row.revision),
+      status: row.status, title: row.title, purpose: row.purpose, durationSec: Number(row.duration_sec || 0),
+      payload: row.shot_payload || {}, assetIds: row.input_asset_ids || [], estimatedCostCop: Number(row.estimated_cost_cop || 0),
+      fingerprint: row.shot_fingerprint, createdBy: row.created_by, createdAt: tsBogota(row.created_at),
+    }));
+  }
+
   const distributionProbe = await supabase.rpc("distribucion_comercial_disponible");
   const distributionProbeMissing = distributionProbe.error &&
     (distributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(distributionProbe.error.message || ""));
@@ -503,6 +567,8 @@ export async function fetchCatalogos() {
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
     agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals,
+    agencyCollaborationReady, agencyCollaborationRooms, agencyCollaborationEntries, agencyCreativeContracts,
+    agencySceneStudioReady, agencyStoryboards, agencyStoryboardShots,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }
