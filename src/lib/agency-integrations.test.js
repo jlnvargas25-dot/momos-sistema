@@ -67,6 +67,17 @@ test("Kling exige su worker privado y queda operativo con API Key confirmada", (
   assert.equal(agencyProviderExecutionGuard("Kling", { ...base, klingConnectorReady: true }, NOW).allowed, true);
 });
 
+test("Meta con ads_read concilia datos pero nunca obtiene permiso de ejecución", () => {
+  const db = { agencyIntegrationsReady: true, agencyMetaConnectorReady: true, agencyIntegrations: [{ provider: "Meta",
+    status: "Activa", secretConfigured: true, lastHeartbeatAt: "2026-07-15T14:55:00-05:00", capabilities: ["Métricas", "ads_read"] }] };
+  const center = buildAgencyIntegrationCenter(db, NOW);
+  const meta = center.integrations.find((item) => item.provider === "Meta");
+  assert.equal(meta.operational, true);
+  assert.equal(meta.readOnly, true);
+  assert.equal(agencyProviderExecutionGuard("Meta", db, NOW).allowed, false);
+  assert.match(agencyProviderExecutionGuard("Meta", db, NOW).reasons[0], /únicamente para lectura/);
+});
+
 test("cuenta publicaciones aprobadas por canal sin confundir Meta con TikTok", () => {
     const db = {
       agencyIntegrationsReady: true,

@@ -17,6 +17,7 @@ end $$;
 do $$
 declare v_actor public.users%rowtype; v_decision bigint; v_room bigint; v_contract bigint; v_board bigint;
   v_payload jsonb; v_context jsonb; v_contract_payload jsonb; v_shot_payload jsonb; v_shot1 bigint; v_shot2 bigint;
+  v_motion bigint; v_motion_snapshot jsonb; v_recipe jsonb; v_recipe_fp text;
 begin
   select * into v_actor from public.users where auth_id is not null and activo
     and ('Administrador'=any(coalesce(roles,array[rol])) or 'Marketing/CRM'=any(coalesce(roles,array[rol]))) order by id limit 1;
@@ -53,6 +54,30 @@ begin
     estimated_cost_cop,shot_fingerprint,created_by)
   values(v_board,2,1,'Relleno real','Cerrar el payoff',3,v_shot_payload,'{}',15000,public._agency_mesa_fingerprint(v_payload),v_actor.id)
   returning id into v_shot2;
+  if to_regclass('public.agency_motion_plans') is not null then
+    v_motion_snapshot:=jsonb_build_object('schema_version',1,'storyboard_id',v_board,'storyboard_fingerprint',
+      (select source_fingerprint from public.agency_storyboards where id=v_board),'source','test32-compatible');
+    insert into public.agency_motion_plans(plan_key,storyboard_id,version,status,grammar_primary,grammar_secondary,continuity_ledger,
+      plan_snapshot,plan_fingerprint,estimated_preview_cost_cop,source_kind,prepared_by,reviewed_by,reviewed_at,review_note)
+    values('test32-motion-plan',v_board,1,'Aprobado','Precisión y control','Información y POV','{"axis":"sellado"}'::jsonb,
+      v_motion_snapshot,public._agency_mesa_fingerprint(v_motion_snapshot),0,'Humano',v_actor.id,v_actor.id,now(),'Compatibilidad H36') returning id into v_motion;
+    v_recipe:=jsonb_build_object('proposal_key','test32-precisa','label','Precisa aprobada','selected',true,
+      'intent',jsonb_build_object('narrative_job','Revelar'),'framing_lens','{}'::jsonb,'camera_path','{}'::jsonb,'handheld_profile','{}'::jsonb,
+      'motion_blur_focus','{}'::jsonb,'lighting_map','{}'::jsonb,'continuity','{}'::jsonb,'physics','{}'::jsonb,'transition_to_next','{}'::jsonb,
+      'generation_prompt',repeat('Producto exacto, cámara estable, física natural, luz fija y continuidad. ',3),
+      'negative_constraints','["no morphing","no substitution","no logo mutation","no hand swap","no axis reversal","no double shadow"]'::jsonb,
+      'acceptance_tests','["identidad","física","cámara","luz","continuidad"]'::jsonb,'provider_assumptions','[]'::jsonb,'estimated_preview_cost_cop',0);
+    v_recipe_fp:=public._agency_mesa_fingerprint(jsonb_build_object('shot_id',v_shot1,'shot_fingerprint',
+      (select shot_fingerprint from public.agency_storyboard_shots where id=v_shot1),'proposals',jsonb_build_array(v_recipe),'selected_key','test32-precisa'));
+    insert into public.agency_motion_recipes(plan_id,storyboard_id,shot_id,shot_number,shot_fingerprint,selected_key,proposals,selected_recipe,recipe_fingerprint)
+    select v_motion,v_board,id,shot_number,shot_fingerprint,'test32-precisa',jsonb_build_array(v_recipe),v_recipe,v_recipe_fp
+      from public.agency_storyboard_shots where id=v_shot1;
+    v_recipe_fp:=public._agency_mesa_fingerprint(jsonb_build_object('shot_id',v_shot2,'shot_fingerprint',
+      (select shot_fingerprint from public.agency_storyboard_shots where id=v_shot2),'proposals',jsonb_build_array(v_recipe),'selected_key','test32-precisa'));
+    insert into public.agency_motion_recipes(plan_id,storyboard_id,shot_id,shot_number,shot_fingerprint,selected_key,proposals,selected_recipe,recipe_fingerprint)
+    select v_motion,v_board,id,shot_number,shot_fingerprint,'test32-precisa',jsonb_build_array(v_recipe),v_recipe,v_recipe_fp
+      from public.agency_storyboard_shots where id=v_shot2;
+  end if;
   update public.agency_settings set paused=false,campaign_budget_limit=greatest(campaign_budget_limit,100000) where id;
   update public.agency_integrations set status='Activa',secret_configured=true,last_heartbeat_at=now(),last_error=''
     where provider in ('Higgsfield','Kling');

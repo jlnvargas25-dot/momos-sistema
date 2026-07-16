@@ -36,37 +36,38 @@
 - Generación, revisión creativa y distribución siguen separadas. El Enrutador nunca publica.
 - Migración `20260716_32_enrutador_escenas` aplicada. La prueba adversarial de multimotor/costo/idempotencia/atomicidad/no publicación/RBAC y la cadena ordenada 01–32 pasaron con rollback total.
 
-### Hito 33 — Calidad, continuidad y postproducción
+### Hito 33 — Calidad, continuidad y postproducción (implementado y validado)
 
-- Verificar producto, figura, sabor, logo, textos, anatomía, derechos y continuidad entre escenas.
-- Separar fallo técnico, fallo de marca y cambio creativo.
-- Preparar un paquete de postproducción con tomas, audio, subtítulos y decisiones; el corte final conserva aprobación humana.
+- `agency_scene_quality_reviews` sella una revisión por trabajo/salida/toma y verifica producto, figura, sabor, marca, logo/textos, anatomía, contacto, gravedad/viscosidad, cámara/foco, luz, sombras/reflejos, estabilidad temporal, derechos y continuidad.
+- Los once criterios se puntúan 0–2. Una falla crítica no se promedia; para aprobar se exigen identidad y continuidad exactas, ningún cero y al menos 18/22.
+- Los rechazos se separan en `Fallo técnico`, `Fallo de marca` o `Cambio creativo`, conservando hallazgos y huellas para que la siguiente versión corrija la causa real.
+- El cerebro MCP puede proponer QA desde el runtime privado, pero no resolverlo; el navegador no puede suplantarlo. El humano puede revisar directamente o resolver la propuesta del agente.
+- `agency_postproduction_packages` exige cobertura exacta de todas las tomas vigentes y solo acepta controles aprobados con archivo/derechos/huellas intactos. Sella orden, audio, subtítulos, decisiones y especificación de exportación.
+- El corte final conserva aprobación humana independiente y nunca autoriza publicación, pauta ni distribución.
+- UI integrada después del Enrutador: cola de tomas, visor del archivo, control de calidad, causa de rechazo y paquetes listos para corte.
+- Archivos: `supabase/calidad-postproduccion-v1.sql`, `supabase/tests/test-calidad-postproduccion-v1.sql`, `src/lib/agency-quality-control.js` y su prueba. Prueba adversarial y cadena ordenada 01–33: PASS con rollback total.
 
-### Hito 34 — Experimentos y aprendizaje económico
+### Hito 34 — Retención y aprendizaje económico (implementado y validado)
 
-- Versionar hooks, primeros fotogramas, CTA y ofertas sin cambiar varias variables a la vez.
-- Cruzar publicación exacta con retención, clics, pedidos pagados, margen y beneficio incremental.
-- Declarar ganador solo con muestra y atribución suficientes; la ambigüedad permanece como ambigüedad.
+- `agency_retention_scripts` convierte únicamente contratos creativos aprobados en guiones versionados con plataforma, duración, audiencia, promesa, payoff, CTA, evidencia y mapa temporal por bloques.
+- Cada versión exige al menos control y retador, exactamente un hook seleccionado y ocho puntajes 0–2. Prueba, honestidad y correspondencia con el payoff deben ser exactas; además, el hook necesita 12/16.
+- `agency_retention_loops` registra pregunta, apertura, payoff parcial opcional, cierre y respuesta real. El cierre debe ocurrir dentro de la pieza y el CTA nunca sustituye el payoff.
+- El agente privado puede proponer, pero no aprobar. El humano conserva `En revisión → Aprobado/Devuelto`; aprobar cuesta $0, no genera, no pauta y no publica.
+- `agency_retention_experiments` fija una sola variable entre Hook, primer fotograma, CTA u oferta, dos brazos exactos, hipótesis, métrica primaria y guardas compartidas.
+- `agency_retention_measurements` conserva snapshots inmutables por publicación y variante: primer/tercer segundo, 25/50/75/100 %, watch time, clics, pedidos pagados, ingresos, margen y beneficio incremental.
+- No se declara ganador con menos de 100 observaciones por brazo. La atribución y el ganador requieren resolución humana; un resultado ambiguo queda `Inconcluso` y nunca escala automáticamente.
+- Panel integrado entre Mesa cooperativa y Estudio: contratos sin guion, arquitectura de retención, revisión humana, planificación A/B y lectura de muestra exacta.
+- Archivos: `supabase/retencion-aprendizaje-v1.sql`, `supabase/tests/test-retencion-aprendizaje-v1.sql`, `src/lib/agency-retention-engine.js` y su prueba. Regresión local: 348/348 PASS; build Vite PASS. Prueba adversarial de retención y cadena ordenada 01–34: PASS con rollback total.
 
-### Hito 35 — Experiencia de loops de retención
+### Hito 35 — Experiencia de loops de retención (implementado y validado)
 
-Construir primero la experiencia y los datos que alimentarán la futura skill `design-momos-retention-loops`.
-
-#### Modelo operativo
-
-- Registrar cada loop con `loop_id`, hipótesis de curiosidad, instante de apertura, payoff prometido, instante de cierre y escena responsable.
-- Exigir que todo loop se cierre; un CTA no cuenta como payoff.
-- Adaptar la densidad al formato: comercial corto, UGC, Reel/TikTok, pieza educativa o video largo.
-- Usar como punto de partida —no como verdad permanente—: cold open sobre el payoff, una idea por bloque, cambio visual con propósito y transiciones que abren la siguiente pregunta.
-- Someter el guion a aprobación humana antes de generar o gastar.
-
-#### Telemetría necesaria
-
-- Retención al primer y tercer segundo.
-- Reproducción al 25 %, 50 %, 75 % y 100 %.
-- Duración media, repeticiones, abandonos por escena y clic en CTA.
-- Pedido pagado, margen y beneficio atribuible al creativo.
-- Comparación de la hipótesis del loop contra su curva real; el aprendizaje queda en MOMO OPS, no en memoria informal de la skill.
+- `agency_retention_diagnostics` cruza una medición inmutable del Hito 34 con el mapa temporal y los loops exactos del guion. Exige muestra mínima de 100, curva ordenada desde el segundo cero y cobertura de toda la duración.
+- El servidor interpola la retención al inicio y final de cada beat y loop, conserva las caídas en puntos porcentuales y señala la mayor caída observada. La redacción impide confundir asociación temporal con causalidad.
+- Cada diagnóstico cambia una sola variable: hook, primer fotograma, prueba temprana, orden de beats, payoff, CTA u oferta. Producto, audiencia, oferta y duración se mantienen constantes.
+- `agency_retention_learnings` solo nace de aprobación humana, queda inmutable y conserva plataforma, audiencia, duración, embudo, curva, huellas y evidencia por beat/loop. Una nueva evidencia crea otro aprendizaje; nunca reescribe el anterior.
+- El cerebro MCP/service role puede leer contexto seguro y proponer. El navegador no puede suplantarlo ni escribir tablas directamente. Aprobar no genera, no pauta, no escala y no publica.
+- La **Sala de aprendizaje de loops** aparece entre Laboratorio de retención y Estudio creativo, con candidatos, revisión humana y aprendizajes acotados.
+- Archivos: `supabase/experiencia-loops-retencion-v1.sql`, `supabase/tests/test-experiencia-loops-retencion-v1.sql`, `src/lib/agency-loop-learning.js` y su prueba. Regresión local: 354/354 PASS; build Vite PASS; UI verificada sin errores. Prueba adversarial de loops y cadena ordenada 01–35: PASS con rollback total.
 
 #### Skill final planificada: `design-momos-retention-loops`
 
@@ -82,20 +83,23 @@ La skill se crea al final de la construcción de Agencia, cuando exista experien
 
 **Validación futura:** probar la skill con comerciales cortos, UGC, contenido educativo y piezas largas; contrastar sus predicciones con curvas reales de retención y ventas antes de declararla estable.
 
-### Hito 36 — Experiencia de dirección de motion
+### Hito 36 — Experiencia de dirección de motion (implementado y validado)
 
-Construir primero el contrato, la interfaz y la telemetría que alimentarán la futura skill `direct-momos-motion`. No copiar la skill promocional del proveedor: adaptar sus principios al producto real, la identidad y los resultados económicos de MOMOS.
+El contrato, la interfaz y la telemetría que alimentarán la futura skill `direct-momos-motion` ya existen y quedaron validados. No copia una skill promocional del proveedor: adapta sus principios al producto real, la identidad y los resultados económicos de MOMOS.
 
 Fundación práctica ya creada: skill personal `$direct-natural-camera-lighting`, validada localmente. Dirige ángulos naturales, trayectoria con inercia, microvibración motivada, blur/foco, luz, sombras y continuidad física. Es neutral al proveedor; la futura `direct-momos-motion` incorporará además la identidad y los aprendizajes económicos propios de MOMOS.
 
 #### Modelo operativo
 
-- Extender cada toma aprobada con una receta neutral: intención, movimiento del sujeto, cámara, movimiento secundario, timing, easing, start/end frames, invariantes y fallos prohibidos.
-- Permitir comparar una a tres propuestas de motion antes de gastar.
-- Separar cuatro gates: storyboard aprobado, motion aprobado, generación autorizada y pieza final aprobada.
+- Cada toma aprobada recibe una receta neutral: intención, encuadre/lente, cámara, perfil handheld, blur/foco, mapa de luz, física, continuidad, transición, prompt, negativos y aceptación.
+- Se comparan dos propuestas determinísticas por toma —precisa y orgánica— y el servidor exige exactamente una seleccionada entre una y tres permitidas.
+- Los cuatro gates quedaron separados: storyboard aprobado, motion aprobado, generación autorizada y pieza final aprobada.
+- El Enrutador queda bloqueado sin cobertura motion exacta; al crear el trabajo, el servidor sustituye cualquier prompt del navegador por la receta aprobada e inmutable.
+- `agency_motion_observations` conserva después parámetros efectivos, costo, runtime, intentos, errores, correcciones, QA y atención para convertir experiencia real en criterio de MOMOS.
 - Usar previews baratos para validar ritmo y continuidad; la generación final solo ejecuta la receta seleccionada.
 - Traducir la receta a Higgsfield, Kling, Runway u otro motor mediante adaptadores; nunca guardar un preset como verdad de negocio.
 - Mantener edición y postproducción humana para el corte final.
+- Migración `20260716_36_experiencia_motion` aplicada. La prueba adversarial de cámara/luz/física/continuidad/selección/gates/telemetría/RBAC y la cadena ordenada 01–36 pasaron con rollback total.
 
 #### Telemetría necesaria
 
@@ -119,6 +123,144 @@ La skill se crea al final de Agencia, cuando H31–H36 hayan producido suficient
 
 **Validación futura:** contrastar la predicción de cada receta con QA humano, continuidad real, costo por toma, abandono por escena y beneficio de la pieza antes de estabilizar la skill.
 
+### Hito 37 — Observatorio de adquisición Meta (implementado y validado)
+
+La capa determinística ya está construida. La migración `supabase/observatorio-meta-v1.sql` crea políticas versionadas, snapshots inmutables, conciliación contra pedidos pagados de la misma ventana y diagnósticos 3Q con revisión humana. La prueba adversarial está en `supabase/tests/test-observatorio-meta-v1.sql`; la cadena ordenada ya exige 01–37.
+
+El panel **Observatorio Meta** quedó integrado al inicio de Agencia MOMOS, antes de la Mesa cooperativa. Resume ventanas, alertas de píxel, ingreso ligado y diagnósticos; al abrir una ventana separa “Meta atribuye” de “MOMOS pagado”, muestra hipótesis no causales y permite preparar/aprobar/devolver una lectura. No existe desde este hito ningún camino para crear campañas, publicar, pausar, escalar o cambiar presupuesto.
+
+Validación cerrada: módulo determinístico 7/7 PASS, suite completa 367/367 PASS, build Vite PASS, prueba adversarial del Observatorio PASS y cadena ordenada 01–37 PASS, ambas SQL con rollback total.
+
+El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, confirma el siguiente paso: Meta debe entrar a Agencia MOMOS como fuente verificable de señales, no como un piloto automático que cambie presupuesto o publique por su cuenta.
+
+#### Señales que debe incorporar
+
+- Campaña, conjunto, anuncio y creativo con objetivo, ventana, moneda, zona horaria, gasto, impresiones, alcance, frecuencia, CPM, clics, CTR y resultados.
+- Embudo de Meta: reproducción inicial, visita, contenido, carrito, checkout, compra, conversaciones o leads según el objetivo real de la campaña.
+- Salud del dataset/píxel: último evento, volumen por evento, EMQ actual y cobertura de identificadores; comparación de siete días contra los siete anteriores con piso de ruido configurable.
+- Catálogo: gasto por producto y producto sin identificar, cruzado con el catálogo, stock terminado, reservas, ventas, margen y vencimiento reales de MOMOS.
+- Huella exacta de publicación/creativo para enlazar cada métrica con contrato, guion, hook, storyboard, tomas, motion y salida aprobada.
+
+#### Adaptación propia de MOMOS
+
+- La estructura 3Q —qué pasó, por qué pasó y qué haremos— se conserva como explicación, pero cada conclusión debe citar hechos y denominadores completos.
+- Los benchmarks externos no son verdad universal: se guardan con fuente, versión, mercado y vigencia; el umbral operativo de MOMOS es configurable y se contrasta con su margen, ticket, recompra y datos históricos.
+- La revisión de creativos se convierte en una rúbrica observable de hook, jerarquía, producto, marca, prueba, oferta, CTA y coherencia con la landing/pedido. No se fuerza una lista extensa cuando una dimensión no aplica.
+- Las hipótesis de catálogo no confunden gasto con ventas. MOMOS puede mejorarlas porque sí conoce pedido pagado, variante exacta, beneficio, inventario disponible y demanda no satisfecha.
+- Una caída de eventos o un EMQ bajo crea una alerta de medición; nunca se interpreta automáticamente como caída de demanda.
+- La estrategia y distribución de presupuesto se generan como escenarios comparables con costo, beneficio esperado y riesgo. No se replica una plantilla rígida de porcentajes.
+
+#### Guardas
+
+- Ingesta de solo lectura mediante conector/MCP privado; secretos fuera del navegador y de las tablas públicas.
+- Snapshots inmutables, idempotentes y conciliables por cuenta, zona horaria, moneda, ventana y fuente.
+- Atribución separada de causalidad: Meta reporta una atribución; MOMO OPS conserva además pedido, margen y beneficio observados.
+- El agente puede diagnosticar y proponer. Crear campaña, cambiar presupuesto, pausar, escalar o publicar exige contrato y aprobación humana específicos.
+- Ninguna recomendación se declara ganadora con muestra insuficiente ni altera pauta por una señal aislada.
+
+#### Paquetes externos revisados
+
+- **3Qs:** útil para ordenar el diagnóstico del embudo; sus semáforos se convierten en políticas versionadas y configurables.
+- **Analizador de creativos estáticos:** útil como banco de dimensiones; se reduce a evidencia relevante para MOMOS y se conecta con QA, retención y beneficio.
+- **Excel de estrategia:** útil como generador de escenarios; sus porcentajes, públicos y estructuras no se copian como reglas fijas.
+- **Monitor del píxel:** buen patrón de cálculo determinístico, ventana 7d vs 7d y piso de volumen; requiere adaptación a telemetría y alertas propias.
+- **Sugeridor de productos:** buen patrón de hipótesis de solo lectura; MOMOS lo robustece cruzando gasto con ventas, margen, stock y vencimiento.
+- **Gem de video:** queda como referencia externa. La lógica útil debe quedar documentada y auditable dentro de MOMOS, sin depender de un prompt privado de otra plataforma.
+
+### Hito 38 — Incrementalidad y ciclo de vida Meta (implementado y validado)
+
+- `agency_meta_lift_studies` nace únicamente de un diagnóstico aprobado del Hito 37 y exige vínculo exacto con una campaña local. Admite Meta Conversion Lift, holdout aleatorio MOMOS y lectura observacional.
+- Todo lenguaje causal exige diseño no observacional, asignación aleatoria declarada, al menos 100 observaciones por brazo y diferencia estadística suficiente. Una correlación significativa sigue llamándose asociación si el diseño fue observacional.
+- `agency_meta_lift_measurements` conserva snapshots inmutables e idempotentes de control/expuesto: población, compradores, pedidos, ingresos, margen, gasto incremental, resultado agregado de plataforma y huella exacta.
+- El servidor recalcula en paralelo la composición de compradores nuevos y recurrentes desde pedidos pagados de MOMOS OPS. El conector no puede falsificar este snapshot local ni convertir atribución en causalidad.
+- El resultado deriva tasas, diferencia, lift, compradores, margen y beneficio incremental. Muestra insuficiente queda inconclusa; una revisión humana separada aprueba, devuelve o declara inconclusa la lectura.
+- La capa no crea estudios dentro de Meta, no cambia audiencias, presupuesto o estado de campañas y no publica. El agente privado puede proponer diseños; nunca aprobarlos ni ejecutar pauta.
+- UI integrada inmediatamente después del Observatorio con candidatos, diseños, mediciones, estado causal y beneficio incremental.
+- Archivos: `supabase/incrementalidad-meta-v1.sql`, `supabase/tests/test-incrementalidad-meta-v1.sql`, `src/lib/agency-meta-incrementality.js` y su prueba. Regresión local 376/376 PASS y build Vite PASS; prueba adversarial de Incrementalidad Meta PASS y cadena ordenada 01–38 PASS, ambas con rollback total.
+
+### Hito 39 — Escenarios de inversión Meta (implementado y validado)
+
+- `agency_meta_investment_scenarios` nace únicamente de una medición incremental aprobada. La evidencia y las alternativas quedan selladas, son idempotentes y no admiten reescritura o eliminación.
+- El servidor genera exactamente cuatro alternativas comparables: conservar, reducir, redistribuir o experimentar. Cada una declara presupuesto simulado, variación, rango de beneficio, propósito, supuestos y bloqueos; el navegador no puede inventar sus cifras.
+- El snapshot cruza campaña y producto exactos con beneficio incremental, ciclo de vida, stock oficial/exacto, vencimiento, reservas, lotes en proceso, sugerencias pendientes, cola de Cocina, congelación, capacidad y límites configurados.
+- Stock bloqueado prevalece sobre lift rentable; resultado causal negativo recomienda reducir; una asociación observacional solo puede recomendar comprar evidencia mediante un experimento pequeño.
+- Aprobar un escenario significa aprobar su lectura, no ejecutarlo. Las guardas prohíben cambiar presupuesto, audiencia, campaña o publicación; una eventual ejecución tendrá autorización, secreto, lease e idempotencia independientes.
+- UI integrada inmediatamente después de Incrementalidad Meta. Archivos: `supabase/escenarios-inversion-meta-v1.sql`, `supabase/tests/test-escenarios-inversion-meta-v1.sql`, `src/lib/agency-meta-investment.js` y su prueba.
+- Validación cerrada: prueba específica 7/7 PASS, suite completa 383/383 PASS, build Vite PASS y SQL balanceado. La prueba adversarial H39 y la cadena ordenada 01–39 pasaron en Supabase, ambas con rollback total.
+
+### Hito 40 — Autorización de inversión desacoplada (implementado y validado)
+
+- `agency_meta_investment_authorizations` convierte un escenario H39 aprobado en una solicitud distinta. Sella campaña, audiencia, alternativa, presupuesto objetivo, vigencia de 10–120 minutos, actor, justificación, evidencia y huella; no reutiliza la aprobación analítica como permiso.
+- Solo Administrador o Marketing/CRM pueden solicitar; solo Administrador autoriza, rechaza o revoca. El navegador no inserta autorizaciones ni modifica la outbox directamente.
+- `agency_meta_investment_execution_jobs` aporta idempotencia, intento, lease, despacho y recibo privados. Lease perdido o resultado incierto bloquean el reenvío automático; un H39 nuevo sustituye permisos anteriores aún no despachados.
+- La guarda vuelve a comprobar pausa global, límite de campaña, presupuesto exacto y stock. Con stock bloqueado solo se admite Reducir. Autorizar una solicitud crea un ensayo, pero conserva `execution_mode = Simulación`.
+- El recibo de H40 debe declarar `external_mutation=false` y `campaign_budget_unchanged=true`. Cualquier resultado que afirme un cambio real se rechaza: este hito no llama a Meta, no gasta, no pausa, no escala y no publica.
+- Panel integrado inmediatamente después de H39 con alternativas exactas, segunda aprobación humana, vencimiento, estado del ensayo y revocación. Archivos: `supabase/autorizacion-inversion-meta-v1.sql`, su prueba adversarial y `src/lib/agency-meta-authorization.js`.
+- Validación cerrada: módulo local 8/8 PASS, suite 391/391 PASS, build Vite PASS y SQL balanceado. La prueba adversarial H40 y la cadena ordenada 01–40 pasaron en Supabase, ambas con rollback total.
+
+### Hito 41 — Conector oficial Meta con ensayo conciliado (validado)
+
+- `agency_meta_connector_dry_runs` convierte únicamente una autorización H40 vigente en un contrato de verificación sellado por cuenta `act_`, campaña, audiencia y versión Graph. Cancela el ensayo local H40 que aún no empezó; no lo mezcla con el conector oficial.
+- El worker privado usa token de sistema y App Secret exclusivamente en variables del servidor. Cada llamada incluye `appsecret_proof`, destino fijo `graph.facebook.com`, `redirect: error` y método `GET` para cuenta, campaña y audiencia.
+- La capacidad publicada es `ads_read`. `ads_management`, creación, publicación, pausa y cambio de presupuesto continúan prohibidos. La guarda de ejecución distingue salud de lectura de permiso de escritura para evitar que un heartbeat habilite distribución por accidente.
+- El recibo exige exactamente tres GET, identidades exactas, `external_mutation=false` y correspondencia entre `Conciliado`/`Divergente`. Contrato y evidencia son inmutables; secretos y recibos incompletos se rechazan.
+- Lease perdido antes de leer queda `Fallido`; interrupción durante la lectura queda `Incierto` y no se reintenta automáticamente. Una pausa humana no puede ser deshecha por el heartbeat del worker.
+- UI integrada dentro de Autorización Meta con `Verificar en Meta`, estado de la lectura y explicación visible de cero mutaciones. Archivos: `supabase/meta-conector-dry-run-v1.sql`, `scripts/meta-worker.mjs`, `src/lib/agency-meta-connector.js` y pruebas.
+- Validación cerrada: módulos específicos 8/8 PASS, suite completa 400/400 PASS, build Vite PASS, worker con sintaxis válida y `git diff --check` sin errores. La prueba adversarial H41 y la cadena ordenada 01–41 pasaron en Supabase, ambas con rollback total.
+
+### Hito 42 — Gateway MCP semántico real (implementado, validado y activo en Codex)
+
+- El contrato protegido que ya existía en H28 ahora tiene un servidor MCP local real por `stdio`, construido con el SDK oficial v1. Expone únicamente cinco herramientas con nombre fijo: salud, snapshot agregado, observatorio Meta, contexto creativo gobernado y envío de propuestas a revisión humana.
+- `obtener_contexto_director_agencia()` cruza pedidos, operación, inventario terminado, CRM consentido, Agencia e integraciones. Devuelve cantidades agregadas y señales priorizadas; excluye nombres, teléfonos, direcciones, Instagram y cualquier otro dato personal.
+- No existe herramienta de SQL, shell, pago, contacto, publicación, presupuesto o mutación de campañas. El snapshot declara `external_execution_allowed=false` y todas las capacidades prohibidas quedan explícitas en el contrato.
+- Registrar propuestas está desactivado por defecto. Cuando el administrador habilite `MOMOS_MCP_PROPOSALS_ENABLED=true`, el servidor todavía solo llama la RPC sellada del H28: registra una propuesta, exige revisión humana y jamás ejecuta la acción sugerida.
+- Cada lectura o propuesta queda en `agency_mcp_access_log` con clave idempotente, herramienta, modo, huellas, worker y resultado. La bitácora es inmutable, no admite secretos y solo Administración puede leerla desde MOMO OPS.
+- Archivos: `supabase/mcp-agency-gateway-v1.sql`, `scripts/momos-agency-mcp.mjs`, `src/lib/momos-agency-mcp.js` y pruebas adversariales. H42 adversarial y migraciones 01–42 pasaron en Supabase; la suite local quedó 406/406 PASS y el cliente MCP negoció las cinco herramientas exactas.
+- La configuración de proyecto `.codex/config.toml` reenvía las dos variables privadas desde el entorno. La activación real en Codex Desktop quedó verificada: salud `ok=true`, snapshot agregado sin PII y las cuatro herramientas de lectura disponibles. Después de esa comprobación se habilitó la quinta herramienta, `momos_submit_proposals`, exclusivamente para registrar borradores sellados en la bandeja humana del H28; no existe aprobación ni ejecución externa desde MCP.
+- Primer uso cooperativo verificado: Codex registró la corrida `run_id=5` con tres recomendaciones internas a costo cero. El servidor devolvió `executed=false`, `requires_human_approval=true` y `external_execution=false`; una segunda lectura confirmó las tres propuestas pendientes de decisión humana.
+
+### Hito 43 — Retorno cooperativo del Cerebro MCP (implementado y validado)
+
+- El snapshot de Agencia incorpora `human_feedback`: totales resueltos y las últimas doce decisiones humanas sobre propuestas del agente.
+- Solo regresan campos estructurados: resultado Convertida/Descartada, vínculo a decisión, fecha, tipo, riesgo, modo y huella del snapshot que originó la recomendación.
+- Las notas libres y la identidad de quien resolvió no atraviesan el MCP. El contrato declara `contains_pii=false` y `resolution_notes_exposed=false`.
+- No se añade otra herramienta, no requiere reiniciar Codex y conserva `external_execution_allowed=false`.
+- Archivos: `supabase/ciclo-cooperativo-mcp-v1.sql` y `supabase/tests/test-ciclo-cooperativo-mcp-v1.sql`; la cadena ordenada ya exige el paso 43.
+- Aplicación real verificada por MCP: tres propuestas convertidas, cero descartadas, decisiones 12–14 y ninguna nota libre expuesta. La primera prueba tuvo un falso positivo al confundir la bandera segura `resolution_notes_exposed` con la clave prohibida `resolution_note`; la expresión se restringió a claves exactas. Prueba adversarial H43 y cadena ordenada 01–43 en PASS, ambas con rollback total.
+
+### Hito 44 — Bandeja semántica del Cerebro MCP (implementado, validado y activo)
+
+- Cada decisión humana `Aprobada` se traduce en un solo siguiente paso determinístico. La respuesta incluye únicamente identificadores internos, tipo/riesgo, código y etiqueta de acción, etapa, área, ruta, bloqueo y si espera intervención humana.
+- Producción, consentimiento CRM, revisión de oferta, inversión y triaje usan rutas explícitas. Las decisiones creativas recorren los gates ya construidos: Mesa, contrato, storyboard, motion, enrutamiento, generación, revisión de salida, QA por escena, postproducción y distribución.
+- Una campaña nunca se ejecuta desde esta bandeja: devuelve `REVIEW_CAMPAIGN_SCENARIO`, `blocked=true` y `EXTERNAL_CONNECTOR_DISABLED`. Toda acción conserva `external_execution=false`.
+- La cola se incorpora como `agency.action_queue` al snapshot H43; no crea otra herramienta MCP ni requiere reinicio. Se limita a veinte elementos y no expone títulos, razones, evidencia, notas, actores, PII o secretos.
+- Archivos: `supabase/bandeja-semantica-agencia-v1.sql` y `supabase/tests/test-bandeja-semantica-agencia-v1.sql`. Prueba adversarial H44 y cadena ordenada 01–44 en PASS, ambas con rollback total.
+- Comprobación real por MCP: tres decisiones aprobadas produjeron exactamente tres acciones —revisión comercial, plan de producción y triaje humano— sin texto libre, PII o ejecución externa. Meta continúa `Por conectar`.
+
+### Hito 45 — Centro humano de acciones de Agencia (implementado y validado)
+
+- La bandeja semántica H44 llega a MOMO OPS como un panel privado de trabajo: una sola tarjeta y una sola acción principal por decisión aprobada.
+- Cada tarjeta abre Producción, Clientes o el gate creativo exacto. Navegar no marca la decisión como ejecutada; el resultado real se registra de forma humana y separada.
+- Los roles ajenos a Agencia reciben una respuesta vacía segura. La UI no recibe PII, secretos ni notas libres desde la cola MCP y conserva `external_execution_allowed=false`.
+- Una acción desconocida falla cerrada; cualquier escenario de campaña permanece bloqueado con `EXTERNAL_CONNECTOR_DISABLED`.
+- Archivos: `supabase/centro-acciones-agencia-v1.sql`, `src/lib/agency-action-queue.js` y sus pruebas. Meta sigue apagado.
+- Prueba adversarial H45 **PASS** y cadena ordenada 01–45 **PASS**, ambas con rollback total. Suite local **410/410 PASS**, build Vite **PASS** y verificación visual sin errores de consola ni desbordamiento.
+
+### Hito 46 — Resultados verificables de Agencia (implementado y validado)
+
+- Una decisión aprobada ya no puede cerrarse con una nota libre. El servidor exige resultado tipificado, costo real y evidencia interna existente en MOMO OPS.
+- Un ledger inmutable sella decisión, código de acción, resultado observado, evidencia, costo, actor, fecha y huella idempotente. El navegador no puede insertar ni reescribir filas directamente.
+- Un trigger bloquea el bypass por la RPC histórica: `Ejecutada` o `Fallida` requiere primero un outcome estructurado de la misma decisión.
+- El Centro humano conserva una sola entrada por tarjeta: abre el área de trabajo y, al regresar, permite cerrar con evidencia exacta. Meta y toda ejecución externa siguen apagados.
+- Archivos: `supabase/resultados-verificables-agencia-v1.sql`, `src/lib/agency-action-outcome.js` y sus pruebas.
+- Prueba adversarial H46 **PASS** y cadena ordenada 01–46 **PASS**, ambas con rollback total. Suite local **414/414 PASS** y build Vite **PASS**.
+
+### Hito 47 — Mutación Meta mínima y reversible (aplazado; cerrado hasta autorización explícita)
+
+- No se habilitará con las credenciales de lectura. Requerirá permiso `ads_management` independiente, lista blanca exacta, nueva autorización humana vigente y un único tipo de cambio reversible.
+- Antes de cualquier escritura se leerá y sellará el estado previo; después se conciliará el estado real. Una respuesta incierta bloquea el reenvío y exige intervención humana.
+- El primer alcance recomendado es un cambio controlado de presupuesto o estado sobre una campaña piloto, nunca publicación y presupuesto simultáneos. Debe incluir tope, ventana, pausa de emergencia y procedimiento de reversión probado.
+
 ## Skills finales de Agencia
 
 1. `momos-brand-director`: identidad, lenguaje, producto y decisiones de marca.
@@ -135,3 +277,4 @@ La skill se crea al final de Agencia, cuando H31–H36 hayan producido suficient
 - Higgsfield, motion estructurado y editable: <https://higgsfield.ai/blog/Higgsfield-Vibe-Motion-Guide-AI-Motion-Design>.
 - Principios rescatados: script gate antes del gasto, loops explícitos, bloques visuales, consistencia de estilo, ledger de costo/fallos y postproducción humana.
 - Playbook consolidado de creatividad, video, imagen, storyboard, retención, lip-sync y VFX: [`AGENCIA-CREATIVE-PLAYBOOK.md`](AGENCIA-CREATIVE-PLAYBOOK.md).
+- Documento aportado por el usuario, **Claude Skills para Meta Ads**: <https://docs.google.com/document/d/1a6CZP0ddVm4nt73rUuk1e4U7vtEON0j7OK1mpMpc6c8/edit?tab=t.0>. Sus paquetes se revisaron como fuentes de metodología; no se instalaron ni ejecutaron porque deben adaptarse a los hechos, permisos y gates de MOMOS OPS.

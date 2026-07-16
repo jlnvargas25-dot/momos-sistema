@@ -1,5 +1,146 @@
 # HANDOFF — MOMOS OPS (léelo al empezar una sesión nueva)
 
+## ✅ Hito 46 — Resultados verificables de Agencia (2026-07-16 · validado)
+
+- Nueva migración [`supabase/resultados-verificables-agencia-v1.sql`](supabase/resultados-verificables-agencia-v1.sql): una decisión aprobada solo cierra con resultado estructurado, costo real y evidencia interna validada por el servidor.
+- `agency_action_outcomes` es inmutable e idempotente. Un trigger impide usar la RPC histórica para declarar `Ejecutada` o `Fallida` sin el outcome correspondiente.
+- La Bandeja de acciones abre primero el área exacta y después permite registrar evidencia por ID de Pedido, Lote, Cliente, Creativo, Publicación, Campaña, Brief o la misma Decisión de triaje.
+- Meta permanece apagado; la futura mutación mínima pasa a H47 y requiere autorización explícita independiente.
+- Validación cerrada: prueba adversarial H46 **PASS** y cadena ordenada 01–46 **PASS**, ambas con rollback total. Suite local **414/414 PASS** y build Vite **PASS**.
+
+## ✅ Hito 45 — Centro humano de acciones de Agencia (2026-07-16 · validado)
+
+- Nueva migración [`supabase/centro-acciones-agencia-v1.sql`](supabase/centro-acciones-agencia-v1.sql): publica para roles de Agencia una lectura segura de la cola H44 y devuelve una bandeja vacía a los demás roles.
+- Nuevo panel premium **Bandeja de acciones de Agencia**: una sola tarjeta y una sola acción principal por decisión aprobada. Abre Producción, Clientes o el gate creativo exacto; navegar nunca marca la acción como ejecutada.
+- El resultado real solo se registra después del trabajo humano. Las acciones desconocidas y cualquier mutación de campaña fallan cerradas; Meta permanece apagado.
+- Validación cerrada: prueba adversarial H45 **PASS** y cadena ordenada 01–45 **PASS**, ambas con rollback total. Suite local **410/410 PASS**, build Vite **PASS** y UI sin errores de consola ni desbordamiento.
+
+## ✅ Hito 44 — Bandeja semántica del Cerebro MCP (2026-07-16 · validado y activo)
+
+- Nueva migración [`supabase/bandeja-semantica-agencia-v1.sql`](supabase/bandeja-semantica-agencia-v1.sql): cada decisión humana `Aprobada` produce exactamente un siguiente paso estructurado, con área, etapa, ruta, bloqueo y responsable humano/sistema.
+- Las decisiones de producción, CRM, oferta, inversión y coordinación tienen rutas propias. `Crear contenido` y `Revisar creativo` recorren sin saltos Mesa → contrato → storyboard → motion → enrutamiento → generación → revisión humana → QA → postproducción → distribución.
+- La cola no expone títulos, argumentos, evidencias, notas, identidades, PII o secretos; se limita a veinte elementos y conserva `external_execution_allowed=false`. Meta permanece apagado y cualquier cambio de campaña devuelve `EXTERNAL_CONNECTOR_DISABLED`.
+- No añade herramientas MCP ni exige reiniciar Codex: enriquece `agency.action_queue` dentro del snapshot existente. Prueba adversarial H44 **PASS** y cadena ordenada 01–44 **PASS**, ambas con rollback total.
+- Snapshot real verificado desde Codex: decisión 13 → `REVIEW_COMMERCIAL_OFFER`, decisión 12 → `REVIEW_PRODUCTION_PLAN` y decisión 14 → `HUMAN_TRIAGE`. `actionable_total=3`, `contains_pii=false`, `free_text_exposed=false` y `external_execution_allowed=false`; Meta permanece `Por conectar`.
+
+## ✅ Hito 43 — Retorno cooperativo MCP (2026-07-16 · validado)
+
+- Nueva migración [`supabase/ciclo-cooperativo-mcp-v1.sql`](supabase/ciclo-cooperativo-mcp-v1.sql): enriquece el snapshot ya cargado por Codex con el resultado estructurado de las propuestas resueltas. Devuelve únicamente convertida/descartada, decisión ligada, fecha, tipo, riesgo, modo y huella del snapshot original.
+- Las notas humanas, identidades, texto libre, PII y secretos no atraviesan el MCP. La lectura conserva `external_execution_allowed=false`; no añade herramientas, permisos externos ni reinicio de Codex.
+- Migración 43 aplicada: el snapshot real devolvió las tres propuestas como `Convertida`, ligadas a las decisiones 12–14, con `contains_pii=false` y `resolution_notes_exposed=false`. La primera ejecución del test detectó un falso positivo porque el patrón `resolution_note` coincidía con el propio campo seguro `resolution_notes_exposed`; el patrón se restringió a claves sensibles exactas. Prueba adversarial H43 **PASS** y cadena ordenada 01–43 **PASS**, ambas con rollback total.
+- El worker Meta permanece apagado. La mutación Meta mínima pasa a H47 y continúa bloqueada hasta decisión explícita posterior.
+
+## ✅ Hito 42 — Gateway MCP semántico real (2026-07-16 · validado y activo)
+
+- Nuevo gateway [`supabase/mcp-agency-gateway-v1.sql`](supabase/mcp-agency-gateway-v1.sql), encadenado después de H41. Genera un snapshot agregado de pedidos, operación, inventario, CRM consentido y Agencia sin PII, sin secretos y con `external_execution_allowed=false`.
+- Nuevo servidor local [`scripts/momos-agency-mcp.mjs`](scripts/momos-agency-mcp.mjs) por `stdio` con SDK oficial v1. Superficie cerrada: `momos_health`, `momos_agency_snapshot`, `momos_meta_observatory`, `momos_creative_context` y `momos_submit_proposals`; no hay SQL, shell, pagos, contacto, publicación ni control de presupuesto.
+- Las propuestas están apagadas por defecto. `MOMOS_MCP_PROPOSALS_ENABLED=true` solo habilita registrar propuestas selladas en el orquestador H28; toda aprobación y ejecución continúa en manos humanas dentro de MOMO OPS.
+- `agency_mcp_access_log` registra herramienta, modo, worker, huellas y resultado. Es inmutable, idempotente, rechaza secretos y solo Administración puede consultarla.
+- Scripts: `npm run mcp:agency:health` valida la conexión privada; `npm run mcp:agency` inicia el servidor que Codex podrá lanzar. Nunca guardar `SUPABASE_SERVICE_ROLE_KEY` en el repositorio o en el navegador.
+- Validación Supabase cerrada: prueba adversarial H42 **PASS** y migraciones ordenadas 01–42 **PASS**, ambas con rollback total. Suite local **406/406 PASS**, build **PASS** y negociación MCP real **PASS** con cinco herramientas exactas.
+- Configuración segura habilitada en [`.codex/config.toml`](.codex/config.toml) y conexión **verificada desde Codex Desktop**: `momos_health` respondió `ok=true` y el snapshot real se leyó sin PII. Tras validar el primer snapshot se habilitó `momos_submit_proposals` como quinta herramienta: solo registra borradores sellados para revisión humana; no aprueba ni ejecuta acciones.
+- Primer snapshot real: 12 pedidos activos, 8 en logística, 4 esperando cierre comercial, 5 sugerencias de producción, 6 lotes que vencen en 48 h y 26 unidades terminadas reportadas. Kling figura activa; Meta, TikTok, Higgsfield y HeyGen siguen por conectar. Todas las capacidades externas permanecen apagadas y requieren aprobación humana.
+- Primera corrida cooperativa real registrada desde Codex: `run_id=5`, tres propuestas selladas —revisar sugerencias de producción, preparar una decisión comercial para vencimientos y auditar cierres comerciales—, costo $0, `executed=false` y `external_execution=false`. El snapshot posterior confirmó `pending_human_proposals=3`; ninguna propuesta fue aprobada o ejecutada.
+
+## ✅ Hito 41 — Conector oficial Meta dry-run (2026-07-16 · validado)
+
+- Nueva migración [`supabase/meta-conector-dry-run-v1.sql`](supabase/meta-conector-dry-run-v1.sql), id `20260716_41_meta_conector_dry_run`, encadenada después del Hito 40.
+- Una autorización H40 vigente puede preparar una sola verificación oficial, idempotente e inmutable por cuenta, campaña, audiencia y versión Graph. El recibo exige exactamente tres solicitudes GET a `graph.facebook.com` y `external_mutation=false`.
+- Nuevo worker [`scripts/meta-worker.mjs`](scripts/meta-worker.mjs): token y App Secret solo en entorno privado, `appsecret_proof`, host oficial fijo, `ads_read`, timeout, redacción de errores, lease y anti-reintento incierto. No contiene ninguna ruta POST ni capacidad `ads_management`.
+- La salud de lectura y el permiso de ejecución quedaron separados: Meta puede conciliar datos sin que el centro de integraciones lo autorice a publicar o cambiar pauta.
+- Panel integrado dentro de Autorización Meta: `Verificar en Meta`, cuenta/API selladas, estados Preparado/Leyendo/Conciliado/Divergente/Fallido/Incierto y mensaje explícito de cero mutaciones.
+- Validación local cerrada: suite **400/400 PASS**, build Vite **PASS**, `node --check scripts/meta-worker.mjs` **PASS** y `git diff --check` sin errores.
+- Validación Supabase cerrada: prueba adversarial H41 **PASS** y migraciones ordenadas 01–41 **PASS**, ambas con rollback total.
+- Pendiente operativo independiente: configurar `META_ACCESS_TOKEN`, `META_APP_SECRET`, `META_AD_ACCOUNT_ID`, `META_GRAPH_API_VERSION=v25.0` y ejecutar `npm run worker:meta:health`. La futura mutación Meta permanece cerrada hasta comprobar esa conexión real de lectura.
+
+## ✅ Hito 40 — Autorización de inversión Meta (2026-07-16 · validado)
+
+- Nueva migración [`supabase/autorizacion-inversion-meta-v1.sql`](supabase/autorizacion-inversion-meta-v1.sql), id `20260716_40_autorizacion_inversion`, encadenada después del Hito 39.
+- La aprobación analítica de un escenario ya no puede reutilizarse como permiso: una solicitud nueva sella campaña, audiencia, alternativa, presupuesto objetivo, vigencia de 10–120 minutos, actor, justificación y huella exacta.
+- La capa operativa usa outbox, idempotencia y lease privados. Una autorización sustituida, vencida, revocada o con resultado incierto no se reenvía automáticamente.
+- H40 permanece deliberadamente en **Simulación**: el worker solo verifica el contrato y su recibo; no llama a Meta, no cambia campañas y rechaza cualquier recibo que declare una mutación externa.
+- Panel premium integrado después de Escenarios de inversión: solicitud por alternativa exacta, segunda aprobación humana, vigencia, estado del ensayo y revocación.
+- Validación local: módulo determinístico **8/8 PASS**, suite completa **391/391 PASS**, build Vite **PASS**, balance léxico SQL **PASS** y `git diff --check` sin errores.
+- Validación cerrada en Supabase: [`supabase/tests/test-autorizacion-inversion-meta-v1.sql`](supabase/tests/test-autorizacion-inversion-meta-v1.sql) **PASS** y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) **01–40 PASS**, ambas con rollback total.
+
+## ✅ Hito 39 — Escenarios de inversión Meta (2026-07-16 · validado)
+
+- Nueva migración [`supabase/escenarios-inversion-meta-v1.sql`](supabase/escenarios-inversion-meta-v1.sql), id `20260716_39_escenarios_inversion`, encadenada después del Hito 38.
+- Una medición incremental aprobada produce exactamente cuatro alternativas comparables: **Conservar, Reducir, Redistribuir y Experimento**. Cada una conserva presupuesto simulado, variación, rango de beneficio, propósito, supuestos y bloqueos.
+- El servidor vuelve a capturar la verdad operativa al preparar el escenario: producto/campaña exactos, stock terminado, vencimiento cercano, producción en proceso, reservas, sugerencias pendientes, cola de Cocina, congeladores, límites y ciclo de vida.
+- Un stock bloqueado domina incluso un lift rentable. Atribución observacional conduce a experimento; beneficio causal negativo conduce a reducción. Ninguna lectura ejecuta presupuesto, audiencia, campaña o publicación.
+- Panel premium integrado después de Incrementalidad Meta con revisión humana separada. Aprobar solo sella la lectura; ejecutar pauta queda fuera del hito y exige otro contrato.
+- Validación local cerrada: prueba específica **7/7 PASS**, suite completa **383/383 PASS**, build Vite **PASS**, balance léxico SQL **PASS**, `git diff --check` sin errores y navegador sin errores de consola ni desborde a 911 px/360 px.
+- Validación cerrada en Supabase: [`supabase/tests/test-escenarios-inversion-meta-v1.sql`](supabase/tests/test-escenarios-inversion-meta-v1.sql) **PASS** y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) **01–39 PASS**, ambas con rollback total.
+
+## ✅ Hito 38 — Incrementalidad y ciclo de vida Meta (2026-07-16 · validado)
+
+- Nueva migración [`supabase/incrementalidad-meta-v1.sql`](supabase/incrementalidad-meta-v1.sql), id `20260716_38_incrementalidad_meta`, encadenada después del Hito 37.
+- Convierte únicamente diagnósticos Meta aprobados y ligados a una campaña local exacta en estudios `Meta Conversion Lift`, `Holdout aleatorio MOMOS` u observacionales. Un diseño causal exige aleatorización declarada y mínimo configurable de 100 observaciones por brazo.
+- Las mediciones del conector son idempotentes e inmutables. Conservan control/expuesto, compradores, pedidos, ingreso, margen, gasto incremental, resultado de plataforma y un snapshot de clientes nuevos/recurrentes recalculado por el servidor desde pedidos pagados de MOMOS OPS.
+- El resultado separa muestra, significancia, lift, compradores, margen y beneficio incremental. Una comparación observacional nunca habilita lenguaje causal; aprobar una lectura no crea campañas, no cambia audiencias o presupuesto y no publica.
+- Panel premium **Incrementalidad Meta** integrado inmediatamente después del Observatorio: candidato → diseño → revisión humana → medición privada → lectura aprobada/inconclusa/devuelta.
+- Validación local: [`src/lib/agency-meta-incrementality.test.js`](src/lib/agency-meta-incrementality.test.js) **9/9 PASS**, suite completa **376/376 PASS**, build Vite **PASS**, balance léxico de los tres SQL **PASS** y `git diff --check` sin errores.
+- Validación cerrada en Supabase: [`supabase/tests/test-incrementalidad-meta-v1.sql`](supabase/tests/test-incrementalidad-meta-v1.sql) **PASS** y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) **01–38 PASS**, ambas con rollback total.
+
+## ✅ Hito 37 — Observatorio de adquisición Meta (2026-07-16 · validado)
+
+- Nueva migración [`supabase/observatorio-meta-v1.sql`](supabase/observatorio-meta-v1.sql), id `20260716_37_observatorio_meta`, encadenada después del Hito 36.
+- Meta entra como fuente privada de solo lectura: snapshots idempotentes e inmutables por cuenta, entidad, moneda, zona horaria y ventana. Los secretos no llegan al navegador.
+- La verdad comercial se recalcula en el servidor desde pedidos pagados, ingresos y margen de la misma ventana; el conector no puede falsificar `local_truth`. El catálogo queda enriquecido con stock y ventas de MOMOS OPS.
+- El diagnóstico 3Q conserva hechos, hipótesis no causales, denominadores, salud del píxel con piso de volumen, brecha de atribución y acciones que no cambian estado externo. El agente privado puede proponer; solo una persona autenticada aprueba o devuelve.
+- Panel premium **Observatorio Meta** integrado antes de la Mesa cooperativa. Muestra “Meta atribuye” separado de “MOMOS pagado” y repite explícitamente que no crea campañas, no publica, no pausa, no escala ni cambia presupuesto.
+- Validación cerrada: [`supabase/tests/test-observatorio-meta-v1.sql`](supabase/tests/test-observatorio-meta-v1.sql) **PASS** y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) **01–37 PASS**, ambas con rollback total. Suite local **367/367 PASS**, build Vite **PASS** y UI sin desborde a 911 px/375 px ni errores de consola.
+
+## ✅ Hito 36 — Dirección de motion gobernada (2026-07-16 · validado)
+
+- Nueva migración [`supabase/experiencia-motion-v1.sql`](supabase/experiencia-motion-v1.sql), id `20260716_36_experiencia_motion`, encadenada después del Hito 35.
+- El flujo quedó cerrado como `Storyboard aprobado → Motion aprobado → Enrutador → Generación`: ya no se puede preparar una ruta ni crear un trabajo gobernado sin una receta de cámara, luz, física y continuidad aprobada para cada toma vigente.
+- Cada toma compara dos alternativas determinísticas —precisa y orgánica— y exige seleccionar exactamente una. Conserva intención narrativa, encuadre/lente, un movimiento principal, inercia y asentamiento, foco/blur, key/sombra, estado físico del producto, eje, transición, negativos y pruebas de aceptación.
+- Panel premium **Dirección de motion MOMOS** integrado entre Estudio creativo y Enrutador. Preparar y aprobar cuesta $0; no llama motores, no genera previews, no publica y no autoriza pauta.
+- El Enrutador hereda el prompt y los negativos de la receta aprobada exacta. La receta, su huella y la relación plan–toma quedan inmutables; el conector privado podrá registrar costo, parámetros, intentos, QA y correcciones reales como aprendizaje.
+- Pruebas locales: [`src/lib/agency-motion-experience.test.js`](src/lib/agency-motion-experience.test.js), suite completa **360/360 PASS**, `npm run build` **PASS**, `git diff --check` **PASS** y navegador sin errores ni desborde horizontal en el panel.
+- Verificación cerrada en Supabase: [`supabase/tests/test-experiencia-motion-v1.sql`](supabase/tests/test-experiencia-motion-v1.sql) **PASS** y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) **01–36 PASS**, ambas con rollback total.
+
+## Diseño previo — Hito 37 Observatorio de adquisición Meta
+
+- Se revisó el documento de Drive **Claude Skills para Meta Ads** y sus paquetes 3Q, análisis creativo, estrategia, monitor de píxel y sugeridor de catálogo. Se trataron como referencias; no se instalaron ni ejecutaron.
+- El diseño adaptado queda en [`docs/AGENCIA-MOMOS-ROADMAP.md`](docs/AGENCIA-MOMOS-ROADMAP.md): ingesta Meta de solo lectura, snapshots inmutables y cruce con pedidos pagados, margen, stock, variantes, retención y beneficio de MOMOS.
+- No copiar benchmarks ni porcentajes rígidos como verdad. Deben quedar versionados/configurables y producir escenarios; crear campañas, pausar, escalar, gastar o publicar conserva aprobación humana específica.
+- Los Hitos 36, 37 y 38 ya están aplicados y validados en Supabase.
+
+## ✅ Hito 35 — Experiencia de loops de retención (2026-07-16 · validado)
+
+- Nueva migración [`supabase/experiencia-loops-retencion-v1.sql`](supabase/experiencia-loops-retencion-v1.sql), id `20260716_35_experiencia_loops`, encadenada después del Hito 34.
+- La curva exacta de cada publicación se cruza contra los beats y loops sellados del guion. El servidor localiza la mayor caída observada, conserva el embudo y exige al menos 100 observaciones y cobertura temporal completa.
+- El diagnóstico siempre propone **una sola variable** entre hook, primer fotograma, prueba temprana, orden de beats, payoff, CTA u oferta. Mantiene producto, audiencia, oferta y duración; una coincidencia temporal nunca se presenta como causa demostrada.
+- El cerebro privado puede proponer y leer contexto seguro; solo una persona autenticada puede aprobar o devolver. El aprendizaje aprobado queda inmutable y limitado a su plataforma, audiencia, duración y huellas exactas.
+- Panel **Sala de aprendizaje de loops** integrado entre el Laboratorio de retención y el Estudio creativo. Preparar o aprobar cuesta $0, no genera, no pauta, no escala y no publica.
+- Pruebas locales: [`src/lib/agency-loop-learning.test.js`](src/lib/agency-loop-learning.test.js), suite completa **354/354 PASS**, `npm run build` **PASS** y navegador sin errores.
+- Verificación cerrada en Supabase: [`supabase/tests/test-experiencia-loops-retencion-v1.sql`](supabase/tests/test-experiencia-loops-retencion-v1.sql) **PASS** y cadena [`supabase/tests/test-migraciones-ordenadas.sql`](supabase/tests/test-migraciones-ordenadas.sql) **01–35 PASS**, ambas con rollback total.
+
+## ✅ Hito 34 — Retención y aprendizaje económico (2026-07-16 · validado)
+
+- Nueva migración [`supabase/retencion-aprendizaje-v1.sql`](supabase/retencion-aprendizaje-v1.sql), id `20260716_34_retencion_aprendizaje`, encadenada después del Hito 33.
+- Guiones versionados desde contratos creativos aprobados: promesa, prueba, payoff, CTA, mapa temporal y loops cerrados antes de generar.
+- Dos o más hooks por versión, exactamente uno seleccionado, rúbrica de ocho criterios y guardas críticas de prueba, honestidad y correspondencia del payoff. El agente privado propone; el humano aprueba o devuelve.
+- Experimentos A/B de una sola variable con mediciones inmutables por publicación/variante: retención 3 s y 25/50/75/100 %, watch time, clics, pedidos pagados, ingresos, margen y beneficio incremental.
+- Ningún ganador con menos de 100 observaciones por brazo; la ambigüedad queda `Inconcluso`. No existe publicación, pauta, generación ni escalamiento automático desde este hito.
+- Panel **Laboratorio de retención MOMOS** integrado entre Mesa cooperativa y Estudio creativo.
+- Pruebas: [`src/lib/agency-retention-engine.test.js`](src/lib/agency-retention-engine.test.js) y [`supabase/tests/test-retencion-aprendizaje-v1.sql`](supabase/tests/test-retencion-aprendizaje-v1.sql).
+- Verificación cerrada: `npm test` **348/348 PASS**, `npm run build` **PASS**, prueba adversarial de retención **PASS** y migraciones ordenadas **01–34 PASS**, ambas SQL con rollback total.
+- Arquitectura decidida: Codex será el cerebro mediante un MCP semántico de MOMO OPS; MOMO OPS conserva la capa determinística/RPC y sus conectores privados ejecutan. El MCP nunca expondrá SQL libre, secretos, service role, gasto o publicación directa.
+
+## ✅ Hito 33 — Calidad, continuidad y postproducción (2026-07-16 · validado)
+
+- Nueva migración [`supabase/calidad-postproduccion-v1.sql`](supabase/calidad-postproduccion-v1.sql), id `20260716_33_calidad_postproduccion`, encadenada después del Hito 32.
+- QA inmutable por toma: once controles 0–2 sobre producto/marca, anatomía, física, cámara, luz, sombras, estabilidad, derechos y continuidad. Identidad/continuidad exactas, cero fallas y mínimo 18/22 para entrar a postproducción.
+- Rechazos trazables en `Fallo técnico`, `Fallo de marca` o `Cambio creativo`; el agente MCP privado puede proponer, pero solo el humano resuelve.
+- Paquete de postproducción con cobertura exacta de tomas aprobadas, audio, subtítulos, decisiones de edición y exportación sellados. Aprobar el corte no publica, no pauta y no autoriza distribución.
+- Panel premium dentro de Agencia: salidas por revisar, visor, checklist compacto, causas de corrección y preparación/aprobación del corte.
+- Pruebas: [`src/lib/agency-quality-control.test.js`](src/lib/agency-quality-control.test.js) y [`supabase/tests/test-calidad-postproduccion-v1.sql`](supabase/tests/test-calidad-postproduccion-v1.sql). La cadena ordenada ya exige 01–33.
+- Verificación cerrada: `npm test` **344/344 PASS**, `npm run build` **PASS**, prueba adversarial de Calidad/Postproducción **PASS** y migraciones ordenadas **01–33 PASS**, ambas SQL con rollback total.
+
 ## ✅ Hito 32 — Enrutador creativo multimotor (2026-07-16 · validado)
 
 - Nuevo panel **Enrutador de escenas MOMOS** entre Estudio y Orquestador: propone Higgsfield/Kling por toma, permite revisar estimado y tope y muestra disponibilidad real de cada conector.

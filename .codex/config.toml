@@ -1,0 +1,19 @@
+# MOMOS OPS · Cerebro cooperativo de Agencia.
+# Los secretos se reenvían desde el proceso padre; nunca se guardan aquí.
+[mcp_servers.momos_agency]
+enabled = true
+required = false
+command = "node"
+args = ["scripts/momos-agency-mcp.mjs"]
+cwd = "C:/Users/Windows 11/momo sistema"
+env_vars = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+env = { MOMOS_MCP_PROPOSALS_ENABLED = "true" }
+startup_timeout_sec = 15.0
+tool_timeout_sec = 60.0
+enabled_tools = [
+  "momos_health",
+  "momos_agency_snapshot",
+  "momos_meta_observatory",
+  "momos_creative_context",
+  "momos_submit_proposals",
+]

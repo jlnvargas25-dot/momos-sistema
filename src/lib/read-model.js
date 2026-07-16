@@ -315,6 +315,39 @@ export async function fetchCatalogos() {
     });
   }
 
+  const actionCenterProbe = await supabase.rpc("centro_acciones_agencia_disponible");
+  const actionCenterProbeMissing = actionCenterProbe.error &&
+    (actionCenterProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(actionCenterProbe.error.message || ""));
+  if (actionCenterProbe.error && !actionCenterProbeMissing) throw new Error(actionCenterProbe.error.message);
+  const agencyActionQueueReady = !actionCenterProbeMissing && actionCenterProbe.data === true;
+  let agencyActionQueue = null;
+  if (agencyActionQueueReady) {
+    const queueResult = await supabase.rpc("obtener_bandeja_acciones_agencia");
+    if (queueResult.error) throw new Error(queueResult.error.message);
+    agencyActionQueue = queueResult.data || null;
+  }
+
+  const actionOutcomeProbe = await supabase.rpc("resultados_acciones_agencia_disponibles");
+  const actionOutcomeProbeMissing = actionOutcomeProbe.error &&
+    (actionOutcomeProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(actionOutcomeProbe.error.message || ""));
+  if (actionOutcomeProbe.error && !actionOutcomeProbeMissing) throw new Error(actionOutcomeProbe.error.message);
+  const agencyActionOutcomesReady = !actionOutcomeProbeMissing && actionOutcomeProbe.data === true;
+  let agencyActionOutcomes = [];
+  if (agencyActionOutcomesReady) {
+    const outcomeResult = await supabase.from("agency_action_outcomes")
+      .select("id,decision_id,action_code,completion_status,target_decision_status,observed_result,evidence_kind,evidence_id,evidence_snapshot,actual_cost,summary,blocker_code,external_execution,fingerprint,created_by,created_at")
+      .order("created_at", { ascending: false }).limit(200);
+    if (outcomeResult.error) throw new Error(outcomeResult.error.message);
+    agencyActionOutcomes = (outcomeResult.data || []).map((row) => ({
+      id: row.id, decisionId: row.decision_id, actionCode: row.action_code, completionStatus: row.completion_status,
+      targetDecisionStatus: row.target_decision_status, observedResult: row.observed_result,
+      evidenceKind: row.evidence_kind, evidenceId: row.evidence_id, evidence: row.evidence_snapshot || {},
+      actualCost: Number(row.actual_cost || 0), summary: row.summary, blockerCode: row.blocker_code,
+      externalExecution: Boolean(row.external_execution), fingerprint: row.fingerprint,
+      createdBy: row.created_by, createdAt: tsBogota(row.created_at),
+    }));
+  }
+
   const collaborationProbe = await supabase.rpc("mesa_agencia_disponible");
   const collaborationProbeMissing = collaborationProbe.error &&
     (collaborationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(collaborationProbe.error.message || ""));
@@ -379,6 +412,43 @@ export async function fetchCatalogos() {
     }));
   }
 
+  const motionProbe = await supabase.rpc("motion_experience_disponible");
+  const motionProbeMissing = motionProbe.error &&
+    (motionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(motionProbe.error.message || ""));
+  if (motionProbe.error && !motionProbeMissing) throw new Error(motionProbe.error.message);
+  const agencyMotionReady = !motionProbeMissing && motionProbe.data === true;
+  let agencyMotionPlans = []; let agencyMotionRecipes = []; let agencyMotionObservations = [];
+  if (agencyMotionReady) {
+    const [motionPlanResult, motionRecipeResult, motionObservationResult] = await Promise.all([
+      supabase.from("agency_motion_plans").select("id,plan_key,storyboard_id,version,status,grammar_primary,grammar_secondary,continuity_ledger,plan_snapshot,plan_fingerprint,estimated_preview_cost_cop,source_kind,prepared_by,prepared_by_agent,prepared_at,reviewed_by,reviewed_at,review_note").order("prepared_at", { ascending: false }).limit(100),
+      supabase.from("agency_motion_recipes").select("id,plan_id,storyboard_id,shot_id,shot_number,shot_fingerprint,selected_key,proposals,selected_recipe,recipe_fingerprint,estimated_preview_cost_cop,created_at").order("shot_number", { ascending: true }).limit(1000),
+      supabase.from("agency_motion_observations").select("id,observation_key,plan_id,recipe_id,shot_id,job_id,quality_review_id,provider,model,model_version,effective_parameters,actual_cost_cop,runtime_sec,attempts,errors,manual_corrections,qa_snapshot,attention_snapshot,observation_fingerprint,recorded_by_connector,recorded_at").order("recorded_at", { ascending: false }).limit(1000),
+    ]);
+    if (motionPlanResult.error) throw new Error(motionPlanResult.error.message);
+    if (motionRecipeResult.error) throw new Error(motionRecipeResult.error.message);
+    if (motionObservationResult.error) throw new Error(motionObservationResult.error.message);
+    agencyMotionPlans = (motionPlanResult.data || []).map((row) => ({
+      id: row.id, planKey: row.plan_key, storyboardId: row.storyboard_id, version: Number(row.version), status: row.status,
+      grammarPrimary: row.grammar_primary, grammarSecondary: row.grammar_secondary, continuityLedger: row.continuity_ledger || {},
+      snapshot: row.plan_snapshot || {}, fingerprint: row.plan_fingerprint, estimatedPreviewCostCop: Number(row.estimated_preview_cost_cop || 0),
+      sourceKind: row.source_kind, preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent), preparedAt: tsBogota(row.prepared_at),
+      reviewedBy: nz(row.reviewed_by), reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+    }));
+    agencyMotionRecipes = (motionRecipeResult.data || []).map((row) => ({
+      id: row.id, planId: row.plan_id, storyboardId: row.storyboard_id, shotId: row.shot_id, shotNumber: Number(row.shot_number),
+      shotFingerprint: row.shot_fingerprint, selectedKey: row.selected_key, proposals: row.proposals || [], selectedRecipe: row.selected_recipe || {},
+      fingerprint: row.recipe_fingerprint, estimatedPreviewCostCop: Number(row.estimated_preview_cost_cop || 0), createdAt: tsBogota(row.created_at),
+    }));
+    agencyMotionObservations = (motionObservationResult.data || []).map((row) => ({
+      id: row.id, observationKey: row.observation_key, planId: row.plan_id, recipeId: row.recipe_id, shotId: row.shot_id,
+      jobId: row.job_id, qualityReviewId: row.quality_review_id, provider: row.provider, model: row.model, modelVersion: row.model_version,
+      effectiveParameters: row.effective_parameters || {}, actualCostCop: Number(row.actual_cost_cop || 0), runtimeSec: Number(row.runtime_sec || 0),
+      attempts: Number(row.attempts || 0), errors: row.errors || [], manualCorrections: row.manual_corrections || [],
+      qaSnapshot: row.qa_snapshot || {}, attentionSnapshot: row.attention_snapshot || {}, fingerprint: row.observation_fingerprint,
+      recordedByConnector: row.recorded_by_connector, recordedAt: tsBogota(row.recorded_at),
+    }));
+  }
+
   const sceneRouterProbe = await supabase.rpc("enrutador_escenas_disponible");
   const sceneRouterProbeMissing = sceneRouterProbe.error &&
     (sceneRouterProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(sceneRouterProbe.error.message || ""));
@@ -387,16 +457,319 @@ export async function fetchCatalogos() {
   let agencySceneRoutingPlans = [];
   if (agencySceneRouterReady) {
     const routeResult = await supabase.from("agency_scene_routing_plans")
-      .select("id,plan_key,storyboard_id,version,status,plan_snapshot,plan_fingerprint,total_estimated_cost_cop,total_cost_cap_cop,prepared_by,prepared_by_agent,created_at,resolved_by,resolved_at,resolution_note,job_ids")
+      .select("id,plan_key,storyboard_id,motion_plan_id,motion_plan_fingerprint,version,status,plan_snapshot,plan_fingerprint,total_estimated_cost_cop,total_cost_cap_cop,prepared_by,prepared_by_agent,created_at,resolved_by,resolved_at,resolution_note,job_ids")
       .order("created_at", { ascending: false }).limit(100);
     if (routeResult.error) throw new Error(routeResult.error.message);
     agencySceneRoutingPlans = (routeResult.data || []).map((row) => ({
-      id: row.id, planKey: row.plan_key, storyboardId: row.storyboard_id, version: Number(row.version), status: row.status,
+      id: row.id, planKey: row.plan_key, storyboardId: row.storyboard_id, motionPlanId: row.motion_plan_id,
+      motionPlanFingerprint: nz(row.motion_plan_fingerprint), version: Number(row.version), status: row.status,
       snapshot: row.plan_snapshot || {}, fingerprint: row.plan_fingerprint,
       totalEstimatedCostCop: Number(row.total_estimated_cost_cop || 0), totalCostCapCop: Number(row.total_cost_cap_cop || 0),
       preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent), createdAt: tsBogota(row.created_at),
       resolvedBy: nz(row.resolved_by), resolvedAt: tsBogota(row.resolved_at), resolutionNote: nz(row.resolution_note), jobIds: row.job_ids || [],
     }));
+  }
+
+  const qualityProbe = await supabase.rpc("calidad_postproduccion_disponible");
+  const qualityProbeMissing = qualityProbe.error &&
+    (qualityProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(qualityProbe.error.message || ""));
+  if (qualityProbe.error && !qualityProbeMissing) throw new Error(qualityProbe.error.message);
+  const agencyQualityReady = !qualityProbeMissing && qualityProbe.data === true;
+  let agencySceneQualityReviews = []; let agencyPostproductionPackages = [];
+  if (agencyQualityReady) {
+    const [qualityResult, packageResult] = await Promise.all([
+      supabase.from("agency_scene_quality_reviews")
+        .select("id,review_key,routing_plan_id,storyboard_id,shot_id,job_id,output_asset_id,source_kind,status,failure_type,scores,score_total,findings,continuity_observation,evidence_snapshot,review_fingerprint,prepared_by,prepared_by_agent,created_at,resolved_by,resolved_at,resolution_note")
+        .order("created_at", { ascending: false }).limit(300),
+      supabase.from("agency_postproduction_packages")
+        .select("id,package_key,storyboard_id,routing_plan_id,version,status,package_snapshot,package_fingerprint,prepared_by,prepared_at,reviewed_by,reviewed_at,review_note")
+        .order("prepared_at", { ascending: false }).limit(100),
+    ]);
+    if (qualityResult.error) throw new Error(qualityResult.error.message);
+    if (packageResult.error) throw new Error(packageResult.error.message);
+    agencySceneQualityReviews = (qualityResult.data || []).map((row) => ({
+      id: row.id, reviewKey: row.review_key, routingPlanId: row.routing_plan_id, storyboardId: row.storyboard_id,
+      shotId: row.shot_id, jobId: row.job_id, outputAssetId: row.output_asset_id, sourceKind: row.source_kind,
+      status: row.status, failureType: row.failure_type, scores: row.scores || {}, scoreTotal: Number(row.score_total || 0),
+      findings: row.findings || [], continuityObservation: row.continuity_observation,
+      evidenceSnapshot: row.evidence_snapshot || {}, fingerprint: row.review_fingerprint,
+      preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent), createdAt: tsBogota(row.created_at),
+      resolvedBy: nz(row.resolved_by), resolvedAt: tsBogota(row.resolved_at), resolutionNote: nz(row.resolution_note),
+    }));
+    agencyPostproductionPackages = (packageResult.data || []).map((row) => ({
+      id: row.id, packageKey: row.package_key, storyboardId: row.storyboard_id, routingPlanId: row.routing_plan_id,
+      version: Number(row.version), status: row.status, snapshot: row.package_snapshot || {}, fingerprint: row.package_fingerprint,
+      preparedBy: row.prepared_by, preparedAt: tsBogota(row.prepared_at), reviewedBy: nz(row.reviewed_by),
+      reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+    }));
+  }
+
+  const retentionProbe = await supabase.rpc("retencion_guiones_disponible");
+  const retentionProbeMissing = retentionProbe.error &&
+    (retentionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(retentionProbe.error.message || ""));
+  if (retentionProbe.error && !retentionProbeMissing) throw new Error(retentionProbe.error.message);
+  const agencyRetentionReady = !retentionProbeMissing && retentionProbe.data === true;
+  let agencyRetentionScripts = []; let agencyRetentionHooks = []; let agencyRetentionLoops = [];
+  let agencyRetentionExperiments = []; let agencyRetentionMeasurements = [];
+  if (agencyRetentionReady) {
+    const [scriptResult, hookResult, loopResult, experimentResult, measurementResult] = await Promise.all([
+      supabase.from("agency_retention_scripts")
+        .select("id,script_key,contract_id,version,title,status,platform,target_duration_sec,objective,audience,promise,payoff,source_kind,script_snapshot,script_fingerprint,prepared_by,prepared_by_agent,prepared_at,reviewed_by,reviewed_at,review_note")
+        .order("prepared_at", { ascending: false }).limit(200),
+      supabase.from("agency_retention_hooks")
+        .select("id,script_id,variant_key,label,mechanism,hook_text,opening_visual,proof,scores,score_total,selected,hook_fingerprint")
+        .order("id", { ascending: true }).limit(1000),
+      supabase.from("agency_retention_loops")
+        .select("id,script_id,loop_key,question,open_sec,partial_payoff_sec,close_sec,payoff,loop_fingerprint")
+        .order("open_sec", { ascending: true }).limit(1000),
+      supabase.from("agency_retention_experiments")
+        .select("id,experiment_key,script_id,control_hook_id,challenger_hook_id,declared_variable,hypothesis,primary_metric,status,experiment_snapshot,experiment_fingerprint,created_by,created_at,resolved_by,resolved_at,resolution,winner_hook_id")
+        .order("created_at", { ascending: false }).limit(300),
+      supabase.from("agency_retention_measurements")
+        .select("id,measurement_key,experiment_id,hook_id,content_post_id,platform,captured_at,sample_size,impressions,starts,views_3s,views_25,views_50,views_75,views_100,watch_time_sec,clicks,paid_orders,attributed_revenue,attributed_margin,incremental_profit,retention_curve,attribution_snapshot,publication_fingerprint,source_kind,recorded_by,recorded_by_connector,created_at")
+        .order("captured_at", { ascending: false }).limit(1000),
+    ]);
+    for (const result of [scriptResult, hookResult, loopResult, experimentResult, measurementResult]) {
+      if (result.error) throw new Error(result.error.message);
+    }
+    agencyRetentionScripts = (scriptResult.data || []).map((row) => ({
+      id: row.id, scriptKey: row.script_key, contractId: row.contract_id, version: Number(row.version), title: row.title,
+      status: row.status, platform: row.platform, targetDurationSec: Number(row.target_duration_sec || 0), objective: row.objective,
+      audience: row.audience, promise: row.promise, payoff: row.payoff, sourceKind: row.source_kind, snapshot: row.script_snapshot || {},
+      fingerprint: row.script_fingerprint, preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent),
+      preparedAt: tsBogota(row.prepared_at), reviewedBy: nz(row.reviewed_by), reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+    }));
+    agencyRetentionHooks = (hookResult.data || []).map((row) => ({
+      id: row.id, scriptId: row.script_id, variantKey: row.variant_key, label: row.label, mechanism: row.mechanism,
+      hookText: row.hook_text, openingVisual: row.opening_visual, proof: row.proof, scores: row.scores || {},
+      scoreTotal: Number(row.score_total || 0), selected: Boolean(row.selected), fingerprint: row.hook_fingerprint,
+    }));
+    agencyRetentionLoops = (loopResult.data || []).map((row) => ({
+      id: row.id, scriptId: row.script_id, loopKey: row.loop_key, question: row.question, openSec: Number(row.open_sec || 0),
+      partialPayoffSec: row.partial_payoff_sec == null ? null : Number(row.partial_payoff_sec), closeSec: Number(row.close_sec || 0),
+      payoff: row.payoff, fingerprint: row.loop_fingerprint,
+    }));
+    agencyRetentionExperiments = (experimentResult.data || []).map((row) => ({
+      id: row.id, experimentKey: row.experiment_key, scriptId: row.script_id, controlHookId: row.control_hook_id,
+      challengerHookId: row.challenger_hook_id, declaredVariable: row.declared_variable, hypothesis: row.hypothesis,
+      primaryMetric: row.primary_metric, status: row.status, snapshot: row.experiment_snapshot || {}, fingerprint: row.experiment_fingerprint,
+      createdBy: row.created_by, createdAt: tsBogota(row.created_at), resolvedBy: nz(row.resolved_by), resolvedAt: tsBogota(row.resolved_at),
+      resolution: nz(row.resolution), winnerHookId: row.winner_hook_id,
+    }));
+    agencyRetentionMeasurements = (measurementResult.data || []).map((row) => ({
+      id: row.id, measurementKey: row.measurement_key, experimentId: row.experiment_id, hookId: row.hook_id,
+      contentPostId: row.content_post_id, platform: row.platform, capturedAt: tsBogota(row.captured_at), sampleSize: Number(row.sample_size || 0),
+      impressions: Number(row.impressions || 0), starts: Number(row.starts || 0), views3s: Number(row.views_3s || 0),
+      views25: Number(row.views_25 || 0), views50: Number(row.views_50 || 0), views75: Number(row.views_75 || 0), views100: Number(row.views_100 || 0),
+      watchTimeSec: Number(row.watch_time_sec || 0), clicks: Number(row.clicks || 0), paidOrders: Number(row.paid_orders || 0),
+      attributedRevenue: Number(row.attributed_revenue || 0), attributedMargin: Number(row.attributed_margin || 0), incrementalProfit: Number(row.incremental_profit || 0),
+      retentionCurve: row.retention_curve || [], attributionSnapshot: row.attribution_snapshot || {}, publicationFingerprint: row.publication_fingerprint,
+      sourceKind: row.source_kind, recordedBy: nz(row.recorded_by), recordedByConnector: nz(row.recorded_by_connector), createdAt: tsBogota(row.created_at),
+    }));
+  }
+
+  const loopLearningProbe = await supabase.rpc("retencion_loops_disponible");
+  const loopLearningProbeMissing = loopLearningProbe.error &&
+    (loopLearningProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(loopLearningProbe.error.message || ""));
+  if (loopLearningProbe.error && !loopLearningProbeMissing) throw new Error(loopLearningProbe.error.message);
+  const agencyLoopLearningReady = !loopLearningProbeMissing && loopLearningProbe.data === true;
+  let agencyRetentionDiagnostics = []; let agencyRetentionLearnings = [];
+  if (agencyLoopLearningReady) {
+    const [diagnosticResult, learningResult] = await Promise.all([
+      supabase.from("agency_retention_diagnostics")
+        .select("id,diagnostic_key,measurement_id,experiment_id,script_id,hook_id,status,tested_variable,primary_signal,hypothesis,recommendation,confidence,diagnostic_snapshot,diagnostic_fingerprint,source_kind,prepared_by,prepared_by_agent,prepared_at,reviewed_by,reviewed_at,review_note")
+        .order("prepared_at", { ascending: false }).limit(500),
+      supabase.from("agency_retention_learnings")
+        .select("id,learning_key,diagnostic_id,platform,audience,target_duration_sec,tested_variable,statement,scope_snapshot,evidence_snapshot,learning_fingerprint,approved_by,approved_at")
+        .order("approved_at", { ascending: false }).limit(500),
+    ]);
+    for (const result of [diagnosticResult, learningResult]) if (result.error) throw new Error(result.error.message);
+    agencyRetentionDiagnostics = (diagnosticResult.data || []).map((row) => ({
+      id: row.id, diagnosticKey: row.diagnostic_key, measurementId: row.measurement_id, experimentId: row.experiment_id,
+      scriptId: row.script_id, hookId: row.hook_id, status: row.status, testedVariable: row.tested_variable,
+      primarySignal: row.primary_signal, hypothesis: row.hypothesis, recommendation: row.recommendation, confidence: row.confidence,
+      snapshot: row.diagnostic_snapshot || {}, fingerprint: row.diagnostic_fingerprint, sourceKind: row.source_kind,
+      preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent), preparedAt: tsBogota(row.prepared_at),
+      reviewedBy: nz(row.reviewed_by), reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+    }));
+    agencyRetentionLearnings = (learningResult.data || []).map((row) => ({
+      id: row.id, learningKey: row.learning_key, diagnosticId: row.diagnostic_id, platform: row.platform, audience: row.audience,
+      targetDurationSec: Number(row.target_duration_sec || 0), testedVariable: row.tested_variable, statement: row.statement,
+      scope: row.scope_snapshot || {}, evidence: row.evidence_snapshot || {}, fingerprint: row.learning_fingerprint,
+      approvedBy: row.approved_by, approvedAt: tsBogota(row.approved_at),
+    }));
+  }
+
+  const metaObservatoryProbe = await supabase.rpc("observatorio_meta_disponible");
+  const metaObservatoryProbeMissing = metaObservatoryProbe.error &&
+    (metaObservatoryProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaObservatoryProbe.error.message || ""));
+  if (metaObservatoryProbe.error && !metaObservatoryProbeMissing) throw new Error(metaObservatoryProbe.error.message);
+  const agencyMetaReady = !metaObservatoryProbeMissing && metaObservatoryProbe.data === true;
+  let agencyMetaPolicies = []; let agencyMetaSnapshots = []; let agencyMetaDiagnostics = [];
+  if (agencyMetaReady) {
+    const [policyResult, snapshotResult, diagnosticResult] = await Promise.all([
+      supabase.from("agency_meta_policies")
+        .select("id,policy_key,version,status,source_label,market,currency,effective_from,effective_until,targets,thresholds,policy_fingerprint,created_by,created_at")
+        .order("version", { ascending: false }).limit(100),
+      supabase.from("agency_meta_signal_snapshots")
+        .select("id,snapshot_key,account_external_id,account_label,entity_type,entity_external_id,objective,currency,timezone,window_start,window_end,source_captured_at,local_campaign_id,local_creative_id,local_post_id,metrics,pixel_events,catalog_products,local_truth,publication_fingerprint,snapshot_fingerprint,recorded_by_connector,created_at")
+        .order("window_end", { ascending: false }).limit(500),
+      supabase.from("agency_meta_diagnostics")
+        .select("id,diagnostic_key,snapshot_id,policy_id,status,what_happened,why_hypotheses,recommended_actions,evidence_snapshot,confidence,source_kind,diagnostic_fingerprint,prepared_by,prepared_by_agent,prepared_at,reviewed_by,reviewed_at,review_note")
+        .order("prepared_at", { ascending: false }).limit(500),
+    ]);
+    for (const result of [policyResult, snapshotResult, diagnosticResult]) if (result.error) throw new Error(result.error.message);
+    agencyMetaPolicies = (policyResult.data || []).map((row) => ({
+      id: row.id, policyKey: row.policy_key, version: Number(row.version), status: row.status, sourceLabel: row.source_label,
+      market: row.market, currency: row.currency, effectiveFrom: row.effective_from, effectiveUntil: nz(row.effective_until),
+      targets: row.targets || {}, thresholds: row.thresholds || {}, fingerprint: row.policy_fingerprint,
+      createdBy: nz(row.created_by), createdAt: tsBogota(row.created_at),
+    }));
+    agencyMetaSnapshots = (snapshotResult.data || []).map((row) => ({
+      id: row.id, snapshotKey: row.snapshot_key, accountExternalId: row.account_external_id, accountLabel: row.account_label,
+      entityType: row.entity_type, entityExternalId: row.entity_external_id, objective: row.objective, currency: row.currency,
+      timezone: row.timezone, windowStart: row.window_start, windowEnd: row.window_end, sourceCapturedAt: tsBogota(row.source_captured_at),
+      localCampaignId: nz(row.local_campaign_id), localCreativeId: nz(row.local_creative_id), localPostId: nz(row.local_post_id),
+      metrics: row.metrics || {}, pixelEvents: row.pixel_events || [], catalogProducts: (row.catalog_products || []).map((item) => ({
+        productExternalId: item.product_external_id || "", localProductId: item.local_product_id || "", name: item.name || "",
+        spend: Number(item.spend || 0), momosTruth: item.momos_truth ? {
+          availableStock: Number(item.momos_truth.available_stock || 0), paidUnits: Number(item.momos_truth.paid_units || 0),
+          paidRevenue: Number(item.momos_truth.paid_revenue || 0), grossMargin: Number(item.momos_truth.gross_margin || 0),
+          active: Boolean(item.momos_truth.active), expired: Boolean(item.momos_truth.expired), source: item.momos_truth.source || "MOMOS OPS",
+        } : {},
+      })), localTruth: {
+        paidOrders: Number(row.local_truth?.paid_orders || 0), paidRevenue: Number(row.local_truth?.paid_revenue || 0),
+        grossMargin: Number(row.local_truth?.gross_margin || 0), linked: Boolean(row.local_truth?.linked), source: row.local_truth?.source || "MOMOS OPS",
+      },
+      publicationFingerprint: nz(row.publication_fingerprint), fingerprint: row.snapshot_fingerprint,
+      recordedByConnector: row.recorded_by_connector, createdAt: tsBogota(row.created_at),
+    }));
+    agencyMetaDiagnostics = (diagnosticResult.data || []).map((row) => ({
+      id: row.id, diagnosticKey: row.diagnostic_key, snapshotId: row.snapshot_id, policyId: row.policy_id, status: row.status,
+      whatHappened: row.what_happened || {}, whyHypotheses: row.why_hypotheses || [], recommendedActions: row.recommended_actions || [],
+      evidence: row.evidence_snapshot || {}, confidence: row.confidence, sourceKind: row.source_kind, fingerprint: row.diagnostic_fingerprint,
+      preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent), preparedAt: tsBogota(row.prepared_at),
+      reviewedBy: nz(row.reviewed_by), reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+    }));
+  }
+
+  const metaIncrementalityProbe = await supabase.rpc("incrementalidad_meta_disponible");
+  const metaIncrementalityProbeMissing = metaIncrementalityProbe.error &&
+    (metaIncrementalityProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaIncrementalityProbe.error.message || ""));
+  if (metaIncrementalityProbe.error && !metaIncrementalityProbeMissing) throw new Error(metaIncrementalityProbe.error.message);
+  const agencyMetaIncrementalityReady = !metaIncrementalityProbeMissing && metaIncrementalityProbe.data === true;
+  let agencyMetaLiftStudies = []; let agencyMetaLiftMeasurements = [];
+  if (agencyMetaIncrementalityReady) {
+    const [studyResult, measurementResult] = await Promise.all([
+      supabase.from("agency_meta_lift_studies")
+        .select("id,study_key,diagnostic_id,snapshot_id,campaign_id,external_study_id,design,lifecycle_scope,status,window_start,window_end,minimum_per_arm,hypothesis,assignment_snapshot,guardrails,study_fingerprint,source_kind,prepared_by,prepared_by_agent,prepared_at,reviewed_by,reviewed_at,review_note")
+        .order("prepared_at", { ascending: false }).limit(300),
+      supabase.from("agency_meta_lift_measurements")
+        .select("id,measurement_key,study_id,status,captured_at,control_cell,exposed_cell,incremental_spend,platform_result,local_lifecycle_snapshot,result_snapshot,measurement_fingerprint,recorded_by_connector,recorded_at,reviewed_by,reviewed_at,review_note")
+        .order("recorded_at", { ascending: false }).limit(500),
+    ]);
+    for (const result of [studyResult, measurementResult]) if (result.error) throw new Error(result.error.message);
+    agencyMetaLiftStudies = (studyResult.data || []).map((row) => ({ id: row.id, studyKey: row.study_key, diagnosticId: row.diagnostic_id,
+      snapshotId: row.snapshot_id, campaignId: row.campaign_id, externalStudyId: row.external_study_id, design: row.design,
+      lifecycleScope: row.lifecycle_scope, status: row.status, windowStart: row.window_start, windowEnd: row.window_end,
+      minimumPerArm: Number(row.minimum_per_arm || 100), hypothesis: row.hypothesis, assignment: row.assignment_snapshot || {},
+      guardrails: row.guardrails || {}, fingerprint: row.study_fingerprint, sourceKind: row.source_kind, preparedBy: nz(row.prepared_by),
+      preparedByAgent: nz(row.prepared_by_agent), preparedAt: tsBogota(row.prepared_at), reviewedBy: nz(row.reviewed_by),
+      reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note) }));
+    agencyMetaLiftMeasurements = (measurementResult.data || []).map((row) => ({ id: row.id, measurementKey: row.measurement_key,
+      studyId: row.study_id, status: row.status, capturedAt: tsBogota(row.captured_at), control: row.control_cell || {}, exposed: row.exposed_cell || {},
+      incrementalSpend: Number(row.incremental_spend || 0), platformResult: row.platform_result || {}, lifecycle: row.local_lifecycle_snapshot || {},
+      result: { ...(row.result_snapshot || {}), sampleSufficient: Boolean(row.result_snapshot?.sample_sufficient),
+        significant: Boolean(row.result_snapshot?.statistically_significant), causalClaimAllowed: Boolean(row.result_snapshot?.causal_claim_allowed),
+        controlRatePct: Number(row.result_snapshot?.control_rate_pct || 0), exposedRatePct: Number(row.result_snapshot?.exposed_rate_pct || 0),
+        rateDifferencePp: Number(row.result_snapshot?.rate_difference_pp || 0), liftPct: row.result_snapshot?.lift_pct == null ? null : Number(row.result_snapshot.lift_pct),
+        incrementalBuyers: Number(row.result_snapshot?.incremental_buyers || 0), incrementalMargin: Number(row.result_snapshot?.incremental_margin || 0),
+        incrementalProfit: Number(row.result_snapshot?.incremental_profit || 0) }, fingerprint: row.measurement_fingerprint,
+      recordedByConnector: row.recorded_by_connector, recordedAt: tsBogota(row.recorded_at), reviewedBy: nz(row.reviewed_by),
+      reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note) }));
+  }
+
+  const metaInvestmentProbe = await supabase.rpc("escenarios_inversion_meta_disponible");
+  const metaInvestmentProbeMissing = metaInvestmentProbe.error &&
+    (metaInvestmentProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaInvestmentProbe.error.message || ""));
+  if (metaInvestmentProbe.error && !metaInvestmentProbeMissing) throw new Error(metaInvestmentProbe.error.message);
+  const agencyMetaInvestmentReady = !metaInvestmentProbeMissing && metaInvestmentProbe.data === true;
+  let agencyMetaInvestmentScenarios = [];
+  if (agencyMetaInvestmentReady) {
+    const scenarioResult = await supabase.from("agency_meta_investment_scenarios")
+      .select("id,scenario_key,measurement_id,study_id,campaign_id,product_id,status,horizon_days,recommended_option,evidence_snapshot,options_snapshot,guardrails,scenario_fingerprint,source_kind,prepared_by,prepared_by_agent,prepared_at,reviewed_by,reviewed_at,review_note")
+      .order("prepared_at", { ascending: false }).limit(300);
+    if (scenarioResult.error) throw new Error(scenarioResult.error.message);
+    agencyMetaInvestmentScenarios = (scenarioResult.data || []).map((row) => {
+      const evidence = row.evidence_snapshot || {}; const operations = evidence.operations || {}; const limits = evidence.limits || {};
+      return { id: row.id, scenarioKey: row.scenario_key, measurementId: row.measurement_id, studyId: row.study_id,
+        campaignId: row.campaign_id, productId: nz(row.product_id), status: row.status, horizonDays: Number(row.horizon_days || 7),
+        recommendedOption: row.recommended_option, evidence: { ...evidence, capturedAt: tsBogota(evidence.captured_at),
+          stockBlocked: Boolean(operations.stock_blocked), operations: { ...operations,
+            exactAvailable: Number(operations.exact_available || 0), expiringSoon: Number(operations.expiring_within_2d || 0),
+            inProcess: Number(operations.in_process || 0), reservations: Number(operations.reservations || 0),
+            pendingProduction: Number(operations.pending_production || 0), kitchenQueue: Number(operations.kitchen_queue || 0) },
+          limits: { ...limits, dailyBudgetLimit: Number(limits.daily_budget_limit || 0), campaignBudgetLimit: Number(limits.campaign_budget_limit || 0),
+            scaleStepPct: Number(limits.scale_step_pct || 0) } },
+        options: (row.options_snapshot || []).map((option) => ({ ...option, proposedBudget: Number(option.proposed_budget || 0),
+          deltaPct: Number(option.delta_pct || 0), blockers: option.blockers || [], assumptions: option.assumptions || [] })),
+        guardrails: row.guardrails || {}, fingerprint: row.scenario_fingerprint, sourceKind: row.source_kind,
+        preparedBy: nz(row.prepared_by), preparedByAgent: nz(row.prepared_by_agent), preparedAt: tsBogota(row.prepared_at),
+        reviewedBy: nz(row.reviewed_by), reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note) };
+    });
+  }
+
+  const metaAuthorizationProbe = await supabase.rpc("autorizacion_inversion_meta_disponible");
+  const metaAuthorizationProbeMissing = metaAuthorizationProbe.error &&
+    (metaAuthorizationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaAuthorizationProbe.error.message || ""));
+  if (metaAuthorizationProbe.error && !metaAuthorizationProbeMissing) throw new Error(metaAuthorizationProbe.error.message);
+  const agencyMetaAuthorizationReady = !metaAuthorizationProbeMissing && metaAuthorizationProbe.data === true;
+  let agencyMetaInvestmentAuthorizations = []; let agencyMetaInvestmentExecutionJobs = [];
+  if (agencyMetaAuthorizationReady) {
+    const [authorizationResult, executionResult] = await Promise.all([
+      supabase.from("agency_meta_investment_authorizations")
+        .select("id,authorization_key,scenario_id,measurement_id,campaign_id,product_id,selected_option,audience_external_id,target_budget,execution_mode,status,justification,valid_from,valid_until,sealed_snapshot,snapshot_fingerprint,requested_by,requested_at,authorized_by,authorized_at,reviewed_by,reviewed_at,review_note,revoked_by,revoked_at,revoke_reason")
+        .order("requested_at", { ascending: false }).limit(300),
+      supabase.from("agency_meta_investment_execution_jobs")
+        .select("id,authorization_id,attempt,idempotency_key,execution_mode,status,worker_id,lease_expires_at,dispatched_at,completed_at,receipt,error_message,created_at,updated_at")
+        .order("created_at", { ascending: false }).limit(300),
+    ]);
+    if (authorizationResult.error) throw new Error(authorizationResult.error.message);
+    if (executionResult.error) throw new Error(executionResult.error.message);
+    agencyMetaInvestmentAuthorizations = (authorizationResult.data || []).map((row) => ({ id: row.id,
+      authorizationKey: row.authorization_key, scenarioId: row.scenario_id, measurementId: row.measurement_id,
+      campaignId: row.campaign_id, productId: nz(row.product_id), selectedOption: row.selected_option,
+      audienceExternalId: row.audience_external_id, targetBudget: Number(row.target_budget || 0), executionMode: row.execution_mode,
+      status: row.status, justification: row.justification, validFrom: tsBogota(row.valid_from), validUntil: tsBogota(row.valid_until),
+      snapshot: row.sealed_snapshot || {}, fingerprint: row.snapshot_fingerprint, requestedBy: row.requested_by,
+      requestedAt: tsBogota(row.requested_at), authorizedBy: nz(row.authorized_by), authorizedAt: tsBogota(row.authorized_at),
+      reviewedBy: nz(row.reviewed_by), reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+      revokedBy: nz(row.revoked_by), revokedAt: tsBogota(row.revoked_at), revokeReason: nz(row.revoke_reason) }));
+    agencyMetaInvestmentExecutionJobs = (executionResult.data || []).map((row) => ({ id: row.id,
+      authorizationId: row.authorization_id, attempt: Number(row.attempt || 1), idempotencyKey: row.idempotency_key,
+      executionMode: row.execution_mode, status: row.status, workerId: nz(row.worker_id), leaseExpiresAt: tsBogota(row.lease_expires_at),
+      dispatchedAt: tsBogota(row.dispatched_at), completedAt: tsBogota(row.completed_at), receipt: row.receipt || {},
+      errorMessage: nz(row.error_message), createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at) }));
+  }
+
+  const metaConnectorProbe = await supabase.rpc("meta_conector_dry_run_disponible");
+  const metaConnectorProbeMissing = metaConnectorProbe.error &&
+    (metaConnectorProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaConnectorProbe.error.message || ""));
+  if (metaConnectorProbe.error && !metaConnectorProbeMissing) throw new Error(metaConnectorProbe.error.message);
+  const agencyMetaConnectorReady = !metaConnectorProbeMissing && metaConnectorProbe.data === true;
+  let agencyMetaConnectorDryRuns = [];
+  if (agencyMetaConnectorReady) {
+    const result = await supabase.from("agency_meta_connector_dry_runs")
+      .select("id,dry_run_key,authorization_id,campaign_id,campaign_external_id,audience_external_id,ad_account_id,api_version,mode,status,idempotency_key,prepared_by,prepared_at,worker_id,lease_expires_at,started_at,completed_at,receipt,error_message,updated_at")
+      .order("prepared_at", { ascending: false }).limit(300);
+    if (result.error) throw new Error(result.error.message);
+    agencyMetaConnectorDryRuns = (result.data || []).map((row) => ({ id: row.id, dryRunKey: row.dry_run_key,
+      authorizationId: row.authorization_id, campaignId: row.campaign_id, campaignExternalId: row.campaign_external_id,
+      audienceExternalId: row.audience_external_id, adAccountId: row.ad_account_id, apiVersion: row.api_version,
+      mode: row.mode, status: row.status, idempotencyKey: row.idempotency_key, preparedBy: row.prepared_by,
+      preparedAt: tsBogota(row.prepared_at), workerId: nz(row.worker_id), leaseExpiresAt: tsBogota(row.lease_expires_at),
+      startedAt: tsBogota(row.started_at), completedAt: tsBogota(row.completed_at), receipt: row.receipt || {},
+      errorMessage: nz(row.error_message), updatedAt: tsBogota(row.updated_at) }));
   }
 
   const distributionProbe = await supabase.rpc("distribucion_comercial_disponible");
@@ -586,9 +959,19 @@ export async function fetchCatalogos() {
 
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
-    agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals,
+    agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals, agencyActionQueueReady, agencyActionQueue,
+    agencyActionOutcomesReady, agencyActionOutcomes,
     agencyCollaborationReady, agencyCollaborationRooms, agencyCollaborationEntries, agencyCreativeContracts,
-    agencySceneStudioReady, agencyStoryboards, agencyStoryboardShots, agencySceneRouterReady, agencySceneRoutingPlans,
+    agencySceneStudioReady, agencyStoryboards, agencyStoryboardShots, agencyMotionReady, agencyMotionPlans, agencyMotionRecipes,
+    agencyMotionObservations, agencySceneRouterReady, agencySceneRoutingPlans,
+    agencyQualityReady, agencySceneQualityReviews, agencyPostproductionPackages,
+    agencyRetentionReady, agencyRetentionScripts, agencyRetentionHooks, agencyRetentionLoops, agencyRetentionExperiments, agencyRetentionMeasurements,
+    agencyLoopLearningReady, agencyRetentionDiagnostics, agencyRetentionLearnings,
+    agencyMetaReady, agencyMetaPolicies, agencyMetaSnapshots, agencyMetaDiagnostics,
+    agencyMetaIncrementalityReady, agencyMetaLiftStudies, agencyMetaLiftMeasurements,
+    agencyMetaInvestmentReady, agencyMetaInvestmentScenarios,
+    agencyMetaAuthorizationReady, agencyMetaInvestmentAuthorizations, agencyMetaInvestmentExecutionJobs,
+    agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }

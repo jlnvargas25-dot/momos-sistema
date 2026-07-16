@@ -413,6 +413,12 @@ export async function resolverDecisionAgencia(decisionId, status, result = "") {
   return data;
 }
 
+export async function registrarResultadoAccionAgencia(payload) {
+  const { data, error } = await supabase.rpc("registrar_resultado_accion_agencia", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function registrarRecomendacionOrquestador(payload) {
   const { data, error } = await supabase.rpc("registrar_recomendacion_orquestador", { p: payload });
   if (error) throw new Error(error.message);
@@ -474,6 +480,94 @@ export async function enviarStoryboardRevision(storyboardId) {
 export async function resolverStoryboardAgencia(storyboardId, decision, note = "") {
   const { data, error } = await supabase.rpc("resolver_storyboard_agencia", {
     p_storyboard_id: storyboardId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function prepararPlanMotion(payload) {
+  const { data, error } = await supabase.rpc("preparar_plan_motion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverPlanMotion(planId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_plan_motion", {
+    p_plan_id: planId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearPoliticaMeta(payload) {
+  const { data, error } = await supabase.rpc("crear_politica_meta", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function prepararDiagnosticoMeta(snapshotId, note = "") {
+  const { data, error } = await supabase.rpc("preparar_diagnostico_meta", { p_snapshot_id: snapshotId, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverDiagnosticoMeta(diagnosticId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_diagnostico_meta", {
+    p_diagnostic_id: diagnosticId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearEstudioIncrementalMeta(payload) {
+  const { data, error } = await supabase.rpc("crear_estudio_incremental_meta", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverEstudioIncrementalMeta(studyId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_estudio_incremental_meta", { p_study_id: studyId, p_decision: decision, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverMedicionIncrementalMeta(measurementId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_medicion_incremental_meta", { p_measurement_id: measurementId, p_decision: decision, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearEscenariosInversionMeta(payload) {
+  const { data, error } = await supabase.rpc("crear_escenarios_inversion_meta", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverEscenariosInversionMeta(scenarioId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_escenarios_inversion_meta", {
+    p_scenario_id: scenarioId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function solicitarAutorizacionInversionMeta(payload) {
+  const { data, error } = await supabase.rpc("solicitar_autorizacion_inversion_meta", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverAutorizacionInversionMeta(authorizationId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_autorizacion_inversion_meta", {
+    p_authorization_id: authorizationId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revocarAutorizacionInversionMeta(authorizationId, reason) {
+  const { data, error } = await supabase.rpc("revocar_autorizacion_inversion_meta", {
+    p_authorization_id: authorizationId, p_reason: reason,
   });
   if (error) throw new Error(error.message);
   return data;
@@ -585,6 +679,82 @@ export async function resolverEnrutamientoEscenas(planId, decision, note = "") {
   return data;
 }
 
+export async function registrarRevisionCalidadEscena(payload) {
+  const { data, error } = await supabase.rpc("registrar_revision_calidad_escena", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverRevisionCalidadEscena(reviewId, decision, failureType = "Pendiente", note = "") {
+  const { data, error } = await supabase.rpc("resolver_revision_calidad_escena", {
+    p_review_id: reviewId, p_decision: decision, p_failure_type: failureType, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function prepararPaquetePostproduccion(payload) {
+  const { data, error } = await supabase.rpc("preparar_paquete_postproduccion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverPaquetePostproduccion(packageId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_paquete_postproduccion", {
+    p_package_id: packageId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function prepararGuionRetencion(payload) {
+  const { data, error } = await supabase.rpc("preparar_guion_retencion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverGuionRetencion(scriptId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_guion_retencion", {
+    p_script_id: scriptId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearExperimentoRetencion(payload) {
+  const { data, error } = await supabase.rpc("crear_experimento_retencion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function registrarMedicionRetencion(payload) {
+  const { data, error } = await supabase.rpc("registrar_medicion_retencion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function cerrarExperimentoRetencion(experimentId, resolution, winnerHookId = null, note = "") {
+  const { data, error } = await supabase.rpc("cerrar_experimento_retencion", {
+    p_experiment_id: experimentId, p_resolution: resolution, p_winner_hook_id: winnerHookId, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function prepararDiagnosticoRetencion(payload) {
+  const { data, error } = await supabase.rpc("preparar_diagnostico_retencion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverDiagnosticoRetencion(diagnosticId, decision, note = "") {
+  const { data, error } = await supabase.rpc("resolver_diagnostico_retencion", {
+    p_diagnostic_id: diagnosticId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function guardarReferenciaIntegracionAgencia(payload) {
   const { data, error } = await supabase.rpc("guardar_referencia_integracion_agencia", { p: payload });
   if (error) throw new Error(error.message);
@@ -593,6 +763,14 @@ export async function guardarReferenciaIntegracionAgencia(payload) {
 
 export async function pausarIntegracionAgencia(provider, reason) {
   const { data, error } = await supabase.rpc("pausar_integracion_agencia", { p_provider: provider, p_reason: reason });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function prepararDryRunMeta(authorizationId, adAccountId, apiVersion = "v25.0") {
+  const { data, error } = await supabase.rpc("preparar_dry_run_meta", {
+    p_authorization_id: authorizationId, p_ad_account_id: adAccountId, p_api_version: apiVersion,
+  });
   if (error) throw new Error(error.message);
   return data;
 }

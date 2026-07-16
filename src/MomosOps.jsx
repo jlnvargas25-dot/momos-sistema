@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -26,9 +26,20 @@ import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceabi
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { agencyDecisionType, buildAgencyIntelligence, DEFAULT_AGENCY_SETTINGS, guardAgencyAction } from "./lib/agency-intelligence";
 import { buildOrchestratorInbox, orchestratorProposalPayload } from "./lib/agency-orchestrator";
+import { agencyActionDestination, buildAgencyActionQueue } from "./lib/agency-action-queue";
+import { AGENCY_EVIDENCE_KINDS, AGENCY_OBSERVED_RESULTS, AGENCY_OUTCOME_STATUSES, agencyOutcomeDefaults, agencyOutcomePayload, validateAgencyOutcome } from "./lib/agency-action-outcome";
 import { AGENCY_COLLABORATION_ENTRY_TYPES, AGENCY_CONTRACT_KPIS, agencyContractConstraints, agencyContractDirection, agencyRoomPayload, buildAgencyCollaborationDesk } from "./lib/agency-collaboration";
 import { STORYBOARD_ASPECT_RATIOS, STORYBOARD_CHANNELS, STORYBOARD_FORMATS, buildAgencySceneStudio, shotPayload, storyboardPayload } from "./lib/agency-scene-studio";
+import { buildAgencyMotionCenter, buildMotionPlanDraft, motionPlanPayload } from "./lib/agency-motion-experience";
 import { SCENE_ROUTE_PROVIDERS, buildAgencySceneRouter, buildSceneRoutingDraft, sceneRoutingPayload } from "./lib/agency-scene-router";
+import { AGENCY_QUALITY_CRITERIA, AGENCY_QUALITY_FAILURE_TYPES, buildAgencyQualityCenter, evaluateSceneQuality, postproductionPackagePayload, sceneQualityReviewPayload } from "./lib/agency-quality-control";
+import { RETENTION_PLATFORMS, buildAgencyRetentionCenter, retentionScriptPayload } from "./lib/agency-retention-engine";
+import { buildAgencyLoopLearningCenter, loopDiagnosticPayload } from "./lib/agency-loop-learning";
+import { buildAgencyMetaCenter } from "./lib/agency-meta-observatory";
+import { buildMetaIncrementalityCenter, liftStudyPayload } from "./lib/agency-meta-incrementality";
+import { buildMetaInvestmentCenter, investmentScenarioPayload } from "./lib/agency-meta-investment";
+import { buildMetaAuthorizationCenter, metaAuthorizationPayload } from "./lib/agency-meta-authorization";
+import { buildMetaConnectorCenter } from "./lib/agency-meta-connector";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -710,7 +721,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -732,7 +743,8 @@ function normalizeDbShape(d) {
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
     "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions", "distributionConnectorJobs",
-    "brandMediaAssets", "creativeGenerationJobs", "brandMediaUsages", "agencyIntegrations", "creativeConnectorRuns",
+    "brandMediaAssets", "creativeGenerationJobs", "brandMediaUsages", "agencyIntegrations", "creativeConnectorRuns", "agencyMetaConnectorDryRuns",
+    "agencyMotionPlans", "agencyMotionRecipes", "agencyMotionObservations", "agencySceneQualityReviews", "agencyPostproductionPackages",
     "marketing_ideas", "marketing_guiones", "marketing_mensajes", "marketing_tasks",
   ];
   arrayTables.forEach((k) => {
@@ -11275,6 +11287,166 @@ function AgencyCollaborationDesk({ db, refrescar }) {
   </div>;
 }
 
+function AgencyRetentionLab({ db, refrescar }) {
+  const center = useMemo(() => buildAgencyRetentionCenter(db), [db]);
+  const [contractId, setContractId] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState({ platform: "Instagram Reels", duration: 15, title: "", audience: "", promise: "", payoff: "", callToAction: "", controlHook: "", challengerHook: "", openingVisual: "", proof: "" });
+
+  function openScript(contract) {
+    const direction = contract.sealedPayload?.creative_direction || {};
+    const concept = direction.concept || "Mostrar un Momo real de forma irresistible";
+    setContractId(String(contract.id));
+    setForm({
+      platform: "Instagram Reels", duration: 15, title: `Guion de retención · ${concept}`,
+      audience: direction.audience || "Personas que disfrutan postres premium en Cali",
+      promise: `Vas a descubrir por qué ${concept.toLowerCase()}.`, payoff: "La demostración real cierra exactamente la promesa del inicio.",
+      callToAction: direction.call_to_action || "Pedí tu Momo", controlHook: concept,
+      challengerHook: `Esperá a ver el centro de este Momo.`, openingVisual: "Producto real y reconocible en el primer fotograma.",
+      proof: "La cámara muestra el producto real y su textura; no se inventan beneficios.",
+    });
+    setFormOpen(true);
+  }
+
+  async function saveScript() {
+    const contract = (db.agencyCreativeContracts || []).find((item) => String(item.id) === String(contractId));
+    if (!contract) throw new Error("El contrato creativo ya no está disponible.");
+    const duration = Math.max(5, Number(form.duration || 15));
+    const hookEnd = Math.min(3, Math.max(1.5, duration * 0.2));
+    const proofEnd = Math.max(hookEnd + 1, duration - Math.max(1, duration * 0.2));
+    const scores = { clarity: 2, relevance: 2, specificity: 2, proof: 2, novelty: 1, payoff_fit: 2, brand_fit: 2, honesty: 2 };
+    const payload = retentionScriptPayload({
+      title: form.title, platform: form.platform, targetDurationSec: duration, audience: form.audience,
+      objective: contract.sealedPayload?.creative_direction?.primary_kpi || "Beneficio incremental",
+      promise: form.promise, payoff: form.payoff, callToAction: form.callToAction,
+      evidencePlan: { product_real: true, approved_contract_fingerprint: contract.fingerprint, no_unapproved_claims: true },
+      hooks: [
+        { variantKey: "A", label: "Control", mechanism: "Resultado primero", hookText: form.controlHook, openingVisual: form.openingVisual, proof: form.proof, scores, selected: true },
+        { variantKey: "B", label: "Retador", mechanism: "Pregunta", hookText: form.challengerHook, openingVisual: form.openingVisual, proof: form.proof, scores, selected: false },
+      ],
+      beatMap: [
+        { label: "Hook y promesa", startSec: 0, endSec: hookEnd, visual: form.openingVisual, audio: form.controlHook, purpose: "Detener el scroll mostrando relevancia." },
+        { label: "Prueba y desarrollo", startSec: hookEnd, endSec: proofEnd, visual: form.proof, audio: form.promise, purpose: "Demostrar sin esconder el producto." },
+        { label: "Payoff y CTA", startSec: proofEnd, endSec: duration, visual: form.payoff, audio: `${form.payoff} ${form.callToAction}`, purpose: "Cerrar el loop antes de pedir la acción." },
+      ],
+      loops: [{ loopKey: "L1", question: form.promise, openSec: 0, closeSec: Math.max(hookEnd + 0.5, duration - 1), payoff: form.payoff }],
+    }, contract);
+    const result = await prepararGuionRetencion(payload);
+    setFormOpen(false); toast("ok", `Guion V${result.version || 1} sellado para revisión humana; no generó ni publicó.`); await refrescar();
+  }
+
+  async function resolveScript(script, decision) {
+    const note = window.prompt(decision === "Aprobar" ? "¿Qué verificaste antes de aprobar el guion?" : "¿Qué debe corregir el cerebro de Agencia?",
+      decision === "Aprobar" ? "Promesa, prueba, payoff, marca y CTA verificados" : "Ajustar hook o demostración") || "";
+    if (!note) return;
+    await resolverGuionRetencion(script.id, decision, note);
+    toast("ok", decision === "Aprobar" ? "Guion aprobado. Generación, pauta y publicación siguen separadas." : "Guion devuelto con aprendizaje trazable.");
+    await refrescar();
+  }
+
+  async function createExperiment(script) {
+    const hooks = center.hooks.filter((hook) => String(hook.scriptId) === String(script.id));
+    const control = hooks.find((hook) => hook.selected) || hooks[0]; const challenger = hooks.find((hook) => hook.id !== control?.id);
+    if (!control || !challenger) throw new Error("El guion necesita control y retador.");
+    const hypothesis = window.prompt("Hipótesis A/B — cambiaremos únicamente el hook:", `“${control.hookText}” retendrá mejor a los 3 segundos que “${challenger.hookText}”.`) || "";
+    if (hypothesis.trim().length < 10) return;
+    await crearExperimentoRetencion({
+      experiment_key: `retention-${script.id}-${Date.now()}`, script_id: script.id, control_hook_id: control.id, challenger_hook_id: challenger.id,
+      declared_variable: "Hook", hypothesis, primary_metric: "Retención 3 s",
+      guardrails: { same_product: true, same_offer: true, same_cta: true, same_audience: true, human_winner_required: true },
+    });
+    toast("ok", "Experimento A/B planificado. No publicó ni autorizó pauta."); await refrescar();
+  }
+
+  async function closeExperiment(experiment, resolution, winnerHookId = null) {
+    const note = window.prompt(resolution === "Ganador" ? "Documentá muestra, atribución y criterio del ganador:" : "¿Por qué el resultado permanece inconcluso?",
+      resolution === "Ganador" ? "Ambos brazos superan la muestra mínima y la atribución corresponde a esta versión exacta." : "La muestra o la diferencia no permiten declarar ganador.") || "";
+    if (!note) return;
+    await cerrarExperimentoRetencion(experiment.id, resolution, winnerHookId, note);
+    toast("ok", resolution === "Ganador" ? "Ganador sellado por decisión humana; no se escaló automáticamente." : "Ambigüedad conservada como aprendizaje válido.");
+    await refrescar();
+  }
+
+  return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#6C3F24,#A55A35)", color: "#fff" }}>
+      <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Contrato → atención → aprendizaje económico</div><div className="display text-xl font-semibold">Laboratorio de retención MOMOS</div><div className="text-xs opacity-85 max-w-2xl">Versiona hooks, cierra cada loop y mide la publicación exacta. El cerebro propone; el humano aprueba; una muestra insuficiente nunca se convierte en “ganador”.</div></div>
+      <div className="grid grid-cols-4 gap-2 shrink-0">{[["Borradores",center.summary.drafts],["Por revisar",center.summary.pending],["Aprobados",center.summary.approved],["A/B activos",center.summary.activeExperiments]].map(([label,value]) => <div key={label} className="rounded-2xl px-2.5 py-2 min-w-[64px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[7px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencyRetentionReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>retencion-aprendizaje-v1.sql</code>. Hasta entonces los hooks y resultados no quedarán versionados.</div> : <>
+      <div className="p-4 border-b" style={{ borderColor: T.border }}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Arquitectura antes de generar</div><div className="font-extrabold text-sm">Promesa, demostración, payoff y CTA</div></div></div>
+        <div className="grid lg:grid-cols-2 gap-2">
+          {center.eligibleContracts.map((contract) => <article key={contract.id} className="rounded-2xl border p-3 flex items-center gap-3" style={{ borderColor: "#B8D3B2", background: "#F4FAF1" }}><div className="flex-1"><div className="text-[9px] uppercase font-extrabold" style={{ color: "#315B35" }}>Contrato #{contract.id} aprobado</div><div className="font-extrabold text-sm">{contract.sealedPayload?.creative_direction?.concept || contract.contractKey}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Todavía no tiene guion de retención activo.</div></div><Btn small onClick={() => openScript(contract)}>Diseñar guion</Btn></article>)}
+          {center.pending.map((script) => <article key={script.id} className="rounded-2xl border p-3" style={{ borderColor: "#E8C98B", background: "#FFF7E8" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>V{script.version} · {script.platform} · {script.sourceKind}</div><div className="font-extrabold text-sm">{script.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#FBE8C8", color: "#8B5A08" }}>En revisión</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}><b>Promesa:</b> {script.promise}<br /><b>Payoff:</b> {script.payoff}</div>{!script.architecture.ready && <div className="rounded-xl px-2 py-1.5 text-[10px] mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>× {script.architecture.reasons[0]}</div>}<div className="flex gap-2"><BtnAsync small confirmar disabled={!script.architecture.ready} onClick={() => resolveScript(script, "Aprobar")}>Aprobar guion</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveScript(script, "Devolver")}>Devolver</BtnAsync></div></article>)}
+          {center.approved.map((script) => { const experiment = center.experiments.find((item) => String(item.scriptId) === String(script.id) && !["Cerrado","Inconcluso","Cancelado"].includes(item.status)); return <article key={script.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: "#315B35" }}>Aprobado · V{script.version} · {script.targetDurationSec}s</div><div className="font-extrabold text-sm">{script.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#DDEBD9", color: "#315B35" }}>No publicado</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}>{script.promise} → {script.payoff}</div>{!experiment ? <BtnAsync small onClick={() => createExperiment(script)}>Planear A/B de hook</BtnAsync> : <div className="rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: "#E5EEF7", color: "#315A7D" }}>Experimento #{experiment.id} · {experiment.status} · variable única: {experiment.declaredVariable}</div>}</article>; })}
+        </div>
+      </div>
+      {center.experiments.length > 0 && <div className="p-4"><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: T.coral }}>Aprendizaje por versión exacta</div><div className="grid lg:grid-cols-2 gap-2">{center.experiments.slice(0, 8).map((experiment) => { const controlSample = center.measurements.filter((item) => String(item.experimentId) === String(experiment.id) && String(item.hookId) === String(experiment.controlHookId)).reduce((sum,item) => sum + item.sampleSize, 0); const challengerSample = center.measurements.filter((item) => String(item.experimentId) === String(experiment.id) && String(item.hookId) === String(experiment.challengerHookId)).reduce((sum,item) => sum + item.sampleSize, 0); const ready = Math.min(controlSample, challengerSample) >= 100; return <article key={experiment.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>A/B #{experiment.id} · {experiment.primaryMetric}</div><div className="font-extrabold text-sm">{experiment.hypothesis}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: ready ? "#DDEBD9" : "#FBE8C8", color: ready ? "#315B35" : "#8B5A08" }}>{experiment.status}</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}>Muestra A {controlSample} · B {challengerSample} · mínimo 100 por brazo</div>{["Planificado","Activo"].includes(experiment.status) && <div className="flex flex-wrap gap-2"><BtnAsync small disabled={!ready} onClick={() => closeExperiment(experiment, "Ganador", experiment.controlHookId)}>Gana A</BtnAsync><BtnAsync small disabled={!ready} onClick={() => closeExperiment(experiment, "Ganador", experiment.challengerHookId)}>Gana B</BtnAsync><BtnAsync small kind="ghost" onClick={() => closeExperiment(experiment, "Inconcluso")}>Inconcluso</BtnAsync></div>}</article>; })}</div></div>}
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Preparar y aprobar cuesta $0: generación, pauta y publicación conservan sus gates separados. Las métricas entran por RPC/conector y no pueden reescribirse.</div>
+    {formOpen && <Modal title="Arquitectura de retención" onClose={() => setFormOpen(false)} wide topLayer>
+      <div className="rounded-2xl px-3 py-2 mb-3 text-xs" style={{ background: T.vainilla }}><b>Primero el guion.</b> Abrimos una pregunta, la demostramos y la cerramos antes del CTA. Se guardan control y retador; solo cambiaremos el hook.</div>
+      <div className="grid sm:grid-cols-2 gap-2"><Field label="Canal"><Select options={RETENTION_PLATFORMS} value={form.platform} onChange={(event) => setForm({ ...form, platform: event.target.value })} /></Field><Field label="Duración objetivo (s)"><Input type="number" min="5" max="180" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} /></Field></div>
+      <Field label="Título"><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></Field><Field label="Audiencia"><Input value={form.audience} onChange={(event) => setForm({ ...form, audience: event.target.value })} /></Field>
+      <Field label="Promesa que abre el loop"><textarea className={inputCls} style={inputStyle} rows="2" value={form.promise} onChange={(event) => setForm({ ...form, promise: event.target.value })} /></Field><Field label="Payoff real que lo cierra"><textarea className={inputCls} style={inputStyle} rows="2" value={form.payoff} onChange={(event) => setForm({ ...form, payoff: event.target.value })} /></Field>
+      <div className="grid sm:grid-cols-2 gap-2"><Field label="Hook A · control"><textarea className={inputCls} style={inputStyle} rows="2" value={form.controlHook} onChange={(event) => setForm({ ...form, controlHook: event.target.value })} /></Field><Field label="Hook B · retador"><textarea className={inputCls} style={inputStyle} rows="2" value={form.challengerHook} onChange={(event) => setForm({ ...form, challengerHook: event.target.value })} /></Field></div>
+      <Field label="Primer fotograma"><Input value={form.openingVisual} onChange={(event) => setForm({ ...form, openingVisual: event.target.value })} /></Field><Field label="Prueba visible"><Input value={form.proof} onChange={(event) => setForm({ ...form, proof: event.target.value })} /></Field><Field label="CTA"><Input value={form.callToAction} onChange={(event) => setForm({ ...form, callToAction: event.target.value })} /></Field>
+      <div className="flex gap-2"><BtnAsync confirmar onClick={saveScript} disabled={[form.title,form.audience,form.promise,form.payoff,form.callToAction,form.controlHook,form.challengerHook,form.openingVisual,form.proof].some((value) => !String(value).trim())}>Sellar para revisión</BtnAsync><Btn kind="ghost" onClick={() => setFormOpen(false)}>Cancelar</Btn></div>
+    </Modal>}
+  </div>;
+}
+
+function AgencyLoopLearningDesk({ db, refrescar }) {
+  const center = useMemo(() => buildAgencyLoopLearningCenter(db), [db]);
+
+  async function prepare(candidate) {
+    await prepararDiagnosticoRetencion(loopDiagnosticPayload(candidate));
+    toast("ok", "Diagnóstico sellado para revisión humana. No generó, pautó ni publicó.");
+    await refrescar();
+  }
+
+  async function resolve(diagnostic, decision) {
+    const note = window.prompt(
+      decision === "Aprobar" ? "¿Qué evidencia y alcance verificaste antes de convertirlo en aprendizaje?" : "¿Qué debe revisar el cerebro de Agencia?",
+      decision === "Aprobar"
+        ? "Validé la curva exacta, el beat señalado y que la hipótesis aplica solo a esta plataforma, audiencia y duración."
+        : "Reformular la hipótesis sin presentar asociación temporal como causalidad.",
+    ) || "";
+    if (!note.trim()) return;
+    await resolverDiagnosticoRetencion(diagnostic.id, decision, note);
+    toast("ok", decision === "Aprobar" ? "Aprendizaje aprobado con alcance exacto; no se escaló automáticamente." : "Diagnóstico devuelto con una corrección trazable.");
+    await refrescar();
+  }
+
+  const tone = (drop) => Number(drop) >= 15 ? { bg: "#F8DDD7", fg: "#A03B2A" }
+    : Number(drop) >= 5 ? { bg: "#FFF0CE", fg: "#8B5A08" } : { bg: "#E3EFE0", fg: "#315B35" };
+
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 border-b flex flex-col lg:flex-row lg:items-center justify-between gap-3" style={{ borderColor: T.border, background: "#FFF9F2" }}>
+      <div className="flex items-start gap-3"><div className="w-10 h-10 rounded-2xl grid place-items-center text-lg shrink-0" style={{ background: "#F3D7DC" }}>↗</div><div>
+        <div className="text-[9px] font-extrabold uppercase tracking-[.18em]" style={{ color: T.coral }}>Curva → beat → hipótesis → aprendizaje</div>
+        <div className="display text-xl font-semibold">Sala de aprendizaje de loops</div>
+        <div className="text-xs max-w-2xl" style={{ color: T.choco2 }}>Localiza dónde cae la atención, conserva cada loop y propone una sola variable. Una asociación temporal nunca se presenta como causa.</div>
+      </div></div>
+      <div className="grid grid-cols-3 gap-2 shrink-0">{[["Listos",center.summary.ready],["Por revisar",center.summary.pending],["Aprendizajes",center.summary.learnings]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2 min-w-[74px] text-center" style={{ borderColor: T.border, background: "#fff" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
+    </div>
+    {!db.agencyLoopLearningReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>experiencia-loops-retencion-v1.sql</code> después del Hito 34. Los resultados existentes permanecen intactos.</div> : <div className="p-4 space-y-5">
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Evidencia nueva</div><div className="font-extrabold text-sm">Mediciones exactas por diagnosticar</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#E5EEF7", color: "#315A7D" }}>Mínimo 100 observaciones</span></div>
+        {center.candidates.length === 0 ? <div className="rounded-2xl border px-3 py-3 text-xs" style={{ borderColor: T.border, color: T.choco2 }}>No hay mediciones nuevas. Cuando una variante tenga curva completa, MOMO OPS la ubicará sobre el guion exacto.</div> : <div className="grid xl:grid-cols-2 gap-3">{center.candidates.slice(0, 6).map((candidate) => <article key={candidate.measurementId} className="rounded-2xl border p-3" style={{ borderColor: candidate.ready ? "#D7C5B2" : "#E8C98B", background: "#fff" }}>
+          <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Medición #{candidate.measurementId} · muestra {candidate.sampleSize}</div><div className="font-extrabold text-sm">{candidate.testedVariable} · cobertura {candidate.confidence}</div></div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold shrink-0" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>NO CAUSAL</span></div>
+          {candidate.ready ? <><div className="text-[10px] my-2 leading-relaxed" style={{ color: T.choco2 }}>{candidate.primarySignal}</div><div className="grid gap-1.5">{candidate.beats.map((beat) => { const beatTone = tone(beat.dropPp); return <div key={`${candidate.measurementId}-${beat.beat}`} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center rounded-xl px-2.5 py-2" style={{ background: "#FFF9F2" }}><div><div className="text-[10px] font-extrabold">{beat.label}</div><div className="text-[8px]" style={{ color: T.choco2 }}>{beat.startSec}s → {beat.endSec}s</div></div><div className="text-[9px] font-bold">{Math.round(beat.startPct * 100)}% → {Math.round(beat.endPct * 100)}%</div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold" style={{ background: beatTone.bg, color: beatTone.fg }}>{beat.dropPp} pp</span></div>; })}</div><div className="mt-3 flex items-center justify-between gap-3"><div className="text-[9px]" style={{ color: T.choco2 }}>Una sola variable · mismo producto, oferta, audiencia y duración</div><BtnAsync small onClick={() => prepare(candidate)}>Preparar diagnóstico</BtnAsync></div></> : <div className="rounded-xl px-2.5 py-2 text-[10px] mt-2" style={{ background: "#FFF2D8", color: "#7A5410" }}>{candidate.reasons[0]}</div>}
+        </article>)}</div>}
+      </div>
+
+      {center.pending.length > 0 && <div><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: T.coral }}>Decisión cooperativa · revisión humana</div><div className="grid xl:grid-cols-2 gap-3">{center.pending.map((diagnostic) => <article key={diagnostic.id} className="rounded-2xl border p-3" style={{ borderColor: "#E8C98B", background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: "#8B5A08" }}>Diagnóstico #{diagnostic.id} · {diagnostic.sourceKind}</div><div className="font-extrabold text-sm">Probar: {diagnostic.testedVariable}</div></div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold" style={{ background: "#FBE8C8", color: "#8B5A08" }}>En revisión</span></div><div className="text-[10px] mt-2" style={{ color: T.choco2 }}>{diagnostic.primarySignal}</div><div className="rounded-xl px-2.5 py-2 my-2 text-[10px]" style={{ background: "#fff" }}><b>Hipótesis:</b> {diagnostic.hypothesis}<br /><b>Siguiente prueba:</b> {diagnostic.recommendation}</div><div className="flex gap-2"><BtnAsync small confirmar onClick={() => resolve(diagnostic,"Aprobar")}>Aprobar aprendizaje</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolve(diagnostic,"Devolver")}>Devolver</BtnAsync></div></article>)}</div></div>}
+
+      {center.learnings.length > 0 && <div><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: "#315B35" }}>Memoria aprobada de MOMOS</div><div className="grid xl:grid-cols-2 gap-3">{center.learnings.slice(0, 8).map((learning) => <article key={learning.id} className="rounded-2xl border p-3" style={{ borderColor: "#B8D3B2", background: "#F5FAF3" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: "#315B35" }}>{learning.platform} · {learning.targetDurationSec}s · {learning.testedVariable}</div><div className="text-xs font-semibold mt-1">{learning.statement}</div><div className="text-[9px] mt-2" style={{ color: T.choco2 }}>Alcance exacto: {learning.audience} · aprobado {learning.approvedAt}</div></article>)}</div></div>}
+    </div>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Este aprendizaje alimentará futuros guiones; nunca cambia campañas, genera contenido o publica por sí solo.</div>
+  </section>;
+}
+
 function AgencySceneStudio({ db, refrescar }) {
   const studio = useMemo(() => buildAgencySceneStudio(db), [db]);
   const [createOpen, setCreateOpen] = useState(false);
@@ -11413,6 +11585,69 @@ function AgencySceneStudio({ db, refrescar }) {
   </div>;
 }
 
+function AgencyMotionExperience({ db, refrescar }) {
+  const center = useMemo(() => buildAgencyMotionCenter(db), [db]);
+  const [boardId, setBoardId] = useState("");
+  const [selections, setSelections] = useState({});
+  const board = center.eligibleStoryboards.find((item) => String(item.id) === String(boardId)) || null;
+  const draft = useMemo(() => board
+    ? buildMotionPlanDraft(board, db.agencyStoryboardShots || [], selections)
+    : null, [board, db.agencyStoryboardShots, selections]);
+
+  async function prepare() {
+    if (!db.agencyMotionReady) throw new Error("Aplicá la migración 36 de Dirección de motion.");
+    if (!draft?.ready) throw new Error(draft?.reasons?.[0] || "La dirección de motion todavía no está lista.");
+    const result = await prepararPlanMotion(motionPlanPayload(draft, "MOMO OPS Motion Director"));
+    setBoardId(""); setSelections({});
+    toast("ok", result.duplicate
+      ? "Esa dirección ya estaba sellada."
+      : "Dirección de cámara y luz preparada para revisión. No generó, gastó ni publicó.");
+    await refrescar();
+  }
+
+  async function resolve(plan, decision) {
+    const note = window.prompt(
+      decision === "Aprobar" ? "¿Qué verificaste antes de aprobar la dirección?" : "¿Qué debe corregirse por toma?",
+      decision === "Aprobar"
+        ? "Verifiqué intención, identidad del producto, física, eje, luz, continuidad y transición de cada toma."
+        : "Ajustar el movimiento o la continuidad indicada sin cambiar el producto.",
+    ) || "";
+    if (!note.trim()) return;
+    await resolverPlanMotion(plan.id, decision, note);
+    toast("ok", decision === "Aprobar"
+      ? "Motion aprobado: el Enrutador ya puede asignar motores y topes. Aún no se generó nada."
+      : "Plan devuelto con corrección trazable.");
+    await refrescar();
+  }
+
+  const planTone = (status) => status === "Aprobado" ? { bg: "#DDEBD9", fg: "#315B35" }
+    : status === "En revisión" ? { bg: "#FFF0CE", fg: "#8B5A08" } : { bg: "#F3D7DC", fg: "#8E4B5A" };
+
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#7C3F2D,#B86445)", color: "#fff" }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.15)" }}>🎥</div><div>
+        <div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Storyboard → cámara, luz, física y continuidad</div>
+        <div className="display text-xl font-semibold">Dirección de motion MOMOS</div>
+        <div className="text-xs opacity-85 max-w-2xl">Define por qué se mueve la cámara, cómo responde la materia y qué debe conservar el corte. El humano elige una propuesta por toma antes de permitir el Enrutador.</div>
+      </div></div>
+      <div className="grid grid-cols-4 gap-2 shrink-0">{[["Por dirigir",center.summary.eligible],["Revisión",center.summary.reviewing],["Aprobados",center.summary.approved],["Aprendizajes",center.summary.observations]].map(([label,value]) => <div key={label} className="rounded-2xl px-2.5 py-2 min-w-[64px] text-center" style={{ background: "rgba(255,255,255,.13)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[7px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencyMotionReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>experiencia-motion-v1.sql</code> después del Hito 35. Hasta entonces el Enrutador no recibirá recetas de cámara aprobadas.</div> : <>
+      {center.eligibleStoryboards.length > 0 && <div className="p-4 border-b" style={{ borderColor: T.border }}>
+        <div className="flex flex-wrap items-end gap-2 mb-3"><Field label="Storyboard aprobado sin motion"><select className={inputCls} style={{ ...inputStyle, minWidth: 300 }} value={boardId} onChange={(event) => { setBoardId(event.target.value); setSelections({}); }}><option value="">Elegí una pieza…</option>{center.eligibleStoryboards.map((item) => <option key={item.id} value={item.id}>#{item.id} · {item.title} · {item.channel}</option>)}</select></Field>{draft && <div className="pb-3 text-[10px] font-bold" style={{ color: draft.ready ? "#315B35" : "#A03B2A" }}>{draft.ready ? `● ${draft.shotRecipes.length} tomas cubiertas · $0 comprometidos` : `× ${draft.reasons[0]}`}</div>}</div>
+        {draft && <div className="space-y-3">{draft.shotRecipes.map(({ shot, proposals, selected }) => <article key={shot.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}>
+          <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-3"><div className="min-w-0"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Toma {shot.shotNumber} · {selected?.intent?.narrativeJob}</div><div className="font-extrabold text-sm">{shot.title}</div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>Una intención · un movimiento principal · una fuente de luz motivada.</div></div>
+            <div className="flex flex-wrap gap-2">{proposals.map((proposal) => <button type="button" key={proposal.proposalKey} onClick={() => setSelections((current) => ({ ...current, [shot.id]: proposal.proposalKey }))} className="rounded-xl border px-3 py-2 text-left transition" style={{ borderColor: proposal.selected ? T.coral : T.border, background: proposal.selected ? "#F8E0D8" : "#fff" }}><div className="text-[10px] font-extrabold">{proposal.label}</div><div className="text-[8px]" style={{ color: T.choco2 }}>{proposal.cameraPath.rigFeel} · {proposal.handheldProfile.mode}</div></button>)}</div>
+          </div>
+          {selected && <div className="grid md:grid-cols-4 gap-2 mt-3 text-[10px]"><div className="rounded-xl p-2.5" style={{ background: "#F5E8D2" }}><b>Cámara</b><br />{selected.cameraPath.primaryMove}<br /><span style={{ color: T.choco2 }}>Inercia {selected.cameraPath.acceleration}; {selected.cameraPath.settle}.</span></div><div className="rounded-xl p-2.5" style={{ background: "#F6E6D9" }}><b>Luz y sombra</b><br />{selected.lightingMap.motivatedSource}<br /><span style={{ color: T.choco2 }}>{selected.lightingMap.shadowBehavior}</span></div><div className="rounded-xl p-2.5" style={{ background: "#E7EFE5" }}><b>Física</b><br />{selected.physics.contact}<br /><span style={{ color: T.choco2 }}>{selected.physics.weightResistance}</span></div><div className="rounded-xl p-2.5" style={{ background: "#E7EDF2" }}><b>Siguiente corte</b><br />{selected.transitionToNext.type}<br /><span style={{ color: T.choco2 }}>{selected.transitionToNext.intentionalChange}</span></div></div>}
+        </article>)}<div className="rounded-2xl px-3 py-3 flex flex-wrap items-center justify-between gap-3" style={{ background: T.vainilla }}><div className="text-xs"><b>{draft.grammarPrimary}</b>{draft.grammarSecondary !== draft.grammarPrimary ? ` + ${draft.grammarSecondary}` : ""}<div className="text-[9px]" style={{ color: T.choco2 }}>Costo preliminar informativo {fmt(draft.estimatedPreviewCostCop)} · preparar cuesta $0.</div></div><BtnAsync onClick={prepare} disabled={!draft.ready}>Sellar dirección para revisión</BtnAsync></div></div>}
+      </div>}
+      <div className="p-3 grid lg:grid-cols-2 gap-2">{center.plans.slice(0, 8).map((plan) => { const tone = planTone(plan.status); return <article key={plan.id} className="rounded-2xl border p-3" style={{ borderColor: plan.status === "En revisión" ? "#E8C98B" : T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Motion #{plan.id} · V{plan.version}</div><div className="font-extrabold text-sm">{plan.storyboard?.title || `Storyboard #${plan.storyboardId}`}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{plan.status}</span></div><div className="flex flex-wrap gap-1.5 my-2">{plan.recipes.map((recipe) => <span key={recipe.id} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: "#F5E8D2" }}>T{recipe.shotNumber} · {recipe.selectedRecipe?.intent?.narrative_job || recipe.selectedKey}</span>)}</div><div className="text-[10px] mb-2" style={{ color: T.choco2 }}>{plan.grammarPrimary} · huella {plan.fingerprint?.slice(0, 8)} · {plan.recipes.length} receta(s)</div>{plan.status === "En revisión" && <div className="flex gap-2"><BtnAsync small confirmar onClick={() => resolve(plan,"Aprobar")}>Aprobar motion</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolve(plan,"Devolver")}>Devolver</BtnAsync></div>}{plan.status === "Aprobado" && <div className="rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ Enrutador habilitado · generación y publicación siguen bloqueadas</div>}</article>; })}{center.plans.length === 0 && center.eligibleStoryboards.length === 0 && <div className="p-2 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Sin piezas pendientes.</b> Cuando el Estudio apruebe un storyboard aparecerá aquí.</div>}</div>
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Contrato seguro: aprobar motion cuesta $0 y no llama motores. El Enrutador consume únicamente la receta seleccionada y sellada de cada toma.</div>
+  </section>;
+}
+
 function AgencySceneRouter({ db, refrescar }) {
   const center = useMemo(() => buildAgencySceneRouter(db), [db]);
   const [boardId, setBoardId] = useState("");
@@ -11449,12 +11684,12 @@ function AgencySceneRouter({ db, refrescar }) {
 
   return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
     <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#243D37,#355E53)", color: "#fff" }}>
-      <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Dirección aprobada → motor controlado</div><div className="display text-xl font-semibold">Enrutador de escenas MOMOS</div><div className="text-xs opacity-80 max-w-2xl">Elige el motor por capacidad, sella costo y riesgo por toma y exige una sola confirmación humana. Los workers ejecutan después; publicar sigue siendo otro paso.</div></div>
+      <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Motion aprobado → motor controlado</div><div className="display text-xl font-semibold">Enrutador de escenas MOMOS</div><div className="text-xs opacity-80 max-w-2xl">Consume la cámara y luz ya aprobadas, elige el motor por capacidad y sella costo y riesgo por toma. Los workers ejecutan después; publicar sigue siendo otro paso.</div></div>
       <div className="grid grid-cols-3 gap-2 shrink-0">{[["Por autorizar",center.summary.prepared],["Autorizados",center.summary.authorized],["Trabajos",center.summary.jobs]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[74px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
     </div>
     {!db.agencySceneRouterReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>enrutador-escenas-v1.sql</code>. Hasta entonces MOMO OPS no creará trabajos desde storyboards.</div> : <>
       <div className="p-4 border-b" style={{ borderColor: T.border }}>
-        <div className="flex flex-wrap items-end gap-2"><Field label="Storyboard aprobado"><select className={inputCls} style={{ ...inputStyle, minWidth: 280 }} value={boardId} onChange={(event) => { setBoardId(event.target.value); setOverrides({}); }}><option value="">Elegí una pieza sin enrutar…</option>{center.eligibleStoryboards.map((item) => <option key={item.id} value={item.id}>#{item.id} · {item.title} · {item.channel}</option>)}</select></Field>{draft && <div className="pb-3 text-[10px] font-bold" style={{ color: draft.operational ? "#315B35" : "#9A5B16" }}>{draft.operational ? "● Motores disponibles ahora" : `● Plan documentable; ${draft.operationalReasons[0] || "conector no disponible"}`}</div>}</div>
+        <div className="flex flex-wrap items-end gap-2"><Field label="Storyboard + motion aprobados"><select className={inputCls} style={{ ...inputStyle, minWidth: 280 }} value={boardId} onChange={(event) => { setBoardId(event.target.value); setOverrides({}); }}><option value="">Elegí una pieza dirigida sin enrutar…</option>{center.eligibleStoryboards.map((item) => <option key={item.id} value={item.id}>#{item.id} · {item.title} · {item.channel}</option>)}</select></Field>{draft && <div className="pb-3 text-[10px] font-bold" style={{ color: draft.operational ? "#315B35" : "#9A5B16" }}>{draft.operational ? "● Motores disponibles ahora" : `● Plan documentable; ${draft.operationalReasons[0] || "conector no disponible"}`}</div>}</div>
         {draft && <div className="space-y-2 mt-1">{draft.routes.map((route) => <article key={route.shotId} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}>
           <div className="grid lg:grid-cols-[1fr_160px_140px_140px] gap-2 items-end"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Toma {route.shotNumber} · riesgo {route.riskLevel}</div><div className="font-extrabold text-sm">{route.title}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{route.capability} · {route.rationale}</div></div><Field label="Motor"><Select options={SCENE_ROUTE_PROVIDERS} value={route.provider} onChange={(event) => patchRoute(route.shotId, { provider: event.target.value })} /></Field><Field label="Estimado COP"><Input type="number" min="1" value={route.estimatedCostCop || ""} onChange={(event) => patchRoute(route.shotId, { estimatedCostCop: event.target.value })} /></Field><Field label="Tope COP"><Input type="number" min="1" value={route.maxCostCop || ""} onChange={(event) => patchRoute(route.shotId, { maxCostCop: event.target.value })} /></Field></div>
         </article>)}<div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl px-3 py-3" style={{ background: T.vainilla }}><div className="text-xs"><b>{draft.routes.length} toma(s)</b> · estimado {fmt(draft.totalEstimatedCostCop)} · tope {fmt(draft.totalCostCapCop)}{draft.reasons.map((reason) => <div key={reason} className="text-red-700">× {reason}</div>)}</div><BtnAsync onClick={prepareRoutes} disabled={!draft.ready}>Sellar ruta multimotor</BtnAsync></div></div>}
@@ -11465,7 +11700,433 @@ function AgencySceneRouter({ db, refrescar }) {
   </div>;
 }
 
-function AgenciaControl({ db, user, refrescar }) {
+function AgencyQualityControl({ db, refrescar }) {
+  const center = useMemo(() => buildAgencyQualityCenter(db), [db]);
+  const [reviewJob, setReviewJob] = useState(null);
+  const [scores, setScores] = useState(() => Object.fromEntries(AGENCY_QUALITY_CRITERIA.map(({ key }) => [key, 2])));
+  const [failureType, setFailureType] = useState("Fallo técnico");
+  const [note, setNote] = useState("");
+  const [continuity, setContinuity] = useState("");
+  const outputAsset = reviewJob ? (db.brandMediaAssets || []).find((item) => String(item.id) === String(reviewJob.outputAssetId)) : null;
+  const rightsValid = Boolean(outputAsset && outputAsset.status === "Activo" && outputAsset.rightsStatus === "Autorizado");
+  const evaluation = useMemo(() => evaluateSceneQuality(scores, rightsValid), [scores, rightsValid]);
+
+  function openReview(job) {
+    const shot = (db.agencyStoryboardShots || []).find((item) => String(item.id) === String(job.outputSpec?.storyboard_shot_id));
+    setReviewJob(job); setScores(Object.fromEntries(AGENCY_QUALITY_CRITERIA.map(({ key }) => [key, 2])));
+    setFailureType("Fallo técnico"); setNote("");
+    setContinuity(shot?.payload?.continuity_out ? `La salida conserva: ${shot.payload.continuity_out}` : "Entrada y salida comparadas contra el storyboard");
+  }
+
+  async function saveQualityReview() {
+    const payload = sceneQualityReviewPayload(reviewJob, scores, {
+      rightsValid, failureType, reviewNote: note || (evaluation.approved ? "Producto, marca, física y continuidad verificados" : "La toma requiere una nueva versión"),
+      continuityObservation: continuity, findings: evaluation.reasons,
+    });
+    const result = await registrarRevisionCalidadEscena(payload);
+    setReviewJob(null);
+    toast(result.status === "Aprobada" ? "ok" : "alert", result.status === "Aprobada"
+      ? `Toma aprobada para postproducción · ${result.score_total}/22.`
+      : `Toma clasificada como ${result.failure_type}; no entrará al corte.`);
+    await refrescar();
+  }
+
+  async function resolveAgentReview(review, decision) {
+    const failure = decision === "Aprobar" ? "Pendiente" : "Fallo técnico";
+    const resolution = window.prompt(decision === "Aprobar" ? "¿Qué verificaste antes de aprobar?" : "¿Qué debe corregirse?",
+      decision === "Aprobar" ? "Producto, física, luz y continuidad verificados" : "Corregir la salida antes de regenerar") || "";
+    if (!resolution) return;
+    await resolverRevisionCalidadEscena(review.id, decision, failure, resolution);
+    toast("ok", decision === "Aprobar" ? "Control del agente aprobado por humano." : "Hallazgo del agente clasificado y devuelto.");
+    await refrescar();
+  }
+
+  const packageCandidates = useMemo(() => (db.agencySceneRoutingPlans || []).filter((plan) => plan.status === "Autorizado").map((plan) => {
+    const storyboard = (db.agencyStoryboards || []).find((item) => String(item.id) === String(plan.storyboardId));
+    const activeShots = (db.agencyStoryboardShots || []).filter((shot) => String(shot.storyboardId) === String(plan.storyboardId) && shot.status === "Vigente");
+    const approved = center.approved.filter((review) => String(review.routingPlanId) === String(plan.id));
+    const alreadyPackaged = center.packages.some((item) => String(item.routingPlanId) === String(plan.id) && !["Devuelto", "Anulado"].includes(item.status));
+    return { plan, storyboard, activeShots, approved, ready: Boolean(storyboard) && activeShots.length > 0 && approved.length === activeShots.length && !alreadyPackaged };
+  }).filter((item) => item.ready), [db.agencySceneRoutingPlans, db.agencyStoryboards, db.agencyStoryboardShots, center.approved, center.packages]);
+
+  async function preparePackage(candidate) {
+    const payload = postproductionPackagePayload(candidate.storyboard, candidate.plan, candidate.approved);
+    const result = await prepararPaquetePostproduccion(payload);
+    toast("ok", `${candidate.approved.length} toma(s) selladas para postproducción. Falta aprobación del corte.`);
+    if (result.duplicate) toast("alert", "Ese paquete ya existía; no se duplicó.");
+    await refrescar();
+  }
+
+  async function resolvePackage(item, decision) {
+    const noteText = window.prompt(decision === "Aprobar" ? "¿Qué validaste en el corte final?" : "¿Qué debe corregir postproducción?",
+      decision === "Aprobar" ? "Orden, audio, subtítulos, color y continuidad verificados" : "Ajustar el corte antes de aprobar") || "";
+    if (!noteText) return;
+    await resolverPaquetePostproduccion(item.id, decision, noteText);
+    toast("ok", decision === "Aprobar" ? "Corte aprobado. Publicación y pauta siguen bloqueadas." : "Corte devuelto con instrucciones trazables.");
+    await refrescar();
+  }
+
+  return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#5B2947,#7A3D5D)", color: "#fff" }}>
+      <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Salida generada → corte verificable</div><div className="display text-xl font-semibold">Calidad y postproducción MOMOS</div><div className="text-xs opacity-80 max-w-2xl">Protege producto, marca, física, cámara, luz y continuidad. Una falla crítica no se promedia y ningún corte autoriza publicación.</div></div>
+      <div className="grid grid-cols-3 gap-2 shrink-0">{[["Por revisar",center.summary.waiting + center.summary.pending],["Aprobadas",center.summary.approved],["Cortes",center.summary.packagesApproved]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[74px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencyQualityReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>calidad-postproduccion-v1.sql</code>. La generación sigue disponible, pero ninguna salida se declarará lista para corte.</div> : <>
+      <div className="p-4 border-b" style={{ borderColor: T.border }}>
+        <div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: T.coral }}>Control por toma</div>
+        <div className="grid lg:grid-cols-2 gap-2">{center.eligibleJobs.map((job) => { const shot = (db.agencyStoryboardShots || []).find((item) => String(item.id) === String(job.outputSpec?.storyboard_shot_id)); return <article key={job.id} className="rounded-2xl border p-3 flex items-center gap-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: "#F3D7DC" }}>◉</div><div className="flex-1 min-w-0"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Toma {shot?.shotNumber || "?"} · {job.provider}</div><div className="font-extrabold text-sm truncate">{shot?.title || job.operation}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Salida #{job.outputAssetId} · revisión creativa aprobada</div></div><Btn small onClick={() => openReview(job)}>Evaluar toma</Btn></article>; })}
+          {center.eligibleJobs.length === 0 && center.pending.length === 0 && <div className="text-sm p-2" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>No hay salidas esperando control.</b> Aparecerán cuando el motor complete una toma y pase la revisión creativa humana.</div>}
+        </div>
+        {center.pending.length > 0 && <div className="mt-3 space-y-2">{center.pending.map((review) => <article key={review.id} className="rounded-2xl border p-3 flex flex-wrap items-center gap-2" style={{ borderColor: "#E8C98B", background: "#FFF7E8" }}><div className="flex-1"><div className="text-[9px] uppercase font-extrabold">Propuesta del agente · toma {review.shot?.shotNumber}</div><div className="text-sm font-extrabold">{review.scoreTotal}/22 · requiere decisión humana</div></div><BtnAsync small confirmar onClick={() => resolveAgentReview(review, "Aprobar")}>Aprobar</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveAgentReview(review, "Rechazar")}>Clasificar falla</BtnAsync></article>)}</div>}
+      </div>
+      <div className="p-4 border-b" style={{ borderColor: T.border }}><div className="flex flex-wrap items-center justify-between gap-2 mb-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Postproducción</div><div className="font-extrabold text-sm">Tomas, audio, subtítulos y decisiones de corte</div></div></div>
+        <div className="grid lg:grid-cols-2 gap-2">{packageCandidates.map((candidate) => <article key={candidate.plan.id} className="rounded-2xl border p-3 flex items-center gap-3" style={{ borderColor: "#B8D3B2", background: "#F4FAF1" }}><div className="flex-1"><div className="text-[9px] uppercase font-extrabold" style={{ color: "#315B35" }}>{candidate.approved.length} toma(s) aprobadas</div><div className="font-extrabold text-sm">{candidate.storyboard.title}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Cobertura exacta · lista para preparar corte</div></div><BtnAsync small onClick={() => preparePackage(candidate)}>Preparar corte</BtnAsync></article>)}
+          {center.packages.map((item) => { const tone = statusTone(item.status); return <article key={item.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Paquete #{item.id} · V{item.version}</div><div className="font-extrabold text-sm">{item.storyboard?.title || `Storyboard #${item.storyboardId}`}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{item.status}</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}>{item.snapshot?.selections?.length || 0} tomas · publicación bloqueada · huella {item.fingerprint?.slice(0, 8)}</div>{item.status === "Preparado" && <div className="flex gap-2"><BtnAsync small confirmar onClick={() => resolvePackage(item, "Aprobar")}>Aprobar corte final</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolvePackage(item, "Devolver")}>Devolver</BtnAsync></div>}</article>; })}
+        </div>
+      </div>
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>El corte aprobado sigue separado de Distribución Comercial: no publica, no pauta y no gasta.</div>
+    {reviewJob && <Modal title="Control de calidad de la toma" onClose={() => setReviewJob(null)} wide topLayer>
+      <div className="rounded-2xl p-3 mb-3 text-xs" style={{ background: T.vainilla }}><b>Trabajo #{reviewJob.id} · salida #{reviewJob.outputAssetId}</b><br />Puntaje {evaluation.total}/22 · {evaluation.approved ? "cumple el umbral" : evaluation.reasons[0]}</div>
+      {outputAsset?.url && (outputAsset.mediaType === "Video" ? <video src={outputAsset.url} controls className="w-full max-h-72 rounded-2xl bg-black mb-3" /> : <img src={outputAsset.url} alt={outputAsset.name} className="w-full max-h-72 object-contain rounded-2xl mb-3" />)}
+      <div className="grid sm:grid-cols-2 gap-2">{AGENCY_QUALITY_CRITERIA.map((criterion) => <Field key={criterion.key} label={`${criterion.label}${criterion.critical ? " · crítica" : ""}`}><Select options={["0 · falla", "1 · deriva menor", "2 · exacto"]} value={`${scores[criterion.key]} · ${scores[criterion.key] === 0 ? "falla" : scores[criterion.key] === 1 ? "deriva menor" : "exacto"}`} onChange={(event) => setScores({ ...scores, [criterion.key]: Number(event.target.value.slice(0, 1)) })} /></Field>)}</div>
+      {!evaluation.approved && <Field label="Tipo de corrección"><Select options={AGENCY_QUALITY_FAILURE_TYPES.filter((item) => item !== "Aprobada")} value={failureType} onChange={(event) => setFailureType(event.target.value)} /></Field>}
+      <Field label="Continuidad observada"><textarea className={inputCls} style={inputStyle} rows="2" value={continuity} onChange={(event) => setContinuity(event.target.value)} /></Field>
+      <Field label={evaluation.approved ? "Nota de aprobación" : "Qué debe corregirse"}><textarea className={inputCls} style={inputStyle} rows="3" value={note} onChange={(event) => setNote(event.target.value)} /></Field>
+      <div className="flex gap-2"><BtnAsync confirmar onClick={saveQualityReview} disabled={continuity.trim().length < 3 || (!evaluation.approved && note.trim().length < 5)}>{evaluation.approved ? "Aprobar para postproducción" : `Sellar ${failureType.toLowerCase()}`}</BtnAsync><Btn kind="ghost" onClick={() => setReviewJob(null)}>Cancelar</Btn></div>
+    </Modal>}
+  </div>;
+}
+
+function AgencyMetaObservatory({ db, refrescar }) {
+  const activePolicy = (db.agencyMetaPolicies || []).find((item) => item.status === "Activa");
+  const center = useMemo(() => buildAgencyMetaCenter(db, activePolicy), [db, activePolicy]);
+  const [expanded, setExpanded] = useState(null);
+  const money = (value) => fmt(Math.round(Number(value || 0)));
+  const percent = (value) => value == null ? "—" : `${Number(value).toFixed(2)}%`;
+
+  async function prepare(snapshot) {
+    await prepararDiagnosticoMeta(snapshot.id, "Diagnóstico determinístico preparado desde el Observatorio Meta para revisión humana.");
+    toast("ok", "Diagnóstico 3Q preparado. No se publicó ni cambió presupuesto.");
+    await refrescar();
+  }
+
+  async function resolve(diagnostic, decision) {
+    const defaultNote = decision === "Aprobar"
+      ? "Revisé hechos, atribución, píxel y acciones; no autorizo cambios de pauta."
+      : "Devolver para corregir evidencia, denominadores o alcance del diagnóstico.";
+    const note = window.prompt(decision === "Aprobar" ? "Nota de aprobación humana" : "¿Qué debe corregirse?", defaultNote) || "";
+    if (note.trim().length < 8) return;
+    await resolverDiagnosticoMeta(diagnostic.id, decision, note.trim());
+    toast("ok", decision === "Aprobar" ? "Diagnóstico aprobado como lectura, sin ejecutar pauta." : "Diagnóstico devuelto con trazabilidad.");
+    await refrescar();
+  }
+
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }} aria-label="Observatorio de adquisición Meta">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#243E37,#315F4B 62%,#4A7960)", color: "#fff" }}>
+      <div className="flex items-start gap-3">
+        <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>◎</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Adquisición · verdad Meta + MOMOS OPS</div><div className="display text-xl font-semibold">Observatorio Meta</div><div className="text-xs opacity-85 max-w-2xl">Explica qué pasó, separa hipótesis de hechos y cruza atribución, píxel, catálogo, pedidos pagados y margen. Solo observa y propone.</div></div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+        {[["Ventanas",center.summary.snapshots],["En revisión",center.summary.reviewing],["Alertas píxel",center.summary.alerts],["Ingreso ligado",money(center.summary.linkedRevenue)]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[82px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}
+      </div>
+    </div>
+    {!db.agencyMetaReady ? <div className="px-4 py-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>observatorio-meta-v1.sql</code> después del Hito 36. Hasta entonces Meta no aporta señales al cerebro de Agencia.</div> : <>
+      <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2" style={{ borderColor: T.border, background: "#F4FAF1" }}>
+        <div className="text-[11px]"><b>Política vigente:</b> {activePolicy ? `${activePolicy.sourceLabel} · V${activePolicy.version} · ${activePolicy.market} · ${activePolicy.currency}` : "sin política activa"}</div>
+        <span className="rounded-full px-3 py-1 text-[9px] font-extrabold uppercase" style={{ background: "#DDEBD9", color: "#315B35" }}>Solo lectura · pauta protegida</span>
+      </div>
+      {center.snapshots.length === 0 ? <div className="px-4 py-5 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Todavía no hay ventanas Meta.</b> El conector privado registrará snapshots inmutables; ninguna clave ni secreto vive en el navegador.</div> : <div className="p-3 grid xl:grid-cols-2 gap-3">
+        {center.snapshots.slice(0, 8).map((snapshot) => {
+          const preview = snapshot.preview || {}; const derived = preview.derived || {}; const diagnostic = snapshot.diagnostics?.[0];
+          const open = expanded === snapshot.id; const catalogAlerts = (preview.catalogHypotheses || []).filter((item) => !item.eligible).length;
+          const pixelAlerts = (preview.pixelHealth || []).filter((item) => item.alert).length;
+          const tone = diagnostic?.status === "Aprobado" ? { bg: "#DDEBD9", fg: "#315B35" } : diagnostic?.status === "Devuelto" ? { bg: "#F6D4CD", fg: "#A03B2A" } : { bg: "#FFF2D8", fg: "#7A5410" };
+          return <article key={snapshot.id} className="rounded-2xl border overflow-hidden momo-card-action" style={{ borderColor: open ? "#A8C5AD" : T.border, background: "#fff" }}>
+            <button type="button" className="w-full text-left p-4 bg-transparent border-0" onClick={() => setExpanded(open ? null : snapshot.id)} aria-expanded={open}>
+              <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: "#3F6B42" }}>{snapshot.entityType} · {snapshot.objective}</div><div className="display text-lg font-semibold">{snapshot.accountLabel || snapshot.accountExternalId}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{snapshot.windowStart} → {snapshot.windowEnd} · {snapshot.currency}</div></div><div className="text-right"><div className="display text-xl font-semibold" style={{ color: T.coral }}>{derived.roas == null ? "—" : `${derived.roas}×`}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>ROAS atribuido</div></div></div>
+              <div className="grid grid-cols-4 gap-2 mt-3">{[["Gasto",money(derived.spend)],["CTR",percent(derived.ctrPct)],["Pedidos MOMOS",snapshot.localTruth?.paidOrders || 0],["Alertas",pixelAlerts + catalogAlerts]].map(([label,value]) => <div key={label} className="rounded-xl px-2 py-2" style={{ background: "#FAF4EC" }}><div className="font-extrabold text-xs">{value}</div><div className="text-[8px] uppercase font-bold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
+            </button>
+            {open && <div className="px-4 pb-4 border-t" style={{ borderColor: T.border, background: "#FFFCF8" }}>
+              <div className="grid sm:grid-cols-3 gap-2 my-3">{[["Meta atribuye",money(preview.whatHappened?.metaAttributedRevenue)],["MOMOS pagado",money(snapshot.localTruth?.paidRevenue)],["Brecha atribuida",money(preview.whatHappened?.attributionGap)]].map(([label,value]) => <div key={label} className="rounded-xl border p-2.5" style={{ borderColor: T.border }}><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="font-extrabold">{value}</div></div>)}</div>
+              <div className="rounded-xl px-3 py-2 text-[10px] mb-3" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Atribución no es causalidad.</b> Meta aporta una lectura; pedidos pagados y margen vienen de MOMOS OPS.</div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><div className="text-[9px] uppercase font-extrabold mb-1" style={{ color: T.coral }}>Por qué podría pasar</div>{(preview.whyHypotheses || []).length ? preview.whyHypotheses.slice(0, 3).map((item, index) => <div key={`${item.signal}-${index}`} className="text-[10px] mb-1">• <b>{item.signal}:</b> {item.interpretation}</div>) : <div className="text-[10px]" style={{ color: T.choco2 }}>Sin hipótesis concluyentes en esta ventana.</div>}</div>
+                <div><div className="text-[9px] uppercase font-extrabold mb-1" style={{ color: T.coral }}>Qué revisaríamos</div>{(preview.recommendedActions || []).slice(0, 3).map((item, index) => <div key={`${item.action}-${index}`} className="text-[10px] mb-1">• {item.action}</div>)}</div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">{diagnostic ? <><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{diagnostic.status} · confianza {diagnostic.confidence}</span>{diagnostic.status === "En revisión" && <><BtnAsync small confirmar onClick={() => resolve(diagnostic, "Aprobar")}>Aprobar lectura</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolve(diagnostic, "Devolver")}>Devolver</BtnAsync></>}</> : <BtnAsync small onClick={() => prepare(snapshot)}>Preparar diagnóstico 3Q</BtnAsync>}</div>
+            </div>}
+          </article>;
+        })}
+      </div>}
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Este panel no crea campañas, no cambia presupuesto, no pausa, no escala y no publica. Cada acción externa conserva contrato y aprobación específicos.</div>
+  </section>;
+}
+
+function AgencyMetaIncrementality({ db, refrescar }) {
+  const center = useMemo(() => buildMetaIncrementalityCenter(db), [db]);
+  const money = (value) => fmt(Math.round(Number(value || 0)));
+
+  async function createStudy(diagnostic) {
+    const snapshot = (db.agencyMetaSnapshots || []).find((item) => String(item.id) === String(diagnostic.snapshotId));
+    if (!snapshot?.localCampaignId) throw new Error("El diagnóstico debe provenir de una campaña local exacta.");
+    const externalStudyId = window.prompt("ID del estudio Meta Conversion Lift", `META-LIFT-${snapshot.localCampaignId}`) || "";
+    if (externalStudyId.trim().length < 3) return;
+    const payload = liftStudyPayload({ studyKey: `meta-lift-${diagnostic.id}-${Date.now()}`, diagnosticId: diagnostic.id,
+      design: "Meta Conversion Lift", lifecycleScope: "Todos", windowStart: snapshot.windowStart, windowEnd: snapshot.windowEnd,
+      minimumPerArm: 100, randomized: true, externalStudyId: externalStudyId.trim(), assignmentMethod: "Meta Conversion Lift",
+      hypothesis: "La campaña aumenta compradores pagados y beneficio frente al control aleatorio." });
+    await crearEstudioIncrementalMeta(payload);
+    toast("ok", "Diseño incremental preparado para revisión; no se modificó la pauta.");
+    await refrescar();
+  }
+
+  async function resolveStudy(study, decision) {
+    const note = window.prompt(decision === "Aprobar" ? "Nota de revisión del diseño" : "¿Qué debe corregirse?",
+      decision === "Aprobar" ? "Revisé aleatorización, ventana, muestra y alcance del estudio." : "Corregir diseño, asignación o ventana antes de medir.") || "";
+    if (note.trim().length < 8) return;
+    await resolverEstudioIncrementalMeta(study.id, decision, note.trim());
+    toast("ok", decision === "Aprobar" ? "Estudio diseñado; espera medición privada del conector." : "Estudio devuelto con trazabilidad.");
+    await refrescar();
+  }
+
+  async function resolveMeasurement(measurement, decision) {
+    const note = window.prompt("Nota de revisión humana", decision === "Aprobar"
+      ? "Revisé muestra, aleatorización, ciclo de vida, margen y alcance causal."
+      : decision === "Inconclusa" ? "La evidencia no permite una decisión causal todavía." : "Corregir la medición o su evidencia externa.") || "";
+    if (note.trim().length < 8) return;
+    await resolverMedicionIncrementalMeta(measurement.id, decision, note.trim());
+    toast("ok", "Resultado revisado sin cambiar presupuesto, publicación ni pauta.");
+    await refrescar();
+  }
+
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }} aria-label="Medición incremental Meta">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#3D315B,#5B4779 62%,#80679B)", color: "#fff" }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>⇄</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Control vs. expuesto · nuevos vs. recurrentes</div><div className="display text-xl font-semibold">Incrementalidad Meta</div>
+          <div className="text-xs opacity-85 max-w-2xl">Mide compradores y beneficio que no habrían ocurrido sin la campaña. Exige aleatorización, muestra suficiente y revisión humana.</div></div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">{[["Estudios",center.summary.studies],["En revisión",center.summary.reviewing],["Causales",center.summary.causal],["Beneficio",money(center.summary.profit)]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[82px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencyMetaIncrementalityReady ? <div className="px-4 py-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>incrementalidad-meta-v1.sql</code> después del Hito 37. El Observatorio seguirá funcionando mientras tanto.</div> : <>
+      {center.candidates.length > 0 && <div className="p-3 border-b" style={{ borderColor: T.border, background: "#F7F2FB" }}><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: "#5B4779" }}>Lecturas aprobadas listas para diseñar prueba</div><div className="grid lg:grid-cols-2 gap-2">{center.candidates.slice(0, 4).map((diagnostic) => {
+        const snapshot = (db.agencyMetaSnapshots || []).find((item) => String(item.id) === String(diagnostic.snapshotId));
+        return <article key={diagnostic.id} className="rounded-2xl border bg-white p-3 flex items-center gap-3" style={{ borderColor: "#D9CBE5" }}><div className="flex-1"><div className="text-[9px] uppercase font-extrabold" style={{ color: "#5B4779" }}>Diagnóstico #{diagnostic.id} · confianza {diagnostic.confidence}</div><div className="font-extrabold text-sm">{snapshot?.accountLabel || snapshot?.accountExternalId || "Ventana Meta"}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Campaña {snapshot?.localCampaignId || "sin vínculo"} · atribución todavía no causal</div></div><BtnAsync small onClick={() => createStudy(diagnostic)} disabled={!snapshot?.localCampaignId}>Diseñar lift</BtnAsync></article>;
+      })}</div></div>}
+      {center.studies.length === 0 ? <div className="px-4 py-5 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Aún no hay estudios.</b> Primero aprobá una lectura del Observatorio ligada a una campaña exacta.</div> : <div className="p-3 grid xl:grid-cols-2 gap-3">{center.studies.slice(0, 8).map((study) => <article key={study.id} className="rounded-2xl border p-4" style={{ borderColor: "#D9CBE5", background: "#FFFCFF" }}>
+        <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: "#5B4779" }}>{study.design} · {study.lifecycleScope}</div><div className="display text-lg font-semibold">Campaña {study.campaignId}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{study.windowStart} → {study.windowEnd} · mínimo {study.minimumPerArm} por brazo</div></div><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: study.status === "Cerrado" ? "#DDEBD9" : study.status === "Devuelto" ? "#F6D4CD" : "#EEE5F4", color: study.status === "Devuelto" ? "#A03B2A" : "#5B4779" }}>{study.status}</span></div>
+        <div className="rounded-xl px-3 py-2 text-[10px] my-3" style={{ background: "#F7F0E3" }}><b>Hipótesis:</b> {study.hypothesis}</div>
+        {study.status === "En revisión" && <div className="flex gap-2 mb-3"><BtnAsync small confirmar onClick={() => resolveStudy(study, "Aprobar")}>Aprobar diseño</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveStudy(study, "Devolver")}>Devolver</BtnAsync></div>}
+        {study.measurements.length === 0 ? <div className="text-[10px]" style={{ color: T.choco2 }}>{study.status === "Diseñado" ? "Esperando resultado agregado del conector privado de Meta." : "Todavía no existe una medición sellada."}</div> : study.measurements.slice(0, 2).map((measurement) => { const result = measurement.result || {}; return <div key={measurement.id} className="rounded-2xl border p-3 mt-2" style={{ borderColor: result.causalClaimAllowed ? "#A8C5AD" : "#E8C98B", background: result.causalClaimAllowed ? "#F4FAF1" : "#FFF8E9" }}>
+          <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold">Resultado · {result.classification || "En revisión"}</div><div className="font-extrabold text-sm">{result.controlRatePct}% control → {result.exposedRatePct}% expuesto</div></div><div className="text-right"><div className="display text-lg font-semibold" style={{ color: Number(result.incrementalProfit) >= 0 ? "#315B35" : "#A03B2A" }}>{money(result.incrementalProfit)}</div><div className="text-[8px] uppercase font-extrabold">beneficio incremental</div></div></div>
+          <div className="grid grid-cols-3 gap-2 my-2">{[["Lift",result.liftPct == null ? "—" : `${result.liftPct}%`],["Muestra",result.sampleSufficient ? "Suficiente" : "Insuficiente"],["Causal",result.causalClaimAllowed ? "Sí" : "No"]].map(([label,value]) => <div key={label} className="rounded-xl bg-white px-2 py-1.5"><div className="text-[10px] font-extrabold">{value}</div><div className="text-[8px] uppercase">{label}</div></div>)}</div>
+          {measurement.status === "En revisión" && <div className="flex flex-wrap gap-2"><BtnAsync small confirmar onClick={() => resolveMeasurement(measurement, "Aprobar")} disabled={!result.sampleSufficient}>Aprobar lectura</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveMeasurement(measurement, "Inconclusa")}>Marcar inconclusa</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveMeasurement(measurement, "Devolver")}>Devolver</BtnAsync></div>}
+        </div>; })}
+      </article>)}</div>}
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Una correlación o atribución nunca se presenta como causalidad. Este módulo no crea campañas, no cambia audiencias o presupuesto y no publica.</div>
+  </section>;
+}
+
+function AgencyMetaInvestmentScenarios({ db, refrescar }) {
+  const center = useMemo(() => buildMetaInvestmentCenter(db), [db]);
+  const money = (value) => fmt(Math.round(Number(value || 0)));
+
+  async function createScenario(measurement) {
+    const payload = investmentScenarioPayload(measurement, 7);
+    await crearEscenariosInversionMeta(payload);
+    toast("ok", "Cuatro escenarios preparados con datos actuales; no se cambió la pauta.");
+    await refrescar();
+  }
+
+  async function reviewScenario(scenario, decision) {
+    const defaults = decision === "Aprobar"
+      ? "Revisé beneficio incremental, inventario, capacidad, ciclo de vida y límites."
+      : decision === "Devolver" ? "Actualizar evidencia operativa o supuestos antes de decidir."
+        : "Descartado por decisión humana; no debe ejecutarse.";
+    const note = window.prompt("Nota obligatoria de revisión humana", defaults) || "";
+    if (note.trim().length < 8) return;
+    await resolverEscenariosInversionMeta(scenario.id, decision, note.trim());
+    toast("ok", `${decision}: la revisión quedó registrada sin ejecutar cambios.`);
+    await refrescar();
+  }
+
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#B8C7D9", background: "#FFFDFC" }} aria-label="Escenarios de inversión Meta">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#173B58,#245777 58%,#397A92)", color: "#fff" }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>◫</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Beneficio · inventario · capacidad · ciclo de vida</div><div className="display text-xl font-semibold">Escenarios de inversión Meta</div>
+          <div className="text-xs opacity-85 max-w-2xl">Compara conservar, reducir, redistribuir o experimentar. Son alternativas para decidir en equipo, nunca órdenes automáticas de pauta.</div></div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">{[["Escenarios",center.summary.scenarios],["En revisión",center.summary.reviewing],["Aprobados",center.summary.approved],["Con bloqueos",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[82px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencyMetaInvestmentReady ? <div className="px-4 py-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>escenarios-inversion-meta-v1.sql</code> después del Hito 38. La medición incremental seguirá disponible.</div> : <>
+      {center.candidates.length > 0 && <div className="p-3 border-b" style={{ borderColor: T.border, background: "#EEF5F7" }}><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: "#245777" }}>Mediciones aprobadas listas para comparar</div><div className="grid lg:grid-cols-2 gap-2">{center.candidates.slice(0, 4).map((measurement) => <article key={measurement.id} className="rounded-2xl border bg-white p-3 flex items-center gap-3" style={{ borderColor: "#C9D9E2" }}><div className="flex-1"><div className="text-[9px] uppercase font-extrabold" style={{ color: "#245777" }}>Medición causal #{measurement.id}</div><div className="font-extrabold text-sm">Beneficio incremental {money(measurement.result?.incrementalProfit)}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Horizonte operativo sugerido: 7 días · revisión humana obligatoria</div></div><BtnAsync small onClick={() => createScenario(measurement)}>Comparar 4 opciones</BtnAsync></article>)}</div></div>}
+      {center.scenarios.length === 0 ? <div className="px-4 py-5 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Aún no hay escenarios.</b> Primero aprobá una medición incremental con muestra suficiente.</div> : <div className="p-3 grid xl:grid-cols-2 gap-3">{center.scenarios.slice(0, 10).map((scenario) => {
+        const evidence = scenario.evidence || {}; const operations = evidence.operations || {}; const product = evidence.product || {}; const campaign = evidence.campaign || {};
+        return <article key={scenario.id} className="rounded-2xl border overflow-hidden" style={{ borderColor: scenario.status === "En revisión" ? "#9FBAC8" : T.border, background: "#FFFEFC" }}>
+          <div className="p-4"><div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase font-extrabold tracking-wider" style={{ color: "#245777" }}>Campaña {campaign.name || scenario.campaignId} · {scenario.horizonDays} días</div><div className="display text-lg font-semibold">{product.name || "Producto foco sin identificar"}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Recomendación del modelo: <b>{scenario.recommendedOption}</b> · evidencia sellada</div></div><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: scenario.status === "Aprobado" ? "#DDEBD9" : scenario.status === "En revisión" ? "#DDEAF0" : "#F3E6DD", color: scenario.status === "Aprobado" ? "#315B35" : "#245777" }}>{scenario.status}</span></div>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 my-3">{[["Exacto",operations.exactAvailable],["En proceso",operations.inProcess],["Reservado",operations.reservations],["Vence pronto",operations.expiringSoon],["Cola cocina",operations.kitchenQueue],["Pendiente",operations.pendingProduction]].map(([label,value]) => <div key={label} className="rounded-xl px-2 py-2" style={{ background: "#F4F7F8" }}><div className="text-xs font-extrabold">{Number(value || 0)}</div><div className="text-[7px] uppercase font-bold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
+            {evidence.stockBlocked && <div className="rounded-xl px-3 py-2 mb-3 text-[10px] font-bold" style={{ background: "#F9D8D1", color: "#A03B2A" }}>Stock operativo bloqueado: no se recomienda ampliar exposición.</div>}
+            <div className="grid sm:grid-cols-2 gap-2">{(scenario.options || []).map((option) => { const recommended = option.key === scenario.recommendedOption; const projection = option.projection || {}; return <div key={option.key} className="rounded-2xl border p-3" style={{ borderColor: recommended ? "#4B8798" : T.border, background: recommended ? "#EEF7F8" : "#fff" }}><div className="flex items-start justify-between gap-2"><div><div className="font-extrabold text-sm">{option.key}</div><div className="text-[9px]" style={{ color: T.choco2 }}>{option.purpose}</div></div>{recommended && <span className="rounded-full px-2 py-1 text-[8px] font-extrabold" style={{ background: "#245777", color: "#fff" }}>SUGERIDA</span>}</div><div className="grid grid-cols-2 gap-2 my-2"><div><div className="font-extrabold text-sm">{money(option.proposedBudget)}</div><div className="text-[8px] uppercase">presupuesto simulado</div></div><div><div className="font-extrabold text-sm">{Number(option.deltaPct || 0)}%</div><div className="text-[8px] uppercase">variación</div></div></div><div className="text-[9px] rounded-lg px-2 py-1.5" style={{ background: "#FAF4EC" }}>Beneficio proyectado: {money(projection.low)} — <b>{money(projection.base)}</b> — {money(projection.high)}</div>{(option.blockers || []).slice(0, 2).map((blocker) => <div key={blocker} className="text-[9px] mt-1" style={{ color: "#A03B2A" }}>• {blocker}</div>)}</div>; })}</div>
+            {scenario.status === "En revisión" && <div className="flex flex-wrap gap-2 mt-3"><BtnAsync small confirmar onClick={() => reviewScenario(scenario, "Aprobar")}>Aprobar lectura</BtnAsync><BtnAsync small kind="ghost" onClick={() => reviewScenario(scenario, "Devolver")}>Devolver</BtnAsync><BtnAsync small kind="ghost" onClick={() => reviewScenario(scenario, "Descartar")}>Descartar</BtnAsync></div>}
+          </div>
+        </article>;
+      })}</div>}
+    </>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Aprobar una lectura no ejecuta nada: no cambia presupuesto, audiencia, campaña o publicación. La ejecución requiere otro contrato y otra aprobación.</div>
+  </section>;
+}
+
+function AgencyMetaAuthorizationPanel({ db, refrescar }) {
+  const center = useMemo(() => buildMetaAuthorizationCenter(db), [db]);
+  const connector = useMemo(() => buildMetaConnectorCenter(db), [db]);
+  const money = (value) => fmt(Math.round(Number(value || 0)));
+
+  async function requestAuthorization(scenario, optionKey) {
+    const audienceExternalId = window.prompt("ID exacto de la audiencia Meta", "aud_momos_principal") || "";
+    if (!audienceExternalId.trim()) return;
+    const validMinutes = Number(window.prompt("Vigencia de esta autorización (10 a 120 minutos)", "60") || 0);
+    const justification = window.prompt("Justificación humana obligatoria", `Autorizar ${optionKey} para la campaña exacta, con presupuesto y audiencia sellados.`) || "";
+    const payload = metaAuthorizationPayload({ scenario, optionKey, audienceExternalId, validMinutes, justification,
+      settings: { campaignBudgetLimit: db.agencySettings?.campaignBudgetLimit, paused: db.agencySettings?.paused } });
+    await solicitarAutorizacionInversionMeta(payload);
+    toast("ok", "Solicitud sellada para revisión. Todavía no cambió ninguna campaña.");
+    await refrescar();
+  }
+
+  async function reviewAuthorization(authorization, decision) {
+    const suggested = decision === "Autorizar"
+      ? "Verifiqué campaña, audiencia, presupuesto, vigencia y evidencia operativa."
+      : decision === "Devolver" ? "Corregir el alcance o la evidencia antes de autorizar." : "No corresponde ejecutar esta alternativa.";
+    const note = window.prompt("Nota de revisión humana", suggested) || "";
+    if (note.trim().length < 16) return;
+    await resolverAutorizacionInversionMeta(authorization.id, decision, note.trim());
+    toast("ok", decision === "Autorizar" ? "Autorización vigente creada para simulación privada; no se tocó Meta." : `${decision} registrada con trazabilidad.`);
+    await refrescar();
+  }
+
+  async function revokeAuthorization(authorization) {
+    const reason = window.prompt("Motivo de revocación", "La autorización ya no corresponde al momento comercial actual.") || "";
+    if (reason.trim().length < 16) return;
+    await revocarAutorizacionInversionMeta(authorization.id, reason.trim());
+    toast("ok", "Autorización revocada; cualquier simulación pendiente quedó cerrada.");
+    await refrescar();
+  }
+
+  async function prepareMetaVerification(authorization) {
+    if (!db.agencyMetaConnectorReady) throw new Error("Aplicá primero meta-conector-dry-run-v1.sql.");
+    const storedAccount = (db.agencyIntegrations || []).find((item) => item.provider === "Meta")?.externalAccountId || "act_";
+    const accountId = window.prompt("Cuenta publicitaria exacta de Meta (act_...)", storedAccount) || "";
+    if (!accountId.trim()) return;
+    const apiVersion = window.prompt("Versión Graph API sellada para esta verificación", "v25.0") || "";
+    if (!apiVersion.trim()) return;
+    await prepararDryRunMeta(authorization.id, accountId.trim(), apiVersion.trim());
+    toast("ok", "Verificación oficial preparada: el worker solo hará tres lecturas GET y no cambiará la campaña.");
+    await refrescar();
+  }
+
+  const statusStyle = (status) => status === "Autorizada" ? { background: "#DDEBD9", color: "#315B35" }
+    : status === "En revisión" ? { background: "#FBE8C8", color: "#8B5A08" }
+      : status === "Incierta" ? { background: "#F6D4CD", color: "#A03B2A" }
+        : { background: "#F1E7E0", color: T.choco2 };
+
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D4B9C4", background: "#FFFDFC" }} aria-label="Autorización de inversión Meta">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4C2637,#74384D 58%,#A35569)", color: "#fff" }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>✓</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Doble aprobación · alcance exacto · vigencia corta</div><div className="display text-xl font-semibold">Autorización de inversión Meta</div>
+          <div className="text-xs opacity-85 max-w-2xl">H40 sella el permiso humano y H41 verifica cuenta, campaña y audiencia por Graph API. Es una comprobación oficial de solo lectura: nunca modifica pauta.</div></div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">{[["Solicitudes",center.summary.requests],["En revisión",center.summary.reviewing],["Autorizadas",center.summary.authorized],["Inciertas",center.summary.uncertain]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[82px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencyMetaAuthorizationReady ? <div className="px-4 py-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>autorizacion-inversion-meta-v1.sql</code> después del Hito 39. Los escenarios seguirán disponibles sin permisos de ejecución.</div> : <>
+      {center.candidates.length > 0 && <div className="p-3 border-b" style={{ borderColor: T.border, background: "#FBF1F4" }}><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: "#74384D" }}>Escenarios aprobados que todavía no tienen autorización</div><div className="grid xl:grid-cols-2 gap-3">{center.candidates.slice(0, 6).map((scenario) => <article key={scenario.id} className="rounded-2xl border bg-white p-3" style={{ borderColor: "#E0CAD2" }}>
+        <div className="flex items-start justify-between gap-3 mb-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: "#74384D" }}>Escenario #{scenario.id} · campaña {scenario.campaignId}</div><div className="font-extrabold text-sm">Elegí exactamente qué alternativa solicitar</div></div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold" style={{ background: "#DDEBD9", color: "#315B35" }}>LECTURA APROBADA</span></div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{(scenario.options || []).map((option) => { const blocked = (option.blockers || []).length > 0 || (scenario.evidence?.stockBlocked && option.key !== "Reducir"); return <button key={option.key} type="button" disabled={blocked} title={blocked ? (option.blockers || []).join(" ") || "Bloqueada por stock" : `Solicitar ${option.key}`} onClick={() => requestAuthorization(scenario, option.key)} className="rounded-xl border px-2 py-2 text-left disabled:opacity-40" style={{ borderColor: option.key === scenario.recommendedOption ? "#A35569" : T.border, background: option.key === scenario.recommendedOption ? "#FFF2F5" : "#fff" }}><div className="text-[10px] font-extrabold">{option.key}</div><div className="text-[9px]">{money(option.proposedBudget)}</div></button>; })}</div>
+        {scenario.evidence?.stockBlocked && <div className="text-[9px] mt-2 font-bold" style={{ color: "#A03B2A" }}>Sin stock operativo, la guarda solo permite solicitar Reducir.</div>}
+      </article>)}</div></div>}
+      {center.authorizations.length === 0 ? <div className="px-4 py-5 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>No hay permisos solicitados.</b> La aprobación analítica del Hito 39 no autoriza inversión por sí sola.</div> : <div className="p-3 grid xl:grid-cols-2 gap-3">{center.authorizations.slice(0, 12).map((authorization) => { const dryRun = connector.dryRuns.find((item) => String(item.authorizationId) === String(authorization.id)); return <article key={authorization.id} className="rounded-2xl border p-4" style={{ borderColor: authorization.status === "Incierta" || dryRun?.status === "Incierto" ? "#D88A7C" : "#E0CAD2", background: "#FFFCFD" }}>
+        <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: "#74384D" }}>Campaña {authorization.campaignId} · audiencia {authorization.audienceExternalId}</div><div className="display text-lg font-semibold">{authorization.selectedOption} · {money(authorization.targetBudget)}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Contrato #{authorization.id} · {authorization.executionMode} · vence {authorization.validUntil || "sin fecha"}</div></div><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={statusStyle(authorization.status)}>{authorization.status}</span></div>
+        <div className="rounded-xl px-3 py-2 text-[10px] my-3" style={{ background: "#F7F0E3" }}><b>Razón:</b> {authorization.justification}</div>
+        {authorization.job && <div className="rounded-xl px-3 py-2 text-[10px] mb-3" style={{ background: authorization.job.status === "Incierto" ? "#F9D8D1" : "#EEF3F7" }}><b>Ensayo privado:</b> {authorization.job.status} · intento {authorization.job.attempt}{authorization.job.errorMessage ? ` · ${authorization.job.errorMessage}` : ""}</div>}
+        {dryRun && <div className="rounded-xl px-3 py-2 text-[10px] mb-3" style={{ background: dryRun.status === "Conciliado" ? "#E5F1E1" : ["Divergente","Fallido","Incierto"].includes(dryRun.status) ? "#F9D8D1" : "#EEF3F7" }}><div className="font-extrabold">◎ Verificación oficial: {dryRun.status}</div><div>{dryRun.adAccountId} · {dryRun.apiVersion} · solo GET</div>{dryRun.status === "Conciliado" && <div>Cuenta, campaña y audiencia coinciden · cero mutaciones.</div>}{dryRun.errorMessage && <div>{dryRun.errorMessage}</div>}</div>}
+        {authorization.status === "En revisión" && <div className="flex flex-wrap gap-2"><BtnAsync small confirmar onClick={() => reviewAuthorization(authorization, "Autorizar")}>Autorizar simulación</BtnAsync><BtnAsync small kind="ghost" onClick={() => reviewAuthorization(authorization, "Devolver")}>Devolver</BtnAsync><BtnAsync small kind="ghost" onClick={() => reviewAuthorization(authorization, "Rechazar")}>Rechazar</BtnAsync></div>}
+        {authorization.status === "Autorizada" && <div className="flex flex-wrap gap-2">{!dryRun && db.agencyMetaConnectorReady && <BtnAsync small confirmar onClick={() => prepareMetaVerification(authorization)}>Verificar en Meta</BtnAsync>}<BtnAsync small kind="ghost" onClick={() => revokeAuthorization(authorization)}>Revocar permiso</BtnAsync></div>}
+      </article>; })}</div>}
+    </>}
+    {db.agencyMetaAuthorizationReady && !db.agencyMetaConnectorReady && <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>El permiso humano ya está protegido. Aplicá <code>meta-conector-dry-run-v1.sql</code> para comprobar las identidades en Meta sin tocar campañas.</div>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Una autorización o lectura incierta no se reintenta. H41 solo usa ads_read + appsecret_proof; ads_management, publicaciones y cambios de presupuesto permanecen prohibidos.</div>
+  </section>;
+}
+
+function AgencyActionCenter({ db, go, refrescar }) {
+  const center = useMemo(() => buildAgencyActionQueue(db.agencyActionQueue, db.agencyDecisions || []), [db.agencyActionQueue, db.agencyDecisions]);
+  const [selected, setSelected] = useState(null);
+  const [outcomeForm, setOutcomeForm] = useState(() => agencyOutcomeDefaults(null));
+  const tone = (item) => item.blocked
+    ? { border: "#E6B7AE", bg: "#FFF4F1", chip: "#F6D4CD", fg: "#A03B2A" }
+    : item.humanActionRequired
+      ? { border: "#E6C891", bg: "#FFFBF3", chip: "#FFF0CE", fg: "#8B5A08" }
+      : { border: "#C7D8E8", bg: "#F5F9FD", chip: "#E5EEF7", fg: "#315A7D" };
+
+  function openAction(item) {
+    setOutcomeForm(agencyOutcomeDefaults(item));
+    setSelected(item);
+  }
+
+  function navigateAction(item) {
+    const destination = agencyActionDestination(item);
+    setSelected(null);
+    if (destination.module !== "Crecimiento") { go(destination.module); return; }
+    window.setTimeout(() => document.getElementById(destination.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  async function completeDecision() {
+    if (!selected) return;
+    const error = validateAgencyOutcome(outcomeForm, selected);
+    if (error) throw new Error(error);
+    await registrarResultadoAccionAgencia(agencyOutcomePayload(selected, outcomeForm));
+    setSelected(null); toast("ok", `Resultado verificable de decisión #${selected.decisionId} registrado`); await refrescar();
+  }
+
+  return <section id="agency-action-center" className="rounded-[26px] border overflow-hidden mb-6 shadow-sm scroll-mt-24" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#5A392F,#855143)", color: "#fff" }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>🧭</div><div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Decisión humana → siguiente paso</div><div className="display text-xl font-semibold">Bandeja de acciones de Agencia</div><div className="text-xs opacity-85 max-w-2xl">Una sola acción por decisión aprobada. Abre el área exacta y nunca publica, contacta, pauta o gasta por sí sola.</div></div></div>
+      <div className="grid grid-cols-3 gap-2 shrink-0">{[["Acciones",center.summary.total],["Humanas",center.summary.human],["Bloqueadas",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[70px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+    </div>
+    {!db.agencyActionQueueReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>centro-acciones-agencia-v1.sql</code> para mostrar los siguientes pasos protegidos dentro de MOMO OPS.</div>
+      : !center.allowed ? <div className="px-4 py-4 text-sm" style={{ color: T.choco2 }}>Tu rol no opera Agencia MOMOS; la bandeja permanece privada.</div>
+        : center.items.length === 0 ? <div className="px-4 py-4 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Bandeja al día.</b> No hay decisiones aprobadas esperando un siguiente paso.</div>
+          : <div className="p-3 grid md:grid-cols-2 xl:grid-cols-3 gap-3">{center.items.slice(0, 9).map((item) => { const style = tone(item); return <article key={item.decisionId} className="rounded-2xl border p-4 flex flex-col" style={{ borderColor: style.border, background: style.bg }}>
+            <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Decisión #{item.decisionId} · {item.decisionType}</div><div className="display text-base font-semibold mt-1">{item.title}</div></div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold uppercase shrink-0" style={{ background: style.chip, color: style.fg }}>{item.riskLevel}</span></div>
+            {item.rationale && <p className="text-[11px] leading-relaxed my-2 line-clamp-2" style={{ color: T.choco2 }}>{item.rationale}</p>}
+            <div className="rounded-xl px-3 py-2.5 my-2" style={{ background: "rgba(255,255,255,.72)", borderLeft: `3px solid ${style.fg}` }}><div className="text-[8px] uppercase tracking-wider font-extrabold" style={{ color: style.fg }}>{item.stage} · {item.area}</div><div className="text-[11px] font-extrabold mt-0.5">{item.actionLabel}</div></div>
+            {item.blocked && <div className="text-[10px] font-bold mb-2" style={{ color: "#A03B2A" }}>Protegida: {item.blockerCode || "requiere resolver un bloqueo"}</div>}
+            <div className="mt-auto"><Btn small kind={item.blocked ? "ghost" : "primary"} disabled={!item.humanActionRequired && !item.blocked} onClick={() => openAction(item)}>{item.humanActionRequired || item.blocked ? "Revisar acción" : "En seguimiento del sistema"}</Btn></div>
+          </article>; })}</div>}
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>La tarjeta navega; no marca la decisión como ejecutada. El resultado solo se registra después de completar el trabajo real.</div>
+    {selected && <Modal title={`Decisión #${selected.decisionId} · ${selected.decisionType}`} onClose={() => setSelected(null)} topLayer>
+      <div className="rounded-2xl p-4 mb-3" style={{ background: "#FFF8F1", border: `1px solid ${T.border}` }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{selected.stage} · {selected.area}</div><div className="display text-lg font-semibold mt-1">{selected.title}</div>{selected.rationale && <p className="text-xs mt-2 mb-0" style={{ color: T.choco2 }}>{selected.rationale}</p>}</div>
+      <div className="rounded-2xl px-3 py-3 mb-3 text-sm font-bold" style={{ background: selected.blocked ? "#F6D4CD" : "#E8F1E4", color: selected.blocked ? "#A03B2A" : "#315B35" }}>{selected.actionLabel}</div>
+      {selected.blocked && <div className="rounded-xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Bloqueo protegido: {selected.blockerCode}. Esta pantalla no puede ejecutar cambios externos.</div>}
+      <div className="flex flex-wrap gap-2 mb-4"><Btn onClick={() => navigateAction(selected)}>Abrir {selected.area}</Btn><Btn kind="ghost" onClick={() => setSelected(null)}>Cerrar</Btn></div>
+      {!db.agencyActionOutcomesReady ? <div className="rounded-xl px-3 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>resultados-verificables-agencia-v1.sql</code> para cerrar esta acción con evidencia.</div> : <div className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#FFFCF9" }}>
+        <div className="text-[9px] uppercase tracking-wider font-extrabold mb-1" style={{ color: T.coral }}>Después de hacer el trabajo</div>
+        <div className="display text-base font-semibold mb-3">Cerrar con evidencia verificable</div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="text-[10px] font-bold">Cómo terminó<select className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={outcomeForm.completionStatus} onChange={(e) => setOutcomeForm((form) => ({ ...form, completionStatus: e.target.value }))}>{AGENCY_OUTCOME_STATUSES.map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label className="text-[10px] font-bold">Resultado observado<select className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={outcomeForm.observedResult} onChange={(e) => setOutcomeForm((form) => ({ ...form, observedResult: e.target.value }))}>{AGENCY_OBSERVED_RESULTS.map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label className="text-[10px] font-bold">Tipo de evidencia<select className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={outcomeForm.evidenceKind} onChange={(e) => setOutcomeForm((form) => ({ ...form, evidenceKind: e.target.value, evidenceId: e.target.value === "Ninguna" ? "" : form.evidenceId }))}>{AGENCY_EVIDENCE_KINDS.map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label className="text-[10px] font-bold">ID exacto de MOMO OPS<input className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={outcomeForm.evidenceId} disabled={outcomeForm.evidenceKind === "Ninguna"} placeholder="Ej. L-046, P-1060 o CRE-01" onChange={(e) => setOutcomeForm((form) => ({ ...form, evidenceId: e.target.value }))} /></label>
+          <label className="text-[10px] font-bold">Costo real COP<input type="number" min="0" className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={outcomeForm.actualCost} onChange={(e) => setOutcomeForm((form) => ({ ...form, actualCost: e.target.value }))} /></label>
+          <label className="text-[10px] font-bold sm:col-span-2">Resumen del resultado<textarea maxLength={280} className="w-full mt-1 rounded-xl border px-3 py-2 bg-white min-h-20" value={outcomeForm.summary} placeholder="Qué se hizo y qué quedó comprobado" onChange={(e) => setOutcomeForm((form) => ({ ...form, summary: e.target.value }))} /></label>
+        </div>
+        {validateAgencyOutcome(outcomeForm, selected) && <div className="text-[10px] font-bold mt-2" style={{ color: "#A03B2A" }}>{validateAgencyOutcome(outcomeForm, selected)}</div>}
+        <div className="mt-3"><BtnAsync disabled={Boolean(validateAgencyOutcome(outcomeForm, selected))} onClick={completeDecision}>Registrar resultado verificable</BtnAsync></div>
+      </div>}
+    </Modal>}
+  </section>;
+}
+
+function AgenciaControl({ db, user, refrescar, go }) {
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
   const intelligence = useMemo(() => buildAgencyIntelligence(db, settings, hoyISO()), [db, settings]);
@@ -11557,10 +12218,7 @@ function AgenciaControl({ db, user, refrescar }) {
       await resolverDecisionAgencia(decision.id, "Aprobada", "Aprobación humana desde Agencia MOMOS");
       toast("ok", `Decisión #${decision.id} aprobada`); await refrescar(); return;
     }
-    const result = window.prompt("¿Qué resultado real tuvo esta acción? No marques ejecutada una acción que todavía no hiciste.", "");
-    if (!result) return;
-    await resolverDecisionAgencia(decision.id, "Ejecutada", result);
-    toast("ok", `Resultado de decisión #${decision.id} registrado`); await refrescar();
+    throw new Error("Las decisiones aprobadas se cierran con evidencia desde la Bandeja de acciones de Agencia.");
   }
 
   async function sendToOrchestrator(recommendation) {
@@ -11725,9 +12383,18 @@ function AgenciaControl({ db, user, refrescar }) {
             </div>
           </div>
 
-          <AgencyCollaborationDesk db={db} refrescar={refrescar} />
-          <AgencySceneStudio db={db} refrescar={refrescar} />
-          <AgencySceneRouter db={db} refrescar={refrescar} />
+          <AgencyActionCenter db={db} go={go} refrescar={refrescar} />
+          <AgencyMetaObservatory db={db} refrescar={refrescar} />
+          <AgencyMetaIncrementality db={db} refrescar={refrescar} />
+          <AgencyMetaInvestmentScenarios db={db} refrescar={refrescar} />
+          <AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} />
+          <div id="agency-collaboration-desk" className="scroll-mt-24"><AgencyCollaborationDesk db={db} refrescar={refrescar} /></div>
+          <AgencyRetentionLab db={db} refrescar={refrescar} />
+          <AgencyLoopLearningDesk db={db} refrescar={refrescar} />
+          <div id="agency-scene-studio" className="scroll-mt-24"><AgencySceneStudio db={db} refrescar={refrescar} /></div>
+          <div id="agency-motion-experience" className="scroll-mt-24"><AgencyMotionExperience db={db} refrescar={refrescar} /></div>
+          <div id="agency-scene-router" className="scroll-mt-24"><AgencySceneRouter db={db} refrescar={refrescar} /></div>
+          <div id="agency-quality-control" className="scroll-mt-24"><AgencyQualityControl db={db} refrescar={refrescar} /></div>
 
           <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
             <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
@@ -11866,13 +12533,13 @@ function AgenciaControl({ db, user, refrescar }) {
             </div>
           </>}
 
-          {(db.agencyDecisions || []).some((decision) => ["Propuesta","Aprobada"].includes(decision.status)) && <>
-            <SectionTitle>Centro de aprobaciones</SectionTitle>
-            <div className="space-y-2">{(db.agencyDecisions || []).filter((decision) => ["Propuesta","Aprobada"].includes(decision.status)).slice(0, 5).map((decision) => <div key={decision.id} className="rounded-2xl border p-3 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: T.border }}>
+          {(db.agencyDecisions || []).some((decision) => decision.status === "Propuesta") && <div id="agency-approval-center" className="scroll-mt-24">
+            <SectionTitle>Decisiones por aprobar</SectionTitle>
+            <div className="space-y-2">{(db.agencyDecisions || []).filter((decision) => decision.status === "Propuesta").slice(0, 5).map((decision) => <div key={decision.id} className="rounded-2xl border p-3 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: T.border }}>
               <div className="flex-1"><div className="text-[10px] font-extrabold uppercase" style={{ color: T.coral }}>{decision.type} · riesgo {decision.riskLevel}</div><div className="font-bold text-sm">{decision.title}</div><div className="text-xs" style={{ color: T.choco2 }}>{decision.rationale}</div></div>
-              <BtnAsync small kind={decision.status === "Propuesta" ? "primary" : "soft"} onClick={() => advanceDecision(decision)}>{decision.status === "Propuesta" ? "Aprobar decisión" : "Registrar resultado"}</BtnAsync>
+              <BtnAsync small onClick={() => advanceDecision(decision)}>Aprobar decisión</BtnAsync>
             </div>)}</div>
-          </>}
+          </div>}
 
           {(db.creatives || []).length > 0 && <>
             <SectionTitle action={<Btn small kind="soft" disabled={!serverReady} onClick={openCreativeVersion}>＋ Nueva versión</Btn>}>Estudio creativo versionado</SectionTitle>
@@ -12025,7 +12692,7 @@ function Crecimiento({ db, update, user, go, refrescar }) {
 
   return (
     <div>
-      <AgenciaControl db={db} user={user} refrescar={refrescar} />
+      <AgenciaControl db={db} user={user} refrescar={refrescar} go={go} />
       <Card className="p-4 mb-4" >
         <div className="display text-lg font-semibold mb-1">¡Hola! 💛 Esto es lo importante hoy</div>
         <div className="text-sm" style={{ color: T.choco2 }}>
@@ -12789,7 +13456,16 @@ export default function MomosOps() {
     if (db.higgsfieldConnectorReady || db.klingConnectorReady) tables.push("creative_connector_runs");
     if (db.agencyCollaborationReady) tables.push("agency_collaboration_rooms", "agency_collaboration_entries", "agency_creative_contracts");
     if (db.agencySceneStudioReady) tables.push("agency_storyboards", "agency_storyboard_shots");
+    if (db.agencyMotionReady) tables.push("agency_motion_plans", "agency_motion_recipes", "agency_motion_observations");
     if (db.agencySceneRouterReady) tables.push("agency_scene_routing_plans");
+    if (db.agencyQualityReady) tables.push("agency_scene_quality_reviews", "agency_postproduction_packages");
+    if (db.agencyRetentionReady) tables.push("agency_retention_scripts", "agency_retention_hooks", "agency_retention_loops", "agency_retention_experiments", "agency_retention_measurements");
+    if (db.agencyLoopLearningReady) tables.push("agency_retention_diagnostics", "agency_retention_learnings");
+    if (db.agencyMetaReady) tables.push("agency_meta_policies", "agency_meta_signal_snapshots", "agency_meta_diagnostics");
+    if (db.agencyMetaIncrementalityReady) tables.push("agency_meta_lift_studies", "agency_meta_lift_measurements");
+    if (db.agencyMetaInvestmentReady) tables.push("agency_meta_investment_scenarios");
+    if (db.agencyMetaAuthorizationReady) tables.push("agency_meta_investment_authorizations", "agency_meta_investment_execution_jobs");
+    if (db.agencyMetaConnectorReady) tables.push("agency_meta_connector_dry_runs");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = () => {
       if (timer) clearTimeout(timer);
@@ -12811,7 +13487,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.distributionConnectorReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady), Boolean(db?.agencyCollaborationReady), Boolean(db?.agencySceneStudioReady), Boolean(db?.agencySceneRouterReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.distributionConnectorReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady), Boolean(db?.agencyCollaborationReady), Boolean(db?.agencySceneStudioReady), Boolean(db?.agencyMotionReady), Boolean(db?.agencySceneRouterReady), Boolean(db?.agencyQualityReady), Boolean(db?.agencyRetentionReady), Boolean(db?.agencyLoopLearningReady), Boolean(db?.agencyMetaReady), Boolean(db?.agencyMetaIncrementalityReady), Boolean(db?.agencyMetaInvestmentReady), Boolean(db?.agencyMetaAuthorizationReady), Boolean(db?.agencyMetaConnectorReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -12877,6 +13553,10 @@ export default function MomosOps() {
       d.agencyOrchestratorReady = Boolean(cat.agencyOrchestratorReady);
       d.agencyAgentRuns = cat.agencyAgentRuns || [];
       d.agencyAgentProposals = cat.agencyAgentProposals || [];
+      d.agencyActionQueueReady = Boolean(cat.agencyActionQueueReady);
+      d.agencyActionQueue = cat.agencyActionQueue || null;
+      d.agencyActionOutcomesReady = Boolean(cat.agencyActionOutcomesReady);
+      d.agencyActionOutcomes = cat.agencyActionOutcomes || [];
       d.agencyCollaborationReady = Boolean(cat.agencyCollaborationReady);
       d.agencyCollaborationRooms = cat.agencyCollaborationRooms || [];
       d.agencyCollaborationEntries = cat.agencyCollaborationEntries || [];
@@ -12884,8 +13564,38 @@ export default function MomosOps() {
       d.agencySceneStudioReady = Boolean(cat.agencySceneStudioReady);
       d.agencyStoryboards = cat.agencyStoryboards || [];
       d.agencyStoryboardShots = cat.agencyStoryboardShots || [];
+      d.agencyMotionReady = Boolean(cat.agencyMotionReady);
+      d.agencyMotionPlans = cat.agencyMotionPlans || [];
+      d.agencyMotionRecipes = cat.agencyMotionRecipes || [];
+      d.agencyMotionObservations = cat.agencyMotionObservations || [];
       d.agencySceneRouterReady = Boolean(cat.agencySceneRouterReady);
       d.agencySceneRoutingPlans = cat.agencySceneRoutingPlans || [];
+      d.agencyQualityReady = Boolean(cat.agencyQualityReady);
+      d.agencySceneQualityReviews = cat.agencySceneQualityReviews || [];
+      d.agencyPostproductionPackages = cat.agencyPostproductionPackages || [];
+      d.agencyRetentionReady = Boolean(cat.agencyRetentionReady);
+      d.agencyRetentionScripts = cat.agencyRetentionScripts || [];
+      d.agencyRetentionHooks = cat.agencyRetentionHooks || [];
+      d.agencyRetentionLoops = cat.agencyRetentionLoops || [];
+      d.agencyRetentionExperiments = cat.agencyRetentionExperiments || [];
+      d.agencyRetentionMeasurements = cat.agencyRetentionMeasurements || [];
+      d.agencyLoopLearningReady = Boolean(cat.agencyLoopLearningReady);
+      d.agencyRetentionDiagnostics = cat.agencyRetentionDiagnostics || [];
+      d.agencyRetentionLearnings = cat.agencyRetentionLearnings || [];
+      d.agencyMetaReady = Boolean(cat.agencyMetaReady);
+      d.agencyMetaPolicies = cat.agencyMetaPolicies || [];
+      d.agencyMetaSnapshots = cat.agencyMetaSnapshots || [];
+      d.agencyMetaDiagnostics = cat.agencyMetaDiagnostics || [];
+      d.agencyMetaIncrementalityReady = Boolean(cat.agencyMetaIncrementalityReady);
+      d.agencyMetaLiftStudies = cat.agencyMetaLiftStudies || [];
+      d.agencyMetaLiftMeasurements = cat.agencyMetaLiftMeasurements || [];
+      d.agencyMetaInvestmentReady = Boolean(cat.agencyMetaInvestmentReady);
+      d.agencyMetaInvestmentScenarios = cat.agencyMetaInvestmentScenarios || [];
+      d.agencyMetaAuthorizationReady = Boolean(cat.agencyMetaAuthorizationReady);
+      d.agencyMetaInvestmentAuthorizations = cat.agencyMetaInvestmentAuthorizations || [];
+      d.agencyMetaInvestmentExecutionJobs = cat.agencyMetaInvestmentExecutionJobs || [];
+      d.agencyMetaConnectorReady = Boolean(cat.agencyMetaConnectorReady);
+      d.agencyMetaConnectorDryRuns = cat.agencyMetaConnectorDryRuns || [];
       if (cat.marketingIdeas) d.marketing_ideas = cat.marketingIdeas;
       if (cat.marketingGuiones) d.marketing_guiones = cat.marketingGuiones;
       if (cat.marketingMensajes) d.marketing_mensajes = cat.marketingMensajes;

@@ -14,12 +14,19 @@
     "worker:higgsfield:once": "node scripts/higgsfield-worker.mjs --once",
     "worker:kling": "node scripts/kling-worker.mjs",
     "worker:kling:once": "node scripts/kling-worker.mjs --once",
-    "worker:kling:health": "node scripts/kling-worker.mjs --once --health-only"
+    "worker:kling:health": "node scripts/kling-worker.mjs --once --health-only",
+    "worker:meta": "node scripts/meta-worker.mjs",
+    "worker:meta:once": "node scripts/meta-worker.mjs --once",
+    "worker:meta:health": "node scripts/meta-worker.mjs --once --health-only",
+    "mcp:agency": "node scripts/momos-agency-mcp.mjs",
+    "mcp:agency:health": "node scripts/momos-agency-mcp.mjs --self-test"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.110.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.9",

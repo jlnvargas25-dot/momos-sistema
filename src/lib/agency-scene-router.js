@@ -47,6 +47,8 @@ export function recommendSceneProvider(shot = {}) {
 }
 
 export function buildSceneRoutingDraft(storyboard = {}, shots = [], db = {}, overrides = {}) {
+  const motionPlan = list(db.agencyMotionPlans).find((item) => String(item.storyboardId) === String(storyboard.id) && item.status === "Aprobado") || null;
+  const motionRecipes = motionPlan ? list(db.agencyMotionRecipes).filter((item) => String(item.planId) === String(motionPlan.id)) : [];
   const routes = activeShots(storyboard, shots).map((shot) => {
     const recommended = recommendSceneProvider(shot);
     const override = overrides[shot.id] || {};
@@ -56,6 +58,8 @@ export function buildSceneRoutingDraft(storyboard = {}, shots = [], db = {}, ove
     const maxCostCop = Math.max(0, number(override.maxCostCop ?? suggestedCap));
     const state = integrationState(provider, db);
     const payload = shot.payload || {};
+    const motionRecipe = motionRecipes.find((item) => String(item.shotId) === String(shot.id)) || null;
+    const selectedMotion = motionRecipe?.selectedRecipe || {};
     return {
       shotId: Number(shot.id), shotNumber: Number(shot.shotNumber), shotFingerprint: text(shot.fingerprint),
       title: text(shot.title), provider, recommendedProvider: recommended.provider,
@@ -63,31 +67,35 @@ export function buildSceneRoutingDraft(storyboard = {}, shots = [], db = {}, ove
       rationale: text(override.rationale) || recommended.rationale,
       riskLevel: SCENE_ROUTE_RISKS.includes(override.riskLevel) ? override.riskLevel : "Medio",
       operation: "Generar video", estimatedCostCop, maxCostCop,
-      prompt: text(override.prompt) || [
+      prompt: text(override.prompt) || text(selectedMotion.generation_prompt) || [
         `Toma ${shot.shotNumber}: ${shot.title}.`, `Propósito: ${shot.purpose}.`,
         `Sujeto: ${payload.subject}.`, `Acción: ${payload.action}.`, `Física: ${payload.physics || "natural y consistente"}.`,
         `Entorno: ${payload.environment || "identidad MOMOS"}.`, `Cámara: ${payload.camera}.`,
         `Luz: ${payload.lighting || "fiel al storyboard"}.`, `Continuidad de entrada: ${payload.continuity_in || "según toma anterior"}.`,
         `Continuidad de salida: ${payload.continuity_out}.`, `Texto visible: ${payload.on_screen_text || "ninguno"}.`,
       ].join(" "),
-      negativePrompt: text(override.negativePrompt) || [payload.avoid, "No deformar producto, logo, figura, relleno ni texto. No inventar claims."].filter(Boolean).join(" "),
+      negativePrompt: text(override.negativePrompt) || list(selectedMotion.negative_constraints).join("; ") || [payload.avoid, "No deformar producto, logo, figura, relleno ni texto. No inventar claims."].filter(Boolean).join(" "),
       outputSpec: {
         aspect_ratio: storyboard.aspectRatio, duration_sec: Number(shot.durationSec || 0),
         acceptance: payload.acceptance || "Producto y marca fieles; física, cámara y continuidad aprobables.",
+        motion_plan_id: motionPlan?.id, motion_plan_fingerprint: motionPlan?.fingerprint,
+        motion_recipe_id: motionRecipe?.id, motion_recipe_fingerprint: motionRecipe?.fingerprint,
       },
-      operational: state.operational, operationalReasons: state.reasons,
+      motionRecipe, motionPlan, operational: state.operational, operationalReasons: state.reasons,
     };
   });
   const reasons = [];
   if (storyboard.status !== "Aprobado") reasons.push("El storyboard necesita aprobación humana.");
+  if (!motionPlan) reasons.push("El storyboard necesita una receta de motion aprobada.");
   if (routes.length === 0) reasons.push("El storyboard no tiene tomas vigentes.");
   routes.forEach((route) => {
     if (!route.shotFingerprint) reasons.push(`La toma ${route.shotNumber} no conserva su huella.`);
+    if (!route.motionRecipe || !text(route.motionRecipe.fingerprint)) reasons.push(`La toma ${route.shotNumber} no tiene receta de motion aprobada.`);
     if (route.estimatedCostCop <= 0) reasons.push(`Falta estimar el costo real de la toma ${route.shotNumber}.`);
     if (route.maxCostCop < route.estimatedCostCop) reasons.push(`El tope de la toma ${route.shotNumber} es menor que su estimado.`);
   });
   return {
-    storyboard, routes, ready: reasons.length === 0, reasons: [...new Set(reasons)],
+    storyboard, motionPlan, routes, ready: reasons.length === 0, reasons: [...new Set(reasons)],
     totalEstimatedCostCop: routes.reduce((sum, route) => sum + route.estimatedCostCop, 0),
     totalCostCapCop: routes.reduce((sum, route) => sum + route.maxCostCop, 0),
     operational: routes.every((route) => route.operational),
@@ -98,7 +106,7 @@ export function buildSceneRoutingDraft(storyboard = {}, shots = [], db = {}, ove
 export function sceneRoutingPayload(draft = {}, agentName = "MOMO OPS Router") {
   return {
     plan_key: `storyboard-${draft.storyboard?.id}-route-${Date.now()}`,
-    storyboard_id: draft.storyboard?.id,
+    storyboard_id: draft.storyboard?.id, motion_plan_id: draft.motionPlan?.id,
     agent_name: agentName,
     routes: list(draft.routes).map((route) => ({
       shot_id: route.shotId, shot_fingerprint: route.shotFingerprint, provider: route.provider,
@@ -117,9 +125,10 @@ export function buildAgencySceneRouter(db = {}) {
     return { ...plan, storyboard, jobs };
   });
   const routedBoardIds = new Set(plans.filter((plan) => plan.status !== "Sustituido").map((plan) => String(plan.storyboardId)));
+  const approvedMotionBoardIds = new Set(list(db.agencyMotionPlans).filter((plan) => plan.status === "Aprobado").map((plan) => String(plan.storyboardId)));
   return {
     plans,
-    eligibleStoryboards: boards.filter((board) => board.status === "Aprobado" && !routedBoardIds.has(String(board.id))),
+    eligibleStoryboards: boards.filter((board) => board.status === "Aprobado" && approvedMotionBoardIds.has(String(board.id)) && !routedBoardIds.has(String(board.id))),
     prepared: plans.filter((plan) => plan.status === "Preparado"),
     authorized: plans.filter((plan) => plan.status === "Autorizado"),
     summary: {
@@ -130,4 +139,3 @@ export function buildAgencySceneRouter(db = {}) {
     },
   };
 }
-

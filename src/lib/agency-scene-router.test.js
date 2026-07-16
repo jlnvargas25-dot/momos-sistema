@@ -13,6 +13,9 @@ function operationalDb() {
   return {
     agencyIntegrationsReady: true, higgsfieldConnectorReady: true, klingConnectorReady: true,
     agencyIntegrations: ["Higgsfield", "Kling"].map((provider) => ({ provider, status: "Activa", secretConfigured: true, lastHeartbeatAt: new Date().toISOString() })),
+    agencyMotionPlans: [{ id: 70, storyboardId: 31, status: "Aprobado", fingerprint: "m".repeat(32) }],
+    agencyMotionRecipes: shots.slice(0, 2).map((shot) => ({ id: 80 + shot.id, planId: 70, shotId: shot.id, fingerprint: String(shot.id).repeat(32),
+      selectedRecipe: { generation_prompt: `Dirección motion aprobada para ${shot.title} con física, cámara, luz y continuidad exactas.`, negative_constraints: ["no morphing", "no substitution"] } })),
   };
 }
 
@@ -37,7 +40,7 @@ test("un costo desconocido bloquea la preparación sin inventar precio", () => {
 });
 
 test("la preparación puede documentarse aunque el conector siga caído", () => {
-  const draft = buildSceneRoutingDraft(board, shots, { agencyIntegrationsReady: true });
+  const draft = buildSceneRoutingDraft(board, shots, { ...operationalDb(), agencyIntegrationsReady: true, higgsfieldConnectorReady: false, klingConnectorReady: false });
   assert.equal(draft.ready, true);
   assert.equal(draft.operational, false);
   assert.match(draft.operationalReasons.join(" "), /adaptador|activo/i);
@@ -58,6 +61,7 @@ test("el centro une planes y trabajos sin ofrecer dos veces el mismo storyboard"
     agencyStoryboards: [board, { id: 32, status: "Aprobado" }],
     agencySceneRoutingPlans: [{ id: 8, storyboardId: 31, status: "Preparado", totalCostCapCop: 30000 }],
     creativeGenerationJobs: [{ id: 99, outputSpec: { routing_plan_id: 8 } }],
+    agencyMotionPlans: [{ id: 70, storyboardId: 31, status: "Aprobado" }, { id: 71, storyboardId: 32, status: "Aprobado" }],
   };
   const center = buildAgencySceneRouter(db);
   assert.deepEqual(center.eligibleStoryboards.map((item) => item.id), [32]);

@@ -79,12 +79,14 @@ export function buildAgencyIntegrationCenter(db = {}, nowValue = new Date()) {
     const heartbeatMinutes = minutesBetween(now, stored.lastHeartbeatAt);
     const heartbeatFresh = heartbeatMinutes !== null && heartbeatMinutes <= 30;
     const secretConfigured = stored.secretConfigured === true;
-    const bridgeRequired = ["Higgsfield", "Kling"].includes(definition.provider);
+    const bridgeRequired = ["Higgsfield", "Kling", "Meta"].includes(definition.provider);
     const bridgeInstalled = definition.provider === "Higgsfield"
       ? db.higgsfieldConnectorReady === true
       : definition.provider === "Kling"
         ? db.klingConnectorReady === true
-        : true;
+        : definition.provider === "Meta"
+          ? db.agencyMetaConnectorReady === true
+          : true;
     const operational = Boolean(db.agencyIntegrationsReady) && bridgeInstalled && status === "Activa" && secretConfigured && heartbeatFresh;
     const { jobs, distributions } = rowsForProvider(db, definition.provider);
     const runs = (db.creativeConnectorRuns || []).filter((run) => run.provider === definition.provider);
@@ -97,7 +99,9 @@ export function buildAgencyIntegrationCenter(db = {}, nowValue = new Date()) {
     else if (status === "Pausada") reasons.push("La integración está pausada por el equipo.");
     else if (!bridgeInstalled) reasons.push(definition.provider === "Kling"
       ? "Falta aplicar la migración 25 del worker Kling."
-      : "Falta aplicar la migración 24 del worker Higgsfield.");
+      : definition.provider === "Meta"
+        ? "Falta aplicar la migración 41 del conector Meta de solo lectura."
+        : "Falta aplicar la migración 24 del worker Higgsfield.");
     else if (status === "Con error") reasons.push(stored.lastError || "El último chequeo del conector falló.");
     else if (!secretConfigured) reasons.push("Falta autenticar la credencial privada del conector.");
     else if (status !== "Activa") reasons.push("El conector todavía no confirmó que está activo.");
@@ -120,6 +124,8 @@ export function buildAgencyIntegrationCenter(db = {}, nowValue = new Date()) {
       heartbeatFresh,
       bridgeInstalled,
       operational,
+      readOnly: definition.provider === "Meta" && normalizeCapabilities(stored.capabilities, definition.capabilities).includes("ads_read")
+        && !normalizeCapabilities(stored.capabilities, definition.capabilities).includes("ads_management"),
       waiting,
       running,
       lastRun: runs[0] || null,
@@ -148,5 +154,7 @@ export function agencyProviderExecutionGuard(provider, db = {}, nowValue = new D
   const center = buildAgencyIntegrationCenter(db, nowValue);
   const integration = center.integrations.find((item) => item.provider === provider);
   if (!integration) return { allowed: false, reasons: ["El proveedor no pertenece al catálogo protegido de MOMO OPS."], integration: null };
+  if (provider === "Meta" && integration.readOnly) return { allowed: false,
+    reasons: ["Meta está conectado únicamente para lectura; ads_management, publicación y cambios de pauta siguen prohibidos."], integration };
   return { allowed: integration.operational, reasons: integration.reasons, integration };
 }
