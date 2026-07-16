@@ -35,6 +35,20 @@ test("cola separa trabajo activo e historial y suma solo topes comprometidos", (
   assert.equal(queue.summary.pendingReview, 1);
 });
 
+test("encadena una corrección sin ocultar la versión anterior", () => {
+  const db = { creativeProductionReady: true, creativeReviewReady: true, creativeIterationReady: true,
+    brandMediaAssets: [asset], creativeGenerationJobs: [
+      { ...job, id: 20, status: "Completado", outputAssetId: 1, outputReviewStatus: "Cambios solicitados", revisionNumber: 1 },
+      { ...job, id: 21, status: "Preparado", revisionOfJobId: 20, revisionNumber: 2 },
+    ] };
+  const queue = buildCreativeProductionQueue(db);
+  assert.equal(queue.jobs.find((item) => item.id === 20).revisionJob.id, 21);
+  assert.equal(queue.jobs.find((item) => item.id === 21).parentJob.id, 20);
+  assert.equal(queue.summary.revisions, 1);
+  assert.equal(queue.history.length, 1);
+  assert.equal(queue.active.length, 1);
+});
+
 test("una salida completada nunca aparece aprobada por omisión", () => {
   const completed = { status: "Completado", outputAssetId: 7 };
   assert.equal(creativeOutputReviewStatus(completed, false), "Pendiente");

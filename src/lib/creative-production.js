@@ -54,12 +54,15 @@ export function creativeJobNextAction(job = {}, productionReady = false) {
 }
 
 export function buildCreativeProductionQueue(db = {}) {
-  const jobs = list(db.creativeGenerationJobs).map((job) => ({
+  const baseJobs = list(db.creativeGenerationJobs);
+  const jobs = baseJobs.map((job) => ({
     ...job,
     recommendedProvider: recommendedCreativeProvider(job),
     nextAction: creativeJobNextAction(job, Boolean(db.creativeProductionReady)),
     outputAsset: list(db.brandMediaAssets).find((asset) => String(asset.id) === String(job.outputAssetId)) || null,
     reviewStatus: creativeOutputReviewStatus(job, Boolean(db.creativeReviewReady)),
+    revisionJob: baseJobs.find((candidate) => String(candidate.revisionOfJobId) === String(job.id)) || null,
+    parentJob: baseJobs.find((candidate) => String(candidate.id) === String(job.revisionOfJobId)) || null,
   }));
   const active = jobs.filter((job) => ["Preparado", "Autorizado", "En generación", "Fallido"].includes(job.status));
   return {
@@ -76,6 +79,7 @@ export function buildCreativeProductionQueue(db = {}) {
       approved: jobs.filter((job) => job.reviewStatus === "Aprobada").length,
       changesRequested: jobs.filter((job) => job.reviewStatus === "Cambios solicitados").length,
       discarded: jobs.filter((job) => job.reviewStatus === "Descartada").length,
+      revisions: jobs.filter((job) => job.revisionOfJobId && job.revisionNumber > 1).length,
       authorizedCostCop: jobs.filter((job) => ["Autorizado", "En generación"].includes(job.status))
         .reduce((sum, job) => sum + number(job.maxCostCop), 0),
     },

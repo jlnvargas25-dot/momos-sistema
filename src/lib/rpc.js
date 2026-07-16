@@ -486,6 +486,12 @@ export async function revisarSalidaCreativa(jobId, decision, feedback = "") {
   return data;
 }
 
+export async function crearRevisionSalidaCreativa(jobId) {
+  const { data, error } = await supabase.rpc("crear_revision_salida_creativa", { p_job_id: jobId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function guardarReferenciaIntegracionAgencia(payload) {
   const { data, error } = await supabase.rpc("guardar_referencia_integracion_agencia", { p: payload });
   if (error) throw new Error(error.message);

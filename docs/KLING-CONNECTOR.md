@@ -71,6 +71,12 @@ queda en `Pendiente` hasta que Administración o Marketing elija una sola decisi
 La decisión no se puede reemplazar por otra posteriormente. Un nuevo intento debe
 crear un nuevo trabajo creativo para que la historia no se reescriba.
 
+Aplicando después `supabase/versiones-creativas-v1.sql`, una decisión **Cambios
+solicitados** ofrece “Crear versión corregida”. La nueva versión vuelve a
+`Preparado`, copia solamente las fuentes originales autorizadas, incorpora la
+instrucción humana y exige un nuevo tope. El resultado generado anterior permanece
+privado y nunca se entrega nuevamente a Kling de forma implícita.
+
 ## Perfil de costo inicial
 
 MOMO OPS usa inicialmente 720p, 5 segundos y audio apagado. La reserva se calcula

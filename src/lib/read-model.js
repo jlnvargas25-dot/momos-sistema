@@ -310,7 +310,7 @@ export async function fetchCatalogos() {
     (brandMediaProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandMediaProbe.error.message || ""));
   if (brandMediaProbe.error && !brandMediaProbeMissing) throw new Error(brandMediaProbe.error.message);
   const brandMediaReady = !brandMediaProbeMissing && brandMediaProbe.data === true;
-  let creativeProductionReady = false; let creativeReviewReady = false;
+  let creativeProductionReady = false; let creativeReviewReady = false; let creativeIterationReady = false;
   if (brandMediaReady) {
     const productionProbe = await supabase.rpc("produccion_creativa_disponible");
     const productionProbeMissing = productionProbe.error &&
@@ -323,6 +323,13 @@ export async function fetchCatalogos() {
         (reviewProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(reviewProbe.error.message || ""));
       if (reviewProbe.error && !reviewProbeMissing) throw new Error(reviewProbe.error.message);
       creativeReviewReady = !reviewProbeMissing && reviewProbe.data === true;
+      if (creativeReviewReady) {
+        const iterationProbe = await supabase.rpc("versiones_creativas_disponibles");
+        const iterationProbeMissing = iterationProbe.error &&
+          (iterationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(iterationProbe.error.message || ""));
+        if (iterationProbe.error && !iterationProbeMissing) throw new Error(iterationProbe.error.message);
+        creativeIterationReady = !iterationProbeMissing && iterationProbe.data === true;
+      }
     }
   }
   let brandMediaAssets = []; let creativeGenerationJobs = []; let brandMediaUsages = [];
@@ -332,7 +339,9 @@ export async function fetchCatalogos() {
         .select("id,name,media_type,source,product_id,figure,flavor,shot_type,orientation,contains_people,rights_status,rights_expires_at,ai_use_allowed,allowed_channels,status,storage_path,content_hash,mime_type,size_bytes,width,height,duration_seconds,tags,notes,original_asset_id,generation_meta,created_by,created_at,archived_by,archived_at")
         .order("created_at", { ascending: false }),
       supabase.from("creative_generation_jobs")
-        .select(creativeReviewReady
+        .select(creativeIterationReady
+          ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,output_review_status,output_review_feedback,output_reviewed_by,output_reviewed_at,revision_of_job_id,revision_number,created_by,created_at,updated_at"
+          : creativeReviewReady
           ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,output_review_status,output_review_feedback,output_reviewed_by,output_reviewed_at,created_by,created_at,updated_at"
           : creativeProductionReady
           ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,created_by,created_at,updated_at"
@@ -377,6 +386,7 @@ export async function fetchCatalogos() {
       outputReviewStatus: nz(row.output_review_status, row.status === "Completado" ? "Pendiente" : "No aplica"),
       outputReviewFeedback: nz(row.output_review_feedback), outputReviewedBy: nz(row.output_reviewed_by),
       outputReviewedAt: tsBogota(row.output_reviewed_at),
+      revisionOfJobId: row.revision_of_job_id, revisionNumber: Number(row.revision_number || 1),
       createdBy: row.created_by, createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at),
     }));
     brandMediaUsages = usageRows.map((row) => ({
@@ -440,7 +450,7 @@ export async function fetchCatalogos() {
 
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
-    distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, creativeReviewReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }
 

@@ -33,15 +33,17 @@ un advisory lock; un error hace rollback completo del paso actual.
 25. `../higgsfield-conector-v1.sql` — instala el worker privado con lease único, idempotencia, costo protegido y salida en revisión humana.
 26. `../kling-conector-v1.sql` — instala Kling 3.0 con API Key privada, reserva de costo, idempotencia y conciliación sin doble cobro.
 27. `../revision-creativa-v1.sql` — sella aprobación, cambios o descarte de cada salida generada sin publicarla automáticamente.
-28. `../tests/test-vencimiento-producto-terminado.sql` — prueba adversarial específica; siempre hace rollback.
-29. `../tests/test-abastecimiento-elaboraciones-internas.sql` — prueba que las elaboraciones solo entren por producción y las compras externas sigan funcionando.
-30. `../tests/test-roles-multiples-v2.sql` — prueba roles acumulables, no duplicados y anti-lockout; siempre hace rollback.
-31. `../tests/test-produccion-creativa-v1.sql` — prueba autorización, costos, reintentos, conector y RBAC; siempre hace rollback.
-32. `../tests/test-integraciones-agencia-v1.sql` — prueba salud, secretos, heartbeat y RBAC; siempre hace rollback.
-33. `../tests/test-higgsfield-conector-v1.sql` — prueba doble despacho, tope, salida privada, revisión humana y RBAC; siempre hace rollback.
-34. `../tests/test-kling-conector-v1.sql` — prueba API Key privada, despacho incierto, anti-reenvío, costo, salida y RBAC; siempre hace rollback.
-35. `../tests/test-revision-creativa-v1.sql` — prueba decisión única, derechos, no publicación y RBAC; siempre hace rollback.
-36. `../tests/test-migraciones-ordenadas.sql` — aceptación completa; devuelve `TESTS_OK` y hace rollback explícito.
+28. `../versiones-creativas-v1.sql` — abre una versión nueva desde cambios solicitados sin sobrescribir originales ni heredar costos.
+29. `../tests/test-vencimiento-producto-terminado.sql` — prueba adversarial específica; siempre hace rollback.
+30. `../tests/test-abastecimiento-elaboraciones-internas.sql` — prueba que las elaboraciones solo entren por producción y las compras externas sigan funcionando.
+31. `../tests/test-roles-multiples-v2.sql` — prueba roles acumulables, no duplicados y anti-lockout; siempre hace rollback.
+32. `../tests/test-produccion-creativa-v1.sql` — prueba autorización, costos, reintentos, conector y RBAC; siempre hace rollback.
+33. `../tests/test-integraciones-agencia-v1.sql` — prueba salud, secretos, heartbeat y RBAC; siempre hace rollback.
+34. `../tests/test-higgsfield-conector-v1.sql` — prueba doble despacho, tope, salida privada, revisión humana y RBAC; siempre hace rollback.
+35. `../tests/test-kling-conector-v1.sql` — prueba API Key privada, despacho incierto, anti-reenvío, costo, salida y RBAC; siempre hace rollback.
+36. `../tests/test-revision-creativa-v1.sql` — prueba decisión única, derechos, no publicación y RBAC; siempre hace rollback.
+37. `../tests/test-versiones-creativas-v1.sql` — prueba cadena, costo cero, fuentes originales y RBAC; siempre hace rollback.
+38. `../tests/test-migraciones-ordenadas.sql` — aceptación completa; devuelve `TESTS_OK` y hace rollback explícito.
 
 Después de cada paso ejecutá:
 

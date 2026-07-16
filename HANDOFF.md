@@ -491,6 +491,18 @@ vuelven al cancelar. Base correcta para toppings/adiciones (#2).
 - Prueba específica: `supabase/tests/test-revision-creativa-v1.sql`; aceptación
   completa actualizada a migraciones ordenadas 01-26.
 
+## Agencia MOMOS · Versiones correctivas (hito 27, 2026-07-15)
+
+- `supabase/versiones-creativas-v1.sql` convierte una salida con cambios
+  solicitados en un nuevo trabajo `Preparado` y enlazado a su versión anterior.
+- Copia únicamente las fuentes originales todavía autorizadas; la salida generada
+  anterior no se reutiliza como entrada IA y permanece disponible en el historial.
+- Cada versión nueva inicia con costo y tope en cero, sin autorización, ejecución
+  o identidad externa heredadas. Solo una versión siguiente puede nacer de cada
+  solicitud para impedir duplicados y posibles cobros dobles.
+- La UI muestra V2/V3, trabajo de origen, corrección humana y el botón para crear
+  la versión siguiente. Pruebas SQL y cadena ordenada avanzan a 01-27.
+
 ## Inventario adversarial 2026-07-14
 
 - Front aplicado: vencido = `Vencido · no usar`, vence hoy separado de vence pronto;
