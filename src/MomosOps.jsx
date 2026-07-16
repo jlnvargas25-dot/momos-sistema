@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -10735,6 +10735,7 @@ function resultadoSimple(m) {
 function AgencyBrandStudio({ db, user, refrescar }) {
   const ready = Boolean(db.brandMediaReady);
   const productionReady = Boolean(db.creativeProductionReady);
+  const reviewReady = Boolean(db.creativeReviewReady);
   const canWrite = ["Administrador", "Marketing/CRM"].includes(user);
   const library = useMemo(() => buildBrandMediaLibrary(db, hoyISO()), [db]);
   const productionQueue = useMemo(() => buildCreativeProductionQueue(db), [db]);
@@ -10758,6 +10759,9 @@ function AgencyBrandStudio({ db, user, refrescar }) {
   });
   const [authorizationJob, setAuthorizationJob] = useState(null);
   const [authorizationCap, setAuthorizationCap] = useState("30000");
+  const [reviewJob, setReviewJob] = useState(null);
+  const [reviewDecision, setReviewDecision] = useState("Aprobada");
+  const [reviewFeedback, setReviewFeedback] = useState("");
   const [integrationEdit, setIntegrationEdit] = useState(null);
   const visibleAssets = useMemo(() => searchBrandMediaAssets(library, query, {
     mediaType: mediaFilter, status: showArchived ? "" : "Activo",
@@ -10861,6 +10865,31 @@ function AgencyBrandStudio({ db, user, refrescar }) {
     try {
       await reintentarTrabajoCreativo(job.id);
       toast("ok", "Trabajo devuelto a revisión antes de autorizar un nuevo intento");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  function openOutputReview(job) {
+    setReviewJob(job);
+    setReviewDecision("Aprobada");
+    setReviewFeedback("");
+  }
+
+  async function saveOutputReview() {
+    try {
+      if (!reviewReady) throw new Error("Aplicá primero la migración 26 de Revisión Creativa.");
+      if (!reviewJob?.outputAsset) throw new Error("La salida no tiene un archivo verificable.");
+      if (["Cambios solicitados", "Descartada"].includes(reviewDecision) && reviewFeedback.trim().length < 5) {
+        throw new Error("Explicá qué debe cambiar o por qué se descarta.");
+      }
+      await revisarSalidaCreativa(reviewJob.id, reviewDecision, reviewFeedback.trim());
+      setReviewJob(null);
+      setReviewFeedback("");
+      toast("ok", reviewDecision === "Aprobada"
+        ? "Archivo aprobado para uso humano; todavía no está publicado"
+        : reviewDecision === "Descartada"
+          ? "Salida descartada y archivada con trazabilidad"
+          : "Cambios registrados; el archivo original permanece protegido");
       await refrescar();
     } catch (error) { toast("error", error.message); }
   }
@@ -10987,8 +11016,9 @@ function AgencyBrandStudio({ db, user, refrescar }) {
           <Btn small kind="soft" onClick={() => setSection("Estudio")}>＋ Preparar trabajo</Btn>
         </div>
         {!productionReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>🛡️ La cola ya está diseñada, pero falta aplicar la migración 22 de Producción Creativa para autorizar costos y conectar motores sin exponer secretos.</div>}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-5">
-          {[["Por autorizar",productionQueue.summary.prepared],["Autorizados",productionQueue.summary.authorized],["Generando",productionQueue.summary.running],["Con novedad",productionQueue.summary.failed],["Completados",productionQueue.summary.completed]].map(([label,value]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: T.coral }}>{value}</div></div>)}
+        {!reviewReady && productionQueue.summary.completed > 0 && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>✦ Hay salidas privadas esperando decisión. Aplicá <code>revision-creativa-v1.sql</code> para aprobar, pedir cambios o descartar sin publicar automáticamente.</div>}
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 mb-5">
+          {[["Por autorizar",productionQueue.summary.prepared],["Autorizados",productionQueue.summary.authorized],["Generando",productionQueue.summary.running],["Con novedad",productionQueue.summary.failed],["Por revisar",productionQueue.summary.pendingReview],["Aprobados",productionQueue.summary.approved]].map(([label,value]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: label === "Aprobados" ? "#3F6B42" : T.coral }}>{value}</div></div>)}
         </div>
         {productionQueue.active.length ? <div className="grid lg:grid-cols-2 gap-3">{productionQueue.active.map((job) => {
           const creative = (db.creatives || []).find((item) => item.id === job.creativeId);
@@ -11005,7 +11035,17 @@ function AgencyBrandStudio({ db, user, refrescar }) {
             </div>
           </article>;
         })}</div> : <Empty icon="✶" text="No hay trabajos creativos activos. Prepará uno desde Estudio con sus fuentes reales y formato." />}
-        {productionQueue.history.length > 0 && <div className="mt-5"><SectionTitle>Historial creativo</SectionTitle><div className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border }}>{productionQueue.history.slice(0, 8).map((job) => <div key={job.id} className="px-4 py-3 border-t first:border-t-0 flex items-center gap-3" style={{ borderColor: T.border }}><div className="flex-1"><div className="text-sm font-bold">Trabajo #{job.id} · {job.operation}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{job.provider} · costo real {fmt(job.generationCost || 0)}</div></div><Badge label={job.status} />{job.outputAsset?.url && <a href={job.outputAsset.url} target="_blank" rel="noreferrer" className="text-xs font-bold underline" style={{ color: T.coral }}>Ver archivo</a>}</div>)}</div></div>}
+        {productionQueue.history.length > 0 && <div className="mt-5">
+          <div className="flex items-end justify-between gap-3 mb-3"><div><SectionTitle>Revisión e historial creativo</SectionTitle><div className="text-xs" style={{ color: T.choco2 }}>La aprobación habilita el uso del archivo, pero nunca lo publica ni autoriza reutilización con IA por sí sola.</div></div><span className="rounded-full px-3 py-1.5 text-[10px] font-extrabold" style={{ background: T.vainilla }}>{productionQueue.history.length} salida(s)</span></div>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{productionQueue.history.slice(0, 12).map((job) => <article key={job.id} className="rounded-3xl border overflow-hidden shadow-sm" style={{ borderColor: job.reviewStatus === "Pendiente" ? "#E6B7AE" : T.border, background: "#fff" }}>
+            {job.outputAsset?.url && <div className="h-44 overflow-hidden grid place-items-center" style={{ background: "linear-gradient(135deg,#F9ECDD,#F3D7DC)" }}>{job.outputAsset.mimeType?.startsWith("video/") ? <video src={job.outputAsset.url} controls muted preload="metadata" className="w-full h-full object-cover" /> : <img src={job.outputAsset.url} alt={job.outputAsset.name || `Salida ${job.id}`} className="w-full h-full object-cover" />}</div>}
+            <div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>TRABAJO #{job.id} · {job.provider}</div><div className="display text-lg font-semibold">{job.operation}</div></div><Badge label={job.reviewStatus === "No aplica" ? job.status : job.reviewStatus} /></div>
+              <div className="grid grid-cols-2 gap-2 my-3"><div className="rounded-xl px-3 py-2" style={{ background: T.vainilla }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Costo real</div><div className="font-extrabold">{fmt(job.generationCost || 0)}</div></div><div className="rounded-xl px-3 py-2" style={{ background: T.vainilla }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Formato</div><div className="font-extrabold text-xs">{job.targetFormat}</div></div></div>
+              {job.outputReviewFeedback && <div className="rounded-xl px-3 py-2 mb-3 text-xs" style={{ background: job.reviewStatus === "Aprobada" ? "#DDEBD9" : "#FFF2D8" }}><b>Decisión:</b> {job.outputReviewFeedback}</div>}
+              <div className="flex flex-wrap gap-2">{job.outputAsset?.url && <a href={job.outputAsset.url} target="_blank" rel="noreferrer" className="rounded-xl border px-3 py-2 text-xs font-bold" style={{ borderColor: T.border, color: T.choco }}>Ver archivo</a>}{job.status === "Completado" && job.reviewStatus === "Pendiente" && <Btn small disabled={!reviewReady || !canWrite} onClick={() => openOutputReview(job)}>Revisar salida</Btn>}</div>
+            </div>
+          </article>)}</div>
+        </div>}
       </div> : <div className="p-4 sm:p-5">
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-4">
           <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Centro de integraciones</div><div className="display text-2xl font-semibold">Qué puede ejecutar Agencia MOMOS ahora</div><div className="text-sm max-w-2xl" style={{ color: T.choco2 }}>MOMO OPS muestra la cuenta, salud y último contacto de cada motor. Los tokens nunca llegan a esta pantalla ni se guardan en tablas públicas.</div></div>
@@ -11042,6 +11082,19 @@ function AgencyBrandStudio({ db, user, refrescar }) {
         <Field label="ID externo de cuenta (opcional)"><Input value={integrationEdit.externalAccountId} onChange={(event) => setIntegrationEdit({ ...integrationEdit, externalAccountId: event.target.value })} placeholder="ID entregado por el proveedor" /></Field>
         <div className="rounded-2xl px-3 py-2 mb-4 text-xs" style={{ background: T.vainilla }}><b>Guardar no activa el conector.</b> El estado cambiará a Activa únicamente cuando el servidor compruebe la credencial y logre contactar al proveedor.</div>
         <div className="flex flex-wrap gap-2"><BtnAsync onClick={saveIntegrationReference} disabled={integrationEdit.accountLabel.trim().length < 2} textoEnVuelo="Protegiendo referencia…">Guardar referencia</BtnAsync><Btn kind="ghost" onClick={() => setIntegrationEdit(null)}>Cancelar</Btn></div>
+      </Modal>}
+
+      {reviewJob && <Modal title={`Revisar salida #${reviewJob.id}`} onClose={() => setReviewJob(null)} wide topLayer>
+        <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-4">
+          <div className="rounded-3xl overflow-hidden border min-h-[280px] grid place-items-center" style={{ borderColor: T.border, background: "linear-gradient(135deg,#F9ECDD,#F3D7DC)" }}>{reviewJob.outputAsset?.mimeType?.startsWith("video/") ? <video src={reviewJob.outputAsset.url} controls autoPlay muted className="w-full max-h-[520px] object-contain" /> : reviewJob.outputAsset?.url ? <img src={reviewJob.outputAsset.url} alt="Salida a revisar" className="w-full max-h-[520px] object-contain" /> : <span>Archivo no disponible</span>}</div>
+          <div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Decisión humana obligatoria</div><div className="display text-2xl font-semibold mt-1">¿Esta pieza representa a MOMOS?</div><p className="text-sm mt-2" style={{ color: T.choco2 }}>Revisá producto, colores, toppings, empaque, continuidad y cualquier texto visible. Esta decisión queda sellada con usuario y fecha.</p>
+            <div className="rounded-2xl p-3 my-3 text-xs" style={{ background: T.vainilla }}><b>{reviewJob.provider}</b> · {reviewJob.targetFormat}<br />Costo real {fmt(reviewJob.generationCost || 0)} · tope {fmt(reviewJob.maxCostCop || 0)}</div>
+            <Field label="Decisión"><Select options={["Aprobada","Cambios solicitados","Descartada"]} value={reviewDecision} onChange={(event) => setReviewDecision(event.target.value)} /></Field>
+            <Field label={reviewDecision === "Aprobada" ? "Observación de aprobación (opcional)" : "Explicación obligatoria"}><textarea className={inputCls} style={inputStyle} rows="4" value={reviewFeedback} onChange={(event) => setReviewFeedback(event.target.value)} placeholder={reviewDecision === "Cambios solicitados" ? "Ej. conservar la forma del Momo y reducir el movimiento de cámara…" : reviewDecision === "Descartada" ? "Explicá por qué esta salida no debe usarse…" : "Ej. Producto y colores verificados…"} /></Field>
+            <div className="rounded-2xl px-3 py-2 mb-4 text-[11px] font-bold" style={{ background: "#E5EEF7", color: "#315A7D" }}>Aprobar permite usar el archivo en el siguiente paso comercial. No lo publica, no crea pauta y no concede reutilización automática con IA.</div>
+            <div className="flex flex-wrap gap-2"><BtnAsync confirmar onClick={saveOutputReview} disabled={["Cambios solicitados","Descartada"].includes(reviewDecision) && reviewFeedback.trim().length < 5}>Guardar decisión protegida</BtnAsync><Btn kind="ghost" onClick={() => setReviewJob(null)}>Volver</Btn></div>
+          </div>
+        </div>
       </Modal>}
 
       {authorizationJob && <Modal title={`Autorizar trabajo #${authorizationJob.id}`} onClose={() => setAuthorizationJob(null)} topLayer>
@@ -12408,6 +12461,7 @@ export default function MomosOps() {
       d.content_distributions = cat.content_distributions || [];
       d.brandMediaReady = Boolean(cat.brandMediaReady);
       d.creativeProductionReady = Boolean(cat.creativeProductionReady);
+      d.creativeReviewReady = Boolean(cat.creativeReviewReady);
       d.brandMediaAssets = cat.brandMediaAssets || [];
       d.creativeGenerationJobs = cat.creativeGenerationJobs || [];
       d.brandMediaUsages = cat.brandMediaUsages || [];

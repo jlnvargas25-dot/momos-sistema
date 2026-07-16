@@ -56,6 +56,21 @@ pública, al repositorio ni al chat.
 8. Después de revisar la salida y su costo, ejecutar
    `npm run worker:kling` con un supervisor de procesos del servidor.
 
+## Revisión humana de la salida
+
+Después de instalar el conector, aplicar `supabase/revision-creativa-v1.sql`
+y validar `supabase/tests/test-revision-creativa-v1.sql`. Cada salida completada
+queda en `Pendiente` hasta que Administración o Marketing elija una sola decisión:
+
+- **Aprobada:** habilita el archivo para el canal revisado, sin publicarlo y sin
+  permitir que otra IA lo reutilice automáticamente.
+- **Cambios solicitados:** conserva el original protegido y sella la explicación
+  para el siguiente intento.
+- **Descartada:** archiva la salida y conserva su costo, autor y trazabilidad.
+
+La decisión no se puede reemplazar por otra posteriormente. Un nuevo intento debe
+crear un nuevo trabajo creativo para que la historia no se reescriba.
+
 ## Perfil de costo inicial
 
 MOMO OPS usa inicialmente 720p, 5 segundos y audio apagado. La reserva se calcula

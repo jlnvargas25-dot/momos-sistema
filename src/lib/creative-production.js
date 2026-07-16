@@ -6,6 +6,16 @@ export const CREATIVE_PROVIDERS = Object.freeze(["Por conectar", "Kling", "Higgs
 export const CREATIVE_JOB_STATES = Object.freeze([
   "Preparado", "Autorizado", "En generación", "Completado", "Fallido", "Cancelado",
 ]);
+export const CREATIVE_REVIEW_STATES = Object.freeze([
+  "No aplica", "Pendiente", "Aprobada", "Cambios solicitados", "Descartada",
+]);
+
+export function creativeOutputReviewStatus(job = {}, reviewReady = false) {
+  if (job.status !== "Completado" || !job.outputAssetId) return "No aplica";
+  if (!reviewReady) return "Pendiente";
+  return CREATIVE_REVIEW_STATES.includes(job.outputReviewStatus) && job.outputReviewStatus !== "No aplica"
+    ? job.outputReviewStatus : "Pendiente";
+}
 
 export function recommendedCreativeProvider(job = {}) {
   const text = [job.operation, job.targetFormat, job.prompt].map(clean).join(" ").toLocaleLowerCase("es");
@@ -49,6 +59,7 @@ export function buildCreativeProductionQueue(db = {}) {
     recommendedProvider: recommendedCreativeProvider(job),
     nextAction: creativeJobNextAction(job, Boolean(db.creativeProductionReady)),
     outputAsset: list(db.brandMediaAssets).find((asset) => String(asset.id) === String(job.outputAssetId)) || null,
+    reviewStatus: creativeOutputReviewStatus(job, Boolean(db.creativeReviewReady)),
   }));
   const active = jobs.filter((job) => ["Preparado", "Autorizado", "En generación", "Fallido"].includes(job.status));
   return {
@@ -61,6 +72,10 @@ export function buildCreativeProductionQueue(db = {}) {
       running: jobs.filter((job) => job.status === "En generación").length,
       failed: jobs.filter((job) => job.status === "Fallido").length,
       completed: jobs.filter((job) => job.status === "Completado").length,
+      pendingReview: jobs.filter((job) => job.reviewStatus === "Pendiente").length,
+      approved: jobs.filter((job) => job.reviewStatus === "Aprobada").length,
+      changesRequested: jobs.filter((job) => job.reviewStatus === "Cambios solicitados").length,
+      discarded: jobs.filter((job) => job.reviewStatus === "Descartada").length,
       authorizedCostCop: jobs.filter((job) => ["Autorizado", "En generación"].includes(job.status))
         .reduce((sum, job) => sum + number(job.maxCostCop), 0),
     },

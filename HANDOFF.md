@@ -478,6 +478,19 @@ vuelven al cancelar. Base correcta para toppings/adiciones (#2).
 - Esquema SQL: **`supabase/schema-v5.sql` es LA fuente de verdad** (completo, con RLS concreto y ganchos de orquestación). El v4 ya no existe (el usuario no lo tiene, 2026-07-10) y schema-v5 lo superaba de todos modos — cruce cerrado N/A.
 - Entrada / build: `src/main.jsx`, `index.html`, `vite.config.js`, `package.json`.
 
+## Agencia MOMOS · Revisión creativa (hito 26, 2026-07-15)
+
+- Nueva migración `supabase/revision-creativa-v1.sql`, posterior al conector Kling.
+- Toda salida generada completada queda `Pendiente`: Administración o Marketing
+  debe aprobarla, pedir cambios o descartarla con una decisión sellada.
+- Aprobar no publica, no crea pauta y mantiene desactivada la reutilización con IA.
+- Pedir cambios conserva el archivo original; descartar lo archiva. Ninguna salida
+  admite dos veredictos contradictorios.
+- Agencia MOMOS muestra previsualización, costo, formato, estado de revisión y
+  observaciones en tarjetas compactas.
+- Prueba específica: `supabase/tests/test-revision-creativa-v1.sql`; aceptación
+  completa actualizada a migraciones ordenadas 01-26.
+
 ## Inventario adversarial 2026-07-14
 
 - Front aplicado: vencido = `Vencido · no usar`, vence hoy separado de vence pronto;

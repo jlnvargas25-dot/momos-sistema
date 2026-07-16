@@ -310,13 +310,20 @@ export async function fetchCatalogos() {
     (brandMediaProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandMediaProbe.error.message || ""));
   if (brandMediaProbe.error && !brandMediaProbeMissing) throw new Error(brandMediaProbe.error.message);
   const brandMediaReady = !brandMediaProbeMissing && brandMediaProbe.data === true;
-  let creativeProductionReady = false;
+  let creativeProductionReady = false; let creativeReviewReady = false;
   if (brandMediaReady) {
     const productionProbe = await supabase.rpc("produccion_creativa_disponible");
     const productionProbeMissing = productionProbe.error &&
       (productionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(productionProbe.error.message || ""));
     if (productionProbe.error && !productionProbeMissing) throw new Error(productionProbe.error.message);
     creativeProductionReady = !productionProbeMissing && productionProbe.data === true;
+    if (creativeProductionReady) {
+      const reviewProbe = await supabase.rpc("revision_creativa_disponible");
+      const reviewProbeMissing = reviewProbe.error &&
+        (reviewProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(reviewProbe.error.message || ""));
+      if (reviewProbe.error && !reviewProbeMissing) throw new Error(reviewProbe.error.message);
+      creativeReviewReady = !reviewProbeMissing && reviewProbe.data === true;
+    }
   }
   let brandMediaAssets = []; let creativeGenerationJobs = []; let brandMediaUsages = [];
   if (brandMediaReady) {
@@ -325,7 +332,9 @@ export async function fetchCatalogos() {
         .select("id,name,media_type,source,product_id,figure,flavor,shot_type,orientation,contains_people,rights_status,rights_expires_at,ai_use_allowed,allowed_channels,status,storage_path,content_hash,mime_type,size_bytes,width,height,duration_seconds,tags,notes,original_asset_id,generation_meta,created_by,created_at,archived_by,archived_at")
         .order("created_at", { ascending: false }),
       supabase.from("creative_generation_jobs")
-        .select(creativeProductionReady
+        .select(creativeReviewReady
+          ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,output_review_status,output_review_feedback,output_reviewed_by,output_reviewed_at,created_by,created_at,updated_at"
+          : creativeProductionReady
           ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,created_by,created_at,updated_at"
           : "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,created_by,created_at,updated_at")
         .order("created_at", { ascending: false }),
@@ -365,6 +374,9 @@ export async function fetchCatalogos() {
       maxCostCop: Number(row.max_cost_cop), authorizedBy: nz(row.authorized_by), authorizedAt: tsBogota(row.authorized_at),
       cancelledBy: nz(row.cancelled_by), cancelledAt: tsBogota(row.cancelled_at), cancellationReason: nz(row.cancellation_reason),
       attemptCount: Number(row.attempt_count), startedAt: tsBogota(row.started_at), completedAt: tsBogota(row.completed_at),
+      outputReviewStatus: nz(row.output_review_status, row.status === "Completado" ? "Pendiente" : "No aplica"),
+      outputReviewFeedback: nz(row.output_review_feedback), outputReviewedBy: nz(row.output_reviewed_by),
+      outputReviewedAt: tsBogota(row.output_reviewed_at),
       createdBy: row.created_by, createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at),
     }));
     brandMediaUsages = usageRows.map((row) => ({
@@ -428,7 +440,7 @@ export async function fetchCatalogos() {
 
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
-    distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, brandMediaReady, creativeProductionReady, creativeReviewReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
 }
 

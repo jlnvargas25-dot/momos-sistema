@@ -17,7 +17,7 @@ begin
     '20260715_19_distribucion_comercial','20260715_20_biblioteca_creativa',
     '20260715_21_roles_multiples','20260715_22_produccion_creativa',
     '20260715_23_integraciones_agencia','20260715_24_higgsfield_conector',
-    '20260715_25_kling_conector'
+    '20260715_25_kling_conector','20260715_26_revision_creativa'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -84,6 +84,10 @@ begin
   assert not has_function_privilege('authenticated','public.registrar_salida_kling(bigint,uuid,jsonb)','EXECUTE'), 'salida Kling privada expuesta';
   assert has_function_privilege('service_role','public.reportar_worker_kling(text,text,text,text,boolean)','EXECUTE'), 'worker Kling sin permiso de salud';
   assert has_function_privilege('service_role','public.reclamar_trabajo_kling(text,integer)','EXECUTE'), 'worker Kling sin permiso de cola';
+  assert public.revision_creativa_disponible(), 'falta sonda de revisión creativa';
+  assert has_function_privilege('authenticated','public.revisar_salida_creativa(bigint,text,text)','EXECUTE'), 'falta revisión humana de salidas IA';
+  assert exists(select 1 from information_schema.columns where table_schema='public' and table_name='creative_generation_jobs' and column_name='output_review_status'), 'falta estado de revisión de salida';
+  assert not exists(select 1 from public.creative_generation_jobs where status='Completado' and output_asset_id is not null and output_review_status='No aplica'), 'salida completada sin revisión pendiente o sellada';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -115,5 +119,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-25 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-26 PASS, rollback total' as resultado;
 rollback;
