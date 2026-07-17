@@ -53,6 +53,14 @@ La cadena vigente continúa después de los pasos listados arriba y ya llega al 
 40. `../tests/test-audio-postproduccion-v1.sql` — prueba archivo, derechos, canal, mezcla, aislamiento del worker y RBAC; siempre hace rollback.
 41. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–48; siempre hace rollback.
 
+## Hito 51 · eliminación segura de Biblioteca
+
+Después de tener aplicada la cadena 01–50:
+
+42. `../eliminacion-biblioteca-v1.sql` — permite eliminar el archivo real únicamente cuando nunca fue usado y conserva una lápida mínima de auditoría.
+43. `../tests/test-eliminacion-biblioteca-v1.sql` — intenta borrar originales usados, valida compensación ante fallos de Storage y confirma el borrado seguro; siempre hace rollback.
+44. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–51; siempre hace rollback.
+
 No ejecutes el worker de postproducción 1.1.0 con trabajos pendientes hasta aplicar el paso de audio: el worker nuevo exige el contrato `audio_binding` y falla cerrado si el servidor aún entrega el contrato H47 antiguo.
 
 Después de cada paso ejecutá:

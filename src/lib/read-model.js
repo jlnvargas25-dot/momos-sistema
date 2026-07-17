@@ -895,6 +895,7 @@ export async function fetchCatalogos() {
     const brandMediaResults = await Promise.all([
       supabase.from("brand_media_assets")
         .select("id,name,media_type,source,product_id,figure,flavor,shot_type,orientation,contains_people,rights_status,rights_expires_at,ai_use_allowed,allowed_channels,status,storage_path,content_hash,mime_type,size_bytes,width,height,duration_seconds,tags,notes,original_asset_id,generation_meta,created_by,created_at,archived_by,archived_at")
+        .in("status", ["Activo", "Archivado", "Bloqueado"])
         .order("created_at", { ascending: false }),
       supabase.from("creative_generation_jobs")
         .select(creativeIterationReady

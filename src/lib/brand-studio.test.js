@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { brandAssetReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./brand-studio.js";
+import { brandAssetDeletionReadiness, brandAssetReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./brand-studio.js";
 
 const asset = (overrides = {}) => ({
   id: "A-1", name: "Lizi Oreo vertical", mediaType: "Video", source: "MOMOS", productId: "PR-1",
@@ -74,4 +74,26 @@ test("rechaza referencias desaparecidas y no inventa una selección", () => {
   assert.equal(result.audit.passed, false);
   assert.match(result.audit.errors.join(" "), /ya no existen/i);
   assert.equal(result.assets.length, 0);
+});
+
+test("permite eliminar únicamente originales que nunca fueron usados", () => {
+  const free = brandAssetDeletionReadiness(asset(), db());
+  assert.equal(free.allowed, true);
+  const used = brandAssetDeletionReadiness(asset(), db({
+    creativeGenerationJobs: [{ id: 7, inputAssetIds: ["A-1"], outputAssetId: null }],
+  }));
+  assert.equal(used.allowed, false);
+  assert.match(used.reasons.join(" "), /trabajo creativo/i);
+});
+
+test("protege archivos ligados a escenas, audio, publicaciones o versiones", () => {
+  const source = asset();
+  const protectedAsset = brandAssetDeletionReadiness(source, db({
+    agencyStoryboardShots: [{ inputAssetIds: ["A-1"] }],
+    agencyPostproductionAudioBindings: [{ assetId: "A-1" }],
+    agencyMasterReleases: [{ outputAssetId: "A-1" }],
+    brandMediaAssets: [source, { ...asset({ id: "A-2" }), originalAssetId: "A-1" }],
+  }));
+  assert.equal(protectedAsset.allowed, false);
+  assert.ok(protectedAsset.reasons.length >= 4);
 });

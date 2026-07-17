@@ -98,6 +98,24 @@ export function searchBrandMediaAssets(library, query = "", filters = {}) {
   });
 }
 
+export function brandAssetDeletionReadiness(asset = {}, db = {}) {
+  const id = String(asset.id || "");
+  const reasons = [];
+  const contains = (values) => list(values).some((value) => String(value) === id);
+  if (!id) reasons.push("El archivo no tiene una identidad válida.");
+  if (asset.status === "Eliminando") reasons.push("La eliminación ya está en proceso.");
+  if (asset.status === "Eliminado") reasons.push("El archivo ya fue eliminado.");
+  if (list(db.brandMediaUsages).some((usage) => String(usage.assetId) === id)) reasons.push("Ya fue usado en una pieza creativa.");
+  if (list(db.creativeGenerationJobs).some((job) => String(job.outputAssetId || "") === id || contains(job.inputAssetIds))) reasons.push("Está ligado a un trabajo creativo.");
+  if (list(db.agencyStoryboardShots).some((shot) => contains(shot.inputAssetIds))) reasons.push("Está incluido en una escena aprobada o en preparación.");
+  if (list(db.agencySceneQualityReviews).some((review) => String(review.outputAssetId || "") === id)) reasons.push("Forma parte de una revisión de calidad.");
+  if (list(db.agencyPostproductionExports).some((item) => String(item.outputAssetId || "") === id)) reasons.push("Forma parte de una exportación.");
+  if (list(db.agencyPostproductionAudioBindings).some((binding) => String(binding.assetId || "") === id)) reasons.push("Está seleccionado como audio de un máster.");
+  if (list(db.agencyMasterReleases).some((release) => String(release.outputAssetId || "") === id)) reasons.push("Está ligado a una publicación trazable.");
+  if (list(db.brandMediaAssets).some((candidate) => String(candidate.originalAssetId || "") === id)) reasons.push("Es el original de otra versión conservada.");
+  return { allowed: reasons.length === 0, reasons: [...new Set(reasons)] };
+}
+
 function targetFormat(channel, requested) {
   if (FORMAT_SPECS[requested]) return requested;
   if (channel === "TikTok") return "TikTok 9:16";

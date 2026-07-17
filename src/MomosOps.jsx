@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, eliminarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -49,7 +49,7 @@ import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransition
 import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "./lib/commercial-distribution";
 import { enrichDistributionWithDispatch } from "./lib/commercial-dispatch";
 import { buildActiveReservationDashboard, buildInventoryHistory, buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveInventoryReservation, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
-import { BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./lib/brand-studio";
+import { BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, brandAssetDeletionReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./lib/brand-studio";
 import { CREATIVE_PROVIDERS, buildCreativeProductionQueue, creativeAuthorizationGuard } from "./lib/creative-production";
 import { AGENCY_INTEGRATION_ENVIRONMENTS, agencyProviderExecutionGuard, buildAgencyIntegrationCenter } from "./lib/agency-integrations";
 
@@ -10796,6 +10796,7 @@ function AgencyBrandStudio({ db, user, refrescar }) {
   const [mediaFilter, setMediaFilter] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [deleteAsset, setDeleteAsset] = useState(null);
   const [file, setFile] = useState(null);
   const emptyAssetForm = {
     name: "", mediaType: "Video", source: "MOMOS", productId: "", figure: "", flavor: "",
@@ -10886,6 +10887,16 @@ function AgencyBrandStudio({ db, user, refrescar }) {
       toast("ok", ["Higgsfield", "Kling"].includes(studio.provider)
         ? `Trabajo ${studio.provider} preparado y auditado; revisá y autorizá su tope antes de enviarlo`
         : "Trabajo creativo preparado con originales y marca congelados");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function deleteAssetPermanently() {
+    if (!deleteAsset) return;
+    try {
+      await eliminarActivoMarca(deleteAsset.id);
+      toast("ok", `“${deleteAsset.name}” fue eliminado de la Biblioteca y del almacenamiento`);
+      setDeleteAsset(null);
       await refrescar();
     } catch (error) { toast("error", error.message); }
   }
@@ -11012,6 +11023,7 @@ function AgencyBrandStudio({ db, user, refrescar }) {
           {visibleAssets.map((asset) => {
             const blocked = !asset.readiness.ready || asset.duplicate;
             const problem = asset.duplicate ? "Archivo duplicado" : asset.readiness.reasons[0];
+            const deletion = brandAssetDeletionReadiness(asset, db);
             return <article key={asset.id} className="rounded-3xl overflow-hidden border shadow-sm" style={{ borderColor: blocked ? "#E6B7AE" : T.border, background: "#fff" }}>
               <div className="h-40 grid place-items-center overflow-hidden" style={{ background: "linear-gradient(135deg,#F9ECDD,#F3D7DC)" }}>
                 {asset.mediaType === "Foto" || asset.mediaType === "Logo" || asset.mediaType === "Diseño" && asset.mimeType?.startsWith("image/")
@@ -11024,7 +11036,11 @@ function AgencyBrandStudio({ db, user, refrescar }) {
                 <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{asset.mediaType} · {asset.source}</div><div className="font-extrabold leading-tight">{asset.name}</div></div><Badge label={asset.status} /></div>
                 <div className="text-xs mt-2" style={{ color: T.choco2 }}>{[asset.productName, asset.figure, asset.flavor, asset.shotType].filter(Boolean).join(" · ") || "Recurso general de marca"}</div>
                 <div className="flex flex-wrap gap-1.5 mt-3"><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: blocked ? "#F6D4CD" : "#DDEBD9", color: blocked ? "#A03B2A" : "#315B35" }}>{blocked ? `⚠ ${problem}` : "✓ Listo para IA"}</span><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: T.vainilla }}>{asset.rightsStatus}</span>{asset.containsPeople && <span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: T.rosa }}>Con personas</span>}</div>
-                {asset.status === "Activo" && canWrite && <button type="button" onClick={() => archiveAsset(asset)} className="mt-3 border-0 bg-transparent p-0 text-[10px] font-bold underline" style={{ color: T.choco2 }}>Archivar sin borrar</button>}
+                {canWrite && <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-x-4 gap-y-2" style={{ borderColor: T.border }}>
+                  {asset.status === "Activo" && <button type="button" onClick={() => archiveAsset(asset)} className="border-0 bg-transparent p-0 text-[10px] font-bold underline" style={{ color: T.choco2 }}>Archivar</button>}
+                  {deletion.allowed ? <button type="button" onClick={() => setDeleteAsset(asset)} className="border-0 bg-transparent p-0 text-[10px] font-extrabold underline" style={{ color: "#A03B2A" }}>Eliminar definitivamente</button>
+                    : <span className="text-[9px] font-bold" style={{ color: T.choco2 }} title={deletion.reasons.join(" ")}>🔒 En uso · solo se puede archivar</span>}
+                </div>}
               </div>
             </article>;
           })}
@@ -11162,6 +11178,15 @@ function AgencyBrandStudio({ db, user, refrescar }) {
         <div className="grid sm:grid-cols-2 gap-3"><Field label="Motor"><Input value={authorizationJob.provider} disabled /></Field><Field label="Tope máximo (COP)"><Input type="number" min="0" step="1000" value={authorizationCap} onChange={(event) => setAuthorizationCap(event.target.value)} /></Field></div>
         {(() => { const guard = creativeAuthorizationGuard(authorizationJob, { maxCostCop: authorizationCap }, db, hoyISO()); return !guard.allowed && <div className="rounded-2xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>⛔ {guard.reasons.join(" ")}</div>; })()}
         <div className="flex gap-2"><BtnAsync onClick={authorizeJob} confirmar disabled={!creativeAuthorizationGuard(authorizationJob, { maxCostCop: authorizationCap }, db, hoyISO()).allowed} textoEnVuelo="Autorizando…">Autorizar gasto protegido</BtnAsync><Btn kind="ghost" onClick={() => setAuthorizationJob(null)}>Volver</Btn></div>
+      </Modal>}
+
+      {deleteAsset && <Modal title="Eliminar archivo de la Biblioteca" onClose={() => setDeleteAsset(null)} topLayer>
+        <div className="rounded-2xl p-4 mb-4 flex gap-3" style={{ background: "#FFF1ED", border: "1px solid #E9B1A5" }}>
+          <div className="w-10 h-10 rounded-xl grid place-items-center shrink-0" style={{ background: "#F6D4CD", color: "#A03B2A" }}>🗑️</div>
+          <div><div className="font-extrabold">{deleteAsset.name}</div><div className="text-xs mt-1" style={{ color: T.choco2 }}>Se borrará el archivo real y ya no podrá recuperarse. MOMO OPS conservará únicamente una constancia mínima de auditoría.</div></div>
+        </div>
+        <div className="rounded-2xl px-3 py-3 mb-4 text-xs font-bold" style={{ background: T.vainilla, color: T.choco }}>Esta opción solo aparece cuando la foto o el video nunca se ha usado en creativos, escenas, audio, exportaciones o publicaciones.</div>
+        <div className="flex flex-wrap gap-2"><BtnAsync onClick={deleteAssetPermanently} textoEnVuelo="Eliminando archivo…">Sí, eliminar definitivamente</BtnAsync><Btn kind="ghost" onClick={() => setDeleteAsset(null)}>Conservar archivo</Btn></div>
       </Modal>}
 
       {uploadOpen && <Modal title="Nuevo original de marca" onClose={() => { setUploadOpen(false); setFile(null); }} wide topLayer>
