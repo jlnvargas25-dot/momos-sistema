@@ -1,5 +1,22 @@
 # HANDOFF — MOMOS OPS (léelo al empezar una sesión nueva)
 
+## ✅ Hito 54 — Biblioteca Creativa vía MCP (2026-07-17 · aplicado y validado)
+
+- La cadena técnica vigente ya llegó al **Hito 54**, `20260717_54_mcp_biblioteca_creativa`, aplicado y validado; no debe confundirse con los nombres históricos de producto usados antes en este documento.
+- H54 llevará al Cerebro de Agencia dos capacidades de lista cerrada: búsqueda semántica interna de activos de la Biblioteca MOMOS y concesión de un recurso MCP opaco, temporal y verificado para un activo exacto; nunca expone la ruta local del host.
+- La búsqueda deberá devolver solo metadatos seguros de archivos reales y activos, con derechos `Propio` o `Autorizado`, permiso de IA, vigencia y canal compatibles. Nunca devolverá notas libres, actores, PII, `storage_path`, URLs firmadas, tokens o secretos.
+- La referencia se resolverá dentro del runtime privado y se entregará como identificador/contenido temporal, no como URL o ruta de Storage. Antes de cada concesión se volverán a comprobar archivo, MIME, tamaño, SHA-256, estado, derechos, vencimiento, personas y canal. La lectura interactiva queda limitada a **25 MB**; originales mayores deben ir por un worker privado para no saturar Base64/MCP.
+- Cada búsqueda y concesión tendrá su nombre exacto en la bitácora MCP, huella del contrato, worker, resultado e idempotencia. Una referencia vigente bloqueará el borrado concurrente del original y H51 deberá revalidar dependencias antes de confirmar una eliminación.
+- Usar un original no aprueba el creativo: toda salida continuará en revisión humana. H54 no crea publicaciones, no pauta, no distribuye, no cambia presupuesto y conserva `external_execution_allowed=false`.
+- Archivos previstos: `supabase/mcp-biblioteca-creativa-v1.sql`, `supabase/tests/test-mcp-biblioteca-creativa-v1.sql`, gateway MCP, contratos locales y documentación ordenada.
+- **Validación cerrada:** migración aplicada en Supabase, adversarial H54 PASS y cadena ordenada 01–54 PASS, ambas con rollback total. Suite local **453/453 PASS** y build Vite PASS. Para usar la nueva superficie desde una sesión MCP ya abierta, reiniciar Codex y verificar un original real; esto no cambia el estado aplicado de la base.
+
+## ✅ Hito 53 — Motor de crecimiento multimodo (2026-07-17 · aplicado y validado)
+
+- La migración `20260717_53_motor_crecimiento_multimodo` sella cuatro enfoques comparables: venta inmediata, conquistar demanda, marca/comunidad y pauta/aprendizaje.
+- Cada snapshot separa Pauta de Orgánico, conserva hechos y política sin PII, requiere decisión humana y no publica, pauta, gasta ni reserva stock.
+- Prueba adversarial específica y cadena ordenada 01–53 reportadas en PASS, ambas con rollback total.
+
 ## ✅ Hito 51 — Relevo creativo humano simplificado (2026-07-16 · validado localmente)
 
 - El centro **Del contrato al aprendizaje** ya no se limita a señalar Distribución: cuando el máster está aprobado ofrece una sola acción humana por vez para enlazar el creativo comercial exacto, preparar o reutilizar una publicación `Programado` y abrir la revisión de Distribución.

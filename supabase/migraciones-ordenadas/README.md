@@ -67,6 +67,24 @@ Después de tener aplicada la cadena 01–50:
 46. `../tests/test-catalogo-figuras-toby-v1.sql` — valida catálogo, gramaje y protección RBAC; siempre hace rollback.
 47. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–52; siempre hace rollback.
 
+## Hito 53 · motor de crecimiento multimodo
+
+H53 ya está aplicado. Se conserva aquí para reconciliar la cadena técnica antes de continuar:
+
+48. `../motor-crecimiento-multimodo-v1.sql` — sella los modos venta inmediata, conquistar demanda, marca/comunidad y pauta/aprendizaje sin ejecutar acciones externas.
+49. `../tests/test-motor-crecimiento-multimodo-v1.sql` — prueba separación Pauta/Orgánico, PII, decisión humana, idempotencia, no ejecución y RBAC; siempre hace rollback.
+50. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–53; siempre hace rollback.
+
+## Hito 54 · Biblioteca Creativa vía MCP (aplicado y validado)
+
+Aplicar únicamente después de confirmar que `20260717_53_motor_crecimiento_multimodo` aparece en `public.momos_ops_migrations`:
+
+51. `../mcp-biblioteca-creativa-v1.sql` — instala búsqueda semántica privada y recursos MCP opacos temporales verificados de hasta 25 MB; aplica gates de archivo real, derechos, IA, vigencia y canal sin exponer URL, ruta del host, PII o secretos. Originales mayores requieren worker privado.
+52. `../tests/test-mcp-biblioteca-creativa-v1.sql` — debe probar RBAC, auditoría exacta, idempotencia, vencimiento entre búsqueda y concesión, integridad del archivo, bloqueo concurrente de borrado, revisión humana y cero publicación; siempre hace rollback.
+53. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–54; siempre hace rollback.
+
+**Estado H54:** migración aplicada; prueba adversarial y aceptación 01–54 PASS con rollback total. SQL parseable, suite local 453/453 y build PASS. Reiniciá una sesión MCP anterior antes de comprobar la búsqueda y referencia de un original real desde Codex.
+
 No ejecutes el worker de postproducción 1.1.0 con trabajos pendientes hasta aplicar el paso de audio: el worker nuevo exige el contrato `audio_binding` y falla cerrado si el servidor aún entrega el contrato H47 antiguo.
 
 Después de cada paso ejecutá:

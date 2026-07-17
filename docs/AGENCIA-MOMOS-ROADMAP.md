@@ -17,6 +17,8 @@
 
 ## Próximos hitos
 
+> Estado de la cadena técnica al 2026-07-17: los pasos 01–54 están aplicados; H53 corresponde al motor de crecimiento multimodo y H54 a Biblioteca Creativa vía MCP. Las etiquetas históricas H48B y “H49 Mutación Meta” describen frentes de producto y no cambian esta secuencia técnica.
+
 ### Hito 31 — Estudio creativo por escenas (implementado y validado)
 
 - Implementado el contrato de toma definido en [`AGENCIA-CREATIVE-PLAYBOOK.md`](AGENCIA-CREATIVE-PLAYBOOK.md): propósito, duración, sujeto, acción, física, entorno, cámara, luz, audio, texto, continuidad, restricciones, referencias autorizadas y costo.
@@ -289,6 +291,22 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - La UI solo muestra pistas operables y compatibles con el canal. Autorizar continúa sin publicar ni distribuir; el control técnico y la aprobación humana del máster siguen siendo obligatorios.
 - Archivos: `supabase/audio-postproduccion-v1.sql`, `supabase/tests/test-audio-postproduccion-v1.sql`, worker `momos-postproduction-worker/1.1.0` y contratos en `src/lib/postproduction-worker.js`.
 - Validación cerrada: suite local **428/428 PASS**, build Vite PASS y smoke FFmpeg real PASS con H.264 + AAC, 48 kHz estéreo y -13.96 LUFS medidos. La prueba adversarial H48 y la cadena ordenada 01–48 pasaron en Supabase con rollback total; health y ciclo vacío del worker 1.1.0 PASS. Falta únicamente autorizar y aprobar humanamente el primer máster real cuando exista un corte candidato.
+
+### Hito 53 — Motor de crecimiento multimodo (implementado y validado)
+
+- `20260717_53_motor_crecimiento_multimodo` compara cuatro estrategias compatibles con la operación: venta inmediata, conquistar demanda, marca/comunidad y pauta/aprendizaje.
+- Cada snapshot conserva hechos, políticas y una recomendación; la selección final es humana. Pauta y Orgánico permanecen separados y ninguna selección publica, pauta, gasta o reserva stock.
+- La prueba adversarial específica y la cadena ordenada 01–53 fueron reportadas en PASS, ambas con rollback total.
+
+### Hito 54 — Biblioteca Creativa vía MCP (implementado, aplicado y validado)
+
+- El Cerebro de Agencia buscará originales mediante una herramienta semántica interna de lista cerrada. MOMOS OPS filtrará en servidor por archivo real, estado activo, derechos `Propio/Autorizado`, permiso de IA, vigencia, personas, canal, producto, figura, sabor, formato y etiquetas.
+- La búsqueda devolverá únicamente un descriptor seguro y un identificador opaco. No cruzarán el MCP notas libres, actores, PII, `storage_path`, URLs firmadas, tokens, credenciales ni secretos.
+- Una segunda herramienta concederá un recurso MCP opaco, temporal y verificado del activo exacto. El runtime privado volverá a comprobar MIME, tamaño, SHA-256, derechos, canal y vigencia antes de cada lectura; nunca expondrá la ruta local del host y el recurso jamás se presentará como permiso de publicación. La vía interactiva admite hasta **25 MB**; archivos mayores se derivarán a workers privados para evitar copias Base64 sobredimensionadas.
+- Búsqueda y concesión tendrán nombres exactos en `agency_mcp_access_log`, huellas de entrada/salida e idempotencia. Una referencia vigente bloqueará el borrado concurrente y la confirmación de H51 revalidará todas las dependencias.
+- Toda pieza creada con un original de Biblioteca seguirá pasando por revisión humana, QA, máster y Distribución Comercial. H54 conserva `external_execution_allowed=false`: no publica, pauta, contacta, distribuye ni modifica presupuesto.
+- Archivos previstos: `supabase/mcp-biblioteca-creativa-v1.sql`, `supabase/tests/test-mcp-biblioteca-creativa-v1.sql`, `scripts/momos-agency-mcp.mjs`, contratos/pruebas locales y actualización de la cadena ordenada.
+- **Validación cerrada:** SQL H54 aplicado; adversarial específico y aceptación ordenada 01–54 PASS con rollback total; suite **453/453 PASS**, build Vite PASS y gateway JS sin errores de sintaxis. Una sesión MCP previa debe reiniciarse antes de probar la nueva herramienta con un original real.
 
 ## Skills finales de Agencia
 
