@@ -9,6 +9,11 @@ function nonNegative(value) {
   return Math.max(0, number(value));
 }
 
+function grams(value) {
+  const parsed = Number.parseFloat(String(value ?? "").replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -137,17 +142,27 @@ export function buildFinishedInventory(db = {}, { today = todayIso() } = {}) {
     }));
 
   const figureIndex = new Map();
-  function ensureFigure(name) {
+  function ensureFigure(name, metadata = {}) {
     const figure = String(name || "Sin figura verificable");
     if (!figureIndex.has(figure)) figureIndex.set(figure, {
       figura: figure, available: 0, flavors: new Map(), productIds: new Set(),
       imperfectTotal: 0, imperfectForShakes: 0, imperfectPending: 0,
       imperfectOtherDestination: 0, discarded: 0, imperfectBatches: [],
+      especie: "", gramajeG: null,
     });
-    return figureIndex.get(figure);
+    const entry = figureIndex.get(figure);
+    if (metadata.especie) entry.especie = String(metadata.especie);
+    if (grams(metadata.gramajeG ?? metadata.gramaje) != null) entry.gramajeG = grams(metadata.gramajeG ?? metadata.gramaje);
+    if (metadata.productId) entry.productIds.add(metadata.productId);
+    return entry;
   }
+  // El catálogo define qué figuras existen; el stock solo completa sus cifras.
+  // Así una figura activa nunca desaparece de Inventario terminado por estar en cero.
+  const serverFigures = Array.isArray(db.figuras) ? db.figuras.filter((figure) => figure?.activo !== false) : [];
+  const fallbackFigures = Array.isArray(db.settings?.figuras) ? db.settings.figuras : [];
+  (serverFigures.length ? serverFigures : fallbackFigures).forEach((figure) => ensureFigure(figure.nombre, figure));
   variants.forEach((variant) => {
-    const figure = ensureFigure(variant.figura);
+    const figure = ensureFigure(variant.figura, { gramajeG: variant.gramajeG, productId: variant.productId });
     const flavorName = String(variant.sabor || "Sin sabor");
     const flavor = figure.flavors.get(flavorName) || {
       sabor: flavorName, available: 0, nextExpiration: "", gramajes: new Set(), products: new Set(),

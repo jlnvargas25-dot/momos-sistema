@@ -79,7 +79,7 @@ on conflict (clave) do nothing;
 insert into figuras (nombre, especie, gramaje_g, activo) values
   ('Lizi',  'gato',  150, true),
   ('Momo',  'gato',  180, true),
-  ('Toby',  'gato',  180, true),
+  ('Toby',  'gato',  280, true),
   ('Teo',   'gato',  250, true),
   ('Max',   'perro', 180, true),
   ('Rocco', 'perro', 180, true),

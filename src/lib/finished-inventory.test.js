@@ -139,3 +139,28 @@ test("un lote mixto legado no atribuye imperfectas a una figura inventada", () =
   assert.equal(result.figureSummaries[0].figura, "Sin figura verificable");
   assert.equal(result.figureSummaries[0].imperfectPending, 2);
 });
+
+test("mantiene visibles todas las figuras activas aunque no tengan stock", () => {
+  const result = buildFinishedInventory({
+    products: [{ id: "P1", nombre: "Momo Gatito", tipo: "momo", stock: 2, activo: true }],
+    figuras: [
+      { nombre: "Lizi", especie: "gato", gramajeG: 150, productId: "P1", activo: true },
+      { nombre: "Momo", especie: "gato", gramajeG: 180, productId: "P1", activo: true },
+      { nombre: "Toby", especie: "gato", gramajeG: 280, productId: "P1", activo: true },
+      { nombre: "Figura retirada", especie: "gato", gramajeG: 150, productId: "P1", activo: false },
+    ],
+    variantes: [
+      { productId: "P1", producto: "Momo Gatito", figura: "Lizi", sabor: "Coco", disponibles: 2, gramajeG: 150, vence: "2026-07-18" },
+    ],
+  }, { today: "2026-07-15" });
+
+  const momo = result.figureSummaries.find((figure) => figure.figura === "Momo");
+  const toby = result.figureSummaries.find((figure) => figure.figura === "Toby");
+  assert.equal(result.figureSummaries.length, 3);
+  assert.equal(momo.available, 0);
+  assert.deepEqual(momo.flavors, []);
+  assert.equal(toby.available, 0);
+  assert.equal(toby.especie, "gato");
+  assert.equal(toby.gramajeG, 280);
+  assert.equal(result.figureSummaries.some((figure) => figure.figura === "Figura retirada"), false);
+});

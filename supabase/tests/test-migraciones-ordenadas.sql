@@ -30,7 +30,7 @@ begin
     '20260716_45_centro_acciones_agencia','20260716_46_resultados_verificables_agencia',
     '20260716_47_postproduccion_exportacion','20260716_48_audio_postproduccion',
     '20260716_49_gobernanza_marca','20260716_50_flujo_creativo_e2e',
-    '20260717_51_eliminacion_biblioteca'
+    '20260717_51_eliminacion_biblioteca','20260717_52_catalogo_figuras_toby'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -247,6 +247,8 @@ begin
   assert has_function_privilege('authenticated','public.cancelar_eliminacion_activo_marca(bigint,text)','EXECUTE'), 'falta compensación de eliminación de Biblioteca';
   assert has_function_privilege('authenticated','public.confirmar_eliminacion_activo_marca(bigint)','EXECUTE'), 'falta cierre de eliminación de Biblioteca';
   assert not has_function_privilege('authenticated','public._motivos_bloqueo_eliminacion_activo(bigint)','EXECUTE'), 'helper privado de eliminación expuesto';
+  assert exists(select 1 from public.figuras where nombre='Momo' and activo), 'Momo falta en el catálogo activo de figuras';
+  assert exists(select 1 from public.figuras where nombre='Toby' and activo and gramaje_g=280), 'Toby no está activo como figura de 280 g';
   assert exists(select 1 from pg_trigger where tgname='creatives_master_lineage_guard' and not tgisinternal), 'creativo sellado admite sustitución';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
@@ -279,5 +281,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-51 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-52 PASS, rollback total' as resultado;
 rollback;

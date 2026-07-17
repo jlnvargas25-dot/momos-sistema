@@ -61,6 +61,12 @@ Después de tener aplicada la cadena 01–50:
 43. `../tests/test-eliminacion-biblioteca-v1.sql` — intenta borrar originales usados, valida compensación ante fallos de Storage y confirma el borrado seguro; siempre hace rollback.
 44. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–51; siempre hace rollback.
 
+## Hito 52 · catálogo completo de figuras
+
+45. `../catalogo-figuras-toby-v1.sql` — mantiene Momo y Toby activos en el catálogo y corrige Toby a 280 g sin cambiar su producto asociado.
+46. `../tests/test-catalogo-figuras-toby-v1.sql` — valida catálogo, gramaje y protección RBAC; siempre hace rollback.
+47. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–52; siempre hace rollback.
+
 No ejecutes el worker de postproducción 1.1.0 con trabajos pendientes hasta aplicar el paso de audio: el worker nuevo exige el contrato `audio_binding` y falla cerrado si el servidor aún entrega el contrato H47 antiguo.
 
 Después de cada paso ejecutá:

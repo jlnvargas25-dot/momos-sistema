@@ -430,7 +430,7 @@ function seedDb() {
     figuras: [
       { nombre: "Lizi",  especie: "gato",  gramaje: "150 g" },
       { nombre: "Momo",  especie: "gato",  gramaje: "150 g" },
-      { nombre: "Toby",  especie: "gato",  gramaje: "150 g" },
+      { nombre: "Toby",  especie: "gato",  gramaje: "280 g" },
       { nombre: "Teo",   especie: "gato",  gramaje: "280 g" },
       { nombre: "Max",   especie: "perro", gramaje: "150 g" },
       { nombre: "Rocco", especie: "perro", gramaje: "150 g" },
@@ -6913,6 +6913,7 @@ function InventarioTerminado({ db, go }) {
                   <div>
                     <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Figura terminada</div>
                     <div className="display text-xl font-semibold mt-0.5">{figure.figura}</div>
+                    {(figure.especie || figure.gramajeG) && <div className="text-[10px] font-bold mt-0.5 capitalize" style={{ color: T.choco2 }}>{[figure.especie, figure.gramajeG ? `${figure.gramajeG} g` : ""].filter(Boolean).join(" · ")}</div>}
                     <div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>{figure.flavors.length} {figure.flavors.length === 1 ? "sabor disponible" : "sabores disponibles"}</div>
                   </div>
                   <div className="text-right shrink-0"><div className="display text-3xl" style={{ color: figure.available > 0 ? "#3F6B42" : T.choco2 }}>{figure.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>para vender</div></div>
