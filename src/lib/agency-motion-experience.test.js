@@ -26,6 +26,17 @@ test("cada receta conserva cámara, luz, física, continuidad y negativos", () =
   assert.match(recipe.transitionToNext.type, /match|corte/i);
 });
 
+test("intacto no se confunde con CTA y una fractura conserva el match on action", () => {
+  const crackShot = { ...shots[0], title: "El crack", purpose: "Detener el scroll con prueba sensorial", payload: {
+    ...shots[0].payload,
+    subject: "Max Oreo real e intacto",
+    action: "La cuchara fractura la cobertura una sola vez",
+  } };
+  const draft = buildMotionPlanDraft(storyboard, [crackShot, shots[1]]);
+  assert.equal(draft.shotRecipes[0].selected.intent.narrativeJob, "Demostrar");
+  assert.equal(draft.shotRecipes[0].selected.transitionToNext.type, "Match on action");
+});
+
 test("el humano puede elegir la alternativa orgánica sin mezclar propuestas", () => {
   const first = buildMotionPlanDraft(storyboard, shots);
   const organicKey = first.shotRecipes[0].proposals[1].proposalKey;
@@ -44,6 +55,10 @@ test("el payload no crea trabajos, no publica y conserva las huellas exactas", (
   const payload = motionPlanPayload(buildMotionPlanDraft(storyboard, shots));
   assert.equal(payload.storyboard_id, 8);
   assert.deepEqual(payload.shots.map((shot) => shot.shot_fingerprint), ["shot-10", "shot-11"]);
+  payload.shots.flatMap((shot) => shot.proposals).forEach((proposal) => {
+    assert.match(proposal.proposal_key, /^[A-Za-z0-9:_-]{3,220}$/);
+  });
+  assert.equal(payload.shots[0].proposals[1].proposal_key, "organica-10");
   assert.equal("provider" in payload, false);
   assert.equal("publish" in payload, false);
 });

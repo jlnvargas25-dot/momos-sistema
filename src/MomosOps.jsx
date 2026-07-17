@@ -2056,6 +2056,8 @@ function BtnAsync({ children, onClick, kind, small, disabled, confirmar, textoEn
     setEnVuelo(true);
     try {
       await onClick();
+    } catch (err) {
+      toast("error", err?.message || "No se pudo completar la acción");
     } finally {
       vueloRef.current = false;
       if (vivoRef.current) setEnVuelo(false);
@@ -11299,6 +11301,7 @@ function AgencyRetentionLab({ db, refrescar }) {
   const center = useMemo(() => buildAgencyRetentionCenter(db), [db]);
   const [contractId, setContractId] = useState("");
   const [formOpen, setFormOpen] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState({});
   const [form, setForm] = useState({ platform: "Instagram Reels", duration: 15, title: "", audience: "", promise: "", payoff: "", callToAction: "", controlHook: "", challengerHook: "", openingVisual: "", proof: "" });
 
   function openScript(contract) {
@@ -11344,10 +11347,10 @@ function AgencyRetentionLab({ db, refrescar }) {
   }
 
   async function resolveScript(script, decision) {
-    const note = window.prompt(decision === "Aprobar" ? "¿Qué verificaste antes de aprobar el guion?" : "¿Qué debe corregir el cerebro de Agencia?",
-      decision === "Aprobar" ? "Promesa, prueba, payoff, marca y CTA verificados" : "Ajustar hook o demostración") || "";
-    if (!note) return;
+    const note = String(reviewNotes[script.id] || "").trim();
+    if (!note) { toast("alert", decision === "Aprobar" ? "Escribí qué verificaste antes de aprobar." : "Escribí qué debe corregirse antes de devolver."); return; }
     await resolverGuionRetencion(script.id, decision, note);
+    setReviewNotes((current) => ({ ...current, [script.id]: "" }));
     toast("ok", decision === "Aprobar" ? "Guion aprobado. Generación, pauta y publicación siguen separadas." : "Guion devuelto con aprendizaje trazable.");
     await refrescar();
   }
@@ -11385,8 +11388,8 @@ function AgencyRetentionLab({ db, refrescar }) {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Arquitectura antes de generar</div><div className="font-extrabold text-sm">Promesa, demostración, payoff y CTA</div></div></div>
         <div className="grid lg:grid-cols-2 gap-2">
           {center.eligibleContracts.map((contract) => <article key={contract.id} className="rounded-2xl border p-3 flex items-center gap-3" style={{ borderColor: "#B8D3B2", background: "#F4FAF1" }}><div className="flex-1"><div className="text-[9px] uppercase font-extrabold" style={{ color: "#315B35" }}>Contrato #{contract.id} aprobado</div><div className="font-extrabold text-sm">{contract.sealedPayload?.creative_direction?.concept || contract.contractKey}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Todavía no tiene guion de retención activo.</div></div><Btn small onClick={() => openScript(contract)}>Diseñar guion</Btn></article>)}
-          {center.pending.map((script) => <article key={script.id} className="rounded-2xl border p-3" style={{ borderColor: "#E8C98B", background: "#FFF7E8" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>V{script.version} · {script.platform} · {script.sourceKind}</div><div className="font-extrabold text-sm">{script.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#FBE8C8", color: "#8B5A08" }}>En revisión</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}><b>Promesa:</b> {script.promise}<br /><b>Payoff:</b> {script.payoff}</div>{!script.architecture.ready && <div className="rounded-xl px-2 py-1.5 text-[10px] mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>× {script.architecture.reasons[0]}</div>}<div className="flex gap-2"><BtnAsync small confirmar disabled={!script.architecture.ready} onClick={() => resolveScript(script, "Aprobar")}>Aprobar guion</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveScript(script, "Devolver")}>Devolver</BtnAsync></div></article>)}
-          {center.approved.map((script) => { const experiment = center.experiments.find((item) => String(item.scriptId) === String(script.id) && !["Cerrado","Inconcluso","Cancelado"].includes(item.status)); return <article key={script.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: "#315B35" }}>Aprobado · V{script.version} · {script.targetDurationSec}s</div><div className="font-extrabold text-sm">{script.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#DDEBD9", color: "#315B35" }}>No publicado</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}>{script.promise} → {script.payoff}</div>{!experiment ? <BtnAsync small onClick={() => createExperiment(script)}>Planear A/B de hook</BtnAsync> : <div className="rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: "#E5EEF7", color: "#315A7D" }}>Experimento #{experiment.id} · {experiment.status} · variable única: {experiment.declaredVariable}</div>}</article>; })}
+          {center.pending.map((script) => <article key={script.id} className="rounded-2xl border p-3" style={{ borderColor: "#E8C98B", background: "#FFF7E8" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>V{script.version} · {script.platform} · {script.sourceKind}</div><div className="font-extrabold text-sm">{script.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#FBE8C8", color: "#8B5A08" }}>En revisión</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}><b>Promesa:</b> {script.promise}<br /><b>Payoff:</b> {script.payoff}</div>{!script.architecture.ready && <div className="rounded-xl px-2 py-1.5 text-[10px] mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>× {script.architecture.reasons[0]}</div>}<Input aria-label={`Nota de revisión del guion V${script.version}`} value={reviewNotes[script.id] || ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [script.id]: event.target.value }))} placeholder="Qué verificaste o qué debe corregirse" /><div className="flex gap-2 mt-2"><BtnAsync small confirmar disabled={!script.architecture.ready || !String(reviewNotes[script.id] || "").trim()} onClick={() => resolveScript(script, "Aprobar")}>Aprobar guion</BtnAsync><BtnAsync small kind="ghost" disabled={!String(reviewNotes[script.id] || "").trim()} onClick={() => resolveScript(script, "Devolver")}>Devolver</BtnAsync></div></article>)}
+          {center.approved.map((script) => { const experiment = center.experiments.find((item) => String(item.scriptId) === String(script.id) && !["Cerrado","Inconcluso","Cancelado"].includes(item.status)); const contract = (db.agencyCreativeContracts || []).find((item) => String(item.id) === String(script.contractId)); return <article key={script.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: "#315B35" }}>Aprobado · V{script.version} · {script.targetDurationSec}s</div><div className="font-extrabold text-sm">{script.title}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#DDEBD9", color: "#315B35" }}>No publicado</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}>{script.promise} → {script.payoff}</div><div className="flex flex-wrap gap-2">{!experiment ? <BtnAsync small onClick={() => createExperiment(script)}>Planear A/B de hook</BtnAsync> : <div className="rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: "#E5EEF7", color: "#315A7D" }}>Experimento #{experiment.id} · {experiment.status} · variable única: {experiment.declaredVariable}</div>}{contract && !experiment && <Btn small kind="ghost" onClick={() => openScript(contract)}>Preparar nueva versión</Btn>}</div></article>; })}
         </div>
       </div>
       {center.experiments.length > 0 && <div className="p-4"><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: T.coral }}>Aprendizaje por versión exacta</div><div className="grid lg:grid-cols-2 gap-2">{center.experiments.slice(0, 8).map((experiment) => { const controlSample = center.measurements.filter((item) => String(item.experimentId) === String(experiment.id) && String(item.hookId) === String(experiment.controlHookId)).reduce((sum,item) => sum + item.sampleSize, 0); const challengerSample = center.measurements.filter((item) => String(item.experimentId) === String(experiment.id) && String(item.hookId) === String(experiment.challengerHookId)).reduce((sum,item) => sum + item.sampleSize, 0); const ready = Math.min(controlSample, challengerSample) >= 100; return <article key={experiment.id} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>A/B #{experiment.id} · {experiment.primaryMetric}</div><div className="font-extrabold text-sm">{experiment.hypothesis}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: ready ? "#DDEBD9" : "#FBE8C8", color: ready ? "#315B35" : "#8B5A08" }}>{experiment.status}</span></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}>Muestra A {controlSample} · B {challengerSample} · mínimo 100 por brazo</div>{["Planificado","Activo"].includes(experiment.status) && <div className="flex flex-wrap gap-2"><BtnAsync small disabled={!ready} onClick={() => closeExperiment(experiment, "Ganador", experiment.controlHookId)}>Gana A</BtnAsync><BtnAsync small disabled={!ready} onClick={() => closeExperiment(experiment, "Ganador", experiment.challengerHookId)}>Gana B</BtnAsync><BtnAsync small kind="ghost" onClick={() => closeExperiment(experiment, "Inconcluso")}>Inconcluso</BtnAsync></div>}</article>; })}</div></div>}
@@ -11471,6 +11474,7 @@ function AgencySceneStudio({ db, refrescar }) {
   });
   const [shotForm, setShotForm] = useState(emptyShot());
   const [shotEditing, setShotEditing] = useState(false);
+  const [storyboardReviewNote, setStoryboardReviewNote] = useState("");
   const selected = studio.storyboards.find((item) => String(item.id) === String(selectedId)) || null;
   const authorizedAssets = (db.brandMediaAssets || []).filter((asset) => asset.status === "Activo"
     && asset.rightsStatus === "Autorizado" && asset.aiUseAllowed);
@@ -11531,11 +11535,10 @@ function AgencySceneStudio({ db, refrescar }) {
 
   async function resolveStoryboard(decision) {
     if (!selected) return;
-    const fallback = decision === "Aprobar" ? "Aprobado por marca para preparar la generación controlada."
-      : "Ajustar la toma indicada antes de generar.";
-    const note = window.prompt(decision === "Aprobar" ? "¿Qué validaste antes de aprobar?" : "¿Qué debe corregirse?", fallback) || "";
-    if (!note) return;
+    const note = storyboardReviewNote.trim();
+    if (!note) { toast("alert", decision === "Aprobar" ? "Escribí qué verificaste antes de aprobar la dirección." : "Escribí qué toma o continuidad debe corregirse."); return; }
     await resolverStoryboardAgencia(selected.id, decision, note);
+    setStoryboardReviewNote("");
     toast("ok", decision === "Aprobar" ? "Storyboard aprobado. Aún no llamó a ningún proveedor." : "Storyboard devuelto a edición con trazabilidad.");
     await refrescar();
   }
@@ -11578,7 +11581,7 @@ function AgencySceneStudio({ db, refrescar }) {
         <aside><div className="rounded-3xl p-4 border mb-3" style={{ borderColor: selected.readiness.ready ? "#B8D3B2" : "#E8C98B", background: selected.readiness.ready ? "#F4FAF2" : "#FFF8E8" }}><div className="text-[9px] uppercase font-extrabold">Control antes de generar</div><div className="display text-xl font-semibold">{selected.readiness.totalDurationSec.toFixed(1)} / {selected.targetDurationSec}s</div><div className="text-xs mb-2">{selected.readiness.activeShots.length} toma(s) · {money(selected.readiness.estimatedCostCop)}</div>{selected.readiness.reasons.map((reason) => <div key={reason} className="text-[10px] mb-1">• {reason}</div>)}</div>
           <div className="rounded-2xl px-3 py-2 mb-3 text-[10px]" style={{ background: T.vainilla }}><b>Hook:</b> {selected.creativeBrief?.hook}<br /><b>Payoff:</b> {selected.creativeBrief?.payoff}<br /><b>CTA:</b> {selected.creativeBrief?.call_to_action}</div>
           {selected.status === "Borrador" && <BtnAsync onClick={submitStoryboard} disabled={!selected.readiness.ready}>Enviar a revisión humana</BtnAsync>}
-          {selected.status === "En revisión" && <div className="flex flex-col gap-2"><BtnAsync confirmar onClick={() => resolveStoryboard("Aprobar")}>Aprobar dirección</BtnAsync><BtnAsync kind="ghost" onClick={() => resolveStoryboard("Devolver")}>Devolver a edición</BtnAsync></div>}
+          {selected.status === "En revisión" && <div className="flex flex-col gap-2"><Input aria-label="Nota de revisión del storyboard" value={storyboardReviewNote} onChange={(event) => setStoryboardReviewNote(event.target.value)} placeholder="Qué verificaste o qué debe corregirse" /><BtnAsync confirmar disabled={!storyboardReviewNote.trim()} onClick={() => resolveStoryboard("Aprobar")}>Aprobar dirección</BtnAsync><BtnAsync kind="ghost" disabled={!storyboardReviewNote.trim()} onClick={() => resolveStoryboard("Devolver")}>Devolver a edición</BtnAsync></div>}
           {selected.status === "Aprobado" && <div className="rounded-2xl px-3 py-3 text-xs font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ Dirección aprobada y sellada. No se ha generado ni publicado ninguna toma.</div>}
         </aside>
       </div>
@@ -11597,6 +11600,7 @@ function AgencyMotionExperience({ db, refrescar }) {
   const center = useMemo(() => buildAgencyMotionCenter(db), [db]);
   const [boardId, setBoardId] = useState("");
   const [selections, setSelections] = useState({});
+  const [reviewNotes, setReviewNotes] = useState({});
   const board = center.eligibleStoryboards.find((item) => String(item.id) === String(boardId)) || null;
   const draft = useMemo(() => board
     ? buildMotionPlanDraft(board, db.agencyStoryboardShots || [], selections)
@@ -11614,14 +11618,12 @@ function AgencyMotionExperience({ db, refrescar }) {
   }
 
   async function resolve(plan, decision) {
-    const note = window.prompt(
-      decision === "Aprobar" ? "¿Qué verificaste antes de aprobar la dirección?" : "¿Qué debe corregirse por toma?",
-      decision === "Aprobar"
-        ? "Verifiqué intención, identidad del producto, física, eje, luz, continuidad y transición de cada toma."
-        : "Ajustar el movimiento o la continuidad indicada sin cambiar el producto.",
-    ) || "";
-    if (!note.trim()) return;
+    const note = String(reviewNotes[plan.id] || "").trim();
+    if (!note) throw new Error(decision === "Aprobar"
+      ? "Escribí qué verificaste antes de aprobar la dirección."
+      : "Escribí qué debe corregirse por toma.");
     await resolverPlanMotion(plan.id, decision, note);
+    setReviewNotes((current) => { const next = { ...current }; delete next[plan.id]; return next; });
     toast("ok", decision === "Aprobar"
       ? "Motion aprobado: el Enrutador ya puede asignar motores y topes. Aún no se generó nada."
       : "Plan devuelto con corrección trazable.");
@@ -11650,7 +11652,7 @@ function AgencyMotionExperience({ db, refrescar }) {
           {selected && <div className="grid md:grid-cols-4 gap-2 mt-3 text-[10px]"><div className="rounded-xl p-2.5" style={{ background: "#F5E8D2" }}><b>Cámara</b><br />{selected.cameraPath.primaryMove}<br /><span style={{ color: T.choco2 }}>Inercia {selected.cameraPath.acceleration}; {selected.cameraPath.settle}.</span></div><div className="rounded-xl p-2.5" style={{ background: "#F6E6D9" }}><b>Luz y sombra</b><br />{selected.lightingMap.motivatedSource}<br /><span style={{ color: T.choco2 }}>{selected.lightingMap.shadowBehavior}</span></div><div className="rounded-xl p-2.5" style={{ background: "#E7EFE5" }}><b>Física</b><br />{selected.physics.contact}<br /><span style={{ color: T.choco2 }}>{selected.physics.weightResistance}</span></div><div className="rounded-xl p-2.5" style={{ background: "#E7EDF2" }}><b>Siguiente corte</b><br />{selected.transitionToNext.type}<br /><span style={{ color: T.choco2 }}>{selected.transitionToNext.intentionalChange}</span></div></div>}
         </article>)}<div className="rounded-2xl px-3 py-3 flex flex-wrap items-center justify-between gap-3" style={{ background: T.vainilla }}><div className="text-xs"><b>{draft.grammarPrimary}</b>{draft.grammarSecondary !== draft.grammarPrimary ? ` + ${draft.grammarSecondary}` : ""}<div className="text-[9px]" style={{ color: T.choco2 }}>Costo preliminar informativo {fmt(draft.estimatedPreviewCostCop)} · preparar cuesta $0.</div></div><BtnAsync onClick={prepare} disabled={!draft.ready}>Sellar dirección para revisión</BtnAsync></div></div>}
       </div>}
-      <div className="p-3 grid lg:grid-cols-2 gap-2">{center.plans.slice(0, 8).map((plan) => { const tone = planTone(plan.status); return <article key={plan.id} className="rounded-2xl border p-3" style={{ borderColor: plan.status === "En revisión" ? "#E8C98B" : T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Motion #{plan.id} · V{plan.version}</div><div className="font-extrabold text-sm">{plan.storyboard?.title || `Storyboard #${plan.storyboardId}`}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{plan.status}</span></div><div className="flex flex-wrap gap-1.5 my-2">{plan.recipes.map((recipe) => <span key={recipe.id} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: "#F5E8D2" }}>T{recipe.shotNumber} · {recipe.selectedRecipe?.intent?.narrative_job || recipe.selectedKey}</span>)}</div><div className="text-[10px] mb-2" style={{ color: T.choco2 }}>{plan.grammarPrimary} · huella {plan.fingerprint?.slice(0, 8)} · {plan.recipes.length} receta(s)</div>{plan.status === "En revisión" && <div className="flex gap-2"><BtnAsync small confirmar onClick={() => resolve(plan,"Aprobar")}>Aprobar motion</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolve(plan,"Devolver")}>Devolver</BtnAsync></div>}{plan.status === "Aprobado" && <div className="rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ Enrutador habilitado · generación y publicación siguen bloqueadas</div>}</article>; })}{center.plans.length === 0 && center.eligibleStoryboards.length === 0 && <div className="p-2 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Sin piezas pendientes.</b> Cuando el Estudio apruebe un storyboard aparecerá aquí.</div>}</div>
+      <div className="p-3 grid lg:grid-cols-2 gap-2">{center.plans.slice(0, 8).map((plan) => { const tone = planTone(plan.status); const note = reviewNotes[plan.id] || ""; return <article key={plan.id} className="rounded-2xl border p-3" style={{ borderColor: plan.status === "En revisión" ? "#E8C98B" : T.border, background: "#FFF9F2" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Motion #{plan.id} · V{plan.version}</div><div className="font-extrabold text-sm">{plan.storyboard?.title || `Storyboard #${plan.storyboardId}`}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: tone.bg, color: tone.fg }}>{plan.status}</span></div><div className="flex flex-wrap gap-1.5 my-2">{plan.recipes.map((recipe) => <span key={recipe.id} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: "#F5E8D2" }}>T{recipe.shotNumber} · {recipe.selectedRecipe?.intent?.narrative_job || recipe.selectedKey}</span>)}</div><div className="text-[10px] mb-2" style={{ color: T.choco2 }}>{plan.grammarPrimary} · huella {plan.fingerprint?.slice(0, 8)} · {plan.recipes.length} receta(s)</div>{plan.status === "En revisión" && <div className="space-y-2"><textarea className={inputCls} style={{ ...inputStyle, minHeight: 72 }} value={note} onChange={(event) => setReviewNotes((current) => ({ ...current, [plan.id]: event.target.value }))} placeholder="Qué verificaste o qué debe corregirse por toma…" aria-label={`Nota de revisión motion ${plan.id}`} /><div className="flex gap-2"><BtnAsync small confirmar disabled={!note.trim()} onClick={() => resolve(plan,"Aprobar")}>Aprobar motion</BtnAsync><BtnAsync small kind="ghost" disabled={!note.trim()} onClick={() => resolve(plan,"Devolver")}>Devolver</BtnAsync></div></div>}{plan.status === "Aprobado" && <div className="rounded-xl px-2.5 py-2 text-[10px] font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ Enrutador habilitado · generación y publicación siguen bloqueadas</div>}</article>; })}{center.plans.length === 0 && center.eligibleStoryboards.length === 0 && <div className="p-2 text-sm" style={{ color: T.choco2 }}><b style={{ color: T.choco }}>Sin piezas pendientes.</b> Cuando el Estudio apruebe un storyboard aparecerá aquí.</div>}</div>
     </>}
     <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Contrato seguro: aprobar motion cuesta $0 y no llama motores. El Enrutador consume únicamente la receta seleccionada y sellada de cada toma.</div>
   </section>;

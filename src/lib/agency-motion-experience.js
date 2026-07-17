@@ -1,6 +1,8 @@
 const list = (value) => Array.isArray(value) ? value : [];
 const text = (value) => String(value ?? "").trim();
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const technicalKey = (value) => text(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").replace(/^-+|-+$/g, "");
 
 export const MOTION_GRAMMARS = Object.freeze([
   "Información y POV", "Movimiento y energía", "Claridad y blocking", "Impulso y compresión", "Precisión y control",
@@ -15,9 +17,9 @@ function activeShots(storyboard = {}, shots = []) {
 function classifyShot(shot = {}, index = 0, total = 1) {
   const payload = shot.payload || {};
   const corpus = [shot.title, shot.purpose, payload.subject, payload.action, payload.physics, payload.camera].map(text).join(" ").toLowerCase();
-  if (index === total - 1 || /cta|cierre|hero|pack/.test(corpus)) return { job: "Cerrar", grammar: "Precisión y control", mode: "locked" };
+  if (index === total - 1 || /\b(?:cta|cierre|hero|pack)\b/.test(corpus)) return { job: "Cerrar", grammar: "Precisión y control", mode: "locked" };
   if (/mano|persona|ugc|reacci|habla|rostro/.test(corpus)) return { job: "Humanizar", grammar: "Claridad y blocking", mode: "supported-organic" };
-  if (/verter|batir|rellenar|cortar|romper|abrir|cocina|proceso/.test(corpus)) return { job: "Demostrar", grammar: "Movimiento y energía", mode: "reactive" };
+  if (/verter|batir|rellenar|cortar|romper|fractur|quebrar|abrir|cocina|proceso/.test(corpus)) return { job: "Demostrar", grammar: "Movimiento y energía", mode: "reactive" };
   if (/relleno|revel|interior|sorpresa|macro/.test(corpus)) return { job: "Revelar", grammar: "Información y POV", mode: "supported-organic" };
   return { job: index === 0 ? "Intensificar" : "Orientar", grammar: "Precisión y control", mode: "supported-organic" };
 }
@@ -30,7 +32,7 @@ function proposalFor(shot = {}, nextShot = null, profile = "Precisa", index = 0,
     : "Push o slider corto con inicio y asentamiento suaves";
   const transition = nextShot ? {
     purpose: `Transferir atención hacia la toma ${nextShot.shotNumber}`,
-    type: /cortar|abrir|verter|batir/.test(text(payload.action).toLowerCase()) ? "Match on action" : "Corte directo motivado",
+    type: /cort|abr|vert|bat|romp|fractur|quebr|crack/.test(`${text(payload.action)} ${text(payload.physics)}`.toLowerCase()) ? "Match on action" : "Corte directo motivado",
     anchorOut: text(payload.continuity_out) || "Acción, producto y luz sellados",
     anchorIn: text(nextShot.payload?.continuity_in) || "Recibir la misma dirección, estado y luz",
     preserve: ["identidad y cantidad del producto", "dirección de pantalla", "fase de acción", "dirección de luz"],
@@ -51,7 +53,7 @@ function proposalFor(shot = {}, nextShot = null, profile = "Precisa", index = 0,
   const negatives = ["no morphing", "no product substitution", "no logo mutation", "no mirrored text", "no extra fingers",
     "no hand swap", "no teleportation", "no axis reversal", "no flavor or filling change", "no moving key light", "no double shadow", "no random camera shake", "no flicker"];
   return {
-    proposalKey: `${profile.toLowerCase()}-${shot.id}`, label: `${profile} · ${kind.job}`, selected: profile === "Precisa",
+    proposalKey: `${technicalKey(profile)}-${shot.id}`, label: `${profile} · ${kind.job}`, selected: profile === "Precisa",
     grammar: kind.grammar,
     intent: { narrativeJob: kind.job, emotionalEffect: kind.job === "Humanizar" ? "cercanía confiable" : "deseo y claridad", attentionTarget: text(shot.purpose) },
     framingLens: { shotSize: /macro|detalle/.test(text(payload.camera).toLowerCase()) ? "macro" : "close", angle: "three-quarter", cameraHeight: "a la altura funcional del producto", subjectDistance: "sin distorsionar la figura", lensCharacter: /macro/.test(text(payload.camera).toLowerCase()) ? "macro" : "natural", horizon: "level", copySpace: "reservado solo si el storyboard lo exige" },
