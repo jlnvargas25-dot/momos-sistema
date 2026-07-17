@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   POSTPRODUCTION_LIMITS,
   assertMasterMatchesSpec,
+  finalizationArgs,
   inspectProbe,
   normalizationArgs,
   outputStoragePath,
@@ -18,7 +19,7 @@ import {
   validatePostproductionClaim,
 } from "../src/lib/postproduction-worker.js";
 
-const VERSION = "momos-postproduction-worker/1.0.0";
+const VERSION = "momos-postproduction-worker/1.1.0";
 const ONCE = process.argv.includes("--once");
 const HEALTH_ONLY = process.argv.includes("--health-only");
 const POLL_MS = Math.max(10_000, Number(process.env.POSTPRODUCTION_POLL_MS || 30_000));
@@ -112,16 +113,16 @@ async function measureLoudness(path) {
   return parseLoudnorm(result.stderr);
 }
 
-async function downloadSource(source, path) {
+async function downloadSource(source, path, label = `toma ${source.asset_id}`) {
   const { data, error } = await supabase.storage.from("brand-assets").createSignedUrl(source.storage_path, 900);
-  if (error || !data?.signedUrl) throw new Error(`No se pudo conceder la toma ${source.asset_id}: ${error?.message || "sin URL"}`);
+  if (error || !data?.signedUrl) throw new Error(`No se pudo conceder ${label}: ${error?.message || "sin URL"}`);
   const response = await fetch(data.signedUrl, { signal: AbortSignal.timeout(120_000), redirect: "error" });
-  if (!response.ok) throw new Error(`La toma ${source.asset_id} respondió HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(`${label} respondió HTTP ${response.status}.`);
   const declared = Number(response.headers.get("content-length") || 0);
-  if (declared > POSTPRODUCTION_LIMITS.maxSourceBytes) throw new Error(`La toma ${source.asset_id} excede el límite.`);
+  if (declared > POSTPRODUCTION_LIMITS.maxSourceBytes) throw new Error(`${label} excede el límite.`);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!bytes.length || bytes.length > POSTPRODUCTION_LIMITS.maxSourceBytes) throw new Error(`La toma ${source.asset_id} tiene tamaño inválido.`);
-  if (sha256(bytes) !== String(source.content_hash).toLowerCase()) throw new Error(`La toma ${source.asset_id} no coincide con su huella sellada.`);
+  if (!bytes.length || bytes.length > POSTPRODUCTION_LIMITS.maxSourceBytes) throw new Error(`${label} tiene tamaño inválido.`);
+  if (sha256(bytes) !== String(source.content_hash).toLowerCase()) throw new Error(`${label} no coincide con su huella sellada.`);
   await writeFile(path, bytes);
 }
 
@@ -142,8 +143,19 @@ async function normalizeSources(claim, directory) {
     await run(FFMPEG, normalizationArgs({ inputPath: input, outputPath: output, spec, hasAudio, durationSeconds: duration }));
     normalized.push(output);
   }
-  if (audioSources === 0) throw new Error("Las tomas no contienen audio original y el contrato no incluye una pista licenciada sellada.");
-  return normalized;
+  return { paths: normalized, audioSources };
+}
+
+async function prepareSoundtrack(claim, directory) {
+  const audio = claim.audio_binding.snapshot;
+  if (audio.mode !== "Biblioteca") return null;
+  const path = join(directory, "soundtrack.bin");
+  await downloadSource(audio.asset, path, `la pista ${audio.asset.id}`);
+  const probe = await probeFile(path);
+  if (!probe.streams?.some((stream) => stream.codec_type === "audio") || !(Number(probe.format?.duration || 0) > 0)) {
+    throw new Error("La pista sellada no contiene un stream de audio reproducible.");
+  }
+  return path;
 }
 
 async function concatClips(paths, directory) {
@@ -154,17 +166,14 @@ async function concatClips(paths, directory) {
   return output;
 }
 
-async function finalizeMaster(input, claim, directory) {
+async function finalizeMaster(input, claim, directory, soundtrackPath = null) {
   const output = join(directory, "master-final.mp4");
-  const args = ["-hide_banner", "-nostdin", "-y", "-i", input];
+  let subtitlePath = "";
   if (claim.export.snapshot.export_spec.burn_subtitles === true) {
-    const srtPath = join(directory, "subtitles.srt");
-    await writeFile(srtPath, subtitleCuesToSrt(claim.export.snapshot.subtitle_plan.cues), "utf8");
-    const filterPath = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
-    args.push("-vf", `subtitles='${filterPath}'`, "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv");
-  } else args.push("-c:v", "copy");
-  args.push("-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", output);
-  await run(FFMPEG, args);
+    subtitlePath = join(directory, "subtitles.srt");
+    await writeFile(subtitlePath, subtitleCuesToSrt(claim.export.snapshot.subtitle_plan.cues), "utf8");
+  }
+  await run(FFMPEG, finalizationArgs({ inputPath: input, outputPath: output, audioBinding: claim.audio_binding, soundtrackPath, subtitlePath }));
   return output;
 }
 
@@ -204,9 +213,11 @@ async function processOne() {
   }
   const directory = await mkdtemp(join(tmpdir(), "momos-postproduction-"));
   try {
-    const clips = await normalizeSources(claim, directory);
-    const concatenated = await concatClips(clips, directory);
-    const finalPath = await finalizeMaster(concatenated, claim, directory);
+    const normalized = await normalizeSources(claim, directory);
+    const soundtrack = await prepareSoundtrack(claim, directory);
+    if (normalized.audioSources === 0 && !soundtrack) throw new Error("Las tomas no contienen audio original y no se autorizó una pista de Biblioteca.");
+    const concatenated = await concatClips(normalized.paths, directory);
+    const finalPath = await finalizeMaster(concatenated, claim, directory, soundtrack);
     const result = await registerMaster(claim, finalPath);
     console.log(`[Postproducción] Exportación ${claim.export.id} lista · activo ${result.asset_id} · QC humano pendiente`);
     return true;

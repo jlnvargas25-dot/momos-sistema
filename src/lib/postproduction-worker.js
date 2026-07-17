@@ -31,6 +31,8 @@ export function validatePostproductionClaim(claim = {}) {
   const snapshot = job?.snapshot;
   const spec = snapshot?.export_spec;
   const sources = Array.isArray(snapshot?.sources) ? snapshot.sources : [];
+  const audioBinding = claim.audio_binding;
+  const audio = audioBinding?.snapshot;
   const reasons = [];
   if (!job || !Number.isInteger(Number(job.id)) || Number(job.id) <= 0) reasons.push("Falta una exportación válida.");
   if (!/^[0-9a-f-]{36}$/i.test(clean(claim.lease_token))) reasons.push("Falta un lease válido.");
@@ -46,6 +48,17 @@ export function validatePostproductionClaim(claim = {}) {
   }
   if (sources.reduce((sum, source) => sum + finite(source.size_bytes), 0) > POSTPRODUCTION_LIMITS.maxTotalSourceBytes) reasons.push("Las tomas superan el tamaño total permitido.");
   if (spec?.burn_subtitles === true && !validSubtitleCues(snapshot?.subtitle_plan?.cues)) reasons.push("Se pidieron subtítulos, pero no existen cues sellados y válidos.");
+  if (!audioBinding || !/^[0-9a-f]{32}$/i.test(clean(audioBinding.fingerprint)) || !audio || !["Original", "Biblioteca"].includes(audio.mode)) {
+    reasons.push("Falta un contrato de audio sellado.");
+  } else if (audio.mode === "Biblioteca") {
+    const asset = audio.asset || {};
+    if (!Number.isInteger(Number(asset.id)) || !clean(asset.storage_path) || !/^[0-9a-f]{64}$/i.test(clean(asset.content_hash))
+      || !/^audio\/(mpeg|mp4|wav)$/.test(clean(asset.mime_type)) || finite(asset.size_bytes) <= 0
+      || finite(asset.size_bytes) > POSTPRODUCTION_LIMITS.maxSourceBytes || finite(asset.duration_seconds) <= 0) {
+      reasons.push("La pista sellada perdió archivo, identidad o duración.");
+    }
+    if (finite(audio.mix?.soundtrack_gain_db, 999) < -30 || finite(audio.mix?.soundtrack_gain_db, 999) > 0 || audio.mix?.loop !== true) reasons.push("La mezcla sellada de la pista no está permitida.");
+  }
   return { valid: reasons.length === 0, reasons };
 }
 
@@ -119,6 +132,24 @@ export function normalizationArgs({ inputPath, outputPath, spec, hasAudio, durat
   args.push("-map", "0:v:0", "-map", hasAudio ? "0:a:0" : "1:a:0", "-vf", filters.join(","), "-af", hasAudio ? "aresample=48000" : "volume=0", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-r", String(fps), "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2");
   if (!hasAudio) args.push("-t", String(finite(durationSeconds)));
   args.push("-movflags", "+faststart", "-shortest", outputPath);
+  return args;
+}
+
+export function finalizationArgs({ inputPath, outputPath, audioBinding, soundtrackPath = "", subtitlePath = "" }) {
+  const audio = audioBinding?.snapshot || {};
+  const args = ["-hide_banner", "-nostdin", "-y", "-i", inputPath];
+  if (soundtrackPath) args.push("-stream_loop", "-1", "-i", soundtrackPath);
+  if (subtitlePath) {
+    const filterPath = clean(subtitlePath).replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+    args.push("-vf", `subtitles='${filterPath}'`, "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv");
+  } else args.push("-c:v", "copy");
+  args.push("-map", "0:v:0");
+  if (soundtrackPath) {
+    const originalGain = finite(audio.mix?.original_gain_db);
+    const soundtrackGain = finite(audio.mix?.soundtrack_gain_db, -14);
+    args.push("-filter_complex", `[0:a:0]volume=${originalGain}dB[original];[1:a:0]volume=${soundtrackGain}dB[music];[original][music]amix=inputs=2:duration=first:dropout_transition=2,loudnorm=I=-14:TP=-1.5:LRA=11[audio]`, "-map", "[audio]");
+  } else args.push("-map", "0:a:0", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11");
+  args.push("-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-shortest", outputPath);
   return args;
 }
 

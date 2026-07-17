@@ -45,6 +45,16 @@ un advisory lock; un error hace rollback completo del paso actual.
 37. `../tests/test-versiones-creativas-v1.sql` — prueba cadena, costo cero, fuentes originales y RBAC; siempre hace rollback.
 38. `../tests/test-migraciones-ordenadas.sql` — aceptación completa; devuelve `TESTS_OK` y hace rollback explícito.
 
+## Continuación de Agencia hasta audio de postproducción
+
+La cadena vigente continúa después de los pasos listados arriba y ya llega al hito 48. Si la base ya muestra `20260716_47_postproduccion_exportacion`, el siguiente paso es:
+
+39. `../audio-postproduccion-v1.sql` — sella audio original o pista exacta de Biblioteca por exportación y actualiza el contrato del worker.
+40. `../tests/test-audio-postproduccion-v1.sql` — prueba archivo, derechos, canal, mezcla, aislamiento del worker y RBAC; siempre hace rollback.
+41. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–48; siempre hace rollback.
+
+No ejecutes el worker de postproducción 1.1.0 con trabajos pendientes hasta aplicar el paso de audio: el worker nuevo exige el contrato `audio_binding` y falla cerrado si el servidor aún entrega el contrato H47 antiguo.
+
 Después de cada paso ejecutá:
 
 ```sql

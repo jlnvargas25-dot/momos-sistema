@@ -4,6 +4,7 @@ import {
   buildPostproductionExportCenter,
   evaluatePostproductionMaster,
   postproductionExportPayload,
+  postproductionAudioSelection,
   postproductionExportSpec,
   validatePostproductionExportSpec,
 } from "./agency-postproduction-export.js";
@@ -31,7 +32,12 @@ test("el payload conserva únicamente paquete y especificación cerrada", () => 
   assert.equal(payload.package_id, 33);
   assert.equal(payload.export_key, "master-33-v1");
   assert.equal(payload.export_spec.width, 1080);
+  assert.deepEqual(payload.audio_selection, { mode: "Original" });
   assert.equal("publication" in payload, false);
+});
+
+test("la pista de Biblioteca se identifica sin transportar URLs ni derechos declarados por el navegador", () => {
+  assert.deepEqual(postproductionAudioSelection({ id: 17, storagePath: "no-debe-viajar.mp3" }), { mode: "Biblioteca", audio_asset_id: 17 });
 });
 
 test("el QA final compara archivo y probe contra el contrato", () => {
@@ -43,9 +49,13 @@ test("el QA final compara archivo y probe contra el contrato", () => {
 
 test("el centro no vuelve a autorizar un paquete con export activo", () => {
   const center = buildPostproductionExportCenter({
-    agencyPostproductionPackages: [{ id: 1, status: "Aprobado" }, { id: 2, status: "Aprobado" }],
+    agencyStoryboards: [{ id: 3, channel: "Instagram" }],
+    agencyPostproductionPackages: [{ id: 1, status: "Aprobado" }, { id: 2, storyboardId: 3, status: "Aprobado" }],
     agencyPostproductionExports: [{ id: 9, packageId: 1, status: "Procesando" }],
+    agencyPostproductionAudioBindings: [{ exportId: 9, mode: "Biblioteca", assetId: 4 }],
   });
   assert.deepEqual(center.candidates.map((item) => item.id), [2]);
   assert.equal(center.summary.processing, 1);
+  assert.equal(center.exports[0].audioBinding.mode, "Biblioteca");
+  assert.equal(center.candidates[0].storyboard.channel, "Instagram");
 });

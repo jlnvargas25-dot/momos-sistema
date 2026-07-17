@@ -731,6 +731,15 @@ vuelven al cancelar. Base correcta para toppings/adiciones (#2).
 - Regresión local 425/425 PASS y build Vite PASS. Falta ejecutar una primera
   exportación real autorizada H47 y aprobarla humanamente para cerrar el smoke E2E.
 
+## Agencia MOMOS · Audio del máster (hito 48B, 2026-07-16)
+
+- Migración aplicada y validada en Supabase: `supabase/audio-postproduccion-v1.sql`.
+- Sella audio Original o una pista de Biblioteca por exportación, con archivo real, huella, derechos, vigencia y canal revalidados antes de registrar el máster.
+- Worker actualizado a `momos-postproduction-worker/1.1.0`: mezcla original + música, normaliza a -14 LUFS y produce AAC 192 kb/s, 48 kHz estéreo. Falla cerrado si no existe una fuente de audio autorizada.
+- Smoke multimedia sintético real PASS: MP4 H.264 + AAC, 360×640, 48 kHz estéreo y -13.96 LUFS. Suite 428/428 PASS y build Vite PASS.
+- Prueba adversarial de audio y cadena ordenada 01–48 PASS en Supabase, ambas con rollback total. Health y ciclo vacío del worker 1.1.0 PASS.
+- Siguiente smoke: autorizar el primer máster desde Agencia MOMOS cuando exista un corte aprobado y resolver su control humano. Meta permanece apagado.
+
 ## Inventario adversarial 2026-07-14
 
 - Front aplicado: vencido = `Vencido · no usar`, vence hoy separado de vence pronto;

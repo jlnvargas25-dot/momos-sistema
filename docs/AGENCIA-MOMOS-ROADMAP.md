@@ -281,6 +281,15 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Antes de cualquier escritura se leerá y sellará el estado previo; después se conciliará el estado real. Una respuesta incierta bloquea el reenvío y exige intervención humana.
 - El primer alcance recomendado es un cambio controlado de presupuesto o estado sobre una campaña piloto, nunca publicación y presupuesto simultáneos. Debe incluir tope, ventana, pausa de emergencia y procedimiento de reversión probado.
 
+### Hito 48B — Audio trazable del máster (implementado y validado)
+
+- Cada exportación sella una decisión explícita: audio original de las tomas o una pista exacta de la Biblioteca MOMOS. El navegador solo envía el identificador; el servidor vuelve a comprobar archivo real, SHA-256, tipo, duración, estado, derechos, vencimiento y cobertura del canal.
+- La selección queda en `agency_postproduction_export_audio`, es inmutable y se revalida tanto al entregar el trabajo al worker como al registrar el máster. Cambiar pista exige una exportación nueva.
+- El worker privado descarga y verifica la pista sellada, conserva el audio original, mezcla la música a -14 dB, normaliza el máster a -14 LUFS y exporta AAC 192 kb/s, 48 kHz estéreo. Si no existe audio original ni pista autorizada, falla cerrado.
+- La UI solo muestra pistas operables y compatibles con el canal. Autorizar continúa sin publicar ni distribuir; el control técnico y la aprobación humana del máster siguen siendo obligatorios.
+- Archivos: `supabase/audio-postproduccion-v1.sql`, `supabase/tests/test-audio-postproduccion-v1.sql`, worker `momos-postproduction-worker/1.1.0` y contratos en `src/lib/postproduction-worker.js`.
+- Validación cerrada: suite local **428/428 PASS**, build Vite PASS y smoke FFmpeg real PASS con H.264 + AAC, 48 kHz estéreo y -13.96 LUFS medidos. La prueba adversarial H48 y la cadena ordenada 01–48 pasaron en Supabase con rollback total; health y ciclo vacío del worker 1.1.0 PASS. Falta únicamente autorizar y aprobar humanamente el primer máster real cuando exista un corte candidato.
+
 ## Skills finales de Agencia
 
 1. `momos-brand-director`: identidad, lenguaje, producto y decisiones de marca.

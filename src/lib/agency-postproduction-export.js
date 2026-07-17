@@ -11,6 +11,11 @@ export const POSTPRODUCTION_EXPORT_FORMATS = Object.freeze({
 
 export const POSTPRODUCTION_EXPORT_FINAL_STATES = Object.freeze(["Aprobada", "Rechazada", "Cancelada"]);
 
+export function postproductionAudioSelection(asset = null) {
+  if (!asset) return { mode: "Original" };
+  return { mode: "Biblioteca", audio_asset_id: Number(asset.id) };
+}
+
 export function postproductionExportSpec(pkg = {}, overrides = {}) {
   const packageSpec = pkg.snapshot?.export_spec || {};
   const aspectRatio = clean(overrides.aspectRatio || packageSpec.aspect_ratio || "9:16");
@@ -50,6 +55,7 @@ export function postproductionExportPayload(pkg = {}, overrides = {}) {
     export_key: clean(overrides.exportKey) || `package-${pkg.id}-master-${Date.now()}`,
     package_id: pkg.id,
     export_spec: spec,
+    audio_selection: postproductionAudioSelection(overrides.audioAsset),
   };
 }
 
@@ -70,12 +76,18 @@ export function evaluatePostproductionMaster(exportJob = {}, asset = null) {
 }
 
 export function buildPostproductionExportCenter(db = {}) {
-  const packages = list(db.agencyPostproductionPackages);
+  const storyboards = list(db.agencyStoryboards);
+  const packages = list(db.agencyPostproductionPackages).map((item) => ({
+    ...item,
+    storyboard: storyboards.find((board) => String(board.id) === String(item.storyboardId)) || null,
+  }));
   const assets = list(db.brandMediaAssets);
+  const audioBindings = list(db.agencyPostproductionAudioBindings);
   const exports = list(db.agencyPostproductionExports).map((item) => ({
     ...item,
     package: packages.find((pkg) => String(pkg.id) === String(item.packageId)) || null,
     outputAsset: assets.find((asset) => String(asset.id) === String(item.outputAssetId)) || null,
+    audioBinding: audioBindings.find((binding) => String(binding.exportId) === String(item.id)) || null,
   }));
   const packageIds = new Set(exports.filter((item) => !["Rechazada", "Cancelada"].includes(item.status)).map((item) => String(item.packageId)));
   const candidates = packages.filter((pkg) => pkg.status === "Aprobado" && !packageIds.has(String(pkg.id)));

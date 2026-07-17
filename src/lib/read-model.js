@@ -536,6 +536,23 @@ export async function fetchCatalogos() {
     }));
   }
 
+  const audioProbe = await supabase.rpc("postproduccion_audio_disponible");
+  const audioProbeMissing = audioProbe.error &&
+    (audioProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(audioProbe.error.message || ""));
+  if (audioProbe.error && !audioProbeMissing) throw new Error(audioProbe.error.message);
+  const agencyPostproductionAudioReady = !audioProbeMissing && audioProbe.data === true;
+  let agencyPostproductionAudioBindings = [];
+  if (agencyPostproductionAudioReady) {
+    const audioResult = await supabase.from("agency_postproduction_export_audio")
+      .select("export_id,mode,asset_id,audio_snapshot,audio_fingerprint,authorized_by,authorized_at")
+      .order("authorized_at", { ascending: false }).limit(200);
+    if (audioResult.error) throw new Error(audioResult.error.message);
+    agencyPostproductionAudioBindings = (audioResult.data || []).map((row) => ({
+      exportId: row.export_id, mode: row.mode, assetId: row.asset_id, snapshot: row.audio_snapshot || {},
+      fingerprint: row.audio_fingerprint, authorizedBy: row.authorized_by, authorizedAt: tsBogota(row.authorized_at),
+    }));
+  }
+
   const retentionProbe = await supabase.rpc("retencion_guiones_disponible");
   const retentionProbeMissing = retentionProbe.error &&
     (retentionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(retentionProbe.error.message || ""));
@@ -998,6 +1015,7 @@ export async function fetchCatalogos() {
     agencyMotionObservations, agencySceneRouterReady, agencySceneRoutingPlans,
     agencyQualityReady, agencySceneQualityReviews, agencyPostproductionPackages,
     agencyPostproductionExportReady, agencyPostproductionExports, agencyPostproductionWorkers,
+    agencyPostproductionAudioReady, agencyPostproductionAudioBindings,
     agencyRetentionReady, agencyRetentionScripts, agencyRetentionHooks, agencyRetentionLoops, agencyRetentionExperiments, agencyRetentionMeasurements,
     agencyLoopLearningReady, agencyRetentionDiagnostics, agencyRetentionLearnings,
     agencyMetaReady, agencyMetaPolicies, agencyMetaSnapshots, agencyMetaDiagnostics,
