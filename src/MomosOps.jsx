@@ -11251,10 +11251,10 @@ function AgencyCollaborationDesk({ db, refrescar }) {
 
   const statusTone = (status) => status === "Aprobado" ? { bg: "#DDEBD9", fg: "#315B35" } : status === "En revisión" ? { bg: "#FFF2D8", fg: "#7A5410" } : { bg: "#E5EEF7", fg: "#315A7D" };
 
-  return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
-    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#713E35,#B85845)", color: "#fff" }}>
-      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.15)" }}>✦</div><div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Humano + cerebro de Agencia</div><div className="display text-xl font-semibold">Mesa cooperativa MOMOS</div><div className="text-xs opacity-85 max-w-2xl">La data fija el terreno, el agente propone y vos aportás el criterio de marca. El acuerdo final queda sellado antes de crear una pieza.</div></div></div>
-      <div className="flex items-center gap-2"><div className="grid grid-cols-2 gap-2">{[["Mesas",desk.summary.open],["Contratos",desk.summary.approved]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[72px] text-center" style={{ background: "rgba(255,255,255,.13)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div><Btn small kind="soft" disabled={!db.agencyCollaborationReady || sources.length === 0} onClick={startRoom}>＋ Abrir mesa</Btn></div>
+  return <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: T.border, background: T.surface }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b" style={{ borderColor: T.border, background: T.surface, color: T.choco }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: T.coralSoft }}>✦</div><div><div className="text-[9px] font-extrabold uppercase tracking-[.18em]" style={{ color: T.coral }}>Equipo MOMOS</div><div className="display text-xl font-semibold">Mesa de trabajo creativo</div><div className="text-xs max-w-2xl" style={{ color: T.choco2 }}>MOMOS reúne los datos y la propuesta; vos aportás el criterio de marca antes de crear una pieza.</div></div></div>
+      <div className="flex items-center gap-2"><div className="grid grid-cols-2 gap-2">{[["Mesas",desk.summary.open],["Acuerdos",desk.summary.approved]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2 min-w-[72px] text-center" style={{ borderColor: T.border, background: T.vainilla }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div><Btn small kind="soft" disabled={!db.agencyCollaborationReady || sources.length === 0} onClick={startRoom}>＋ Abrir mesa</Btn></div>
     </div>
     {!db.agencyCollaborationReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>mesa-agencia-v1.sql</code> después de la migración 29. Hasta entonces no se puede sellar la colaboración.</div> : <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 border-b" style={{ borderColor: T.border, background: "#FFF8F1" }}>
@@ -11891,14 +11891,14 @@ function AgencyMetaObservatory({ db, refrescar }) {
     await refrescar();
   }
 
-  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }} aria-label="Observatorio de adquisición Meta">
-    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#243E37,#315F4B 62%,#4A7960)", color: "#fff" }}>
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: T.border, background: T.surface }} aria-label="Resultados de Meta">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b" style={{ borderColor: T.border, background: T.surface, color: T.choco }}>
       <div className="flex items-start gap-3">
-        <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>◎</div>
-        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Adquisición · verdad Meta + MOMOS OPS</div><div className="display text-xl font-semibold">Observatorio Meta</div><div className="text-xs opacity-85 max-w-2xl">Explica qué pasó, separa hipótesis de hechos y cruza atribución, píxel, catálogo, pedidos pagados y margen. Solo observa y propone.</div></div>
+        <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "#E8F1E4" }}>◎</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em]" style={{ color: "#3F6B42" }}>Resultados de Meta</div><div className="display text-xl font-semibold">Qué funcionó y qué revisar</div><div className="text-xs max-w-2xl" style={{ color: T.choco2 }}>Cruza campañas, pedidos pagados y margen para convertir datos en decisiones comprensibles.</div></div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
-        {[["Ventanas",center.summary.snapshots],["En revisión",center.summary.reviewing],["Alertas píxel",center.summary.alerts],["Ingreso ligado",money(center.summary.linkedRevenue)]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[82px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}
+        {[["Lecturas",center.summary.snapshots],["Por revisar",center.summary.reviewing],["Alertas",center.summary.alerts],["Ingreso ligado",money(center.summary.linkedRevenue)]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2 min-w-[82px] text-center" style={{ borderColor: T.border, background: T.vainilla }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}
       </div>
     </div>
     {!db.agencyMetaReady ? <div className="px-4 py-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>observatorio-meta-v1.sql</code> después del Hito 36. Hasta entonces Meta no aporta señales al cerebro de Agencia.</div> : <>
@@ -12021,12 +12021,12 @@ function AgencyMetaInvestmentScenarios({ db, refrescar }) {
     await refrescar();
   }
 
-  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#B8C7D9", background: "#FFFDFC" }} aria-label="Escenarios de inversión Meta">
-    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#173B58,#245777 58%,#397A92)", color: "#fff" }}>
-      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>◫</div>
-        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Beneficio · inventario · capacidad · ciclo de vida</div><div className="display text-xl font-semibold">Escenarios de inversión Meta</div>
-          <div className="text-xs opacity-85 max-w-2xl">Compara conservar, reducir, redistribuir o experimentar. Son alternativas para decidir en equipo, nunca órdenes automáticas de pauta.</div></div></div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">{[["Escenarios",center.summary.scenarios],["En revisión",center.summary.reviewing],["Aprobados",center.summary.approved],["Con bloqueos",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[82px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+  return <section className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: T.border, background: T.surface }} aria-label="Opciones de inversión Meta">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b" style={{ borderColor: T.border, background: T.surface, color: T.choco }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "#E5EEF7" }}>◫</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em]" style={{ color: "#315A7D" }}>Opciones para crecer</div><div className="display text-xl font-semibold">Comparar antes de invertir</div>
+          <div className="text-xs max-w-2xl" style={{ color: T.choco2 }}>MOMOS compara alternativas para que el equipo elija. Nunca cambia la pauta automáticamente.</div></div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">{[["Opciones",center.summary.scenarios],["Por revisar",center.summary.reviewing],["Aprobadas",center.summary.approved],["Con alertas",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2 min-w-[82px] text-center" style={{ borderColor: T.border, background: T.vainilla }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
     </div>
     {!db.agencyMetaInvestmentReady ? <div className="px-4 py-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>escenarios-inversion-meta-v1.sql</code> después del Hito 38. La medición incremental seguirá disponible.</div> : <>
       {center.candidates.length > 0 && <div className="p-3 border-b" style={{ borderColor: T.border, background: "#EEF5F7" }}><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: "#245777" }}>Mediciones aprobadas listas para comparar</div><div className="grid lg:grid-cols-2 gap-2">{center.candidates.slice(0, 4).map((measurement) => <article key={measurement.id} className="rounded-2xl border bg-white p-3 flex items-center gap-3" style={{ borderColor: "#C9D9E2" }}><div className="flex-1"><div className="text-[9px] uppercase font-extrabold" style={{ color: "#245777" }}>Medición causal #{measurement.id}</div><div className="font-extrabold text-sm">Beneficio incremental {money(measurement.result?.incrementalProfit)}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Horizonte operativo sugerido: 7 días · revisión humana obligatoria</div></div><BtnAsync small onClick={() => createScenario(measurement)}>Comparar 4 opciones</BtnAsync></article>)}</div></div>}
@@ -12156,10 +12156,10 @@ function AgencyActionCenter({ db, go, refrescar }) {
     setSelected(null); toast("ok", `Resultado verificable de decisión #${selected.decisionId} registrado`); await refrescar();
   }
 
-  return <section id="agency-action-center" className="rounded-[26px] border overflow-hidden mb-6 shadow-sm scroll-mt-24" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
-    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#5A392F,#855143)", color: "#fff" }}>
-      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>🧭</div><div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Decisión humana → siguiente paso</div><div className="display text-xl font-semibold">Bandeja de acciones de Agencia</div><div className="text-xs opacity-85 max-w-2xl">Una sola acción por decisión aprobada. Abre el área exacta y nunca publica, contacta, pauta o gasta por sí sola.</div></div></div>
-      <div className="grid grid-cols-3 gap-2 shrink-0">{[["Acciones",center.summary.total],["Humanas",center.summary.human],["Bloqueadas",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[70px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}</div>
+  return <section id="agency-action-center" className="rounded-[26px] border overflow-hidden mb-6 shadow-sm scroll-mt-24" style={{ borderColor: T.border, background: T.surface }}>
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b" style={{ borderColor: T.border, background: T.surface, color: T.choco }}>
+      <div className="flex items-start gap-3"><div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: T.coralSoft }}>🧭</div><div><div className="text-[9px] font-extrabold uppercase tracking-[.18em]" style={{ color: T.coral }}>Decisiones del equipo</div><div className="display text-xl font-semibold">Qué necesita tu aprobación</div><div className="text-xs max-w-2xl" style={{ color: T.choco2 }}>Una acción clara por decisión. MOMOS abre el lugar correcto y nunca publica, contacta o gasta por sí sola.</div></div></div>
+      <div className="grid grid-cols-3 gap-2 shrink-0">{[["Acciones",center.summary.total],["Para vos",center.summary.human],["Con alertas",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2 min-w-[70px] text-center" style={{ borderColor: T.border, background: T.vainilla }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
     </div>
     {!db.agencyActionQueueReady ? <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>centro-acciones-agencia-v1.sql</code> para mostrar los siguientes pasos protegidos dentro de MOMO OPS.</div>
       : !center.allowed ? <div className="px-4 py-4 text-sm" style={{ color: T.choco2 }}>Tu rol no opera Agencia MOMOS; la bandeja permanece privada.</div>
@@ -12275,31 +12275,31 @@ function AgencyCreativeFlightCenter({ db, go, refrescar }) {
     return flight.blocked ? "Revisar contrato" : "Abrir siguiente paso";
   }
 
-  return <section id="agency-creative-flight" className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }} aria-label="Flujo creativo de punta a punta">
-    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
+  return <section id="agency-creative-flight" className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: T.border, background: T.surface }} aria-label="Contenido en curso">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b" style={{ borderColor: T.border, background: T.surface, color: T.choco }}>
       <div className="flex items-start gap-3">
-        <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>✦</div>
-        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Vuelo creativo · una sola cadena verificable</div><div className="display text-xl font-semibold">Del contrato al aprendizaje</div><div className="text-xs opacity-80 max-w-2xl">Cada pieza conserva su guion, tomas, máster y publicación exactos. Pauta y Orgánico nunca se mezclan.</div></div>
+        <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: T.coralSoft }}>✦</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em]" style={{ color: T.coral }}>Contenido en curso</div><div className="display text-xl font-semibold">Del objetivo al resultado</div><div className="text-xs max-w-2xl" style={{ color: T.choco2 }}>Seguí cada contenido desde la idea hasta su resultado, con Pauta y Orgánico siempre separados.</div></div>
       </div>
       <div className="grid grid-cols-4 gap-2 shrink-0">
-        {[["Activos",center.active.length],["Pauta",center.summary.pauta],["Orgánico",center.summary.organic],["Bloqueos",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[66px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}
+        {[["Activos",center.active.length],["Pauta",center.summary.pauta],["Orgánico",center.summary.organic],["Por revisar",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2 min-w-[66px] text-center" style={{ borderColor: T.border, background: T.vainilla }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}
       </div>
     </div>
     {!db.agencyCreativeFlowReady && <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>flujo-creativo-e2e-v1.sql</code> para sellar el relevo Máster → Creativo → Publicación → Distribución → Medición.</div>}
     <div className="p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="text-[10px] font-extrabold uppercase tracking-[.14em]" style={{ color: T.choco2 }}>{showCompleted ? "Todos los vuelos" : "Vuelos que requieren trabajo"}</div>
+        <div className="text-[10px] font-extrabold uppercase tracking-[.14em]" style={{ color: T.choco2 }}>{showCompleted ? "Todo el contenido" : "Contenido que necesita avanzar"}</div>
         {center.completed.length > 0 && <button type="button" className="rounded-full border px-3 py-1.5 text-[10px] font-extrabold" style={{ borderColor: T.border, color: T.choco2, background: T.vainilla }} onClick={() => setShowCompleted((value) => !value)}>{showCompleted ? "Ocultar cerrados" : `Ver cerrados · ${center.completed.length}`}</button>}
       </div>
-      {flights.length === 0 ? <div className="rounded-2xl px-4 py-4 text-sm" style={{ background: "#F8F0E7", color: T.choco2 }}><b style={{ color: T.choco }}>{center.flights.length ? "Todos los vuelos cerraron aprendizaje." : "Todavía no hay contratos creativos aprobados."}</b> La mesa humana abre el vuelo y conserva el control de cada gate.</div> : <div className="grid xl:grid-cols-2 gap-3">
+      {flights.length === 0 ? <div className="rounded-2xl px-4 py-4 text-sm" style={{ background: "#F8F0E7", color: T.choco2 }}><b style={{ color: T.choco }}>{center.flights.length ? "Todo el contenido completó su aprendizaje." : "Todavía no hay contenido aprobado para iniciar."}</b> El equipo conserva el control de cada paso.</div> : <div className="grid xl:grid-cols-2 gap-3">
         {flights.slice(0, 8).map((flight) => <article key={flight.contract.id} className="rounded-[22px] border p-4" style={{ borderColor: flight.blocked ? "#E8B7AD" : T.border, background: flight.blocked ? "#FFF6F3" : "#FFF9F2" }}>
           <div className="flex items-start justify-between gap-3">
             <div><div className="flex flex-wrap items-center gap-1.5"><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: flight.mode === "Pauta" ? "#F6D4CD" : "#DDEBD9", color: flight.mode === "Pauta" ? "#A03B2A" : "#315B35" }}>{flight.mode}</span><span className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contrato {flight.contract.id}</span></div><div className="display text-lg font-semibold mt-1">{flight.goal}</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Métrica primaria: {flight.metric}</div></div>
-            <div className="text-right shrink-0"><div className="display text-2xl font-semibold" style={{ color: flight.blocked ? "#A03B2A" : T.coral }}>{flight.progress}%</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{flight.completed}/10 gates</div></div>
+            <div className="text-right shrink-0"><div className="display text-2xl font-semibold" style={{ color: flight.blocked ? "#A03B2A" : T.coral }}>{flight.progress}%</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{flight.completed}/10 pasos</div></div>
           </div>
           <div className="grid grid-cols-10 gap-1 mt-3" aria-label={`Progreso ${flight.progress}%`}>{flight.stages.map((item) => <div key={item.label} title={`${item.label}: ${item.detail}`} className="h-2 rounded-full" style={{ background: item.state === "done" ? "#5F8B61" : item.state === "current" ? T.coral : "#EADFD2" }} />)}</div>
           <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t pt-3" style={{ borderColor: T.border }}>
-            <div><div className="text-[9px] uppercase font-extrabold" style={{ color: flight.blocked ? "#A03B2A" : T.coral }}>{flight.blocked ? "Requiere corrección" : "Siguiente gate"}</div><div className="text-xs font-extrabold">{flight.currentStage}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{flight.stages.find((item) => item.label === flight.currentStage)?.detail}</div></div>
+            <div><div className="text-[9px] uppercase font-extrabold" style={{ color: flight.blocked ? "#A03B2A" : T.coral }}>{flight.blocked ? "Requiere corrección" : "Siguiente paso"}</div><div className="text-xs font-extrabold">{flight.currentStage}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{flight.stages.find((item) => item.label === flight.currentStage)?.detail}</div></div>
             <Btn small kind={flight.blocked ? "ghost" : "primary"} onClick={() => openNext(flight)}>{relayButtonLabel(flight)}</Btn>
           </div>
         </article>)}
@@ -12391,6 +12391,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const [creativePackageVariant, setCreativePackageVariant] = useState(0);
   const [agencyView, setAgencyView] = useState("simple");
   const [selectedGoal, setSelectedGoal] = useState("content");
+  const [advancedArea, setAdvancedArea] = useState("overview");
   const [settingsForm, setSettingsForm] = useState(settings);
   const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
   const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
@@ -12409,8 +12410,11 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const friendlyGuide = useMemo(() => buildFriendlyAgencyGuide(db, intelligence, learning), [db, intelligence, learning]);
 
   function showAdvanced(target = "") {
+    const creativeTargets = new Set(["agency-collaboration-desk", "agency-retention-lab", "agency-scene-studio", "agency-motion-experience", "agency-scene-router", "agency-quality-control", "agency-approval-center"]);
+    const protectionTargets = new Set(["agency-action-center"]);
+    setAdvancedArea(creativeTargets.has(target) ? "creative" : protectionTargets.has(target) ? "protection" : "overview");
     setAgencyView("advanced");
-    if (target) window.setTimeout(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    if (target) window.setTimeout(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   }
 
   function manualGoalSource(goalId) {
@@ -12607,6 +12611,21 @@ function AgenciaControl({ db, user, refrescar, go }) {
     ["Programado", intelligence.pipeline.scheduled, "Próx. 7 días"],
     ["Aprendizaje", learning.summary.conclusive, "Lecturas concluyentes"],
   ];
+  const advancedAreas = [
+    { id: "overview", icon: "⌂", label: "Resumen", description: "Qué está avanzando", count: friendlyGuide.activeFlightCount },
+    { id: "strategy", icon: "✦", label: "Oportunidades", description: "Qué conviene hacer", count: intelligence.recommendations.length },
+    { id: "creative", icon: "🎨", label: "Crear", description: "Del guion al archivo", count: intelligence.pipeline.briefs },
+    { id: "results", icon: "📊", label: "Resultados", description: "Qué funcionó", count: learning.summary.conclusive },
+    { id: "protection", icon: "✓", label: "Revisión", description: "Aprobar y proteger", count: intelligence.pipeline.approvals },
+  ];
+  const advancedAreaCopy = {
+    overview: ["Estado general", "Revisá el trabajo en curso y abrí únicamente el siguiente paso."],
+    strategy: ["Decidir qué hacer", "MOMO OPS reúne oportunidades y alternativas para que el equipo elija."],
+    creative: ["Construir contenido", "Guion, escenas, movimiento y calidad organizados como una sola ruta."],
+    results: ["Aprender y mejorar", "Ventas, publicaciones y pauta convertidas en decisiones comprensibles."],
+    protection: ["Aprobar con seguridad", "Acciones, permisos y límites que siempre requieren una persona."],
+  };
+  const activeAdvancedArea = advancedAreas.find((item) => item.id === advancedArea) || advancedAreas[0];
 
   return (
     <section className="mb-6" aria-label="Agencia Comercial MOMOS">
@@ -12620,12 +12639,17 @@ function AgenciaControl({ db, user, refrescar, go }) {
           {!serverReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Vista inteligente activa · aplicá <code>agencia-comercial-v1.sql</code> para guardar briefs, aprobaciones y decisiones en el servidor.</div>}
 
           {agencyView === "simple" ? <AgencyFriendlyHome guide={friendlyGuide} selectedGoal={selectedGoal} onSelectGoal={setSelectedGoal} onContinue={continueFriendlyGoal} onAdvanced={() => showAdvanced()} /> : <>
-          <div className="sticky top-2 z-20 rounded-2xl border px-3 py-2.5 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm" style={{ borderColor: T.border, background: "rgba(255,253,250,.96)", backdropFilter: "blur(10px)" }}><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Vista detallada</div><div className="text-xs font-bold">Trazabilidad, controles y configuración avanzada</div></div><Btn small kind="ghost" onClick={() => { setAgencyView("simple"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Volver al inicio sencillo</Btn></div>
+          <div className="sticky top-2 z-20 rounded-2xl border p-3 mb-4 shadow-sm" style={{ borderColor: T.border, background: "rgba(255,253,250,.97)", backdropFilter: "blur(10px)" }}>
+            <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Centro de Agencia MOMOS</div><div className="text-xs font-bold">Elegí el área que quieres revisar</div></div><Btn small kind="ghost" onClick={() => { setAgencyView("simple"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Inicio sencillo</Btn></div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2" role="tablist" aria-label="Áreas del Centro de Agencia MOMOS">{advancedAreas.map((area) => { const active = area.id === advancedArea; return <button key={area.id} type="button" role="tab" aria-selected={active} onClick={() => setAdvancedArea(area.id)} className="rounded-xl border px-3 py-2.5 text-left transition" style={{ borderColor: active ? "#E9A18F" : T.border, background: active ? "#FFF5F0" : T.surface }}><div className="flex items-center justify-between gap-2"><span className="text-sm">{area.icon}</span><span className="rounded-full min-w-5 h-5 px-1 grid place-items-center text-[8px] font-extrabold" style={{ background: active ? T.coralSoft : T.vainilla }}>{area.count}</span></div><div className="text-[11px] font-extrabold mt-1">{area.label}</div><div className="text-[8px]" style={{ color: T.choco2 }}>{area.description}</div></button>; })}</div>
+          </div>
 
-          <div className="rounded-3xl border p-4 mb-5" style={{ borderColor: T.border, background: "linear-gradient(135deg,#FFF8F1,#F9EEE1)" }}>
+          <div className="rounded-2xl border px-4 py-3 mb-4 flex items-start gap-3" style={{ borderColor: T.border, background: T.vainilla }}><span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: T.surface }}>{activeAdvancedArea.icon}</span><div><div className="display text-base font-semibold">{advancedAreaCopy[advancedArea][0]}</div><div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>{advancedAreaCopy[advancedArea][1]}</div></div></div>
+
+          {advancedArea === "overview" && <><div className="rounded-2xl border p-4 mb-5" style={{ borderColor: T.border, background: T.surface }}>
             <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
-              <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Cadena comercial trazable</div><div className="display text-lg font-semibold">De la señal al aprendizaje</div></div>
-              <div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>Nada se publica ni se pauta sin aprobación.</div>
+              <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Recorrido comercial</div><div className="display text-lg font-semibold">Cómo avanza el trabajo</div></div>
+              <div className="text-[11px]" style={{ color: T.choco2 }}>Cada número abre una decisión del equipo.</div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
               {pipelineSteps.map(([label, value, sub], index) => <div key={label} className="relative rounded-2xl border px-3 py-3" style={{ borderColor: T.border, background: index === 0 ? "#FFF" : "rgba(255,255,255,.64)" }}>
@@ -12637,20 +12661,21 @@ function AgenciaControl({ db, user, refrescar, go }) {
           </div>
 
           <AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} />
-          <AgencyActionCenter db={db} go={go} refrescar={refrescar} />
-          <AgencyMetaObservatory db={db} refrescar={refrescar} />
-          <AgencyMetaIncrementality db={db} refrescar={refrescar} />
-          <AgencyMetaInvestmentScenarios db={db} refrescar={refrescar} />
-          <AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} />
-          <div id="agency-collaboration-desk" className="scroll-mt-24"><AgencyCollaborationDesk db={db} refrescar={refrescar} /></div>
-          <div id="agency-retention-lab" className="scroll-mt-24"><AgencyRetentionLab db={db} refrescar={refrescar} /></div>
-          <AgencyLoopLearningDesk db={db} refrescar={refrescar} />
-          <div id="agency-scene-studio" className="scroll-mt-24"><AgencySceneStudio db={db} refrescar={refrescar} /></div>
-          <div id="agency-motion-experience" className="scroll-mt-24"><AgencyMotionExperience db={db} refrescar={refrescar} /></div>
-          <div id="agency-scene-router" className="scroll-mt-24"><AgencySceneRouter db={db} refrescar={refrescar} /></div>
-          <div id="agency-quality-control" className="scroll-mt-24"><AgencyQualityControl db={db} refrescar={refrescar} /></div>
+          </>}
+          {advancedArea === "protection" && <><AgencyActionCenter db={db} go={go} refrescar={refrescar} /><AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} /></>}
+          {advancedArea === "results" && <><AgencyMetaObservatory db={db} refrescar={refrescar} /><AgencyMetaIncrementality db={db} refrescar={refrescar} /></>}
+          {advancedArea === "strategy" && <AgencyMetaInvestmentScenarios db={db} refrescar={refrescar} />}
+          {advancedArea === "creative" && <>
+            <div id="agency-collaboration-desk" className="scroll-mt-24"><AgencyCollaborationDesk db={db} refrescar={refrescar} /></div>
+            <div id="agency-retention-lab" className="scroll-mt-24"><AgencyRetentionLab db={db} refrescar={refrescar} /></div>
+            <AgencyLoopLearningDesk db={db} refrescar={refrescar} />
+            <div id="agency-scene-studio" className="scroll-mt-24"><AgencySceneStudio db={db} refrescar={refrescar} /></div>
+            <div id="agency-motion-experience" className="scroll-mt-24"><AgencyMotionExperience db={db} refrescar={refrescar} /></div>
+            <div id="agency-scene-router" className="scroll-mt-24"><AgencySceneRouter db={db} refrescar={refrescar} /></div>
+            <div id="agency-quality-control" className="scroll-mt-24"><AgencyQualityControl db={db} refrescar={refrescar} /></div>
+          </>}
 
-          <div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+          {advancedArea === "strategy" && <><div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
             <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
               <div className="flex items-start gap-3">
                 <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>🧠</div>
@@ -12717,8 +12742,9 @@ function AgenciaControl({ db, user, refrescar, go }) {
             })}
           </div>
           {visibleRecommendations.length === 0 && <Empty icon="✦" text="No hay oportunidades en este frente hoy. El radar seguirá cruzando operación, clientes y campañas." />}
+          </>}
 
-          <div className="mt-7 mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          {advancedArea === "results" && <><div className="mt-2 mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
               <div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Sala de aprendizaje</div>
               <div className="display text-xl font-semibold">Qué aprendimos de lo publicado</div>
@@ -12771,7 +12797,9 @@ function AgenciaControl({ db, user, refrescar, go }) {
             })}
           </div> : <div className="mb-6"><Empty icon="◎" text="Cuando una publicación salga al aire, aparecerá aquí para medirla sin mezclar sus pedidos con otras piezas." /></div>}
 
-          <AgencyBrandStudio db={db} user={user} refrescar={refrescar} />
+          </>}
+
+          {advancedArea === "creative" && <><AgencyBrandStudio db={db} user={user} refrescar={refrescar} />
 
           {(db.agencyBriefs || []).length > 0 && <>
             <SectionTitle>Flujo de briefs</SectionTitle>
@@ -12810,6 +12838,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
                   </div>;
                 })}
             </div>
+          </>}
           </>}
           </>}
         </div>
