@@ -1035,6 +1035,32 @@ export async function fetchCatalogos() {
     }));
   }
 
+  const growthProbe = await supabase.rpc("motor_crecimiento_multimodo_disponible");
+  const growthProbeMissing = growthProbe.error &&
+    (growthProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(growthProbe.error.message || ""));
+  if (growthProbe.error && !growthProbeMissing) throw new Error(growthProbe.error.message);
+  const agencyGrowthReady = !growthProbeMissing && growthProbe.data === true;
+  let agencyGrowthPolicies = []; let agencyGrowthSnapshots = []; let agencyGrowthSelections = [];
+  if (agencyGrowthReady) {
+    const [policiesResult, snapshotsResult, selectionsResult] = await Promise.all([
+      supabase.from("agency_growth_mode_policies").select("mode_key,label,channel_mode,objective,controls,version,active,updated_at").eq("active", true).order("mode_key"),
+      supabase.from("agency_growth_snapshots").select("id,snapshot_key,engine_version,generated_for,facts,modes,recommended_mode,policy_snapshot,snapshot_fingerprint,prepared_by,prepared_at").order("prepared_at", { ascending: false }).limit(30),
+      supabase.from("agency_growth_selections").select("id,snapshot_id,mode_key,objective,status,selected_by,selected_at,external_execution").order("selected_at", { ascending: false }).limit(30),
+    ]);
+    if (policiesResult.error) throw new Error(policiesResult.error.message);
+    if (snapshotsResult.error) throw new Error(snapshotsResult.error.message);
+    if (selectionsResult.error) throw new Error(selectionsResult.error.message);
+    agencyGrowthPolicies = (policiesResult.data || []).map((row) => ({ modeKey: row.mode_key, label: row.label, channelMode: row.channel_mode,
+      objective: row.objective, controls: row.controls || {}, version: Number(row.version), active: row.active, updatedAt: tsBogota(row.updated_at) }));
+    agencyGrowthSnapshots = (snapshotsResult.data || []).map((row) => ({ id: row.id, snapshotKey: row.snapshot_key,
+      engineVersion: Number(row.engine_version), generatedFor: row.generated_for, facts: row.facts || {}, modes: row.modes || [],
+      recommendedMode: row.recommended_mode, policy: row.policy_snapshot || {}, fingerprint: row.snapshot_fingerprint,
+      preparedBy: row.prepared_by, preparedAt: tsBogota(row.prepared_at) }));
+    agencyGrowthSelections = (selectionsResult.data || []).map((row) => ({ id: row.id, snapshotId: row.snapshot_id,
+      modeKey: row.mode_key, objective: row.objective, status: row.status, selectedBy: row.selected_by,
+      selectedAt: tsBogota(row.selected_at), externalExecution: row.external_execution }));
+  }
+
   const creativeFlowProbe = await supabase.rpc("flujo_creativo_e2e_disponible");
   const creativeFlowProbeMissing = creativeFlowProbe.error &&
     (creativeFlowProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(creativeFlowProbe.error.message || ""));
@@ -1086,6 +1112,7 @@ export async function fetchCatalogos() {
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,
+    agencyGrowthReady, agencyGrowthPolicies, agencyGrowthSnapshots, agencyGrowthSelections,
     agencyCreativeFlowReady, agencyMasterReleases, agencyMasterReleaseEvents };
 }
 

@@ -395,6 +395,20 @@ export async function crearBriefAgencia(payload) {
   return data;
 }
 
+export async function registrarSnapshotMotorCrecimiento(payload) {
+  const { data, error } = await supabase.rpc("registrar_snapshot_motor_crecimiento", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function seleccionarModoCrecimiento(snapshotId, modeKey, objective) {
+  const { data, error } = await supabase.rpc("seleccionar_modo_crecimiento", {
+    p_snapshot_id: snapshotId, p_mode_key: modeKey, p_objective: objective,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function setEstadoBriefAgencia(briefId, status, note = "") {
   const { data, error } = await supabase.rpc("set_estado_brief_agencia", { p_brief_id: briefId, p_status: status, p_note: note });
   if (error) throw new Error(error.message);
