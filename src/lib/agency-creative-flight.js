@@ -1,6 +1,67 @@
 const list = (value) => Array.isArray(value) ? value : [];
 const same = (a, b) => String(a ?? "") === String(b ?? "");
 
+function campaignForCreative(creative = {}, db = {}) {
+  return list(db.campaigns).find((campaign) => same(campaign.id, creative.campaignId)) || null;
+}
+
+export function inferCreativeContentMode(creative = {}, db = {}) {
+  const campaign = campaignForCreative(creative, db);
+  return Number(campaign?.presupuesto || 0) > 0
+    || String(campaign?.externalPlatform || "").trim().length > 0
+    || creative.formato === "Anuncio" ? "Pauta" : "Orgánico";
+}
+
+export function creativeCandidatesForFlight(flight = {}, db = {}) {
+  const productId = flight.contract?.sealedPayload?.facts?.product?.id || null;
+  const channel = flight.board?.channel || flight.contract?.sealedPayload?.creative_direction?.channel || "";
+  const linkedIds = new Set(list(db.agencyMasterReleases)
+    .filter((release) => release.status !== "Cancelada")
+    .map((release) => String(release.creativeId)));
+  return list(db.creatives).filter((creative) => creative.estado === "Aprobado"
+    && same(creative.canal, channel)
+    && (!productId || same(creative.productoFocoId, productId))
+    && inferCreativeContentMode(creative, db) === flight.mode
+    && (!String(creative.assetUrl || "").trim() || String(creative.assetUrl).startsWith("momos-master://"))
+    && (!linkedIds.has(String(creative.id)) || same(flight.release?.creativeId, creative.id)));
+}
+
+export function publicationCandidatesForFlight(flight = {}, db = {}) {
+  if (!flight.release?.creativeId) return [];
+  const channel = flight.release.lineageSnapshot?.channel || flight.board?.channel || "";
+  const creative = list(db.creatives).find((row) => same(row.id, flight.release.creativeId));
+  const occupied = new Set(list(db.agencyMasterReleases)
+    .filter((release) => release.status !== "Cancelada" && !same(release.id, flight.release.id) && release.postId)
+    .map((release) => String(release.postId)));
+  return list(db.content_calendar).filter((post) => post.estado === "Programado"
+    && same(post.creativeId, flight.release.creativeId)
+    && same(post.canal, channel)
+    && !occupied.has(String(post.id))
+    && inferCreativeContentMode({ ...creative, campaignId: post.campaignId }, db) === flight.mode);
+}
+
+export function publicationDraftForFlight(flight = {}, db = {}, date = new Date().toISOString().slice(0, 10)) {
+  const creative = list(db.creatives).find((row) => same(row.id, flight.release?.creativeId)) || {};
+  return {
+    fecha: date,
+    hora: "12:00",
+    canal: flight.release?.lineageSnapshot?.channel || flight.board?.channel || creative.canal || "Instagram",
+    creativeId: creative.id || "",
+    campaignId: creative.campaignId || "",
+    titulo: creative.titulo || flight.goal || "Pieza MOMOS",
+    copyFinal: creative.copy || "",
+  };
+}
+
+export function creativeRelayStep(flight = {}) {
+  if (flight.currentStage !== "Distribución") return "navigate";
+  if (!flight.master || flight.master.status !== "Aprobada") return "navigate";
+  if (!flight.release) return "master";
+  if (flight.release.status === "Máster vinculado" && !flight.release.postId) return "publication";
+  if (flight.release.status === "Publicación vinculada") return "distribution";
+  return "observe";
+}
+
 export const CREATIVE_FLIGHT_STAGES = Object.freeze([
   "Contrato", "Guion", "Storyboard", "Motion", "Enrutamiento",
   "Generación", "QA", "Máster", "Distribución", "Medición",

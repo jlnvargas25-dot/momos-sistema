@@ -1,5 +1,14 @@
 # HANDOFF — MOMOS OPS (léelo al empezar una sesión nueva)
 
+## ✅ Hito 51 — Relevo creativo humano simplificado (2026-07-16 · validado localmente)
+
+- El centro **Del contrato al aprendizaje** ya no se limita a señalar Distribución: cuando el máster está aprobado ofrece una sola acción humana por vez para enlazar el creativo comercial exacto, preparar o reutilizar una publicación `Programado` y abrir la revisión de Distribución.
+- Los candidatos se filtran antes de mostrarse por producto, canal, aprobación humana y modo **Pauta/Orgánico**. El servidor H50 vuelve a validar toda la cadena; la interfaz no puede cambiar el archivo, mezclar intención ni reutilizar una publicación ocupada por otro relevo.
+- Si una publicación se crea pero el vínculo falla, queda recuperable como `Programado` y la siguiente apertura la reutiliza sin duplicarla. No se publica, no activa pauta, no ejecuta conectores y no mueve presupuesto.
+- No requiere una migración nueva: usa las RPC protegidas de H50 y la creación de publicaciones existente. Se añadió la lectura de `campaigns.external_platform` para que el filtro local clasifique Pauta con la misma regla que PostgreSQL.
+- Validación local: suite **436/436 PASS**, build Vite **PASS**, `git diff --check` sin errores y navegador en escritorio/móvil sin errores de consola ni desbordamiento horizontal. El backend conectado en esta sesión todavía devolvió la sonda H50 como no disponible, por lo que el modal real quedará visible cuando ese proyecto exponga `flujo_creativo_e2e_disponible()` en su schema cache.
+- Meta continúa apagado.
+
 ## ✅ Hito 47 — Postproducción/exportación verificable (2026-07-16 · validado)
 
 - Estado estable anterior commiteado en `2be078c` (`feat(agencia): cerrar aprendizaje y acciones verificables`).

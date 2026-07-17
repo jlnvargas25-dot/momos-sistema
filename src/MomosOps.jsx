@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -41,7 +41,7 @@ import { buildMetaIncrementalityCenter, liftStudyPayload } from "./lib/agency-me
 import { buildMetaInvestmentCenter, investmentScenarioPayload } from "./lib/agency-meta-investment";
 import { buildMetaAuthorizationCenter, metaAuthorizationPayload } from "./lib/agency-meta-authorization";
 import { buildMetaConnectorCenter } from "./lib/agency-meta-connector";
-import { buildCreativeFlightCenter } from "./lib/agency-creative-flight";
+import { buildCreativeFlightCenter, creativeCandidatesForFlight, creativeRelayStep, publicationCandidatesForFlight, publicationDraftForFlight } from "./lib/agency-creative-flight";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -12194,18 +12194,84 @@ function AgencyActionCenter({ db, go, refrescar }) {
   </section>;
 }
 
-function AgencyCreativeFlightCenter({ db, go }) {
+function AgencyCreativeFlightCenter({ db, go, refrescar }) {
   const center = useMemo(() => buildCreativeFlightCenter(db), [db]);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [relay, setRelay] = useState(null);
+  const [relayForm, setRelayForm] = useState({ creativeId: "", postChoice: "__new__", fecha: hoyISO(), hora: "12:00", titulo: "", copyFinal: "" });
   const flights = showCompleted ? center.flights : center.active;
 
   function openNext(flight) {
-    if (flight.nextTarget === "agency-distribution-room") {
+    const step = creativeRelayStep(flight);
+    if (["master", "publication"].includes(step)) {
+      const creativeOptions = creativeCandidatesForFlight(flight, db);
+      const postOptions = publicationCandidatesForFlight(flight, db);
+      const draft = publicationDraftForFlight(flight, db, hoyISO());
+      setRelay({ flight, step, creativeOptions, postOptions });
+      setRelayForm({
+        creativeId: creativeOptions[0]?.id || "",
+        postChoice: postOptions[0]?.id || "__new__",
+        fecha: draft.fecha, hora: draft.hora, titulo: draft.titulo, copyFinal: draft.copyFinal,
+      });
+      return;
+    }
+    if (["distribution", "observe"].includes(step) || flight.nextTarget === "agency-distribution-room") {
       window.sessionStorage.setItem("momos:calendar-view", "Distribución");
       go("Calendario");
       return;
     }
     document.getElementById(flight.nextTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function completeRelay() {
+    if (!relay) return;
+    try {
+      if (relay.step === "master") {
+        if (!relayForm.creativeId) throw new Error("Primero necesitás un creativo aprobado del producto, canal y modo exactos.");
+        await prepararRelevoMasterCreativo(relay.flight.master.id, relayForm.creativeId);
+        toast("ok", "Máster y creativo exactos enlazados. El archivo quedó sellado; todavía no se publicó.");
+      } else {
+        let postId = relayForm.postChoice;
+        let created = false;
+        if (postId === "__new__") {
+          if (!relayForm.fecha || !relayForm.titulo.trim()) throw new Error("Completá fecha y título antes de programar.");
+          const result = await crearPublicacion({
+            fecha: relayForm.fecha, hora: relayForm.hora || "12:00",
+            canal: relay.flight.release.lineageSnapshot?.channel || relay.flight.board?.channel,
+            campaign_id: db.creatives.find((creative) => String(creative.id) === String(relay.flight.release.creativeId))?.campaignId || "",
+            creative_id: relay.flight.release.creativeId, titulo: relayForm.titulo.trim(),
+            copy_final: relayForm.copyFinal.trim(), estado: "Programado", url_publicacion: "",
+            notas: "Preparada desde el relevo humano del vuelo creativo; sin publicación automática.",
+          });
+          postId = result.id;
+          created = true;
+        }
+        try {
+          await vincularPublicacionMaster(relay.flight.release.id, postId);
+        } catch (error) {
+          if (created) {
+            toast("alert", `La publicación ${postId} quedó Programada, pero falta enlazarla. Reabrí el relevo para recuperarla sin duplicar.`);
+            await refrescar();
+            return;
+          }
+          throw error;
+        }
+        toast("ok", `${postId} quedó ligada al máster exacto y lista para revisión de Distribución.`);
+      }
+      setRelay(null);
+      await refrescar();
+    } catch (error) {
+      toast("error", error.message || "No se pudo completar el relevo creativo.");
+    }
+  }
+
+  function relayButtonLabel(flight) {
+    const step = creativeRelayStep(flight);
+    if (step === "master") return "Enlazar máster";
+    if (step === "publication") return "Preparar publicación";
+    if (step === "distribution") return "Abrir Distribución";
+    if (step === "observe") return "Ver seguimiento";
+    return flight.blocked ? "Revisar contrato" : "Abrir siguiente paso";
   }
 
   return <section id="agency-creative-flight" className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }} aria-label="Flujo creativo de punta a punta">
@@ -12233,12 +12299,43 @@ function AgencyCreativeFlightCenter({ db, go }) {
           <div className="grid grid-cols-10 gap-1 mt-3" aria-label={`Progreso ${flight.progress}%`}>{flight.stages.map((item) => <div key={item.label} title={`${item.label}: ${item.detail}`} className="h-2 rounded-full" style={{ background: item.state === "done" ? "#5F8B61" : item.state === "current" ? T.coral : "#EADFD2" }} />)}</div>
           <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t pt-3" style={{ borderColor: T.border }}>
             <div><div className="text-[9px] uppercase font-extrabold" style={{ color: flight.blocked ? "#A03B2A" : T.coral }}>{flight.blocked ? "Requiere corrección" : "Siguiente gate"}</div><div className="text-xs font-extrabold">{flight.currentStage}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{flight.stages.find((item) => item.label === flight.currentStage)?.detail}</div></div>
-            <Btn small kind={flight.blocked ? "ghost" : "primary"} onClick={() => openNext(flight)}>{flight.blocked ? "Revisar contrato" : "Abrir siguiente paso"}</Btn>
+            <Btn small kind={flight.blocked ? "ghost" : "primary"} onClick={() => openNext(flight)}>{relayButtonLabel(flight)}</Btn>
           </div>
         </article>)}
       </div>}
     </div>
     <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Este centro solo orienta y verifica la cadena. No genera, publica, pauta ni gasta automáticamente.</div>
+    {relay && <Modal title={relay.step === "master" ? "Enlazar el máster aprobado" : "Preparar la publicación exacta"} onClose={() => setRelay(null)} topLayer>
+      <div className="rounded-2xl p-4 mb-4" style={{ background: "#F8F0E7", border: `1px solid ${T.border}` }}>
+        <div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{relay.flight.mode} · Contrato {relay.flight.contract.id}</div>
+        <div className="display text-lg font-semibold mt-1">{relay.flight.goal}</div>
+        <div className="text-xs mt-1" style={{ color: T.choco2 }}>Canal sellado: {relay.flight.board?.channel || relay.flight.release?.lineageSnapshot?.channel}. La acción conserva producto, marca y medición.</div>
+      </div>
+      {relay.step === "master" ? <>
+        {relay.creativeOptions.length ? <label className="text-[10px] font-bold block">Creativo comercial aprobado
+          <select className="w-full mt-1 rounded-xl border px-3 py-2.5 bg-white" value={relayForm.creativeId} onChange={(event) => setRelayForm((form) => ({ ...form, creativeId: event.target.value }))}>
+            {relay.creativeOptions.map((creative) => <option key={creative.id} value={creative.id}>{creative.id} · {creative.titulo}</option>)}
+          </select>
+        </label> : <div className="rounded-xl px-3 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>No hay un creativo aprobado que coincida con producto, canal y modo. Creá una versión nueva y aprobala antes de continuar.</div>}
+        <div className="rounded-xl px-3 py-3 my-4 text-xs" style={{ background: "#E8F1E4", color: "#315B35" }}>MOMOS OPS enlazará el archivo aprobado al creativo elegido. No lo publicará ni ejecutará pauta.</div>
+        <div className="flex flex-wrap gap-2"><BtnAsync disabled={!relay.creativeOptions.length} onClick={completeRelay}>Enlazar máster exacto</BtnAsync>{!relay.creativeOptions.length && <Btn kind="ghost" onClick={() => { setRelay(null); go("Creativos"); }}>Abrir Creativos</Btn>}</div>
+      </> : <>
+        {relay.postOptions.length > 0 && <label className="text-[10px] font-bold block mb-3">Reutilizar una publicación compatible
+          <select className="w-full mt-1 rounded-xl border px-3 py-2.5 bg-white" value={relayForm.postChoice} onChange={(event) => setRelayForm((form) => ({ ...form, postChoice: event.target.value }))}>
+            {relay.postOptions.map((post) => <option key={post.id} value={post.id}>{post.id} · {post.fecha} {post.hora} · {post.titulo}</option>)}
+            <option value="__new__">Crear una nueva programación</option>
+          </select>
+        </label>}
+        {(relay.postOptions.length === 0 || relayForm.postChoice === "__new__") && <div className="grid sm:grid-cols-2 gap-3">
+          <label className="text-[10px] font-bold">Fecha<input type="date" min={hoyISO()} className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={relayForm.fecha} onChange={(event) => setRelayForm((form) => ({ ...form, fecha: event.target.value }))} /></label>
+          <label className="text-[10px] font-bold">Hora<input type="time" className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={relayForm.hora} onChange={(event) => setRelayForm((form) => ({ ...form, hora: event.target.value }))} /></label>
+          <label className="text-[10px] font-bold sm:col-span-2">Título<input maxLength={180} className="w-full mt-1 rounded-xl border px-3 py-2 bg-white" value={relayForm.titulo} onChange={(event) => setRelayForm((form) => ({ ...form, titulo: event.target.value }))} /></label>
+          <label className="text-[10px] font-bold sm:col-span-2">Copy final<textarea maxLength={2000} className="w-full mt-1 rounded-xl border px-3 py-2 bg-white min-h-24" value={relayForm.copyFinal} onChange={(event) => setRelayForm((form) => ({ ...form, copyFinal: event.target.value }))} /></label>
+        </div>}
+        <div className="rounded-xl px-3 py-3 my-4 text-xs" style={{ background: "#FFF2D8", color: "#7A5410" }}>Quedará en estado <b>Programado</b>. Distribución deberá revisar checklist, derechos y evidencia antes de cualquier salida externa.</div>
+        <BtnAsync onClick={completeRelay}>Programar y enlazar</BtnAsync>
+      </>}
+    </Modal>}
   </section>;
 }
 
@@ -12499,7 +12596,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
             </div>
           </div>
 
-          <AgencyCreativeFlightCenter db={db} go={go} />
+          <AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} />
           <AgencyActionCenter db={db} go={go} refrescar={refrescar} />
           <AgencyMetaObservatory db={db} refrescar={refrescar} />
           <AgencyMetaIncrementality db={db} refrescar={refrescar} />

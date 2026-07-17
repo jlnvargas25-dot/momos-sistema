@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCreativeFlightCenter, creativeFlightForContract } from "./agency-creative-flight.js";
+import { buildCreativeFlightCenter, creativeCandidatesForFlight, creativeFlightForContract, creativeRelayStep, publicationCandidatesForFlight, publicationDraftForFlight } from "./agency-creative-flight.js";
 
 const contract = { id: 7, status: "Aprobado", sealedPayload: { creative_direction: {
   content_mode: "Orgánico", content_goal: "Construir deseo por Oreo", mode_primary_metric: "Guardados",
@@ -48,4 +48,42 @@ test("bloquea una métrica orgánica dentro de una corrida de pauta", () => {
     content_mode: "Pauta", content_goal: "Vender con atribución", mode_primary_metric: "Guardados",
   } } };
   assert.equal(creativeFlightForContract(bad, {}).blocked, true);
+});
+
+test("el relevo humano solo ofrece creativos aprobados del producto, canal y modo exactos", () => {
+  const flight = creativeFlightForContract({ ...contract, sealedPayload: {
+    facts: { product: { id: "P01" } },
+    creative_direction: { content_mode: "Orgánico", content_goal: "Deseo", mode_primary_metric: "Guardados", channel: "Instagram" },
+  } }, { agencyStoryboards: [{ id: 20, contractId: 7, status: "Aprobado", channel: "Instagram" }] });
+  const db = {
+    campaigns: [{ id: "C0", presupuesto: 0 }, { id: "CP", presupuesto: 50000 }],
+    creatives: [
+      { id: "OK", estado: "Aprobado", canal: "Instagram", productoFocoId: "P01", campaignId: "C0", formato: "Reel" },
+      { id: "PAID", estado: "Aprobado", canal: "Instagram", productoFocoId: "P01", campaignId: "CP", formato: "Reel" },
+      { id: "WRONG-PRODUCT", estado: "Aprobado", canal: "Instagram", productoFocoId: "P02", campaignId: "C0", formato: "Reel" },
+      { id: "DRAFT", estado: "Borrador", canal: "Instagram", productoFocoId: "P01", campaignId: "C0", formato: "Reel" },
+    ],
+  };
+  assert.deepEqual(creativeCandidatesForFlight(flight, db).map((row) => row.id), ["OK"]);
+});
+
+test("la publicación reutilizable debe estar programada y conservar la cadena exacta", () => {
+  const flight = { mode: "Orgánico", goal: "Deseo", board: { channel: "Instagram" }, release: {
+    id: 9, creativeId: "CRE-1", status: "Máster vinculado", lineageSnapshot: { channel: "Instagram" },
+  } };
+  const db = {
+    campaigns: [{ id: "C0", presupuesto: 0 }],
+    creatives: [{ id: "CRE-1", campaignId: "C0", canal: "Instagram", formato: "Reel", titulo: "Oreo", copy: "Probalo" }],
+    content_calendar: [
+      { id: "CAL-1", creativeId: "CRE-1", campaignId: "C0", canal: "Instagram", estado: "Programado" },
+      { id: "CAL-2", creativeId: "CRE-1", campaignId: "C0", canal: "TikTok", estado: "Programado" },
+      { id: "CAL-3", creativeId: "CRE-1", campaignId: "C0", canal: "Instagram", estado: "Publicado" },
+    ],
+  };
+  assert.deepEqual(publicationCandidatesForFlight(flight, db).map((row) => row.id), ["CAL-1"]);
+  assert.deepEqual(publicationDraftForFlight(flight, db, "2026-07-18"), {
+    fecha: "2026-07-18", hora: "12:00", canal: "Instagram", creativeId: "CRE-1", campaignId: "C0",
+    titulo: "Oreo", copyFinal: "Probalo",
+  });
+  assert.equal(creativeRelayStep({ ...flight, currentStage: "Distribución", master: { status: "Aprobada" } }), "publication");
 });

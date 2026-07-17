@@ -51,7 +51,7 @@ export async function fetchCatalogos() {
     supabase.from("subrecetas").select("id,nombre,tipo,sabor,merma_pct,rinde_g,item_id,activo").order("id"),
     supabase.from("subreceta_ingredientes").select("subreceta_id,item_id,cantidad").order("subreceta_id"),
     supabase.from("figura_relleno").select("id,subreceta_id,gramos_por_unidad,activo").order("id"),
-    supabase.from("campaigns").select("id,nombre,canal,objetivo,producto_foco_id,oferta,fecha_inicio,fecha_fin,presupuesto,gasto_real,estado,responsable,notas").order("id"),
+    supabase.from("campaigns").select("id,nombre,canal,objetivo,producto_foco_id,oferta,fecha_inicio,fecha_fin,presupuesto,gasto_real,estado,responsable,notas,external_platform").order("id"),
     supabase.from("creatives").select("id,campaign_id,titulo,canal,formato,producto_foco_id,figura,sabor,hook,copy,guion,estado,responsable,fecha_entrega,asset_url,notas,external_id,generacion").order("id"),
     supabase.from("content_posts").select("id,fecha,hora,canal,campaign_id,creative_id,titulo,copy_final,estado,url_publicacion,external_post_id,notas").order("fecha").order("hora"),
     supabase.from("metrics_daily").select("id,fecha,fuente,campaign_id,creative_id,post_id,impresiones,alcance,clicks,mensajes_wa,gasto,notas").order("fecha", { ascending: false }).order("id", { ascending: false }),
@@ -189,7 +189,7 @@ export async function fetchCatalogos() {
     productoFoco: c.producto_foco_id ? (nombreProd[c.producto_foco_id] || "") : "",
     oferta: nz(c.oferta), fechaInicio: nz(c.fecha_inicio), fechaFin: nz(c.fecha_fin),
     presupuesto: Number(c.presupuesto || 0), gastoReal: Number(c.gasto_real || 0),
-    estado: c.estado, responsable: nz(c.responsable), notas: nz(c.notas),
+    estado: c.estado, responsable: nz(c.responsable), notas: nz(c.notas), externalPlatform: nz(c.external_platform),
   }));
 
   // Marketing contenido v1: los tres arrays conservan el shape legado para
