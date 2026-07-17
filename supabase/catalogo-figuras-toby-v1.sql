@@ -23,8 +23,15 @@ end $$;
 update public.figuras set activo=true where nombre in ('Momo','Toby');
 update public.figuras set especie='gato',gramaje_g=280 where nombre='Toby';
 
+-- El catálogo es fuente de verdad de Producción. Los clientes pueden leerlo,
+-- pero nunca alterarlo directamente: cualquier cambio futuro debe pasar por
+-- una RPC privada, auditada y con RBAC explícito.
+revoke insert, update, delete, truncate, references, trigger
+  on table public.figuras from public, anon, authenticated;
+grant select on table public.figuras to authenticated;
+
 insert into public.momos_ops_migrations(id,detalle)
-values('20260717_52_catalogo_figuras_toby','Momo y Toby visibles como figuras activas; Toby corregido a gato de 280 g')
+values('20260717_52_catalogo_figuras_toby','Momo y Toby visibles como figuras activas; Toby gato 280 g y catálogo protegido contra escritura directa')
 on conflict(id) do update set detalle=excluded.detalle;
 
 commit;
