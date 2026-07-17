@@ -42,6 +42,7 @@ import { buildMetaInvestmentCenter, investmentScenarioPayload } from "./lib/agen
 import { buildMetaAuthorizationCenter, metaAuthorizationPayload } from "./lib/agency-meta-authorization";
 import { buildMetaConnectorCenter } from "./lib/agency-meta-connector";
 import { buildCreativeFlightCenter, creativeCandidatesForFlight, creativeRelayStep, publicationCandidatesForFlight, publicationDraftForFlight } from "./lib/agency-creative-flight";
+import { FRIENDLY_AGENCY_GOALS, buildFriendlyAgencyGuide } from "./lib/agency-friendly-guide";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -12342,6 +12343,40 @@ function AgencyCreativeFlightCenter({ db, go, refrescar }) {
   </section>;
 }
 
+function AgencyFriendlyHome({ guide, selectedGoal, onSelectGoal, onContinue, onAdvanced }) {
+  const goal = FRIENDLY_AGENCY_GOALS.find((item) => item.id === selectedGoal) || FRIENDLY_AGENCY_GOALS[0];
+  const recommendation = guide.recommendations[selectedGoal] || null;
+  const activeContent = selectedGoal === "content" ? guide.activeFlight : null;
+  const primaryLabel = selectedGoal === "content" && activeContent ? "Continuar contenido"
+    : selectedGoal === "sales" ? "Preparar propuesta de venta"
+      : selectedGoal === "customers" ? "Preparar activación"
+        : selectedGoal === "results" ? "Ver análisis completo" : "Empezar contenido";
+
+  return <div className="space-y-5">
+    <section className="rounded-[26px] border p-4 sm:p-6" style={{ borderColor: T.border, background: "linear-gradient(145deg,#FFFDFC,#FFF5EA)" }} aria-label="Inicio guiado de Agencia MOMOS">
+      <div className="max-w-2xl mb-5"><div className="text-[10px] uppercase tracking-[.16em] font-extrabold mb-1" style={{ color: T.coral }}>Tu agencia, en sencillo</div><h3 className="display text-2xl sm:text-3xl font-semibold mb-2">¿Qué quieres hacer hoy?</h3><p className="text-sm m-0" style={{ color: T.choco2 }}>Elegí el resultado. MOMOS OPS organiza el trabajo y te muestra únicamente la decisión que necesitas tomar.</p></div>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3" role="tablist" aria-label="Objetivos de Agencia MOMOS">
+        {FRIENDLY_AGENCY_GOALS.map((item) => { const active = item.id === selectedGoal; return <button key={item.id} type="button" role="tab" aria-selected={active} onClick={() => onSelectGoal(item.id)} className="text-left rounded-2xl border p-4 transition min-h-[132px]" style={{ borderColor: active ? T.coral : T.border, background: active ? T.coralSoft : "#fff", boxShadow: active ? "0 10px 24px rgba(112,67,52,.10)" : "none" }}>
+          <span className="w-10 h-10 rounded-2xl grid place-items-center text-xl mb-3" style={{ background: active ? "#fff" : T.vainilla }}>{item.icon}</span><span className="block font-extrabold text-sm mb-1">{item.label}</span><span className="block text-[11px] leading-relaxed" style={{ color: T.choco2 }}>{item.description}</span>
+        </button>; })}
+      </div>
+    </section>
+
+    <section className="rounded-[26px] border overflow-hidden shadow-sm" style={{ borderColor: "#D9C2AE", background: "#fff" }} aria-label={`Recorrido ${goal.label}`}>
+      <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3" style={{ background: "linear-gradient(135deg,#5A392F,#8A4D3A)", color: "#fff" }}><div><div className="text-[9px] uppercase tracking-[.18em] font-extrabold opacity-70">Resultado elegido</div><div className="display text-xl sm:text-2xl font-semibold">{goal.icon} {goal.label}</div><div className="text-xs opacity-85 mt-1">{activeContent ? `${activeContent.title} · ${activeContent.mode}` : recommendation?.title || goal.description}</div></div><span className="self-start md:self-auto rounded-full px-3 py-1.5 text-[10px] font-extrabold" style={{ background: "rgba(255,255,255,.15)" }}>{activeContent ? `${activeContent.progress}% listo` : "Listo para empezar"}</span></div>
+
+      {activeContent ? <div className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3 mb-4"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Tu contenido en curso</div><div className="display text-lg font-semibold">{activeContent.title}</div></div><div className="text-right"><div className="display text-2xl font-semibold" style={{ color: T.coral }}>{activeContent.completed}/{activeContent.phases.length}</div><div className="text-[9px] font-bold" style={{ color: T.choco2 }}>pasos listos</div></div></div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-4">{activeContent.phases.map((phase, index) => <div key={phase.id} className="rounded-2xl border p-3" style={{ borderColor: phase.state === "current" ? T.coral : phase.state === "done" ? "#B8D3B2" : T.border, background: phase.state === "current" ? T.coralSoft : phase.state === "done" ? "#F2F8EF" : "#FBF8F4" }}><div className="flex items-center justify-between gap-1 mb-2"><span className="w-6 h-6 rounded-full grid place-items-center text-[10px] font-extrabold" style={{ background: phase.state === "done" ? "#DDEBD9" : phase.state === "current" ? T.coral : T.vainilla, color: phase.state === "current" ? "#fff" : T.choco }}>{phase.state === "done" ? "✓" : index + 1}</span>{phase.state === "current" && <span className="text-[8px] uppercase font-extrabold" style={{ color: T.coral }}>Ahora</span>}</div><div className="font-extrabold text-xs">{phase.label}</div><div className="text-[9px] leading-relaxed mt-1" style={{ color: T.choco2 }}>{phase.description}</div></div>)}</div>
+        <div className="rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: T.vainilla }}><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Siguiente resultado</div><div className="font-extrabold text-sm">{activeContent.current.description}</div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>MOMO OPS conserva marca, costos y aprobaciones mientras avanzás.</div></div><Btn onClick={onContinue}>{primaryLabel}</Btn></div>
+      </div> : selectedGoal === "results" ? <div className="p-4 sm:p-5"><div className="grid sm:grid-cols-3 gap-3 mb-4">{[["Publicaciones",guide.results.published],["Aprendizajes claros",guide.results.conclusive],["Ganadores",guide.results.winners]].map(([label,value]) => <div key={label} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: T.soft }}><div className="display text-3xl font-semibold" style={{ color: T.coral }}>{value}</div><div className="text-[10px] font-extrabold uppercase" style={{ color: T.choco2 }}>{label}</div></div>)}</div><div className="rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: T.vainilla }}><div><div className="font-extrabold text-sm">Todavía no hay una conclusión suficiente.</div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>Cuando exista muestra real, MOMOS OPS mostrará qué repetir y qué cambiar.</div></div><Btn kind="ghost" onClick={onContinue}>{primaryLabel}</Btn></div></div>
+        : <div className="p-4 sm:p-5"><div className="grid md:grid-cols-3 gap-3 mb-4">{[["1","Contanos el objetivo","Elegís qué quieres lograr."],["2","MOMOS prepara","Cruza ventas, stock, clientes y marca."],["3","Vos decidís","Revisás el resultado antes de usarlo."]].map(([number,title,description]) => <div key={number} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: number === "1" ? T.coralSoft : T.soft }}><div className="w-7 h-7 rounded-full grid place-items-center text-xs font-extrabold mb-2" style={{ background: number === "1" ? T.coral : T.vainilla, color: number === "1" ? "#fff" : T.choco }}>{number}</div><div className="font-extrabold text-sm">{title}</div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>{description}</div></div>)}</div><div className="rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: recommendation ? "#F1F7EE" : T.vainilla }}><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: recommendation ? "#315B35" : T.coral }}>{recommendation ? "Recomendación lista" : "Empecemos"}</div><div className="font-extrabold text-sm">{recommendation?.title || goal.description}</div>{recommendation?.rationale && <div className="text-[10px] mt-1 line-clamp-2" style={{ color: T.choco2 }}>{recommendation.rationale}</div>}</div><Btn onClick={onContinue}>{primaryLabel}</Btn></div></div>}
+    </section>
+
+    <div className="flex justify-center"><button type="button" onClick={onAdvanced} className="rounded-full border px-4 py-2 text-[10px] font-extrabold" style={{ borderColor: T.border, background: "#fff", color: T.choco2 }}>Ver detalles y controles avanzados</button></div>
+  </div>;
+}
+
 function AgenciaControl({ db, user, refrescar, go }) {
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
@@ -12355,6 +12390,8 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const [expandedOpportunity, setExpandedOpportunity] = useState(null);
   const [creativePackageBrief, setCreativePackageBrief] = useState(null);
   const [creativePackageVariant, setCreativePackageVariant] = useState(0);
+  const [agencyView, setAgencyView] = useState("simple");
+  const [selectedGoal, setSelectedGoal] = useState("content");
   const [settingsForm, setSettingsForm] = useState(settings);
   const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
   const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
@@ -12370,6 +12407,24 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const creativePackageSaved = creativePackageBrief
     ? (db.agencyCreativeVersions || []).some((version) => String(version.briefId) === String(creativePackageBrief.id))
     : false;
+  const friendlyGuide = useMemo(() => buildFriendlyAgencyGuide(db, intelligence, learning), [db, intelligence, learning]);
+
+  function showAdvanced(target = "") {
+    setAgencyView("advanced");
+    if (target) window.setTimeout(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  }
+
+  function manualGoalSource(goalId) {
+    if (goalId === "sales") return { id: `manual-sales-${Date.now()}`, type: "Impulsar producto", risk: "Bajo", title: "Nueva propuesta para vender más", rationale: "Elegiremos producto, mensaje y canal usando ventas y stock vigentes.", evidence: {} };
+    if (goalId === "customers") return { id: `manual-crm-${Date.now()}`, type: "Contactar segmento", risk: "Bajo", title: "Nueva activación de clientes", rationale: "Definiremos el segmento y solo incluiremos clientes con permiso de contacto.", evidence: {}, crmSegment: "Clientes con permiso" };
+    return { id: `manual-content-${Date.now()}`, type: "Crear contenido", risk: "Bajo", title: "Nuevo contenido MOMOS", rationale: "Definiremos producto, objetivo y canal antes de preparar la pieza.", evidence: {}, channel: "Instagram" };
+  }
+
+  function continueFriendlyGoal() {
+    if (selectedGoal === "content" && friendlyGuide.activeFlight) { showAdvanced(friendlyGuide.activeFlight.current.target); return; }
+    if (selectedGoal === "results") { showAdvanced(); return; }
+    openBrief(friendlyGuide.recommendations[selectedGoal] || manualGoalSource(selectedGoal));
+  }
 
   function openBrief(recommendation = null) {
     const source = recommendation || {
@@ -12563,27 +12618,21 @@ function AgenciaControl({ db, user, refrescar, go }) {
             <div>
               <div className="text-[10px] font-extrabold tracking-[.2em] uppercase opacity-80">MOMO OPS INTELLIGENCE</div>
               <h2 className="display text-2xl sm:text-3xl font-semibold mt-1 mb-2">Agencia Comercial MOMOS</h2>
-              <p className="text-sm max-w-2xl opacity-90 m-0">Ventas, CRM, inventario, contenido y pauta convertidos en decisiones explicables. La máquina propone; las guardas protegen; el equipo aprueba.</p>
+              <p className="text-sm max-w-2xl opacity-90 m-0">Decinos qué quieres lograr. MOMOS OPS prepara el camino y vos aprobás el resultado.</p>
             </div>
             <div className="flex flex-wrap sm:justify-end gap-2">
               <span className="rounded-full px-3 py-1.5 text-xs font-extrabold" style={{ background: "rgba(255,255,255,.16)" }}>{settings.autonomyMode}</span>
               <span className="rounded-full px-3 py-1.5 text-xs font-extrabold" style={{ background: settings.paused ? "#F6D4CD" : "#DDEBD9", color: settings.paused ? "#A03B2A" : "#315B35" }}>{settings.paused ? "● PAUSA TOTAL" : "● PROTEGIDA"}</span>
             </div>
           </div>
-          <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-2 mt-5">
-            {[
-              ["Oportunidades", intelligence.summary.opportunities, `${intelligence.summary.blocked} bloqueada(s)`],
-              ["ROAS combinado", intelligence.summary.blendedRoas == null ? "—" : `${intelligence.summary.blendedRoas.toFixed(1)}×`, `${money(intelligence.summary.spend)} invertidos`],
-              ["Creativos", intelligence.summary.pendingCreatives, "esperan aprobación"],
-              ["Reactivación CRM", intelligence.summary.eligibleCustomers, "contactables con permiso"],
-            ].map(([label, value, sub]) => <div key={label} className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,.11)", border: "1px solid rgba(255,255,255,.12)" }}>
-              <div className="text-[10px] uppercase tracking-wider font-bold opacity-75">{label}</div><div className="display text-2xl font-semibold">{value}</div><div className="text-[11px] opacity-75">{sub}</div>
-            </div>)}
-          </div>
+          <div className="relative mt-5 flex flex-wrap gap-2"><span className="rounded-full px-3 py-1.5 text-[10px] font-extrabold" style={{ background: "rgba(255,255,255,.13)" }}>✓ Marca protegida</span><span className="rounded-full px-3 py-1.5 text-[10px] font-extrabold" style={{ background: "rgba(255,255,255,.13)" }}>✓ Revisión humana</span><span className="rounded-full px-3 py-1.5 text-[10px] font-extrabold" style={{ background: "rgba(255,255,255,.13)" }}>✓ Datos reales de MOMOS</span></div>
         </div>
 
         <div className="p-4 sm:p-5">
           {!serverReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Vista inteligente activa · aplicá <code>agencia-comercial-v1.sql</code> para guardar briefs, aprobaciones y decisiones en el servidor.</div>}
+
+          {agencyView === "simple" ? <AgencyFriendlyHome guide={friendlyGuide} selectedGoal={selectedGoal} onSelectGoal={setSelectedGoal} onContinue={continueFriendlyGoal} onAdvanced={() => showAdvanced()} /> : <>
+          <div className="sticky top-2 z-20 rounded-2xl border px-3 py-2.5 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm" style={{ borderColor: T.border, background: "rgba(255,253,250,.96)", backdropFilter: "blur(10px)" }}><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Vista detallada</div><div className="text-xs font-bold">Trazabilidad, controles y configuración avanzada</div></div><Btn small kind="ghost" onClick={() => { setAgencyView("simple"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Volver al inicio sencillo</Btn></div>
 
           <div className="rounded-3xl border p-4 mb-5" style={{ borderColor: T.border, background: "linear-gradient(135deg,#FFF8F1,#F9EEE1)" }}>
             <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
@@ -12774,6 +12823,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
                 })}
             </div>
           </>}
+          </>}
         </div>
       </div>
 
@@ -12904,41 +12954,7 @@ function Crecimiento({ db, update, user, go, refrescar }) {
     );
   }
 
-  const tareasPend = (db.marketing_tasks || []).filter((t) => t.estado === "Pendiente" && t.fecha === hoyISO()).length;
-  const pubHoy = (db.content_calendar || []).filter((p) => p.fecha === hoyISO());
-
-  return (
-    <div>
-      <AgenciaControl db={db} user={user} refrescar={refrescar} go={go} />
-      <Card className="p-4 mb-4" >
-        <div className="display text-lg font-semibold mb-1">¡Hola! 💛 Esto es lo importante hoy</div>
-        <div className="text-sm" style={{ color: T.choco2 }}>
-          Tienes <b style={{ color: T.coral }}>{tareasPend}</b> tarea(s) de redes pendientes y <b style={{ color: T.coral }}>{pubHoy.length}</b> publicación(es) para hoy. Toca una tarjeta para saber qué hacer.
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-2 gap-3">
-        {TARJETAS.map((t) => (
-          <Card key={t.id} className="p-4" onClick={() => setSeccion(t.id)}>
-            <div className="text-2xl mb-1" aria-hidden="true">{t.icon}</div>
-            <div className="font-bold text-sm leading-tight">{t.titulo}</div>
-            <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{t.desc}</div>
-          </Card>
-        ))}
-      </div>
-
-      <SectionTitle>Biblioteca MOMOS</SectionTitle>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {EXTRA.map((t) => (
-          <Card key={t.id} className="p-3" onClick={() => setSeccion(t.id)}>
-            <div className="text-xl mb-1" aria-hidden="true">{t.icon}</div>
-            <div className="font-bold text-xs leading-tight">{t.titulo}</div>
-            <div className="text-[11px] mt-0.5" style={{ color: T.choco2 }}>{t.desc}</div>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
+  return <AgenciaControl db={db} user={user} refrescar={refrescar} go={go} />;
 }
 
 /* --- Qué publicar hoy: recomendación del día --- */
