@@ -1034,6 +1034,37 @@ export async function fetchCatalogos() {
     }));
   }
 
+  const creativeFlowProbe = await supabase.rpc("flujo_creativo_e2e_disponible");
+  const creativeFlowProbeMissing = creativeFlowProbe.error &&
+    (creativeFlowProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(creativeFlowProbe.error.message || ""));
+  if (creativeFlowProbe.error && !creativeFlowProbeMissing) throw new Error(creativeFlowProbe.error.message);
+  const agencyCreativeFlowReady = !creativeFlowProbeMissing && creativeFlowProbe.data === true;
+  let agencyMasterReleases = []; let agencyMasterReleaseEvents = [];
+  if (agencyCreativeFlowReady) {
+    const [releasesResult, eventsResult] = await Promise.all([
+      supabase.from("agency_master_releases")
+        .select("id,release_key,contract_id,storyboard_id,export_id,output_asset_id,creative_id,post_id,distribution_id,content_mode,status,lineage_snapshot,lineage_fingerprint,prepared_by,prepared_at,updated_at")
+        .order("updated_at", { ascending: false }).limit(100),
+      supabase.from("agency_master_release_events")
+        .select("id,release_id,event_type,target_key,event_snapshot,event_fingerprint,recorded_by,recorded_at")
+        .order("recorded_at", { ascending: false }).limit(300),
+    ]);
+    if (releasesResult.error) throw new Error(releasesResult.error.message);
+    if (eventsResult.error) throw new Error(eventsResult.error.message);
+    agencyMasterReleases = (releasesResult.data || []).map((row) => ({
+      id: row.id, releaseKey: row.release_key, contractId: row.contract_id, storyboardId: row.storyboard_id,
+      exportId: row.export_id, outputAssetId: row.output_asset_id, creativeId: row.creative_id,
+      postId: nz(row.post_id), distributionId: row.distribution_id, contentMode: row.content_mode,
+      status: row.status, lineageSnapshot: row.lineage_snapshot || {}, lineageFingerprint: row.lineage_fingerprint,
+      preparedBy: row.prepared_by, preparedAt: tsBogota(row.prepared_at), updatedAt: tsBogota(row.updated_at),
+    }));
+    agencyMasterReleaseEvents = (eventsResult.data || []).map((row) => ({
+      id: row.id, releaseId: row.release_id, eventType: row.event_type, targetKey: row.target_key,
+      eventSnapshot: row.event_snapshot || {}, eventFingerprint: row.event_fingerprint,
+      recordedBy: row.recorded_by, recordedAt: tsBogota(row.recorded_at),
+    }));
+  }
+
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
     agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals, agencyActionQueueReady, agencyActionQueue,
@@ -1053,7 +1084,8 @@ export async function fetchCatalogos() {
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
-    agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings };
+    agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,
+    agencyCreativeFlowReady, agencyMasterReleases, agencyMasterReleaseEvents };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──

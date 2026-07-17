@@ -811,3 +811,13 @@ vuelven al cancelar. Base correcta para toppings/adiciones (#2).
 - La Biblioteca de marca muestra versión, huella, paleta, tipografías, dimensiones protegidas y cobertura de gates.
 - Las reglas de producción recogen las guías trabajadas de Higgsfield: cámara y luz motivadas, continuidad física, hook honesto con prueba, loops que cierran, una variable por experimento y restricciones contra morphing, manos extra, producto deformado, logos inventados, sombras dobles, flicker y cámara flotante.
 - Pruebas `supabase/tests/test-gobernanza-marca-v1.sql` y `supabase/tests/test-migraciones-ordenadas.sql`: PASS con rollback total; cadena ordenada 01–49 verificada. Regresión local 430/430 PASS y build Vite PASS.
+
+## Agencia MOMOS · Flujo creativo E2E exacto (hito 50, pendiente Supabase)
+
+- Nueva migración: `supabase/flujo-creativo-e2e-v1.sql` (`20260716_50_flujo_creativo_e2e`). Liga de forma inmutable Máster aprobado → Creativo → Publicación → Distribución → Medición, sin publicar, pautar, gastar ni ejecutar conectores.
+- Un creativo comercial solo puede recibir el archivo exacto del máster si contrato, producto, canal, Pauta/Orgánico y versión activa de marca coinciden. Después del relevo, contenido, archivo e intención no admiten sustitución silenciosa.
+- Distribución no puede aprobarse hasta que la publicación Programada use el creativo exacto del relevo. Pauta exige campaña atribuible; Orgánico rechaza configuración pagada. Un contrato Multicanal puede concretarse en un canal de storyboard/creativo coincidente.
+- Agencia incorpora el centro visual “Del contrato al aprendizaje”: diez gates, progreso, objetivo, métrica, modo de contenido y un único botón hacia el siguiente paso. Es orientador y no ejecutable.
+- Prueba nueva: `supabase/tests/test-flujo-creativo-e2e-v1.sql`. Intenta cruzar producto, creativo, publicación y modo, borrar evidencia o reescribir el máster; además confirma cero publicaciones durante la prueba y rollback total.
+- `supabase/tests/test-migraciones-ordenadas.sql` avanza a 01–50. Rollout seguro: antes de instalar H50, la UI muestra el paso pendiente y no consulta sus tablas.
+- Verificación local: 434/434 tests PASS, build Vite PASS, panel visible en Agencia MOMOS y consola del navegador sin errores. Falta aplicar la migración y ejecutar ambas pruebas SQL por separado antes de commitear el hito.

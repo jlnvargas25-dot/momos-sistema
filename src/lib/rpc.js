@@ -797,6 +797,22 @@ export async function prepararDryRunMeta(authorizationId, adAccountId, apiVersio
   return data;
 }
 
+export async function prepararRelevoMasterCreativo(exportId, creativeId) {
+  const { data, error } = await supabase.rpc("preparar_relevo_master_creativo", {
+    p_export_id: exportId, p_creative_id: creativeId,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function vincularPublicacionMaster(releaseId, postId) {
+  const { data, error } = await supabase.rpc("vincular_publicacion_master", {
+    p_release_id: releaseId, p_post_id: postId,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function setIdeaMarketingEstado(id, estado) {
   const { data, error } = await supabase.rpc("set_idea_marketing_estado", { p_id: id, p_estado: estado });
   if (error) throw new Error(error.message);

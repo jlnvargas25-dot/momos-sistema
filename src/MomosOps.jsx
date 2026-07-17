@@ -41,6 +41,7 @@ import { buildMetaIncrementalityCenter, liftStudyPayload } from "./lib/agency-me
 import { buildMetaInvestmentCenter, investmentScenarioPayload } from "./lib/agency-meta-investment";
 import { buildMetaAuthorizationCenter, metaAuthorizationPayload } from "./lib/agency-meta-authorization";
 import { buildMetaConnectorCenter } from "./lib/agency-meta-connector";
+import { buildCreativeFlightCenter } from "./lib/agency-creative-flight";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -10236,7 +10237,11 @@ function Creativos({ db, refrescar }) {
 
 function Calendario({ db, refrescar }) {
   const [nueva, setNueva] = useState(false);
-  const [vista, setVista] = useState("Activas");
+  const [vista, setVista] = useState(() => {
+    const requested = window.sessionStorage.getItem("momos:calendar-view");
+    window.sessionStorage.removeItem("momos:calendar-view");
+    return requested === "Distribución" ? requested : "Activas";
+  });
   const [distributionDraft, setDistributionDraft] = useState(null);
   const vacio = { fecha: hoyISO(), hora: "12:00", canal: "Instagram", campaignId: "", creativeId: "", titulo: "", copyFinal: "", estado: "Pendiente", urlPublicacion: "", notas: "" };
   const [form, setForm] = useState(vacio);
@@ -10463,7 +10468,7 @@ function Calendario({ db, refrescar }) {
             </div>
           );
         })}
-      </div> : vista === "Distribución" ? <div>
+      </div> : vista === "Distribución" ? <div id="agency-distribution-room" className="scroll-mt-24">
         {!db.distributionServerReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🛡️</span><div><div className="text-sm font-extrabold">Vista previa protegida</div><div className="text-xs mt-0.5">Aplicá la migración 19 para guardar checklist, aprobación humana y evidencia externa.</div></div></div>}
         {db.distributionServerReady && !db.distributionConnectorReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🔌</span><div><div className="text-sm font-extrabold">Distribución manual activa</div><div className="text-xs mt-0.5">La migración 29 habilita la cola protegida para Meta y borradores de TikTok; hasta entonces el registro manual sigue disponible.</div></div></div>}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
@@ -12189,6 +12194,54 @@ function AgencyActionCenter({ db, go, refrescar }) {
   </section>;
 }
 
+function AgencyCreativeFlightCenter({ db, go }) {
+  const center = useMemo(() => buildCreativeFlightCenter(db), [db]);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const flights = showCompleted ? center.flights : center.active;
+
+  function openNext(flight) {
+    if (flight.nextTarget === "agency-distribution-room") {
+      window.sessionStorage.setItem("momos:calendar-view", "Distribución");
+      go("Calendario");
+      return;
+    }
+    document.getElementById(flight.nextTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  return <section id="agency-creative-flight" className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }} aria-label="Flujo creativo de punta a punta">
+    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
+      <div className="flex items-start gap-3">
+        <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>✦</div>
+        <div><div className="text-[9px] font-extrabold uppercase tracking-[.18em] opacity-75">Vuelo creativo · una sola cadena verificable</div><div className="display text-xl font-semibold">Del contrato al aprendizaje</div><div className="text-xs opacity-80 max-w-2xl">Cada pieza conserva su guion, tomas, máster y publicación exactos. Pauta y Orgánico nunca se mezclan.</div></div>
+      </div>
+      <div className="grid grid-cols-4 gap-2 shrink-0">
+        {[["Activos",center.active.length],["Pauta",center.summary.pauta],["Orgánico",center.summary.organic],["Bloqueos",center.summary.blocked]].map(([label,value]) => <div key={label} className="rounded-2xl px-3 py-2 min-w-[66px] text-center" style={{ background: "rgba(255,255,255,.12)" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[8px] uppercase font-extrabold opacity-70">{label}</div></div>)}
+      </div>
+    </div>
+    {!db.agencyCreativeFlowReady && <div className="px-4 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>flujo-creativo-e2e-v1.sql</code> para sellar el relevo Máster → Creativo → Publicación → Distribución → Medición.</div>}
+    <div className="p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="text-[10px] font-extrabold uppercase tracking-[.14em]" style={{ color: T.choco2 }}>{showCompleted ? "Todos los vuelos" : "Vuelos que requieren trabajo"}</div>
+        {center.completed.length > 0 && <button type="button" className="rounded-full border px-3 py-1.5 text-[10px] font-extrabold" style={{ borderColor: T.border, color: T.choco2, background: T.vainilla }} onClick={() => setShowCompleted((value) => !value)}>{showCompleted ? "Ocultar cerrados" : `Ver cerrados · ${center.completed.length}`}</button>}
+      </div>
+      {flights.length === 0 ? <div className="rounded-2xl px-4 py-4 text-sm" style={{ background: "#F8F0E7", color: T.choco2 }}><b style={{ color: T.choco }}>{center.flights.length ? "Todos los vuelos cerraron aprendizaje." : "Todavía no hay contratos creativos aprobados."}</b> La mesa humana abre el vuelo y conserva el control de cada gate.</div> : <div className="grid xl:grid-cols-2 gap-3">
+        {flights.slice(0, 8).map((flight) => <article key={flight.contract.id} className="rounded-[22px] border p-4" style={{ borderColor: flight.blocked ? "#E8B7AD" : T.border, background: flight.blocked ? "#FFF6F3" : "#FFF9F2" }}>
+          <div className="flex items-start justify-between gap-3">
+            <div><div className="flex flex-wrap items-center gap-1.5"><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: flight.mode === "Pauta" ? "#F6D4CD" : "#DDEBD9", color: flight.mode === "Pauta" ? "#A03B2A" : "#315B35" }}>{flight.mode}</span><span className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contrato {flight.contract.id}</span></div><div className="display text-lg font-semibold mt-1">{flight.goal}</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Métrica primaria: {flight.metric}</div></div>
+            <div className="text-right shrink-0"><div className="display text-2xl font-semibold" style={{ color: flight.blocked ? "#A03B2A" : T.coral }}>{flight.progress}%</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{flight.completed}/10 gates</div></div>
+          </div>
+          <div className="grid grid-cols-10 gap-1 mt-3" aria-label={`Progreso ${flight.progress}%`}>{flight.stages.map((item) => <div key={item.label} title={`${item.label}: ${item.detail}`} className="h-2 rounded-full" style={{ background: item.state === "done" ? "#5F8B61" : item.state === "current" ? T.coral : "#EADFD2" }} />)}</div>
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t pt-3" style={{ borderColor: T.border }}>
+            <div><div className="text-[9px] uppercase font-extrabold" style={{ color: flight.blocked ? "#A03B2A" : T.coral }}>{flight.blocked ? "Requiere corrección" : "Siguiente gate"}</div><div className="text-xs font-extrabold">{flight.currentStage}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{flight.stages.find((item) => item.label === flight.currentStage)?.detail}</div></div>
+            <Btn small kind={flight.blocked ? "ghost" : "primary"} onClick={() => openNext(flight)}>{flight.blocked ? "Revisar contrato" : "Abrir siguiente paso"}</Btn>
+          </div>
+        </article>)}
+      </div>}
+    </div>
+    <div className="px-4 py-2.5 border-t text-[10px] font-semibold" style={{ borderColor: T.border, color: T.choco2 }}>Este centro solo orienta y verifica la cadena. No genera, publica, pauta ni gasta automáticamente.</div>
+  </section>;
+}
+
 function AgenciaControl({ db, user, refrescar, go }) {
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
@@ -12446,13 +12499,14 @@ function AgenciaControl({ db, user, refrescar, go }) {
             </div>
           </div>
 
+          <AgencyCreativeFlightCenter db={db} go={go} />
           <AgencyActionCenter db={db} go={go} refrescar={refrescar} />
           <AgencyMetaObservatory db={db} refrescar={refrescar} />
           <AgencyMetaIncrementality db={db} refrescar={refrescar} />
           <AgencyMetaInvestmentScenarios db={db} refrescar={refrescar} />
           <AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} />
           <div id="agency-collaboration-desk" className="scroll-mt-24"><AgencyCollaborationDesk db={db} refrescar={refrescar} /></div>
-          <AgencyRetentionLab db={db} refrescar={refrescar} />
+          <div id="agency-retention-lab" className="scroll-mt-24"><AgencyRetentionLab db={db} refrescar={refrescar} /></div>
           <AgencyLoopLearningDesk db={db} refrescar={refrescar} />
           <div id="agency-scene-studio" className="scroll-mt-24"><AgencySceneStudio db={db} refrescar={refrescar} /></div>
           <div id="agency-motion-experience" className="scroll-mt-24"><AgencyMotionExperience db={db} refrescar={refrescar} /></div>

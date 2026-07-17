@@ -29,7 +29,7 @@ begin
     '20260716_43_ciclo_cooperativo_mcp','20260716_44_bandeja_semantica_agencia',
     '20260716_45_centro_acciones_agencia','20260716_46_resultados_verificables_agencia',
     '20260716_47_postproduccion_exportacion','20260716_48_audio_postproduccion',
-    '20260716_49_gobernanza_marca'
+    '20260716_49_gobernanza_marca','20260716_50_flujo_creativo_e2e'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -235,6 +235,13 @@ begin
   assert exists(select 1 from pg_trigger where tgname='content_distributions_mode_guard' and not tgisinternal), 'intención Pauta/Orgánico admite reescritura';
   assert public._agency_brand_content_contract_valid('Pauta','Pedidos pagados','Convertir demanda','{"paid_and_organic_separated":true}'::jsonb), 'contrato Pauta inválido';
   assert not public._agency_brand_content_contract_valid('Orgánico','CPA','Construir afinidad','{"paid_and_organic_separated":true}'::jsonb), 'métricas Pauta/Orgánico mezcladas';
+  assert public.flujo_creativo_e2e_disponible(), 'falta flujo creativo E2E';
+  assert to_regclass('public.agency_master_releases') is not null and to_regclass('public.agency_master_release_events') is not null, 'faltan relevo o eventos del máster exacto';
+  assert has_function_privilege('authenticated','public.preparar_relevo_master_creativo(bigint,text)','EXECUTE'), 'falta relevo humano del máster';
+  assert has_function_privilege('authenticated','public.vincular_publicacion_master(bigint,text)','EXECUTE'), 'falta vínculo de publicación exacta';
+  assert not has_table_privilege('authenticated','public.agency_master_releases','UPDATE'), 'el relevo exacto admite reescritura directa';
+  assert exists(select 1 from pg_trigger where tgname='content_distributions_master_lineage_before' and not tgisinternal), 'distribución puede saltar el máster exacto';
+  assert exists(select 1 from pg_trigger where tgname='creatives_master_lineage_guard' and not tgisinternal), 'creativo sellado admite sustitución';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
@@ -266,5 +273,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-49 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-50 PASS, rollback total' as resultado;
 rollback;
