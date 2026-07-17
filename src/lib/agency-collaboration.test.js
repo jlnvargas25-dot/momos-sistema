@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  AGENCY_MODE_METRICS,
   agencyContractConstraints,
   agencyContractDirection,
   agencyRoomPayload,
@@ -47,4 +48,15 @@ test("crea payloads sin permitir que la capa creativa cambie las guardas", () =>
   const constraints = agencyContractConstraints({ mustAvoid: "precios inventados" });
   assert.equal(constraints.product_fidelity_required, true);
   assert.equal(constraints.human_review_required, true);
+  assert.equal(constraints.paid_and_organic_separated, true);
+});
+
+test("pauta y orgánico conservan contratos de éxito distintos", () => {
+  const paid = agencyContractDirection({ contentMode: "Pauta", modePrimaryMetric: "CPA", concept: "Corte", audience: "Nuevos", channel: "Instagram" });
+  const organic = agencyContractDirection({ contentMode: "Orgánico", modePrimaryMetric: "Guardados", concept: "Proceso", audience: "Comunidad", channel: "Instagram" });
+  assert.equal(paid.content_mode, "Pauta");
+  assert.equal(paid.mode_primary_metric, "CPA");
+  assert.equal(organic.content_mode, "Orgánico");
+  assert.equal(organic.mode_primary_metric, "Guardados");
+  assert.equal(AGENCY_MODE_METRICS.Pauta.includes(organic.mode_primary_metric), false);
 });

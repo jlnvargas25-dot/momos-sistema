@@ -28,7 +28,7 @@ set local role authenticated;
 do $$
 declare v_post text:=current_setting('momos.test_distribution_post'); v_failed boolean:=false; v_result jsonb;
   v_partial jsonb:='{"archivo_final":true,"formato_canal":true,"copy_revisado":true,"cta_enlace":false,"audio_derechos":true}'::jsonb;
-  v_full jsonb:='{"archivo_final":true,"formato_canal":true,"copy_revisado":true,"cta_enlace":true,"audio_derechos":true}'::jsonb;
+  v_full jsonb:='{"archivo_final":true,"formato_canal":true,"copy_revisado":true,"cta_enlace":true,"identidad_marca":true,"producto_fiel":true,"claims_verificados":true,"logo_color_tipografia":true,"objetivo_del_modo":true,"cta_del_modo":true,"medicion_del_modo":true,"separacion_pauta_organico":true,"audio_derechos":true}'::jsonb;
 begin
   assert public.distribucion_comercial_disponible(), 'La sonda de distribución no responde.';
   v_result:=public.guardar_preparacion_distribucion(v_post,v_partial,'Checklist parcial');

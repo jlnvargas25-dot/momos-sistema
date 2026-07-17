@@ -1,16 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDistributionRoom, distributionChecklistFor, distributionReadiness, validateDistributionAction } from "./commercial-distribution.js";
+import { buildDistributionRoom, contentModeFor, distributionChecklistFor, distributionReadiness, validateDistributionAction } from "./commercial-distribution.js";
 
 const product = { id: "PROD-1", nombre: "Momo Gatito", stock: 8, activo: true };
 const creative = { id: "CRE-1", titulo: "Reel Momo", canal: "Instagram", formato: "Reel", estado: "Aprobado", productoFocoId: "PROD-1", copy: "Adopta tu Momo", assetUrl: "https://cdn.momos/reel.mp4" };
 const post = { id: "CAL-1", fecha: "2026-07-15", hora: "12:00", canal: "Instagram", creativeId: "CRE-1", titulo: "Reel del día", copyFinal: "Adopta tu Momo", estado: "Programado" };
-const checklist = { archivo_final: true, formato_canal: true, copy_revisado: true, cta_enlace: true, audio_derechos: true };
+const checklist = {
+  archivo_final: true, formato_canal: true, copy_revisado: true, cta_enlace: true,
+  identidad_marca: true, producto_fiel: true, claims_verificados: true,
+  logo_color_tipografia: true, objetivo_del_modo: true, cta_del_modo: true,
+  medicion_del_modo: true, separacion_pauta_organico: true, audio_derechos: true,
+};
 const run = { id: 1, postId: "CAL-1", status: "Lista", checklist };
 const db = { products: [product], creatives: [creative], content_calendar: [post], content_distributions: [run], creative_results: [] };
 
 test("crea un checklist específico para Reel de Instagram", () => {
-  assert.deepEqual(distributionChecklistFor(post, db).map((item) => item.key), ["archivo_final", "formato_canal", "copy_revisado", "cta_enlace", "audio_derechos"]);
+  assert.deepEqual(distributionChecklistFor(post, db).map((item) => item.key), [
+    "archivo_final", "formato_canal", "copy_revisado", "cta_enlace",
+    "identidad_marca", "producto_fiel", "claims_verificados", "logo_color_tipografia",
+    "objetivo_del_modo", "cta_del_modo", "medicion_del_modo", "separacion_pauta_organico", "audio_derechos",
+  ]);
+});
+
+test("separa contenido para pauta y orgánico antes de medirlo", () => {
+  assert.equal(contentModeFor(post, db), "Orgánico");
+  const paidDb = { ...db, campaigns: [{ id: "CMP-1", presupuesto: 100000 }], content_calendar: [{ ...post, campaignId: "CMP-1" }] };
+  const paidPost = paidDb.content_calendar[0];
+  assert.equal(contentModeFor(paidPost, paidDb), "Pauta");
+  assert.match(distributionChecklistFor(paidPost, paidDb).find((item) => item.key === "medicion_del_modo").label, /pedidos pagados/i);
+  assert.match(distributionChecklistFor(post, db).find((item) => item.key === "medicion_del_modo").label, /guardados/i);
 });
 
 test("WhatsApp exige autorización comercial y no un archivo multimedia", () => {

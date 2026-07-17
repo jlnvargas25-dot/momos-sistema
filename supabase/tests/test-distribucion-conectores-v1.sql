@@ -42,7 +42,7 @@ set local role authenticated;
 
 do $$
 declare v_post text:=current_setting('momos.test_connector_post'); v_uncertain text:=current_setting('momos.test_connector_uncertain_post');
-  v_full jsonb:='{"archivo_final":true,"formato_canal":true,"copy_revisado":true,"cta_enlace":true,"audio_derechos":true}'::jsonb;
+  v_full jsonb:='{"archivo_final":true,"formato_canal":true,"copy_revisado":true,"cta_enlace":true,"identidad_marca":true,"producto_fiel":true,"claims_verificados":true,"logo_color_tipografia":true,"objetivo_del_modo":true,"cta_del_modo":true,"medicion_del_modo":true,"separacion_pauta_organico":true,"audio_derechos":true}'::jsonb;
   v_first jsonb; v_duplicate jsonb; v_uncertain_job jsonb;
 begin
   perform public.guardar_preparacion_distribucion(v_post,v_full,'Salida por conector');

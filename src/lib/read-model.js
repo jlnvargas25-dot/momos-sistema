@@ -829,11 +829,11 @@ export async function fetchCatalogos() {
   let content_distributions = [];
   if (distributionServerReady) {
     const distributionResult = await supabase.from("content_distributions")
-      .select("id,post_id,channel,status,checklist,attempt,prepared_by,prepared_at,approved_by,approved_at,executed_by,published_at,external_url,external_post_id,failure_reason,notes,updated_at")
+      .select("*")
       .order("updated_at", { ascending: false });
     if (distributionResult.error) throw new Error(distributionResult.error.message);
     content_distributions = (distributionResult.data || []).map((row) => ({
-      id: row.id, postId: row.post_id, channel: row.channel, status: row.status, checklist: row.checklist || {}, attempt: Number(row.attempt),
+      id: row.id, postId: row.post_id, channel: row.channel, contentMode: row.content_mode, status: row.status, checklist: row.checklist || {}, attempt: Number(row.attempt),
       preparedBy: row.prepared_by, preparedAt: tsBogota(row.prepared_at), approvedBy: nz(row.approved_by), approvedAt: tsBogota(row.approved_at),
       executedBy: nz(row.executed_by), publishedAt: tsBogota(row.published_at), externalUrl: nz(row.external_url),
       externalPostId: nz(row.external_post_id), failureReason: nz(row.failure_reason), notes: nz(row.notes), updatedAt: tsBogota(row.updated_at),
@@ -1006,6 +1006,34 @@ export async function fetchCatalogos() {
     }
   }
 
+  const brandGovernanceProbe = await supabase.rpc("gobernanza_marca_disponible");
+  const brandGovernanceProbeMissing = brandGovernanceProbe.error &&
+    (brandGovernanceProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandGovernanceProbe.error.message || ""));
+  if (brandGovernanceProbe.error && !brandGovernanceProbeMissing) throw new Error(brandGovernanceProbe.error.message);
+  const agencyBrandGovernanceReady = !brandGovernanceProbeMissing && brandGovernanceProbe.data === true;
+  let agencyBrandProfile = null; let agencyBrandGateBindings = [];
+  if (agencyBrandGovernanceReady) {
+    const [profileResult, gatesResult] = await Promise.all([
+      supabase.rpc("obtener_perfil_marca_activo"),
+      supabase.from("agency_brand_gate_bindings")
+        .select("id,target_type,target_key,brand_profile_id,brand_fingerprint,target_fingerprint,human_reviewed_by,passed_at")
+        .order("passed_at", { ascending: false }).limit(200),
+    ]);
+    if (profileResult.error) throw new Error(profileResult.error.message);
+    if (gatesResult.error) throw new Error(gatesResult.error.message);
+    agencyBrandProfile = profileResult.data && Object.keys(profileResult.data).length ? {
+      id: profileResult.data.id, version: Number(profileResult.data.version), status: profileResult.data.status,
+      profile: profileResult.data.profile || {}, fingerprint: nz(profileResult.data.fingerprint),
+      approvedAt: tsBogota(profileResult.data.approved_at),
+    } : null;
+    agencyBrandGateBindings = (gatesResult.data || []).map((row) => ({
+      id: row.id, targetType: row.target_type, targetKey: row.target_key,
+      brandProfileId: row.brand_profile_id, brandFingerprint: row.brand_fingerprint,
+      targetFingerprint: row.target_fingerprint, humanReviewedBy: row.human_reviewed_by,
+      passedAt: tsBogota(row.passed_at),
+    }));
+  }
+
   return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
     agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals, agencyActionQueueReady, agencyActionQueue,
@@ -1024,7 +1052,8 @@ export async function fetchCatalogos() {
     agencyMetaAuthorizationReady, agencyMetaInvestmentAuthorizations, agencyMetaInvestmentExecutionJobs,
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
-    agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns };
+    agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
+    agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings };
 }
 
 /* ── Fase 3 · slice 3a/3d: lecturas OPERATIVAS desde Supabase ──

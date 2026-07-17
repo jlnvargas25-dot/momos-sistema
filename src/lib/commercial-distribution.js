@@ -15,12 +15,30 @@ function runOf(db, postId) {
   return (db.content_distributions || []).find((run) => run.postId === postId) || null;
 }
 
+export function contentModeFor(post, db = {}) {
+  const run = runOf(db, post?.id);
+  if (["Pauta", "Orgánico"].includes(run?.contentMode)) return run.contentMode;
+  const creative = creativeOf(db, post);
+  const campaign = (db.campaigns || []).find((item) => item.id === post?.campaignId);
+  return campaign && (Number(campaign.presupuesto || 0) > 0 || clean(campaign.externalPlatform) || creative?.formato === "Anuncio")
+    ? "Pauta" : "Orgánico";
+}
+
 export function distributionChecklistFor(post, db = {}) {
   const creative = creativeOf(db, post);
+  const contentMode = contentModeFor(post, db);
   const items = [
     { key: "formato_canal", label: `Formato validado para ${post?.canal || "el canal"}` },
     { key: "copy_revisado", label: "Copy, ortografía y tono MOMOS revisados" },
     { key: "cta_enlace", label: "Llamado a la acción y enlace verificados" },
+    { key: "identidad_marca", label: "La pieza se reconoce como MOMOS y respeta su personalidad" },
+    { key: "producto_fiel", label: "Producto, figura, sabor, relleno y empaque coinciden con la realidad" },
+    { key: "claims_verificados", label: "Precios, beneficios, disponibilidad y promesas tienen evidencia" },
+    { key: "logo_color_tipografia", label: "Logo, colores y tipografías usan las versiones aprobadas" },
+    { key: "objetivo_del_modo", label: contentMode === "Pauta" ? "Objetivo comercial, audiencia y etapa del embudo están definidos" : "El contenido entrega valor, historia o conversación antes de pedir una acción" },
+    { key: "cta_del_modo", label: contentMode === "Pauta" ? "Oferta y CTA son claros, reales y medibles" : "El CTA es natural y no fuerza una venta" },
+    { key: "medicion_del_modo", label: contentMode === "Pauta" ? "Atribución, pedidos pagados y beneficio podrán medirse" : "Retención, finalización, compartidos, guardados y conversación se medirán aparte" },
+    { key: "separacion_pauta_organico", label: `Resultados de ${contentMode} no se mezclarán con ${contentMode === "Pauta" ? "Orgánico" : "Pauta"}` },
   ];
   if (MEDIA_CHANNELS.has(post?.canal)) items.unshift({ key: "archivo_final", label: "Archivo final listo y abre correctamente" });
   if (["Instagram", "TikTok"].includes(post?.canal) && ["Reel", "Video UGC"].includes(creative?.formato)) {
@@ -85,10 +103,11 @@ export function buildDistributionRoom(db = {}, today = new Date().toISOString().
     const readiness = distributionReadiness(post, db, run, today);
     const due = isDue(post, today, nowTime);
     const metrics = metricsForPost(db, post);
+    const contentMode = contentModeFor(post, db);
     const action = nextAction(post, run, readiness, due, metrics.length > 0);
     const blocked = ["Programar primero", "Corregir preflight", "Completar checklist", "Revisar fallo"].includes(action);
     const priority = post.estado === "Programado" && due ? (blocked ? 100 : 90) : blocked ? 80 : post.fecha === today ? 70 : 40;
-    return { post, run, readiness, due, metrics, action, blocked, priority };
+    return { post, run, readiness, due, metrics, contentMode, action, blocked, priority };
   });
   const queue = evaluated.filter((item) => ACTIVE_POST_STATES.has(item.post.estado) || ["Preparación", "Lista", "Aprobada", "Fallida"].includes(item.run?.status))
     .sort((left, right) => right.priority - left.priority || `${left.post.fecha}${left.post.hora}`.localeCompare(`${right.post.fecha}${right.post.hora}`));

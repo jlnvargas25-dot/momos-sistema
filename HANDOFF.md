@@ -800,3 +800,14 @@ vuelven al cancelar. Base correcta para toppings/adiciones (#2).
 - Pruebas `supabase/tests/test-productos-servidor.sql` y cadena ordenada 01-13:
   PASS con rollback total. Verificación final: 117/117 tests, build Vite PASS,
   E2E de momo/combo/receta PASS y cero errores de consola; no se alteró catálogo real.
+## Agencia MOMOS · Gobernanza determinística de marca (hito 49, 2026-07-16)
+
+- Migración aplicada y validada en Supabase: `supabase/gobernanza-marca-v1.sql` (`20260716_49_gobernanza_marca`).
+- La identidad de MOMOS deja de ser una referencia informal: queda sellada como perfil versionado e inmutable con nombre, posicionamiento, tono, vocabulario, paleta, tipografías, reglas de logo, fidelidad de producto, claims, derechos y gobierno humano.
+- El contrato distingue explícitamente `Pauta` y `Orgánico`: Pauta se evalúa por conversión rentable, pedidos pagados, CPA/ROAS y atribución; Orgánico por retención, finalización, compartidos, guardados y conversación. Sus resultados no se mezclan y la venta orgánica solo se atribuye con vínculo exacto.
+- Los gates exigen la versión activa de marca en contrato, storyboard, enrutamiento, generación, QA, paquete, máster y distribución. Cambiar la marca invalida el relevo hacia etapas nuevas hasta volver a revisar el material.
+- La generación recibe el contrato completo de marca; QA bloquea producto, identidad, texto o logo incorrectos; distribución exige checklist explícito de identidad, producto, claims, color y tipografía.
+- El contexto MCP expone al cerebro de Agencia el contrato activo y el resumen de gates sin PII, secretos ni permiso de ejecución externa. Meta sigue apagado.
+- La Biblioteca de marca muestra versión, huella, paleta, tipografías, dimensiones protegidas y cobertura de gates.
+- Las reglas de producción recogen las guías trabajadas de Higgsfield: cámara y luz motivadas, continuidad física, hook honesto con prueba, loops que cierran, una variable por experimento y restricciones contra morphing, manos extra, producto deformado, logos inventados, sombras dobles, flicker y cámara flotante.
+- Pruebas `supabase/tests/test-gobernanza-marca-v1.sql` y `supabase/tests/test-migraciones-ordenadas.sql`: PASS con rollback total; cadena ordenada 01–49 verificada. Regresión local 430/430 PASS y build Vite PASS.

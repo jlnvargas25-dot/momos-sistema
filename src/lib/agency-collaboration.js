@@ -9,6 +9,12 @@ export const AGENCY_CONTRACT_KPIS = Object.freeze([
   "Beneficio incremental", "Margen incremental", "Ventas incrementales", "Recompra",
 ]);
 
+export const AGENCY_CONTENT_MODES = Object.freeze(["Pauta", "Orgánico"]);
+export const AGENCY_MODE_METRICS = Object.freeze({
+  Pauta: ["Beneficio incremental", "Pedidos pagados", "CPA", "ROAS"],
+  "Orgánico": ["Retención", "Finalización", "Compartidos", "Guardados", "Conversación cualificada"],
+});
+
 export function collaborationRoomReadiness(room = {}, entries = [], contracts = []) {
   const roomEntries = list(entries).filter((entry) => String(entry.roomId) === String(room.id));
   const roomContracts = list(contracts).filter((contract) => String(contract.roomId) === String(room.id));
@@ -66,11 +72,16 @@ export function agencyRoomPayload(source = {}, objective = "") {
 }
 
 export function agencyContractDirection(input = {}, room = {}) {
+  const contentMode = AGENCY_CONTENT_MODES.includes(input.contentMode) ? input.contentMode : "Orgánico";
+  const allowedMetrics = AGENCY_MODE_METRICS[contentMode];
   return {
     concept: clean(input.concept),
     audience: clean(input.audience),
     channel: clean(input.channel),
     primary_kpi: AGENCY_CONTRACT_KPIS.includes(input.primaryKpi) ? input.primaryKpi : "Beneficio incremental",
+    content_mode: contentMode,
+    content_goal: clean(input.contentGoal),
+    mode_primary_metric: allowedMetrics.includes(input.modePrimaryMetric) ? input.modePrimaryMetric : allowedMetrics[0],
     human_intent: clean(input.humanIntent),
     call_to_action: clean(input.callToAction),
     room_title: clean(room.title),
@@ -84,5 +95,6 @@ export function agencyContractConstraints(input = {}) {
     product_fidelity_required: true,
     human_review_required: true,
     no_unapproved_claims: true,
+    paid_and_organic_separated: true,
   };
 }
