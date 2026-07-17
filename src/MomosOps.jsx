@@ -2079,7 +2079,7 @@ function BtnAsync({ children, onClick, kind, small, disabled, confirmar, textoEn
 
 const modalStack = [];
 
-function Modal({ title, onClose, children, wide, topLayer = false }) {
+function Modal({ title, onClose, children, wide, extraWide = false, topLayer = false }) {
   const modalIdRef = useRef(Symbol("momo-modal"));
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -2099,7 +2099,7 @@ function Modal({ title, onClose, children, wide, topLayer = false }) {
   return (
     <div className={`fixed inset-0 ${topLayer ? "z-[70]" : "z-50"} flex items-end sm:items-center justify-center p-0 sm:p-6`} role="dialog" aria-modal="true">
       <div className="momo-modal-backdrop absolute inset-0" style={{ background: "rgba(60,40,30,.45)" }} onClick={onClose} />
-      <div style={{ background: T.bg }} className={`momo-modal-sheet relative w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"} max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-xl`}>
+      <div style={{ background: T.bg }} className={`momo-modal-sheet relative w-full ${extraWide ? "sm:max-w-6xl" : wide ? "sm:max-w-3xl" : "sm:max-w-lg"} max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-xl`}>
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b" style={{ background: T.bg, borderColor: T.border }}>
           <h3 className="display text-lg font-semibold m-0">{title}</h3>
           <button type="button" onClick={(e) => { e.stopPropagation(); onClose(); }} aria-label="Cerrar" className="momo-btn w-9 h-9 rounded-full font-bold" style={{ background: T.surface, border: "1px solid " + T.border, color: T.choco }}>✕</button>
@@ -12449,6 +12449,30 @@ function AgencyFriendlyHome({ guide, selectedGoal, onSelectGoal, onContinue, onA
   </div>;
 }
 
+function AgencyAdvancedModuleCard({ icon, eyebrow, title, description, metric, metricLabel, status = "Disponible", tone = "coral", onOpen }) {
+  const tones = {
+    coral: { accent: T.coral, soft: "#FFF1EA" },
+    green: { accent: "#3F6B42", soft: "#E8F1E4" },
+    blue: { accent: "#315A7D", soft: "#E5EEF7" },
+    gold: { accent: "#96690F", soft: "#FFF2D8" },
+    rose: { accent: "#8B4660", soft: "#F6E3E9" },
+  };
+  const palette = tones[tone] || tones.coral;
+  return <button type="button" onClick={onOpen} className="group w-full min-h-[178px] rounded-2xl border p-4 text-left flex flex-col transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2" style={{ borderColor: T.border, background: T.surface, "--tw-ring-color": palette.accent }}>
+    <div className="flex items-start justify-between gap-3">
+      <span className="w-10 h-10 rounded-2xl grid place-items-center text-lg shrink-0" style={{ background: palette.soft }}>{icon}</span>
+      <span className="rounded-full px-2 py-1 text-[8px] uppercase tracking-wider font-extrabold" style={{ background: palette.soft, color: palette.accent }}>{status}</span>
+    </div>
+    <div className="mt-3 text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: palette.accent }}>{eyebrow}</div>
+    <div className="display text-lg font-semibold leading-tight mt-1">{title}</div>
+    <div className="text-[11px] leading-relaxed mt-1 line-clamp-2" style={{ color: T.choco2 }}>{description}</div>
+    <div className="mt-auto pt-3 flex items-end justify-between gap-3 border-t" style={{ borderColor: T.border }}>
+      <div>{metric !== undefined && <><div className="display text-xl font-semibold" style={{ color: palette.accent }}>{metric}</div><div className="text-[8px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{metricLabel}</div></>}</div>
+      <span className="text-[10px] font-extrabold" style={{ color: palette.accent }}>Ver detalle <span aria-hidden="true">›</span></span>
+    </div>
+  </button>;
+}
+
 function AgenciaControl({ db, user, refrescar, go }) {
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
@@ -12465,6 +12489,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const [agencyView, setAgencyView] = useState("simple");
   const [selectedGoal, setSelectedGoal] = useState("content");
   const [advancedArea, setAdvancedArea] = useState("overview");
+  const [advancedDetail, setAdvancedDetail] = useState(null);
   const [settingsForm, setSettingsForm] = useState(settings);
   const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
   const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
@@ -12491,8 +12516,18 @@ function AgenciaControl({ db, user, refrescar, go }) {
     const creativeTargets = new Set(["agency-collaboration-desk", "agency-retention-lab", "agency-scene-studio", "agency-motion-experience", "agency-scene-router", "agency-quality-control", "agency-approval-center"]);
     const protectionTargets = new Set(["agency-action-center"]);
     setAdvancedArea(creativeTargets.has(target) ? "creative" : protectionTargets.has(target) ? "protection" : "overview");
+    const targetDetails = {
+      "agency-collaboration-desk": "creative-collaboration",
+      "agency-retention-lab": "creative-retention",
+      "agency-scene-studio": "creative-studio",
+      "agency-motion-experience": "creative-studio",
+      "agency-scene-router": "creative-studio",
+      "agency-quality-control": "creative-studio",
+      "agency-approval-center": "creative-library",
+      "agency-action-center": "protection-actions",
+    };
+    setAdvancedDetail(targetDetails[target] || null);
     setAgencyView("advanced");
-    if (target) window.setTimeout(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   }
 
   function manualGoalSource(goalId) {
@@ -12717,6 +12752,35 @@ function AgenciaControl({ db, user, refrescar, go }) {
     protection: ["Aprobar con seguridad", "Acciones, permisos y límites que siempre requieren una persona."],
   };
   const activeAdvancedArea = advancedAreas.find((item) => item.id === advancedArea) || advancedAreas[0];
+  const advancedModules = {
+    overview: [
+      { id: "overview-pipeline", icon: "🧭", eyebrow: "Estado general", title: "Recorrido de la agencia", description: "Mirá cuántas oportunidades, briefs, aprobaciones y piezas están avanzando.", metric: friendlyGuide.activeFlightCount, metricLabel: "trabajos activos", tone: "blue" },
+      { id: "overview-flight", icon: "🎬", eyebrow: "Siguiente paso", title: "Producción creativa en curso", description: "Abrí únicamente el trabajo que necesita continuar ahora.", metric: intelligence.pipeline.creativeReview, metricLabel: "en revisión", tone: "coral" },
+    ],
+    strategy: [
+      { id: "strategy-opportunities", icon: "✦", eyebrow: "Radar comercial", title: "Oportunidades para crecer", description: "Recomendaciones explicadas con ventas, clientes, stock y contenido real.", metric: intelligence.recommendations.length, metricLabel: "oportunidades", tone: "coral" },
+      { id: "strategy-scenarios", icon: "▣", eyebrow: "Antes de invertir", title: "Comparar alternativas", description: "Revisá escenarios y sus alertas sin cambiar campañas ni presupuesto.", metric: (db.agencyMetaInvestmentScenarios || []).length, metricLabel: "escenarios", tone: "gold" },
+      { id: "strategy-brain", icon: "🧠", eyebrow: "Propuestas protegidas", title: "Cerebro de Agencia MOMOS", description: "Propuestas trazables que el equipo puede aprobar o descartar.", metric: orchestrator.summary.pending, metricLabel: "por revisar", tone: "rose" },
+    ],
+    creative: [
+      { id: "creative-collaboration", icon: "🤝", eyebrow: "Trabajo en equipo", title: "Mesa creativa", description: "Hechos, decisiones y aportes humanos organizados alrededor de cada pieza.", metric: intelligence.pipeline.briefs, metricLabel: "briefs", tone: "blue" },
+      { id: "creative-retention", icon: "🪝", eyebrow: "Guion y atención", title: "Hooks y retención", description: "Diseñá aperturas, loops y aprendizajes para sostener la atención.", metric: learning.summary.conclusive, metricLabel: "aprendizajes", tone: "gold" },
+      { id: "creative-studio", icon: "🎥", eyebrow: "De idea a tomas", title: "Estudio de producción", description: "Storyboard, cámara, movimiento, motores y control de calidad en una sola ruta.", metric: intelligence.pipeline.creativeReview, metricLabel: "piezas activas", tone: "coral" },
+      { id: "creative-library", icon: "🎨", eyebrow: "Marca y archivos", title: "Biblioteca creativa", description: "Briefs, versiones y reglas de marca con todo el detalle disponible al abrir.", metric: (db.agencyCreativeVersions || []).length, metricLabel: "versiones", tone: "green" },
+    ],
+    results: [
+      { id: "results-learning", icon: "📈", eyebrow: "Aprendizaje comercial", title: "Qué funcionó", description: "Ventas, gasto y pedidos ligados a cada publicación sin inventar ganadores.", metric: learning.summary.conclusive, metricLabel: "conclusiones", tone: "green" },
+      { id: "results-meta", icon: "◎", eyebrow: "Lectura de plataformas", title: "Resultados de Meta", description: "Snapshots y métricas verificables en modo de solo lectura.", metric: learning.summary.published, metricLabel: "publicadas", tone: "blue" },
+      { id: "results-incrementality", icon: "⇄", eyebrow: "Impacto real", title: "Incrementalidad", description: "Separá correlación de ventas que realmente produjo la campaña.", metric: learning.summary.winners, metricLabel: "ganadoras", tone: "rose" },
+    ],
+    protection: [
+      { id: "protection-actions", icon: "🎯", eyebrow: "Decisiones del equipo", title: "Acciones por aprobar", description: "Una acción clara por tarjeta, con responsable y siguiente paso.", metric: intelligence.pipeline.approvals, metricLabel: "por revisar", tone: "coral" },
+      { id: "protection-meta", icon: "✓", eyebrow: "Inversión protegida", title: "Permisos de Meta", description: "Vigencia, alcance y doble aprobación antes de cualquier cambio externo.", metric: 0, metricLabel: "sin ejecutar", tone: "green" },
+      { id: "protection-guards", icon: "🛡️", eyebrow: "Límites operativos", title: "Guardas de la agencia", description: "Presupuesto, stock, contactos y parada de emergencia en lenguaje sencillo.", metric: settings.paused ? 1 : 0, metricLabel: settings.paused ? "agencia pausada" : "alertas", tone: "gold" },
+    ],
+  };
+  const activeAdvancedModules = advancedModules[advancedArea] || advancedModules.overview;
+  const selectedAdvancedModule = Object.values(advancedModules).flat().find((item) => item.id === advancedDetail);
 
   return (
     <section className="mb-6" aria-label="Agencia Comercial MOMOS">
@@ -12737,7 +12801,12 @@ function AgenciaControl({ db, user, refrescar, go }) {
 
           <div className="rounded-2xl border px-4 py-3 mb-4 flex items-start gap-3" style={{ borderColor: T.border, background: T.vainilla }}><span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: T.surface }}>{activeAdvancedArea.icon}</span><div><div className="display text-base font-semibold">{advancedAreaCopy[advancedArea][0]}</div><div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>{advancedAreaCopy[advancedArea][1]}</div></div></div>
 
-          {advancedArea === "overview" && <><div className="rounded-2xl border p-4 mb-5" style={{ borderColor: T.border, background: T.surface }}>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-5" aria-label={`Herramientas de ${activeAdvancedArea.label}`}>
+            {activeAdvancedModules.map((module) => <AgencyAdvancedModuleCard key={module.id} {...module} status={module.metric > 0 ? "Con información" : "Listo para usar"} onOpen={() => setAdvancedDetail(module.id)} />)}
+          </div>
+          <div className="rounded-2xl border px-4 py-3 text-[10px] flex items-start gap-2" style={{ borderColor: T.border, background: "#FFF9F1", color: T.choco2 }}><span aria-hidden="true">💡</span><span><b style={{ color: T.choco }}>Vista limpia:</b> cada tarjeta muestra solo lo necesario. Abrila para consultar datos, evidencia y controles completos.</span></div>
+
+          {advancedDetail === "overview-pipeline" && <Modal title="Recorrido de la agencia" onClose={() => setAdvancedDetail(null)} extraWide><div className="rounded-2xl border p-4 mb-5" style={{ borderColor: T.border, background: T.surface }}>
             <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
               <div><div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Recorrido comercial</div><div className="display text-lg font-semibold">Cómo avanza el trabajo</div></div>
               <div className="text-[11px]" style={{ color: T.choco2 }}>Cada número abre una decisión del equipo.</div>
@@ -12751,22 +12820,19 @@ function AgenciaControl({ db, user, refrescar, go }) {
             </div>
           </div>
 
-          <AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} />
-          </>}
-          {advancedArea === "protection" && <><AgencyActionCenter db={db} go={go} refrescar={refrescar} /><AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} /></>}
-          {advancedArea === "results" && <><AgencyMetaObservatory db={db} refrescar={refrescar} /><AgencyMetaIncrementality db={db} refrescar={refrescar} /></>}
-          {advancedArea === "strategy" && <AgencyMetaInvestmentScenarios db={db} refrescar={refrescar} />}
-          {advancedArea === "creative" && <>
-            <div id="agency-collaboration-desk" className="scroll-mt-24"><AgencyCollaborationDesk db={db} refrescar={refrescar} /></div>
-            <div id="agency-retention-lab" className="scroll-mt-24"><AgencyRetentionLab db={db} refrescar={refrescar} /></div>
-            <AgencyLoopLearningDesk db={db} refrescar={refrescar} />
-            <div id="agency-scene-studio" className="scroll-mt-24"><AgencySceneStudio db={db} refrescar={refrescar} /></div>
-            <div id="agency-motion-experience" className="scroll-mt-24"><AgencyMotionExperience db={db} refrescar={refrescar} /></div>
-            <div id="agency-scene-router" className="scroll-mt-24"><AgencySceneRouter db={db} refrescar={refrescar} /></div>
-            <div id="agency-quality-control" className="scroll-mt-24"><AgencyQualityControl db={db} refrescar={refrescar} /></div>
-          </>}
+          </Modal>}
+          {advancedDetail === "overview-flight" && <Modal title="Producción creativa en curso" onClose={() => setAdvancedDetail(null)} extraWide><AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "protection-actions" && <Modal title="Acciones por aprobar" onClose={() => setAdvancedDetail(null)} extraWide><AgencyActionCenter db={db} go={go} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "protection-meta" && <Modal title="Permisos de inversión Meta" onClose={() => setAdvancedDetail(null)} extraWide><AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "protection-guards" && <Modal title="Guardas de la agencia" onClose={() => setAdvancedDetail(null)}><div className="rounded-2xl p-4 mb-4 text-sm" style={{ background: T.vainilla }}>Definí límites claros. Ningún cambio publica, contacta ni gasta por sí solo.</div><Btn onClick={() => { setAdvancedDetail(null); setSettingsForm(settings); setSettingsOpen(true); }}>Revisar guardas</Btn></Modal>}
+          {advancedDetail === "results-meta" && <Modal title="Resultados de Meta" onClose={() => setAdvancedDetail(null)} extraWide><AgencyMetaObservatory db={db} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "results-incrementality" && <Modal title="Incrementalidad Meta" onClose={() => setAdvancedDetail(null)} extraWide><AgencyMetaIncrementality db={db} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "strategy-scenarios" && <Modal title="Comparar alternativas antes de invertir" onClose={() => setAdvancedDetail(null)} extraWide><AgencyMetaInvestmentScenarios db={db} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "creative-collaboration" && <Modal title="Mesa creativa MOMOS" onClose={() => setAdvancedDetail(null)} extraWide><div id="agency-collaboration-desk"><AgencyCollaborationDesk db={db} refrescar={refrescar} /></div></Modal>}
+          {advancedDetail === "creative-retention" && <Modal title="Hooks, retención y aprendizaje" onClose={() => setAdvancedDetail(null)} extraWide><div id="agency-retention-lab"><AgencyRetentionLab db={db} refrescar={refrescar} /></div><AgencyLoopLearningDesk db={db} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "creative-studio" && <Modal title="Estudio de producción creativa" onClose={() => setAdvancedDetail(null)} extraWide><div id="agency-scene-studio"><AgencySceneStudio db={db} refrescar={refrescar} /></div><div id="agency-motion-experience"><AgencyMotionExperience db={db} refrescar={refrescar} /></div><div id="agency-scene-router"><AgencySceneRouter db={db} refrescar={refrescar} /></div><div id="agency-quality-control"><AgencyQualityControl db={db} refrescar={refrescar} /></div></Modal>}
 
-          {advancedArea === "strategy" && <><div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
+          {["strategy-brain", "strategy-opportunities"].includes(advancedDetail) && <Modal title={selectedAdvancedModule?.title || "Estrategia comercial"} onClose={() => setAdvancedDetail(null)} extraWide><div className="rounded-[26px] border overflow-hidden mb-6 shadow-sm" style={{ borderColor: "#D7C5B2", background: "#FFFDFC" }}>
             <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ background: "linear-gradient(135deg,#4A3028,#704334)", color: "#fff" }}>
               <div className="flex items-start gap-3">
                 <div className="w-11 h-11 rounded-2xl grid place-items-center text-xl shrink-0" style={{ background: "rgba(255,255,255,.14)" }}>🧠</div>
@@ -12833,9 +12899,9 @@ function AgenciaControl({ db, user, refrescar, go }) {
             })}
           </div>
           {visibleRecommendations.length === 0 && <Empty icon="✦" text="No hay oportunidades en este frente hoy. El radar seguirá cruzando operación, clientes y campañas." />}
-          </>}
+          </Modal>}
 
-          {advancedArea === "results" && <><div className="mt-2 mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          {advancedDetail === "results-learning" && <Modal title="Qué funcionó y qué conviene repetir" onClose={() => setAdvancedDetail(null)} extraWide><div className="mt-2 mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
               <div className="text-[10px] font-extrabold tracking-[.14em] uppercase" style={{ color: T.coral }}>Sala de aprendizaje</div>
               <div className="display text-xl font-semibold">Qué aprendimos de lo publicado</div>
@@ -12888,9 +12954,9 @@ function AgenciaControl({ db, user, refrescar, go }) {
             })}
           </div> : <div className="mb-6"><Empty icon="◎" text="Cuando una publicación salga al aire, aparecerá aquí para medirla sin mezclar sus pedidos con otras piezas." /></div>}
 
-          </>}
+          </Modal>}
 
-          {advancedArea === "creative" && <><AgencyBrandStudio db={db} user={user} refrescar={refrescar} />
+          {advancedDetail === "creative-library" && <Modal title="Biblioteca creativa y marca" onClose={() => setAdvancedDetail(null)} extraWide><AgencyBrandStudio db={db} user={user} refrescar={refrescar} />
 
           {(db.agencyBriefs || []).length > 0 && <>
             <SectionTitle>Flujo de briefs</SectionTitle>
@@ -12930,7 +12996,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
                 })}
             </div>
           </>}
-          </>}
+          </Modal>}
           </>}
         </div>
       </div>
