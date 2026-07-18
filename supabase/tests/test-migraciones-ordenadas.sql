@@ -32,7 +32,8 @@ begin
     '20260716_49_gobernanza_marca','20260716_50_flujo_creativo_e2e',
     '20260717_51_eliminacion_biblioteca','20260717_52_catalogo_figuras_toby',
     '20260717_53_motor_crecimiento_multimodo','20260717_54_mcp_biblioteca_creativa',
-    '20260717_55_identidad_marca','20260717_56_data_sync_rendimiento'
+    '20260717_55_identidad_marca','20260717_56_data_sync_rendimiento',
+    '20260717_57_reingreso_archivo_eliminado'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -309,5 +310,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-56 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-57 PASS, rollback total' as resultado;
 rollback;
