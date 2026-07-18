@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { brandAssetDeletionReadiness, brandAssetReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./brand-studio.js";
+import { brandAssetCollection, brandAssetDeletionReadiness, brandAssetReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./brand-studio.js";
 
 const asset = (overrides = {}) => ({
   id: "A-1", name: "Lizi Oreo vertical", mediaType: "Video", source: "MOMOS", productId: "PR-1",
@@ -45,6 +45,26 @@ test("la búsqueda cruza producto, figura, sabor y etiquetas", () => {
   const library = buildBrandMediaLibrary(db(), "2026-07-15");
   assert.equal(searchBrandMediaAssets(library, "lizi oreo desmolde").length, 1);
   assert.equal(searchBrandMediaAssets(library, "coco").length, 0);
+});
+
+test("separa identidad de marca y material de producto sin duplicar tablas", () => {
+  const brandPhoto = asset({ id: "A-MARCA", mediaType: "Foto", productId: "", productName: "", figure: "", flavor: "", shotType: "Ambiente y estilo de vida", tags: ["momos:marca"] });
+  const productPhoto = asset({ id: "A-PRODUCTO", tags: ["momos:producto"] });
+  const logo = asset({ id: "A-LOGO", mediaType: "Logo", productId: "", productName: "", figure: "", flavor: "", shotType: "Logo principal", tags: [] });
+  const library = buildBrandMediaLibrary(db({ brandMediaAssets: [brandPhoto, productPhoto, logo] }), "2026-07-15");
+  assert.equal(brandAssetCollection(brandPhoto), "Marca");
+  assert.equal(brandAssetCollection(productPhoto), "Productos");
+  assert.equal(brandAssetCollection(logo), "Marca");
+  assert.equal(library.summary.brandAssets, 2);
+  assert.equal(library.summary.productAssets, 1);
+  assert.equal(library.summary.primaryLogos, 1);
+  assert.equal(searchBrandMediaAssets(library, "", { collection: "Marca" }).length, 2);
+  assert.equal(searchBrandMediaAssets(library, "", { collection: "Productos" }).length, 1);
+});
+
+test("una foto general de marca ya no exige producto relacionado", () => {
+  const result = brandAssetReadiness(asset({ mediaType: "Foto", productId: "", productName: "", figure: "", flavor: "", tags: ["momos:marca"] }), "2026-07-15");
+  assert.equal(result.warnings.some((warning) => /producto/i.test(warning)), false);
 });
 
 test("una composición exige archivo real y producto foco exacto", () => {

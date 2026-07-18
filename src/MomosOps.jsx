@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchBrandAssetSignedUrl, fetchCatalogos, fetchEvidenceSignedUrl, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile } from "./lib/read-model";
 import { createSyncCoordinator, normalizeSyncDomains, shouldQueueRealtimeDomain, syncDomainForTable, syncDomainsForView, SYNC_DOMAINS } from "./lib/sync-coordinator";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, registrarSnapshotMotorCrecimiento, seleccionarModoCrecimiento, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, eliminarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, registrarSnapshotMotorCrecimiento, seleccionarModoCrecimiento, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, declararLogoPrincipalMarca, archivarActivoMarca, eliminarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -53,7 +53,7 @@ import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransition
 import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "./lib/commercial-distribution";
 import { enrichDistributionWithDispatch } from "./lib/commercial-dispatch";
 import { buildActiveReservationDashboard, buildInventoryHistory, buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveInventoryReservation, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
-import { BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, brandAssetDeletionReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./lib/brand-studio";
+import { BRAND_ASSET_ROLES, BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, brandAssetDeletionReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./lib/brand-studio";
 import { CREATIVE_PROVIDERS, buildCreativeProductionQueue, creativeAuthorizationGuard } from "./lib/creative-production";
 import { AGENCY_INTEGRATION_ENVIRONMENTS, agencyProviderExecutionGuard, buildAgencyIntegrationCenter } from "./lib/agency-integrations";
 
@@ -10799,7 +10799,7 @@ function resultadoSimple(m) {
   return { texto: `Funcionó regular: gastó más de lo que vendió. Revisa el precio o el mensaje, o prueba otro creativo.`, tono: "#A03B2A", bg: "#F6D4CD" };
 }
 
-function AgencyBrandStudio({ db, user, refrescar }) {
+function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdentityChanged }) {
   const ready = Boolean(db.brandMediaReady);
   const productionReady = Boolean(db.creativeProductionReady);
   const reviewReady = Boolean(db.creativeReviewReady);
@@ -10812,14 +10812,15 @@ function AgencyBrandStudio({ db, user, refrescar }) {
   const [section, setSection] = useState("Biblioteca");
   const [query, setQuery] = useState("");
   const [mediaFilter, setMediaFilter] = useState("");
+  const [libraryCollection, setLibraryCollection] = useState("Marca");
   const [showArchived, setShowArchived] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteAsset, setDeleteAsset] = useState(null);
   const [file, setFile] = useState(null);
   const emptyAssetForm = {
-    name: "", mediaType: "Video", source: "MOMOS", productId: "", figure: "", flavor: "",
-    shotType: "Producto", orientation: "Vertical", containsPeople: false, rightsStatus: "Propio",
-    rightsExpiresAt: "", aiUseAllowed: true, tags: "", notes: "",
+    collection: "Marca", brandRole: "Referencia visual", name: "", mediaType: "Foto", source: "MOMOS",
+    productId: "", figure: "", flavor: "", shotType: "Referencia visual", orientation: "Vertical",
+    containsPeople: false, rightsStatus: "Propio", rightsExpiresAt: "", aiUseAllowed: true, tags: "", notes: "",
   };
   const [assetForm, setAssetForm] = useState(emptyAssetForm);
   const [studio, setStudio] = useState({
@@ -10833,16 +10834,37 @@ function AgencyBrandStudio({ db, user, refrescar }) {
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [integrationEdit, setIntegrationEdit] = useState(null);
   const visibleAssets = useMemo(() => searchBrandMediaAssets(library, query, {
-    mediaType: mediaFilter, status: showArchived ? "" : "Activo",
-  }), [library, query, mediaFilter, showArchived]);
+    collection: libraryCollection, mediaType: mediaFilter, status: showArchived ? "" : "Activo",
+  }), [library, query, libraryCollection, mediaFilter, showArchived]);
   const studioDraft = useMemo(() => buildCreativeStudioDraft(studio, db, hoyISO()), [studio, db]);
+
+  function openAssetUpload(collection = libraryCollection, brandRole = "") {
+    const isBrand = collection === "Marca";
+    const role = brandRole || (isBrand ? "Referencia visual" : "Producto");
+    setLibraryCollection(collection);
+    setAssetForm({
+      ...emptyAssetForm, collection, brandRole: isBrand ? role : "", shotType: role,
+      mediaType: /logo/i.test(role) ? "Logo" : isBrand ? "Foto" : "Video",
+    });
+    setFile(null);
+    setUploadOpen(true);
+  }
+
+  useEffect(() => {
+    if (!initialIntent?.key) return;
+    const collection = initialIntent.collection || "Marca";
+    setSection("Biblioteca");
+    setLibraryCollection(collection);
+    if (initialIntent.openUpload) openAssetUpload(collection, initialIntent.brandRole);
+  }, [initialIntent?.key]);
 
   function chooseFile(selected) {
     setFile(selected || null);
     if (!selected) return;
-    const mediaType = selected.type.startsWith("video/") ? "Video"
+    const detectedType = selected.type.startsWith("video/") ? "Video"
       : selected.type.startsWith("audio/") ? "Audio"
         : selected.type === "application/pdf" ? "Diseño" : "Foto";
+    const mediaType = assetForm.collection === "Marca" && /logo/i.test(assetForm.brandRole) ? "Logo" : detectedType;
     const orientation = mediaType === "Audio" ? "Audio" : mediaType === "Diseño" ? "Documento" : "Vertical";
     setAssetForm((current) => ({
       ...current, mediaType, orientation,
@@ -10854,16 +10876,25 @@ function AgencyBrandStudio({ db, user, refrescar }) {
     try {
       if (!ready) throw new Error("Aplicá primero la migración 20 de Biblioteca Creativa.");
       if (!canWrite) throw new Error("Solo Administración o Marketing/CRM pueden registrar originales de marca.");
-      await subirActivoMarca(file, {
+      const isBrand = assetForm.collection === "Marca";
+      const marker = isBrand ? "momos:marca" : "momos:producto";
+      const tags = [...new Set([marker, ...assetForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean)])];
+      const result = await subirActivoMarca(file, {
         name: assetForm.name, media_type: assetForm.mediaType, source: assetForm.source,
-        product_id: assetForm.productId || null, figure: assetForm.figure, flavor: assetForm.flavor,
-        shot_type: assetForm.shotType, orientation: assetForm.orientation,
+        product_id: isBrand ? null : assetForm.productId || null,
+        figure: isBrand ? "" : assetForm.figure, flavor: isBrand ? "" : assetForm.flavor,
+        shot_type: isBrand ? assetForm.brandRole : assetForm.shotType, orientation: assetForm.orientation,
         contains_people: assetForm.containsPeople, rights_status: assetForm.rightsStatus,
         rights_expires_at: assetForm.rightsExpiresAt || null, ai_use_allowed: assetForm.aiUseAllowed,
-        allowed_channels: [], tags: assetForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean), notes: assetForm.notes,
+        allowed_channels: [], tags, notes: assetForm.notes,
       });
+      const isPrimaryLogo = isBrand && assetForm.brandRole === "Logo principal";
+      if (isPrimaryLogo) {
+        await declararLogoPrincipalMarca(result.asset_id);
+        await onIdentityChanged?.();
+      }
       setUploadOpen(false); setFile(null); setAssetForm(emptyAssetForm);
-      toast("ok", "Original protegido y catalogado en la Biblioteca MOMOS");
+      toast("ok", isPrimaryLogo ? "Logo principal guardado y declarado en la identidad oficial de MOMOS" : `Original guardado en ${isBrand ? "Marca" : "Productos"}`);
       await refrescar();
     } catch (error) { toast("error", error.message); }
   }
@@ -11006,11 +11037,16 @@ function AgencyBrandStudio({ db, user, refrescar }) {
   }
 
   const mediaIcon = { Foto: "📷", Video: "🎬", Audio: "🎧", Logo: "✶", "Diseño": "🎨" };
-  const summaryCards = [
-    ["Originales", library.summary.total, "Archivo privado"],
-    ["Listos para IA", library.summary.readyForAi, "Derechos vigentes"],
-    ["Por revisar", library.summary.rightsPending, "Permiso o vigencia"],
+  const summaryCards = libraryCollection === "Marca" ? [
+    ["Archivos de marca", library.summary.brandAssets, "Separados de producto"],
+    ["Logo principal", library.summary.primaryLogos, "En la Biblioteca"],
+    ["Referencias", library.summary.brandReferences, "Estilo, empaque y cultura"],
+    ["Listos para IA", library.active.filter((asset) => asset.collection === "Marca" && asset.readiness.ready && !asset.duplicate).length, "Derechos vigentes"],
+  ] : [
+    ["Archivos de producto", library.summary.productAssets, "Fotos y videos"],
     ["Productos cubiertos", library.summary.productsCovered, "Con toma real"],
+    ["Listos para IA", library.active.filter((asset) => asset.collection === "Productos" && asset.readiness.ready && !asset.duplicate).length, "Derechos vigentes"],
+    ["Por revisar", library.active.filter((asset) => asset.collection === "Productos" && !asset.readiness.ready).length, "Permiso o datos"],
   ];
 
   return (
@@ -11022,18 +11058,22 @@ function AgencyBrandStudio({ db, user, refrescar }) {
         </div>
         <div className="flex flex-wrap gap-2">
           {["Biblioteca", "Estudio", "Producción", "Integraciones"].map((item) => <button key={item} type="button" onClick={() => setSection(item)} className="rounded-full border px-3 py-2 text-[11px] font-extrabold" style={{ borderColor: section === item ? T.coral : T.border, background: section === item ? T.coral : "#fff", color: section === item ? "#fff" : T.choco }}>{item}</button>)}
-          <Btn small disabled={!ready || !canWrite} onClick={() => setUploadOpen(true)}>＋ Subir original</Btn>
+          <Btn small disabled={!ready || !canWrite} onClick={() => openAssetUpload(libraryCollection)}>＋ Subir archivo</Btn>
         </div>
       </div>
 
       {!ready && <div className="m-4 rounded-2xl px-4 py-3 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>🛡️ Vista protegida preparada. Aplicá <code>biblioteca-creativa-v1.sql</code> para habilitar archivos privados, derechos y trabajos trazables.</div>}
 
       {section === "Biblioteca" ? <div className="p-4 sm:p-5">
+        <div className="grid md:grid-cols-2 gap-3 mb-4" role="tablist" aria-label="Colecciones de la Biblioteca MOMOS">
+          {[{ id: "Marca", icon: "✦", title: "Identidad y archivos de marca", description: "Logo, referencias visuales, ambientes, empaque, equipo y cultura.", count: library.summary.brandAssets }, { id: "Productos", icon: "🍰", title: "Fotos y videos de productos", description: "Tomas ligadas a producto, figura, sabor y tipo de plano.", count: library.summary.productAssets }].map((item) => { const active = libraryCollection === item.id; return <button key={item.id} type="button" role="tab" aria-selected={active} onClick={() => { setLibraryCollection(item.id); setQuery(""); setMediaFilter(""); }} className="rounded-2xl border p-4 text-left flex items-start gap-3 shadow-sm" style={{ borderColor: active ? "#E9A18F" : T.border, background: active ? "#FFF5F0" : T.surface }}><span className="w-10 h-10 rounded-2xl grid place-items-center text-lg shrink-0" style={{ background: active ? T.coralSoft : T.vainilla }}>{item.icon}</span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="font-extrabold text-sm">{item.title}</span><span className="display text-xl font-semibold" style={{ color: active ? T.coral : T.choco }}>{item.count}</span></span><span className="block text-[10px] mt-1" style={{ color: T.choco2 }}>{item.description}</span></span></button>; })}
+        </div>
+        {libraryCollection === "Marca" && <div className="rounded-2xl border p-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderColor: "#E7C078", background: "#FFF9EC" }}><div><div className="font-extrabold text-sm">Identidad visual de MOMOS</div><div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>El logo principal se declara aquí. Las demás fotos sirven como referencias de estilo y no se mezclan con los productos.</div></div><div className="flex flex-wrap gap-2 shrink-0"><Btn small onClick={() => openAssetUpload("Marca", "Logo principal")}>Subir logo principal</Btn><Btn small kind="ghost" onClick={() => openAssetUpload("Marca", "Referencia visual")}>Agregar fotos de marca</Btn></div></div>}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
           {summaryCards.map(([label, value, sub]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: T.coral }}>{value}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{sub}</div></div>)}
         </div>
         <div className="flex flex-col md:flex-row gap-2 mb-4">
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por producto, sabor, figura, toma o etiqueta…" aria-label="Buscar activos de marca" />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={libraryCollection === "Marca" ? "Buscar logo, ambiente, empaque, equipo o referencia…" : "Buscar producto, sabor, figura, toma o etiqueta…"} aria-label={`Buscar archivos de ${libraryCollection.toLowerCase()}`} />
           <select className={`${inputCls} md:max-w-[190px]`} style={inputStyle} value={mediaFilter} onChange={(event) => setMediaFilter(event.target.value)} aria-label="Filtrar tipo de activo"><option value="">Todos los formatos</option>{BRAND_MEDIA_TYPES.map((type) => <option key={type}>{type}</option>)}</select>
           <label className="shrink-0 rounded-xl border px-3 py-2.5 text-xs font-bold flex items-center gap-2" style={{ borderColor: T.border, background: "#fff" }}><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Ver archivados</label>
         </div>
@@ -11047,8 +11087,8 @@ function AgencyBrandStudio({ db, user, refrescar }) {
                 <LazyBrandMediaPreview asset={asset} mediaIcon={mediaIcon} />
               </div>
               <div className="p-4">
-                <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{asset.mediaType} · {asset.source}</div><div className="font-extrabold leading-tight">{asset.name}</div></div><Badge label={asset.status} /></div>
-                <div className="text-xs mt-2" style={{ color: T.choco2 }}>{[asset.productName, asset.figure, asset.flavor, asset.shotType].filter(Boolean).join(" · ") || "Recurso general de marca"}</div>
+                <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{asset.collection} · {asset.mediaType} · {asset.source}</div><div className="font-extrabold leading-tight">{asset.name}</div></div><Badge label={asset.status} /></div>
+                <div className="text-xs mt-2" style={{ color: T.choco2 }}>{asset.collection === "Marca" ? asset.roleLabel : [asset.productName, asset.figure, asset.flavor, asset.roleLabel].filter(Boolean).join(" · ")}</div>
                 <div className="flex flex-wrap gap-1.5 mt-3"><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: blocked ? "#F6D4CD" : "#DDEBD9", color: blocked ? "#A03B2A" : "#315B35" }}>{blocked ? `⚠ ${problem}` : "✓ Listo para IA"}</span><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: T.vainilla }}>{asset.rightsStatus}</span>{asset.containsPeople && <span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: T.rosa }}>Con personas</span>}</div>
                 {canWrite && <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-x-4 gap-y-2" style={{ borderColor: T.border }}>
                   {asset.status === "Activo" && <button type="button" onClick={() => archiveAsset(asset)} className="border-0 bg-transparent p-0 text-[10px] font-bold underline" style={{ color: T.choco2 }}>Archivar</button>}
@@ -11058,7 +11098,7 @@ function AgencyBrandStudio({ db, user, refrescar }) {
               </div>
             </article>;
           })}
-        </div> : <Empty icon="🖼️" text={ready ? "No hay activos que coincidan. Subí fotos, videos, audios, logos o diseños originales de MOMOS." : "La biblioteca aparecerá aquí cuando se aplique la migración 20."} />}
+        </div> : <Empty icon="🖼️" text={ready ? (libraryCollection === "Marca" ? "Todavía no hay archivos de identidad en esta vista. Subí el logo o agrega referencias visuales de MOMOS." : "Todavía no hay fotos o videos de producto que coincidan con la búsqueda.") : "La biblioteca aparecerá aquí cuando se aplique la migración 20."} />}
       </div> : section === "Estudio" ? <div className="p-4 sm:p-5">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(310px,.75fr)] gap-4">
           <div>
@@ -11203,19 +11243,23 @@ function AgencyBrandStudio({ db, user, refrescar }) {
         <div className="flex flex-wrap gap-2"><BtnAsync onClick={deleteAssetPermanently} textoEnVuelo="Eliminando archivo…">Sí, eliminar definitivamente</BtnAsync><Btn kind="ghost" onClick={() => setDeleteAsset(null)}>Conservar archivo</Btn></div>
       </Modal>}
 
-      {uploadOpen && <Modal title="Nuevo original de marca" onClose={() => { setUploadOpen(false); setFile(null); }} wide topLayer>
-        <div className="rounded-2xl p-3 mb-4 text-xs" style={{ background: T.vainilla }}><b>El original nunca se sobrescribe.</b> MOMO OPS guardará su huella digital, procedencia, permisos y cada uso creativo posterior.</div>
-        <Field label="Archivo original (máximo 100 MB)"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/mp4,audio/wav,application/pdf" onChange={(event) => chooseFile(event.target.files?.[0])} className="w-full rounded-2xl border p-3 text-sm" style={{ borderColor: T.border, background: "#fff" }} /></Field>
+      {uploadOpen && <Modal title={assetForm.collection === "Marca" ? (assetForm.brandRole === "Logo principal" ? "Subir logo principal de MOMOS" : "Nuevo archivo de identidad de marca") : "Nuevo archivo de producto"} onClose={() => { setUploadOpen(false); setFile(null); }} wide topLayer>
+        <div className="grid sm:grid-cols-2 gap-2 mb-4" role="tablist" aria-label="Destino del archivo">
+          {[{ id: "Marca", label: "Identidad y marca", detail: "Logo, estilo, empaque o cultura" }, { id: "Productos", label: "Producto", detail: "Producto, figura, sabor y toma" }].map((item) => { const active = assetForm.collection === item.id; return <button key={item.id} type="button" role="tab" aria-selected={active} onClick={() => { const role = item.id === "Marca" ? "Referencia visual" : "Producto"; setAssetForm({ ...emptyAssetForm, collection: item.id, brandRole: item.id === "Marca" ? role : "", shotType: role, mediaType: item.id === "Marca" ? "Foto" : "Video" }); setFile(null); }} className="rounded-2xl border px-3 py-2.5 text-left" style={{ borderColor: active ? T.coral : T.border, background: active ? "#FFF5F0" : T.surface }}><span className="block text-xs font-extrabold">{item.label}</span><span className="block text-[9px] mt-0.5" style={{ color: T.choco2 }}>{item.detail}</span></button>; })}
+        </div>
+        <div className="rounded-2xl p-3 mb-4 text-xs" style={{ background: T.vainilla }}><b>El original nunca se sobrescribe.</b> {assetForm.collection === "Marca" ? "Este archivo quedará en la colección de Marca, separado de las tomas de productos." : "Este archivo quedará ligado a la colección de Productos para encontrarlo por producto, figura y sabor."}</div>
+        <Field label="Archivo original (máximo 100 MB)"><input type="file" accept={assetForm.collection === "Marca" && /logo/i.test(assetForm.brandRole) ? "image/jpeg,image/png,image/webp" : "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/mp4,audio/wav,application/pdf"} onChange={(event) => chooseFile(event.target.files?.[0])} className="w-full rounded-2xl border p-3 text-sm" style={{ borderColor: T.border, background: "#fff" }} /></Field>
         {file && <div className="rounded-xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#E8F1E4", color: "#315B35" }}>{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB · se verificará con SHA-256</div>}
-        <div className="grid sm:grid-cols-2 gap-3"><Field label="Nombre descriptivo"><Input value={assetForm.name} onChange={(event) => setAssetForm({ ...assetForm, name: event.target.value })} placeholder="Ej. Max Oreo · close-up cuchara" /></Field><Field label="Tipo"><Select options={BRAND_MEDIA_TYPES} value={assetForm.mediaType} onChange={(event) => setAssetForm({ ...assetForm, mediaType: event.target.value })} /></Field></div>
-        <div className="grid sm:grid-cols-2 gap-3"><Field label="Producto relacionado"><select className={inputCls} style={inputStyle} value={assetForm.productId} onChange={(event) => setAssetForm({ ...assetForm, productId: event.target.value })}><option value="">Recurso general de marca</option>{(db.products || []).filter((product) => product.activo !== false).map((product) => <option key={product.id} value={product.id}>{product.nombre}</option>)}</select></Field><Field label="Orientación"><Select options={["Vertical","Horizontal","Cuadrado","Audio","Documento"]} value={assetForm.orientation} onChange={(event) => setAssetForm({ ...assetForm, orientation: event.target.value })} /></Field></div>
-        <div className="grid sm:grid-cols-3 gap-3"><Field label="Figura"><Input value={assetForm.figure} onChange={(event) => setAssetForm({ ...assetForm, figure: event.target.value })} placeholder="Max, Lizi…" /></Field><Field label="Sabor"><Input value={assetForm.flavor} onChange={(event) => setAssetForm({ ...assetForm, flavor: event.target.value })} placeholder="Oreo, Coco…" /></Field><Field label="Tipo de toma"><Input value={assetForm.shotType} onChange={(event) => setAssetForm({ ...assetForm, shotType: event.target.value })} placeholder="Close-up, cocina…" /></Field></div>
+        <div className="grid sm:grid-cols-2 gap-3"><Field label="Nombre descriptivo"><Input value={assetForm.name} onChange={(event) => setAssetForm({ ...assetForm, name: event.target.value })} placeholder={assetForm.collection === "Marca" ? "Ej. Logo principal coral · fondo transparente" : "Ej. Max Oreo · close-up cuchara"} /></Field><Field label="Tipo de archivo"><Select options={assetForm.collection === "Marca" && /logo/i.test(assetForm.brandRole) ? ["Logo"] : BRAND_MEDIA_TYPES} value={assetForm.mediaType} onChange={(event) => setAssetForm({ ...assetForm, mediaType: event.target.value, brandRole: event.target.value === "Logo" && assetForm.collection === "Marca" ? "Logo principal" : assetForm.brandRole })} /></Field></div>
+        {assetForm.collection === "Marca" ? <div className="grid sm:grid-cols-2 gap-3"><Field label="Uso dentro de la marca"><Select options={BRAND_ASSET_ROLES} value={assetForm.brandRole} onChange={(event) => { const role = event.target.value; setAssetForm({ ...assetForm, brandRole: role, shotType: role, mediaType: /logo/i.test(role) ? "Logo" : assetForm.mediaType === "Logo" ? "Foto" : assetForm.mediaType }); }} /></Field><Field label="Orientación"><Select options={["Vertical","Horizontal","Cuadrado","Documento"]} value={assetForm.orientation} onChange={(event) => setAssetForm({ ...assetForm, orientation: event.target.value })} /></Field></div>
+          : <><div className="grid sm:grid-cols-2 gap-3"><Field label="Producto relacionado"><select className={inputCls} style={inputStyle} value={assetForm.productId} onChange={(event) => setAssetForm({ ...assetForm, productId: event.target.value })}><option value="">Elegir producto…</option>{(db.products || []).filter((product) => product.activo !== false).map((product) => <option key={product.id} value={product.id}>{product.nombre}</option>)}</select></Field><Field label="Orientación"><Select options={["Vertical","Horizontal","Cuadrado","Audio","Documento"]} value={assetForm.orientation} onChange={(event) => setAssetForm({ ...assetForm, orientation: event.target.value })} /></Field></div><div className="grid sm:grid-cols-3 gap-3"><Field label="Figura"><Input value={assetForm.figure} onChange={(event) => setAssetForm({ ...assetForm, figure: event.target.value })} placeholder="Max, Lizi…" /></Field><Field label="Sabor"><Input value={assetForm.flavor} onChange={(event) => setAssetForm({ ...assetForm, flavor: event.target.value })} placeholder="Oreo, Coco…" /></Field><Field label="Tipo de toma"><Input value={assetForm.shotType} onChange={(event) => setAssetForm({ ...assetForm, shotType: event.target.value })} placeholder="Close-up, cocina…" /></Field></div></>}
+        {assetForm.collection === "Marca" && assetForm.brandRole === "Logo principal" && <div className="rounded-2xl px-3 py-3 mb-3 text-xs font-semibold" style={{ background: "#E8F1E4", color: "#315B35" }}>Al guardar, MOMO OPS creará una nueva versión de identidad, conservará la paleta actual y declarará este archivo como logo principal oficial. Debe ser PNG, JPG o WEBP.</div>}
         <div className="grid sm:grid-cols-2 gap-3"><Field label="Derechos"><Select options={BRAND_MEDIA_RIGHTS} value={assetForm.rightsStatus} onChange={(event) => setAssetForm({ ...assetForm, rightsStatus: event.target.value })} /></Field><Field label="Vencimiento del permiso (opcional)"><Input type="date" value={assetForm.rightsExpiresAt} onChange={(event) => setAssetForm({ ...assetForm, rightsExpiresAt: event.target.value })} /></Field></div>
         <div className="rounded-2xl border px-3 py-2 mb-3" style={{ borderColor: T.border }}><label className="flex gap-2 items-start text-sm font-bold"><input type="checkbox" className="mt-1" checked={assetForm.containsPeople} onChange={(event) => setAssetForm({ ...assetForm, containsPeople: event.target.checked })} /><span>El archivo muestra personas<span className="block text-[10px] font-normal" style={{ color: T.choco2 }}>Para usarlo con IA, los derechos deben quedar en Autorizado.</span></span></label><label className="flex gap-2 items-start text-sm font-bold mt-2"><input type="checkbox" className="mt-1" checked={assetForm.aiUseAllowed} onChange={(event) => setAssetForm({ ...assetForm, aiUseAllowed: event.target.checked })} /><span>Permitir edición o generación con IA<span className="block text-[10px] font-normal" style={{ color: T.choco2 }}>El original sigue privado y no se modifica.</span></span></label></div>
         {assetForm.containsPeople && assetForm.rightsStatus !== "Autorizado" && <div className="rounded-2xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>⚠ Se puede catalogar, pero el servidor bloqueará su uso con IA hasta registrar autorización explícita.</div>}
         <Field label="Etiquetas separadas por coma"><Input value={assetForm.tags} onChange={(event) => setAssetForm({ ...assetForm, tags: event.target.value })} placeholder="oreo, close-up, cuchara, fondo rosa" /></Field>
         <Field label="Notas y alcance del permiso"><textarea className={inputCls} style={inputStyle} rows="3" value={assetForm.notes} onChange={(event) => setAssetForm({ ...assetForm, notes: event.target.value })} /></Field>
-        <div className="flex flex-wrap gap-2"><BtnAsync onClick={saveAsset} disabled={!file || assetForm.name.trim().length < 3} textoEnVuelo="Protegiendo original…">Guardar original trazable</BtnAsync><Btn kind="ghost" onClick={() => { setUploadOpen(false); setFile(null); }}>Cancelar</Btn></div>
+        <div className="flex flex-wrap gap-2"><BtnAsync onClick={saveAsset} disabled={!file || assetForm.name.trim().length < 3 || (assetForm.collection === "Productos" && !assetForm.productId)} textoEnVuelo="Protegiendo original…">{assetForm.collection === "Marca" && assetForm.brandRole === "Logo principal" ? "Guardar y declarar logo principal" : `Guardar en ${assetForm.collection}`}</BtnAsync><Btn kind="ghost" onClick={() => { setUploadOpen(false); setFile(null); }}>Cancelar</Btn></div>
       </Modal>}
     </div>
   );
@@ -12446,14 +12490,16 @@ function BrandIdentityPanel({ identity, loading, error, onRetry, onOpenLibrary }
   return <div className="space-y-4">
     <div className="rounded-2xl border p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ borderColor: identity.ready ? "#BFD8BE" : "#E7C078", background: identity.ready ? "#F7FBF5" : "#FFF9EC" }}>
       <div><div className="text-[9px] uppercase tracking-[.16em] font-extrabold" style={{ color: identity.ready ? "#315B35" : "#7A5410" }}>{identity.statusLabel}</div><div className="display text-xl font-semibold mt-1">{identity.name} · {identity.sourceLabel}</div><div className="text-xs mt-1 max-w-2xl" style={{ color: T.choco2 }}>{identity.positioning}</div></div>
-      <div className="flex flex-wrap gap-2"><Btn small kind="ghost" onClick={onOpenLibrary}>Abrir Biblioteca</Btn>{(error || !identity.serverAvailable) && <Btn small onClick={onRetry}>{loading ? "Verificando…" : "Verificar H55"}</Btn>}</div>
+      <div className="flex flex-wrap gap-2"><Btn small onClick={() => onOpenLibrary?.({ collection: "Marca", brandRole: "Logo principal", openUpload: true })}>Subir logo principal</Btn><Btn small kind="ghost" onClick={() => onOpenLibrary?.({ collection: "Marca" })}>Ver archivos de marca</Btn>{(error || !identity.serverAvailable) && <Btn small onClick={onRetry}>{loading ? "Verificando…" : "Verificar H55"}</Btn>}</div>
     </div>
 
     {!identity.ready && <div className="rounded-xl px-3.5 py-3 text-[11px] font-semibold" style={{ background: "#FFF2D8", color: "#7A5410" }}>{error || identity.errors[0] || "La identidad verbal y visual base sigue disponible. Elegí un logo principal oficial para activar la protección completa."}</div>}
 
     <section><div className="flex items-end justify-between gap-3 mb-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Firma oficial</div><h3 className="display text-lg font-semibold m-0">Logos aprobados</h3></div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold" style={{ background: T.vainilla }}>{identity.logos.length} vinculados</span></div>
-      {identity.logos.length ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{identity.logos.map((logo) => <div key={`${logo.role}-${logo.assetId}`} className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border, background: T.surface }}><div className="h-40 grid place-items-center p-5" style={{ background: logo.background === "Oscuro" ? T.choco : T.bg }}>{logo.signedUrl ? <img src={logo.signedUrl} alt={`${identity.name} · ${logo.role}`} className="max-w-full max-h-full object-contain" /> : <div className="text-center"><div className="text-3xl">✦</div><div className="text-[10px] mt-2" style={{ color: T.choco2 }}>Vista disponible al abrir desde el servidor</div></div>}</div><div className="p-3 border-t" style={{ borderColor: T.border }}><div className="font-extrabold text-sm capitalize">{logo.role.replaceAll("_", " ")}</div><div className="text-[9px] mt-1" style={{ color: T.choco2 }}>Mínimo {logo.minWidthPx} px · aire {logo.clearSpaceRatio}× · fondo {logo.background}</div></div></div>)}</div> : <div className="rounded-2xl border border-dashed p-6 text-center" style={{ borderColor: "#E7C078", background: "#FFF9EC" }}><div className="text-2xl">✦</div><div className="font-extrabold text-sm mt-2">Falta declarar el logo principal</div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>Subilo como tipo Logo en Biblioteca y vinculalo a una versión de identidad.</div></div>}
+      {identity.logos.length ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{identity.logos.map((logo) => <div key={`${logo.role}-${logo.assetId}`} className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border, background: T.surface }}><div className="h-40 grid place-items-center p-5" style={{ background: logo.background === "Oscuro" ? T.choco : T.bg }}>{logo.signedUrl ? <img src={logo.signedUrl} alt={`${identity.name} · ${logo.role}`} className="max-w-full max-h-full object-contain" /> : <div className="text-center"><div className="text-3xl">✦</div><div className="text-[10px] mt-2" style={{ color: T.choco2 }}>Vista disponible al abrir desde el servidor</div></div>}</div><div className="p-3 border-t" style={{ borderColor: T.border }}><div className="font-extrabold text-sm capitalize">{logo.role.replaceAll("_", " ")}</div><div className="text-[9px] mt-1" style={{ color: T.choco2 }}>Mínimo {logo.minWidthPx} px · aire {logo.clearSpaceRatio}× · fondo {logo.background}</div></div></div>)}</div> : <div className="rounded-2xl border border-dashed p-6 text-center" style={{ borderColor: "#E7C078", background: "#FFF9EC" }}><div className="text-2xl">✦</div><div className="font-extrabold text-sm mt-2">Falta declarar el logo principal</div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>Usá el botón “Subir logo principal”. MOMO OPS lo guardará y creará la nueva versión oficial sin mezclarlo con productos.</div><div className="mt-3"><Btn small onClick={() => onOpenLibrary?.({ collection: "Marca", brandRole: "Logo principal", openUpload: true })}>Subir logo principal</Btn></div></div>}
     </section>
+
+    <section className="rounded-2xl border p-4" style={{ borderColor: T.border, background: T.surface }}><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Referencias visuales de marca</div><h3 className="display text-lg font-semibold m-0 mt-1">Fotos que enseñan cómo se siente MOMOS</h3><div className="text-[10px] mt-1 max-w-2xl" style={{ color: T.choco2 }}>Ambientes, empaque, equipo, cultura, texturas y estilo de vida viven en su propio panel. No se mezclan con fotos de postres.</div></div><Btn small kind="ghost" onClick={() => onOpenLibrary?.({ collection: "Marca", brandRole: "Referencia visual", openUpload: true })}>Agregar fotos de marca</Btn></div></section>
 
     <section><div className="mb-2"><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Sistema visual</div><h3 className="display text-lg font-semibold m-0">Colores con una función clara</h3></div><div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">{identity.colors.map((color) => <div key={color.token} className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border, background: T.surface }}><div className="h-16" style={{ background: color.colorHex }} /><div className="p-3"><div className="flex items-center justify-between gap-2"><span className="font-extrabold text-[11px]">{color.label}</span><code className="text-[9px]">{color.colorHex}</code></div><div className="text-[9px] mt-1" style={{ color: T.choco2 }}>{color.usage}</div></div></div>)}</div></section>
 
@@ -12540,6 +12586,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const [selectedGoal, setSelectedGoal] = useState("content");
   const [advancedArea, setAdvancedArea] = useState("overview");
   const [advancedDetail, setAdvancedDetail] = useState(null);
+  const [brandStudioIntent, setBrandStudioIntent] = useState(null);
   const [brandIdentityDto, setBrandIdentityDto] = useState(null);
   const [brandIdentityLoading, setBrandIdentityLoading] = useState(true);
   const [brandIdentityError, setBrandIdentityError] = useState("");
@@ -12600,6 +12647,12 @@ function AgenciaControl({ db, user, refrescar, go }) {
     };
     setAdvancedDetail(targetDetails[target] || null);
     setAgencyView("advanced");
+  }
+
+  function openBrandLibrary(intent = {}) {
+    setBrandStudioIntent({ key: Date.now(), collection: "Marca", ...intent });
+    setAdvancedArea("identity");
+    setAdvancedDetail("creative-library");
   }
 
   function manualGoalSource(goalId) {
@@ -12880,7 +12933,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
           <div className="rounded-2xl border px-4 py-3 mb-4 flex items-start gap-3" style={{ borderColor: T.border, background: T.vainilla }}><span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: T.surface }}>{activeAdvancedArea.icon}</span><div><div className="display text-base font-semibold">{advancedAreaCopy[advancedArea][0]}</div><div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>{advancedAreaCopy[advancedArea][1]}</div></div></div>
 
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-5" aria-label={`Herramientas de ${activeAdvancedArea.label}`}>
-            {activeAdvancedModules.map((module) => <AgencyAdvancedModuleCard key={module.id} {...module} status={module.metric > 0 ? "Con información" : "Listo para usar"} onOpen={() => setAdvancedDetail(module.id)} />)}
+            {activeAdvancedModules.map((module) => <AgencyAdvancedModuleCard key={module.id} {...module} status={module.metric > 0 ? "Con información" : "Listo para usar"} onOpen={() => { if (module.id === "creative-library") setBrandStudioIntent({ key: Date.now(), collection: "Marca" }); setAdvancedDetail(module.id); }} />)}
           </div>
           <div className="rounded-2xl border px-4 py-3 text-[10px] flex items-start gap-2" style={{ borderColor: T.border, background: "#FFF9F1", color: T.choco2 }}><span aria-hidden="true">💡</span><span><b style={{ color: T.choco }}>Vista limpia:</b> cada tarjeta muestra solo lo necesario. Abrila para consultar datos, evidencia y controles completos.</span></div>
 
@@ -12900,7 +12953,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
 
           </Modal>}
           {advancedDetail === "overview-flight" && <Modal title="Producción creativa en curso" onClose={() => setAdvancedDetail(null)} extraWide><AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} /></Modal>}
-          {advancedDetail === "identity-overview" && <Modal title="Identidad de marca MOMOS" onClose={() => setAdvancedDetail(null)} extraWide><BrandIdentityPanel identity={brandIdentity} loading={brandIdentityLoading} error={brandIdentityError} onRetry={() => loadBrandIdentity(true)} onOpenLibrary={() => { setAdvancedArea("identity"); setAdvancedDetail("creative-library"); }} /></Modal>}
+          {advancedDetail === "identity-overview" && <Modal title="Identidad de marca MOMOS" onClose={() => setAdvancedDetail(null)} extraWide><BrandIdentityPanel identity={brandIdentity} loading={brandIdentityLoading} error={brandIdentityError} onRetry={() => loadBrandIdentity(true)} onOpenLibrary={openBrandLibrary} /></Modal>}
           {advancedDetail === "protection-actions" && <Modal title="Acciones por aprobar" onClose={() => setAdvancedDetail(null)} extraWide><AgencyActionCenter db={db} go={go} refrescar={refrescar} /></Modal>}
           {advancedDetail === "protection-meta" && <Modal title="Permisos de inversión Meta" onClose={() => setAdvancedDetail(null)} extraWide><AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} /></Modal>}
           {advancedDetail === "protection-guards" && <Modal title="Guardas de la agencia" onClose={() => setAdvancedDetail(null)}><div className="rounded-2xl p-4 mb-4 text-sm" style={{ background: T.vainilla }}>Definí límites claros. Ningún cambio publica, contacta ni gasta por sí solo.</div><Btn onClick={() => { setAdvancedDetail(null); setSettingsForm(settings); setSettingsOpen(true); }}>Revisar guardas</Btn></Modal>}
@@ -13035,7 +13088,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
 
           </Modal>}
 
-          {advancedDetail === "creative-library" && <Modal title="Biblioteca creativa y marca" onClose={() => setAdvancedDetail(null)} extraWide><AgencyBrandStudio db={db} user={user} refrescar={refrescar} />
+          {advancedDetail === "creative-library" && <Modal title="Biblioteca creativa y marca" onClose={() => { setAdvancedDetail(null); setBrandStudioIntent(null); }} extraWide><AgencyBrandStudio db={db} user={user} refrescar={refrescar} initialIntent={brandStudioIntent} onIdentityChanged={() => loadBrandIdentity(true)} />
 
           {(db.agencyBriefs || []).length > 0 && <>
             <SectionTitle>Flujo de briefs</SectionTitle>

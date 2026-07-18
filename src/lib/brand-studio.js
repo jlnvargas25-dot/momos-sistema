@@ -5,6 +5,34 @@ const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 export const BRAND_MEDIA_TYPES = Object.freeze(["Foto", "Video", "Audio", "Logo", "Diseño"]);
 export const BRAND_MEDIA_RIGHTS = Object.freeze(["Propio", "Autorizado", "Por verificar", "Restringido"]);
 export const BRAND_STUDIO_OPERATIONS = Object.freeze(["Componer", "Editar", "Adaptar", "Generar imagen", "Generar video"]);
+export const BRAND_MEDIA_COLLECTIONS = Object.freeze(["Marca", "Productos"]);
+export const BRAND_ASSET_ROLES = Object.freeze([
+  "Logo principal", "Logo secundario", "Referencia visual", "Ambiente y estilo de vida",
+  "Empaque y material", "Equipo y cultura", "Textura o fondo", "Guía de marca",
+]);
+
+const BRAND_TAG = "momos:marca";
+const PRODUCT_TAG = "momos:producto";
+
+function normalizedTags(asset) {
+  return list(asset?.tags).map((tag) => clean(tag).toLocaleLowerCase("es"));
+}
+
+export function brandAssetCollection(asset = {}) {
+  const tags = normalizedTags(asset);
+  if (tags.includes(PRODUCT_TAG)) return "Productos";
+  if (tags.includes(BRAND_TAG)) return "Marca";
+  if (asset.mediaType === "Logo") return "Marca";
+  if (clean(asset.productId) || clean(asset.productName) || clean(asset.figure) || clean(asset.flavor)) return "Productos";
+  return "Marca";
+}
+
+export function brandAssetRole(asset = {}) {
+  const shotType = clean(asset.shotType);
+  if (asset.mediaType === "Logo") return shotType || "Logo de marca";
+  if (brandAssetCollection(asset) === "Productos") return shotType || "Producto";
+  return shotType || "Referencia visual";
+}
 
 const FORMAT_SPECS = Object.freeze({
   "Reel 9:16": { aspectRatio: "9:16", width: 1080, height: 1920, duration: "6-30 s" },
@@ -29,7 +57,7 @@ function brandSnapshot(db) {
 
 function assetSearchText(asset) {
   return [asset.id, asset.name, asset.mediaType, asset.source, asset.productName, asset.figure,
-    asset.flavor, asset.shotType, asset.orientation, ...list(asset.tags), asset.notes]
+    asset.flavor, asset.shotType, asset.orientation, asset.collection, asset.roleLabel, ...list(asset.tags), asset.notes]
     .map(clean).join(" ").toLocaleLowerCase("es");
 }
 
@@ -47,13 +75,15 @@ export function brandAssetReadiness(asset = {}, today = new Date().toISOString()
   if (asset.containsPeople && asset.rightsStatus !== "Autorizado") reasons.push("El material con personas necesita autorización explícita de imagen.");
   if (operation !== "Catalogar" && asset.aiUseAllowed !== true) reasons.push("El activo no autoriza edición o generación con IA.");
   if (!asset.contentHash) warnings.push("No tiene huella digital para detectar archivos repetidos.");
-  if (!asset.productId && ["Foto", "Video"].includes(asset.mediaType)) warnings.push("No está relacionado con un producto; se tratará como recurso genérico.");
+  if (brandAssetCollection(asset) === "Productos" && !asset.productId && ["Foto", "Video"].includes(asset.mediaType)) warnings.push("El recurso de producto no está relacionado con un producto del catálogo.");
   return { ready: reasons.length === 0, reasons: [...new Set(reasons)], warnings: [...new Set(warnings)] };
 }
 
 export function buildBrandMediaLibrary(db = {}, today = new Date().toISOString().slice(0, 10)) {
   const assets = list(db.brandMediaAssets).map((asset) => ({
     ...asset,
+    collection: brandAssetCollection(asset),
+    roleLabel: brandAssetRole(asset),
     readiness: brandAssetReadiness(asset, today),
   }));
   const hashes = new Map();
@@ -68,6 +98,8 @@ export function buildBrandMediaLibrary(db = {}, today = new Date().toISOString()
   const active = normalized.filter((asset) => asset.status === "Activo");
   const productCoverage = new Set(active.filter((asset) => asset.productId).map((asset) => asset.productId));
   const orientationCoverage = new Set(active.map((asset) => asset.orientation).filter(Boolean));
+  const brandAssets = active.filter((asset) => asset.collection === "Marca");
+  const productAssets = active.filter((asset) => asset.collection === "Productos");
   return {
     assets: normalized,
     active,
@@ -81,6 +113,10 @@ export function buildBrandMediaLibrary(db = {}, today = new Date().toISOString()
       duplicates: duplicateIds.size,
       productsCovered: productCoverage.size,
       orientationsCovered: orientationCoverage.size,
+      brandAssets: brandAssets.length,
+      productAssets: productAssets.length,
+      primaryLogos: brandAssets.filter((asset) => asset.mediaType === "Logo" && /principal/i.test(asset.roleLabel)).length,
+      brandReferences: brandAssets.filter((asset) => asset.mediaType !== "Logo").length,
     },
   };
 }
@@ -90,6 +126,7 @@ export function searchBrandMediaAssets(library, query = "", filters = {}) {
   const terms = needle.split(/\s+/).filter(Boolean);
   return list(library?.assets).filter((asset) => {
     if (filters.mediaType && asset.mediaType !== filters.mediaType) return false;
+    if (filters.collection && asset.collection !== filters.collection) return false;
     if (filters.status && asset.status !== filters.status) return false;
     if (filters.productId && asset.productId !== filters.productId) return false;
     if (filters.readyForAi === true && (!asset.readiness?.ready || asset.duplicate)) return false;

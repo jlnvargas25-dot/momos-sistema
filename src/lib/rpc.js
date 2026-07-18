@@ -633,6 +633,33 @@ export async function subirActivoMarca(file, metadata = {}) {
   return data;
 }
 
+export async function declararLogoPrincipalMarca(assetId) {
+  const prepared = await supabase.rpc("preparar_kit_identidad_marca", {
+    p_change_note: "Actualizar el logo principal oficial de MOMOS",
+  });
+  if (prepared.error) throw new Error(prepared.error.message);
+  const kitId = prepared.data?.kit_id;
+  if (!kitId) throw new Error("MOMO OPS no pudo preparar la nueva versión de identidad.");
+
+  const linked = await supabase.rpc("vincular_logo_kit_identidad", {
+    p_kit_id: kitId,
+    p_asset_id: assetId,
+    p_role: "principal",
+    p_background: "Cualquiera",
+    p_channels: ["Instagram", "Facebook", "TikTok", "YouTube", "WhatsApp", "Web", "Email", "Punto de venta"],
+    p_min_width_px: 48,
+    p_clear_space_ratio: 0.25,
+  });
+  if (linked.error) throw new Error(linked.error.message);
+
+  const activated = await supabase.rpc("activar_kit_identidad_marca", {
+    p_kit_id: kitId,
+    p_note: "Logo principal verificado y aprobado por el equipo de MOMOS",
+  });
+  if (activated.error) throw new Error(activated.error.message);
+  return activated.data;
+}
+
 export async function archivarActivoMarca(assetId, reason) {
   const { data, error } = await supabase.rpc("archivar_activo_marca", { p_asset_id: assetId, p_reason: reason });
   if (error) throw new Error(error.message);
