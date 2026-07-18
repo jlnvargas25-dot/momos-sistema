@@ -15,8 +15,43 @@ const horaBogota = (ts) => (ts ? new Date(ts).toLocaleTimeString("en-GB", { time
 const tsBogota = (ts) => (ts ? fechaBogota(ts) + " " + horaBogota(ts) : "");
 const hhmm = (t) => (t ? String(t).slice(0, 5) : ""); // time 'HH:MM:SS' → 'HH:MM'
 
+let syncManifestPromise = null;
+
+export async function fetchSyncManifest() {
+  if (!syncManifestPromise) {
+    syncManifestPromise = supabase.rpc("momos_sync_manifest_v1").then((result) => {
+      const missing = result.error && (result.error.code === "PGRST202"
+        || /could not find the function|schema cache/i.test(result.error.message || ""));
+      if (missing) return null;
+      if (result.error) throw new Error(result.error.message);
+      return result.data || null;
+    }).catch((error) => {
+      syncManifestPromise = null;
+      throw error;
+    });
+  }
+  return syncManifestPromise;
+}
+
+async function capabilityResult(name) {
+  const manifest = await fetchSyncManifest();
+  if (manifest?.capabilities && Object.prototype.hasOwnProperty.call(manifest.capabilities, name)) {
+    return { data: manifest.capabilities[name] === true, error: null };
+  }
+  return supabase.rpc(name);
+}
+
+async function optionalSnapshot(name) {
+  const result = await supabase.rpc(name);
+  const missing = result.error && (result.error.code === "PGRST202"
+    || /could not find the function|schema cache/i.test(result.error.message || ""));
+  if (missing) return null;
+  if (result.error) throw new Error(result.error.message);
+  return result.data && typeof result.data === "object" ? result.data : null;
+}
+
 async function multipleRolesCapability() {
-  const result = await supabase.rpc("roles_multiples_disponible");
+  const result = await capabilityResult("roles_multiples_disponible");
   const missing = result.error && (result.error.code === "PGRST202"
     || /could not find the function|schema cache/i.test(result.error.message || ""));
   if (result.error && !missing) throw new Error(result.error.message);
@@ -32,10 +67,55 @@ export async function fetchUserProfile(authUserId) {
   return { ...data, roles: multipleRolesReady && Array.isArray(data.roles) ? data.roles : [data.rol], multipleRolesReady };
 }
 
-export async function fetchCatalogos() {
+export async function fetchEvidenceSignedUrl(storagePath) {
+  const path = String(storagePath || "").trim();
+  if (!path || path.includes("..") || path.startsWith("/") || path.includes("\\")) {
+    throw new Error("La evidencia no tiene una ruta privada valida.");
+  }
+  const { data, error } = await supabase.storage.from("evidencias").createSignedUrl(path, 60 * 15);
+  if (error || !data?.signedUrl) throw new Error(error?.message || "No se pudo abrir la evidencia.");
+  return data.signedUrl;
+}
+
+export async function fetchBrandAssetSignedUrl(storagePath) {
+  const path = String(storagePath || "").trim();
+  if (!path || path.startsWith("/") || /(^|[\\/])\.\.([\\/]|$)/.test(path)) {
+    throw new Error("El archivo creativo no tiene una ruta privada valida.");
+  }
+  const { data, error } = await supabase.storage.from("brand-assets").createSignedUrl(path, 60 * 30);
+  if (error || !data?.signedUrl) throw new Error(error?.message || "No se pudo abrir el archivo creativo.");
+  return data.signedUrl;
+}
+
+export async function fetchOperationalHistoryPage(cursor = null, limit = 50) {
+  const { data, error } = await supabase.rpc("momos_history_page_v1", {
+    p_cursor: cursor || null,
+    p_limit: Math.min(50, Math.max(1, Number(limit) || 50)),
+  });
+  if (error) throw new Error(error.message);
+  return {
+    rows: (data?.rows || []).map((row) => ({
+      id: row.id, fecha: tsBogota(row.fecha), user: nz(row.user), entidad: row.entidad,
+      entidadId: nz(row.entidad_id), accion: row.accion, de: nz(row.de), a: nz(row.a),
+    })),
+    cursor: data?.next_cursor || null,
+  };
+}
+
+export async function fetchCatalogos(options = {}) {
+  const includeAgency = options.includeAgency !== false;
   const multipleRolesReady = await multipleRolesCapability();
   const userColumns = multipleRolesReady ? "id,nombre,email,rol,roles,activo" : "id,nombre,email,rol,activo";
-  const q = await Promise.all([
+  const coreSnapshot = includeAgency ? null : await optionalSnapshot("momos_core_snapshot_v1");
+  const coreKeys = [
+    "products", "combo_components", "inventory_items", "recipes", "users", "toppings", "figuras",
+    "catalog_values", "zonas", "proveedores_domicilio", "brand_library", "app_settings", "subrecetas",
+    "subreceta_ingredientes", "figura_relleno",
+  ];
+  const q = coreSnapshot ? [
+    ...coreKeys.map((key) => ({ data: key === "brand_library" ? (coreSnapshot[key] || null) : (coreSnapshot[key] || []), error: null })),
+    { data: [], error: null }, { data: [], error: null }, { data: [], error: null }, { data: [], error: null },
+  ] : await Promise.all([
     supabase.from("products").select("id,nombre,cat,tipo,especie,precio,precio_rappi,costo,stock,prep,frio,lejano,activo,descr,combo_size,empaque_item_id,colchon_produccion").order("id"),
     supabase.from("combo_components").select("combo_id,component_id").order("component_id"),
     supabase.from("inventory_items").select("id,nombre,cat,unidad,stock,minimo,costo,proveedor,vence,ubicacion,compra,costo_estimado").order("id"),
@@ -51,25 +131,27 @@ export async function fetchCatalogos() {
     supabase.from("subrecetas").select("id,nombre,tipo,sabor,merma_pct,rinde_g,item_id,activo").order("id"),
     supabase.from("subreceta_ingredientes").select("subreceta_id,item_id,cantidad").order("subreceta_id"),
     supabase.from("figura_relleno").select("id,subreceta_id,gramos_por_unidad,activo").order("id"),
-    supabase.from("campaigns").select("id,nombre,canal,objetivo,producto_foco_id,oferta,fecha_inicio,fecha_fin,presupuesto,gasto_real,estado,responsable,notas").order("id"),
-    supabase.from("creatives").select("id,campaign_id,titulo,canal,formato,producto_foco_id,figura,sabor,hook,copy,guion,estado,responsable,fecha_entrega,asset_url,notas,external_id,generacion").order("id"),
-    supabase.from("content_posts").select("id,fecha,hora,canal,campaign_id,creative_id,titulo,copy_final,estado,url_publicacion,external_post_id,notas").order("fecha").order("hora"),
-    supabase.from("metrics_daily").select("id,fecha,fuente,campaign_id,creative_id,post_id,impresiones,alcance,clicks,mensajes_wa,gasto,notas").order("fecha", { ascending: false }).order("id", { ascending: false }),
+    includeAgency ? supabase.from("campaigns").select("id,nombre,canal,objetivo,producto_foco_id,oferta,fecha_inicio,fecha_fin,presupuesto,gasto_real,estado,responsable,notas").order("id", { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
+    includeAgency ? supabase.from("creatives").select("id,campaign_id,titulo,canal,formato,producto_foco_id,figura,sabor,hook,copy,guion,estado,responsable,fecha_entrega,asset_url,notas,external_id,generacion").order("id", { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
+    includeAgency ? supabase.from("content_posts").select("id,fecha,hora,canal,campaign_id,creative_id,titulo,copy_final,estado,url_publicacion,external_post_id,notas").order("fecha", { ascending: false }).order("hora", { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
+    includeAgency ? supabase.from("metrics_daily").select("id,fecha,fuente,campaign_id,creative_id,post_id,impresiones,alcance,clicks,mensajes_wa,gasto,notas").order("fecha", { ascending: false }).order("id", { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
   const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, camps, creativeRows, postRows, metricRows] = q.map((r) => r.data);
 
-  const productReadyResult = await supabase.rpc("productos_servidor_disponible");
+  const productReadyResult = await capabilityResult("productos_servidor_disponible");
   const productProbeMissing = productReadyResult.error &&
     (productReadyResult.error.code === "PGRST202" || /could not find the function|schema cache/i.test(productReadyResult.error.message || ""));
   if (productReadyResult.error && !productProbeMissing) throw new Error(productReadyResult.error.message);
   const productsServerReady = !productProbeMissing && productReadyResult.data === true;
 
-  const lotsResult = await supabase
-    .from("v_inventory_lots")
-    .select("id,item_id,item_name,unidad,received_at,expires_at,initial_quantity,available_quantity,unit_cost,supplier,location,origin,status")
-    .order("item_id").order("expires_at", { ascending: true, nullsFirst: false }).order("received_at");
+  const lotsResult = coreSnapshot
+    ? { data: coreSnapshot.inventory_lots || [], error: null }
+    : await supabase
+      .from("v_inventory_lots")
+      .select("id,item_id,item_name,unidad,received_at,expires_at,initial_quantity,available_quantity,unit_cost,supplier,location,origin,status")
+      .order("item_id").order("expires_at", { ascending: true, nullsFirst: false }).order("received_at");
   const lotsMissing = lotsResult.error && ["42P01", "PGRST205"].includes(lotsResult.error.code);
   if (lotsResult.error && !lotsMissing) throw new Error(lotsResult.error.message);
   const lotRows = lotsMissing ? [] : (lotsResult.data || []);
@@ -217,9 +299,19 @@ export async function fetchCatalogos() {
     mensajesWhatsApp: Number(m.mensajes_wa), gasto: Number(m.gasto), notas: nz(m.notas),
   }));
 
+  const coreCatalogs = {
+    products, productsServerReady, inventory_items, inventory_lots,
+    inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady,
+    settingsCatalogos, brand_library, figuras, subrecetas,
+    subreceta_ingredientes, figura_relleno,
+    syncSource: coreSnapshot ? "snapshot-v1" : "legacy-queries",
+    syncServerTime: coreSnapshot?.server_time || "",
+  };
+  if (!includeAgency) return coreCatalogs;
+
   // Agencia Comercial v1 se hidrata de forma opcional durante el rollout de la
   // migración 16. Antes de aplicarla, Crecimiento conserva su biblioteca local.
-  const agencyProbe = await supabase.rpc("agencia_comercial_disponible");
+  const agencyProbe = await capabilityResult("agencia_comercial_disponible");
   const agencyProbeMissing = agencyProbe.error &&
     (agencyProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(agencyProbe.error.message || ""));
   if (agencyProbe.error && !agencyProbeMissing) throw new Error(agencyProbe.error.message);
@@ -229,13 +321,13 @@ export async function fetchCatalogos() {
   if (agencyServerReady) {
     const agencyResults = await Promise.all([
       supabase.from("agency_settings").select("autonomy_mode,daily_budget_limit,campaign_budget_limit,scale_step_pct,require_creative_approval,block_out_of_stock,contact_only_authorized,paused,updated_by,updated_at").eq("id", true).maybeSingle(),
-      supabase.from("agency_briefs").select("id,decision_key,title,objective,campaign_id,product_id,crm_segment,offer,channel,deliverables,insight,evidence,status,proposed_budget,approved_budget,stock_snapshot,created_by,approved_by,created_at,approved_at,updated_at,notes").order("created_at", { ascending: false }),
-      supabase.from("agency_decisions").select("id,brief_id,campaign_id,creative_id,type,title,rationale,evidence,proposed_action,risk_level,status,author,created_by,approved_by,executed_by,created_at,approved_at,executed_at,result").order("created_at", { ascending: false }),
-      supabase.from("agency_creative_versions").select("id,creative_id,brief_id,version,provider,prompt,negative_prompt,brand_snapshot,asset_url,thumbnail_url,status,feedback,generation_cost,created_by,reviewed_by,created_at,reviewed_at").order("created_at", { ascending: false }),
-      supabase.from("marketing_ideas").select("id,titulo,cat,objetivo,producto_sugerido_id,copy,guion_corto,canal,estado,autor").order("id"),
-      supabase.from("marketing_guiones").select("id,titulo,duracion_seg,producto_foco_id,objetivo,dificultad,escenas,texto_pantalla,audio,autor").order("id"),
+      supabase.from("agency_briefs").select("id,decision_key,title,objective,campaign_id,product_id,crm_segment,offer,channel,deliverables,insight,evidence,status,proposed_budget,approved_budget,stock_snapshot,created_by,approved_by,created_at,approved_at,updated_at,notes").order("created_at", { ascending: false }).limit(100),
+      supabase.from("agency_decisions").select("id,brief_id,campaign_id,creative_id,type,title,rationale,evidence,proposed_action,risk_level,status,author,created_by,approved_by,executed_by,created_at,approved_at,executed_at,result").order("created_at", { ascending: false }).limit(100),
+      supabase.from("agency_creative_versions").select("id,creative_id,brief_id,version,provider,prompt,negative_prompt,brand_snapshot,asset_url,thumbnail_url,status,feedback,generation_cost,created_by,reviewed_by,created_at,reviewed_at").order("created_at", { ascending: false }).limit(100),
+      supabase.from("marketing_ideas").select("id,titulo,cat,objetivo,producto_sugerido_id,copy,guion_corto,canal,estado,autor").order("id", { ascending: false }).limit(100),
+      supabase.from("marketing_guiones").select("id,titulo,duracion_seg,producto_foco_id,objetivo,dificultad,escenas,texto_pantalla,audio,autor").order("id", { ascending: false }).limit(100),
       supabase.from("marketing_mensajes").select("id,tipo,texto").order("id"),
-      supabase.from("marketing_tasks").select("id,tarea,fecha,estado,responsable,origen,recommendation_id").order("fecha", { ascending: false }),
+      supabase.from("marketing_tasks").select("id,tarea,fecha,estado,responsable,origen,recommendation_id").order("fecha", { ascending: false }).limit(100),
     ]);
     const agencyError = agencyResults.find((result) => result.error);
     if (agencyError) throw new Error(agencyError.error.message);
@@ -283,7 +375,7 @@ export async function fetchCatalogos() {
       responsable: nz(row.responsable), origen: row.origen, recommendationId: row.recommendation_id }));
   }
 
-  const orchestratorProbe = await supabase.rpc("orquestador_agencia_disponible");
+  const orchestratorProbe = await capabilityResult("orquestador_agencia_disponible");
   const orchestratorProbeMissing = orchestratorProbe.error &&
     (orchestratorProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(orchestratorProbe.error.message || ""));
   if (orchestratorProbe.error && !orchestratorProbeMissing) throw new Error(orchestratorProbe.error.message);
@@ -315,7 +407,7 @@ export async function fetchCatalogos() {
     });
   }
 
-  const actionCenterProbe = await supabase.rpc("centro_acciones_agencia_disponible");
+  const actionCenterProbe = await capabilityResult("centro_acciones_agencia_disponible");
   const actionCenterProbeMissing = actionCenterProbe.error &&
     (actionCenterProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(actionCenterProbe.error.message || ""));
   if (actionCenterProbe.error && !actionCenterProbeMissing) throw new Error(actionCenterProbe.error.message);
@@ -327,7 +419,7 @@ export async function fetchCatalogos() {
     agencyActionQueue = queueResult.data || null;
   }
 
-  const actionOutcomeProbe = await supabase.rpc("resultados_acciones_agencia_disponibles");
+  const actionOutcomeProbe = await capabilityResult("resultados_acciones_agencia_disponibles");
   const actionOutcomeProbeMissing = actionOutcomeProbe.error &&
     (actionOutcomeProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(actionOutcomeProbe.error.message || ""));
   if (actionOutcomeProbe.error && !actionOutcomeProbeMissing) throw new Error(actionOutcomeProbe.error.message);
@@ -348,7 +440,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const collaborationProbe = await supabase.rpc("mesa_agencia_disponible");
+  const collaborationProbe = await capabilityResult("mesa_agencia_disponible");
   const collaborationProbeMissing = collaborationProbe.error &&
     (collaborationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(collaborationProbe.error.message || ""));
   if (collaborationProbe.error && !collaborationProbeMissing) throw new Error(collaborationProbe.error.message);
@@ -382,7 +474,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const sceneStudioProbe = await supabase.rpc("estudio_escenas_disponible");
+  const sceneStudioProbe = await capabilityResult("estudio_escenas_disponible");
   const sceneStudioProbeMissing = sceneStudioProbe.error &&
     (sceneStudioProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(sceneStudioProbe.error.message || ""));
   if (sceneStudioProbe.error && !sceneStudioProbeMissing) throw new Error(sceneStudioProbe.error.message);
@@ -412,7 +504,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const motionProbe = await supabase.rpc("motion_experience_disponible");
+  const motionProbe = await capabilityResult("motion_experience_disponible");
   const motionProbeMissing = motionProbe.error &&
     (motionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(motionProbe.error.message || ""));
   if (motionProbe.error && !motionProbeMissing) throw new Error(motionProbe.error.message);
@@ -449,7 +541,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const sceneRouterProbe = await supabase.rpc("enrutador_escenas_disponible");
+  const sceneRouterProbe = await capabilityResult("enrutador_escenas_disponible");
   const sceneRouterProbeMissing = sceneRouterProbe.error &&
     (sceneRouterProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(sceneRouterProbe.error.message || ""));
   if (sceneRouterProbe.error && !sceneRouterProbeMissing) throw new Error(sceneRouterProbe.error.message);
@@ -470,7 +562,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const qualityProbe = await supabase.rpc("calidad_postproduccion_disponible");
+  const qualityProbe = await capabilityResult("calidad_postproduccion_disponible");
   const qualityProbeMissing = qualityProbe.error &&
     (qualityProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(qualityProbe.error.message || ""));
   if (qualityProbe.error && !qualityProbeMissing) throw new Error(qualityProbe.error.message);
@@ -504,7 +596,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const exportProbe = await supabase.rpc("postproduccion_exportacion_disponible");
+  const exportProbe = await capabilityResult("postproduccion_exportacion_disponible");
   const exportProbeMissing = exportProbe.error &&
     (exportProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(exportProbe.error.message || ""));
   if (exportProbe.error && !exportProbeMissing) throw new Error(exportProbe.error.message);
@@ -536,7 +628,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const audioProbe = await supabase.rpc("postproduccion_audio_disponible");
+  const audioProbe = await capabilityResult("postproduccion_audio_disponible");
   const audioProbeMissing = audioProbe.error &&
     (audioProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(audioProbe.error.message || ""));
   if (audioProbe.error && !audioProbeMissing) throw new Error(audioProbe.error.message);
@@ -553,7 +645,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const retentionProbe = await supabase.rpc("retencion_guiones_disponible");
+  const retentionProbe = await capabilityResult("retencion_guiones_disponible");
   const retentionProbeMissing = retentionProbe.error &&
     (retentionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(retentionProbe.error.message || ""));
   if (retentionProbe.error && !retentionProbeMissing) throw new Error(retentionProbe.error.message);
@@ -617,7 +709,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const loopLearningProbe = await supabase.rpc("retencion_loops_disponible");
+  const loopLearningProbe = await capabilityResult("retencion_loops_disponible");
   const loopLearningProbeMissing = loopLearningProbe.error &&
     (loopLearningProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(loopLearningProbe.error.message || ""));
   if (loopLearningProbe.error && !loopLearningProbeMissing) throw new Error(loopLearningProbe.error.message);
@@ -649,7 +741,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const metaObservatoryProbe = await supabase.rpc("observatorio_meta_disponible");
+  const metaObservatoryProbe = await capabilityResult("observatorio_meta_disponible");
   const metaObservatoryProbeMissing = metaObservatoryProbe.error &&
     (metaObservatoryProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaObservatoryProbe.error.message || ""));
   if (metaObservatoryProbe.error && !metaObservatoryProbeMissing) throw new Error(metaObservatoryProbe.error.message);
@@ -702,7 +794,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const metaIncrementalityProbe = await supabase.rpc("incrementalidad_meta_disponible");
+  const metaIncrementalityProbe = await capabilityResult("incrementalidad_meta_disponible");
   const metaIncrementalityProbeMissing = metaIncrementalityProbe.error &&
     (metaIncrementalityProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaIncrementalityProbe.error.message || ""));
   if (metaIncrementalityProbe.error && !metaIncrementalityProbeMissing) throw new Error(metaIncrementalityProbe.error.message);
@@ -738,7 +830,7 @@ export async function fetchCatalogos() {
       reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note) }));
   }
 
-  const metaInvestmentProbe = await supabase.rpc("escenarios_inversion_meta_disponible");
+  const metaInvestmentProbe = await capabilityResult("escenarios_inversion_meta_disponible");
   const metaInvestmentProbeMissing = metaInvestmentProbe.error &&
     (metaInvestmentProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaInvestmentProbe.error.message || ""));
   if (metaInvestmentProbe.error && !metaInvestmentProbeMissing) throw new Error(metaInvestmentProbe.error.message);
@@ -768,7 +860,7 @@ export async function fetchCatalogos() {
     });
   }
 
-  const metaAuthorizationProbe = await supabase.rpc("autorizacion_inversion_meta_disponible");
+  const metaAuthorizationProbe = await capabilityResult("autorizacion_inversion_meta_disponible");
   const metaAuthorizationProbeMissing = metaAuthorizationProbe.error &&
     (metaAuthorizationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaAuthorizationProbe.error.message || ""));
   if (metaAuthorizationProbe.error && !metaAuthorizationProbeMissing) throw new Error(metaAuthorizationProbe.error.message);
@@ -801,7 +893,7 @@ export async function fetchCatalogos() {
       errorMessage: nz(row.error_message), createdAt: tsBogota(row.created_at), updatedAt: tsBogota(row.updated_at) }));
   }
 
-  const metaConnectorProbe = await supabase.rpc("meta_conector_dry_run_disponible");
+  const metaConnectorProbe = await capabilityResult("meta_conector_dry_run_disponible");
   const metaConnectorProbeMissing = metaConnectorProbe.error &&
     (metaConnectorProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(metaConnectorProbe.error.message || ""));
   if (metaConnectorProbe.error && !metaConnectorProbeMissing) throw new Error(metaConnectorProbe.error.message);
@@ -821,7 +913,7 @@ export async function fetchCatalogos() {
       errorMessage: nz(row.error_message), updatedAt: tsBogota(row.updated_at) }));
   }
 
-  const distributionProbe = await supabase.rpc("distribucion_comercial_disponible");
+  const distributionProbe = await capabilityResult("distribucion_comercial_disponible");
   const distributionProbeMissing = distributionProbe.error &&
     (distributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(distributionProbe.error.message || ""));
   if (distributionProbe.error && !distributionProbeMissing) throw new Error(distributionProbe.error.message);
@@ -830,7 +922,7 @@ export async function fetchCatalogos() {
   if (distributionServerReady) {
     const distributionResult = await supabase.from("content_distributions")
       .select("*")
-      .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false }).limit(100);
     if (distributionResult.error) throw new Error(distributionResult.error.message);
     content_distributions = (distributionResult.data || []).map((row) => ({
       id: row.id, postId: row.post_id, channel: row.channel, contentMode: row.content_mode, status: row.status, checklist: row.checklist || {}, attempt: Number(row.attempt),
@@ -839,7 +931,7 @@ export async function fetchCatalogos() {
       externalPostId: nz(row.external_post_id), failureReason: nz(row.failure_reason), notes: nz(row.notes), updatedAt: tsBogota(row.updated_at),
     }));
   }
-  const connectorDistributionProbe = await supabase.rpc("distribucion_conectores_disponible");
+  const connectorDistributionProbe = await capabilityResult("distribucion_conectores_disponible");
   const connectorDistributionProbeMissing = connectorDistributionProbe.error &&
     (connectorDistributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(connectorDistributionProbe.error.message || ""));
   if (connectorDistributionProbe.error && !connectorDistributionProbeMissing) throw new Error(connectorDistributionProbe.error.message);
@@ -848,7 +940,7 @@ export async function fetchCatalogos() {
   if (distributionConnectorReady) {
     const connectorJobsResult = await supabase.from("distribution_connector_jobs")
       .select("id,distribution_id,post_id,provider,mode,attempt,idempotency_key,status,authorized_by,authorized_at,scheduled_at,worker_id,dispatched_at,provider_job_id,external_url,actual_cost_cop,error_message,completed_at,updated_at")
-      .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false }).limit(100);
     if (connectorJobsResult.error) throw new Error(connectorJobsResult.error.message);
     distributionConnectorJobs = (connectorJobsResult.data || []).map((row) => ({
       id: row.id, distributionId: row.distribution_id, postId: row.post_id, provider: row.provider, mode: row.mode,
@@ -863,26 +955,26 @@ export async function fetchCatalogos() {
   // Biblioteca Inteligente + Estudio Creativo (migración 20). Durante el
   // rollout la sonda puede no existir: Agencia sigue operativa y muestra la
   // instalación pendiente, sin consultar tablas que aún no fueron creadas.
-  const brandMediaProbe = await supabase.rpc("biblioteca_creativa_disponible");
+  const brandMediaProbe = await capabilityResult("biblioteca_creativa_disponible");
   const brandMediaProbeMissing = brandMediaProbe.error &&
     (brandMediaProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandMediaProbe.error.message || ""));
   if (brandMediaProbe.error && !brandMediaProbeMissing) throw new Error(brandMediaProbe.error.message);
   const brandMediaReady = !brandMediaProbeMissing && brandMediaProbe.data === true;
   let creativeProductionReady = false; let creativeReviewReady = false; let creativeIterationReady = false;
   if (brandMediaReady) {
-    const productionProbe = await supabase.rpc("produccion_creativa_disponible");
+    const productionProbe = await capabilityResult("produccion_creativa_disponible");
     const productionProbeMissing = productionProbe.error &&
       (productionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(productionProbe.error.message || ""));
     if (productionProbe.error && !productionProbeMissing) throw new Error(productionProbe.error.message);
     creativeProductionReady = !productionProbeMissing && productionProbe.data === true;
     if (creativeProductionReady) {
-      const reviewProbe = await supabase.rpc("revision_creativa_disponible");
+      const reviewProbe = await capabilityResult("revision_creativa_disponible");
       const reviewProbeMissing = reviewProbe.error &&
         (reviewProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(reviewProbe.error.message || ""));
       if (reviewProbe.error && !reviewProbeMissing) throw new Error(reviewProbe.error.message);
       creativeReviewReady = !reviewProbeMissing && reviewProbe.data === true;
       if (creativeReviewReady) {
-        const iterationProbe = await supabase.rpc("versiones_creativas_disponibles");
+        const iterationProbe = await capabilityResult("versiones_creativas_disponibles");
         const iterationProbeMissing = iterationProbe.error &&
           (iterationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(iterationProbe.error.message || ""));
         if (iterationProbe.error && !iterationProbeMissing) throw new Error(iterationProbe.error.message);
@@ -896,7 +988,7 @@ export async function fetchCatalogos() {
       supabase.from("brand_media_assets")
         .select("id,name,media_type,source,product_id,figure,flavor,shot_type,orientation,contains_people,rights_status,rights_expires_at,ai_use_allowed,allowed_channels,status,storage_path,content_hash,mime_type,size_bytes,width,height,duration_seconds,tags,notes,original_asset_id,generation_meta,created_by,created_at,archived_by,archived_at")
         .in("status", ["Activo", "Archivado", "Bloqueado"])
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false }).limit(100),
       supabase.from("creative_generation_jobs")
         .select(creativeIterationReady
           ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,output_review_status,output_review_feedback,output_reviewed_by,output_reviewed_at,revision_of_job_id,revision_number,created_by,created_at,updated_at"
@@ -905,17 +997,21 @@ export async function fetchCatalogos() {
           : creativeProductionReady
           ? "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,max_cost_cop,authorized_by,authorized_at,cancelled_by,cancelled_at,cancellation_reason,attempt_count,started_at,completed_at,created_by,created_at,updated_at"
           : "id,creative_id,brief_id,provider,operation,status,input_asset_ids,target_channel,target_format,prompt,negative_prompt,brand_snapshot,output_spec,provider_job_id,output_asset_id,generation_cost,error_message,created_by,created_at,updated_at")
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false }).limit(100),
       supabase.from("brand_media_usages")
         .select("id,asset_id,job_id,creative_version_id,role,start_second,end_second,created_by,created_at")
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false }).limit(300),
     ]);
     const brandMediaError = brandMediaResults.find((result) => result.error);
     if (brandMediaError) throw new Error(brandMediaError.error.message);
     const [assetRows, jobRows, usageRows] = brandMediaResults.map((result) => result.data || []);
+    // Los originales se firman cuando su miniatura entra al viewport. En esta
+    // lectura solo se firman las salidas recientes que pueden requerir revision.
+    const outputIds = new Set(jobRows.map((row) => String(row.output_asset_id || "")).filter(Boolean));
+    const outputPaths = assetRows.filter((row) => outputIds.has(String(row.id))).map((row) => row.storage_path);
     let signedByPath = new Map();
-    if (assetRows.length) {
-      const signed = await supabase.storage.from("brand-assets").createSignedUrls(assetRows.map((row) => row.storage_path), 60 * 60 * 8);
+    if (outputPaths.length) {
+      const signed = await supabase.storage.from("brand-assets").createSignedUrls(outputPaths, 60 * 30);
       if (signed.error) throw new Error(`No se pudieron abrir los originales de marca: ${signed.error.message}`);
       signedByPath = new Map((signed.data || []).filter((item) => item.signedUrl).map((item) => [item.path, item.signedUrl]));
     }
@@ -961,18 +1057,18 @@ export async function fetchCatalogos() {
   let agencyIntegrationsReady = false; let agencyIntegrations = []; let creativeConnectorRuns = [];
   let higgsfieldConnectorReady = false; let klingConnectorReady = false;
   if (creativeProductionReady) {
-    const integrationsProbe = await supabase.rpc("integraciones_agencia_disponibles");
+    const integrationsProbe = await capabilityResult("integraciones_agencia_disponibles");
     const integrationsProbeMissing = integrationsProbe.error &&
       (integrationsProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(integrationsProbe.error.message || ""));
     if (integrationsProbe.error && !integrationsProbeMissing) throw new Error(integrationsProbe.error.message);
     agencyIntegrationsReady = !integrationsProbeMissing && integrationsProbe.data === true;
     if (agencyIntegrationsReady) {
-      const higgsfieldProbe = await supabase.rpc("higgsfield_conector_disponible");
+      const higgsfieldProbe = await capabilityResult("higgsfield_conector_disponible");
       const higgsfieldProbeMissing = higgsfieldProbe.error &&
         (higgsfieldProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(higgsfieldProbe.error.message || ""));
       if (higgsfieldProbe.error && !higgsfieldProbeMissing) throw new Error(higgsfieldProbe.error.message);
       higgsfieldConnectorReady = !higgsfieldProbeMissing && higgsfieldProbe.data === true;
-      const klingProbe = await supabase.rpc("kling_conector_disponible");
+      const klingProbe = await capabilityResult("kling_conector_disponible");
       const klingProbeMissing = klingProbe.error &&
         (klingProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(klingProbe.error.message || ""));
       if (klingProbe.error && !klingProbeMissing) throw new Error(klingProbe.error.message);
@@ -1007,7 +1103,7 @@ export async function fetchCatalogos() {
     }
   }
 
-  const brandGovernanceProbe = await supabase.rpc("gobernanza_marca_disponible");
+  const brandGovernanceProbe = await capabilityResult("gobernanza_marca_disponible");
   const brandGovernanceProbeMissing = brandGovernanceProbe.error &&
     (brandGovernanceProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandGovernanceProbe.error.message || ""));
   if (brandGovernanceProbe.error && !brandGovernanceProbeMissing) throw new Error(brandGovernanceProbe.error.message);
@@ -1035,7 +1131,7 @@ export async function fetchCatalogos() {
     }));
   }
 
-  const growthProbe = await supabase.rpc("motor_crecimiento_multimodo_disponible");
+  const growthProbe = await capabilityResult("motor_crecimiento_multimodo_disponible");
   const growthProbeMissing = growthProbe.error &&
     (growthProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(growthProbe.error.message || ""));
   if (growthProbe.error && !growthProbeMissing) throw new Error(growthProbe.error.message);
@@ -1061,7 +1157,7 @@ export async function fetchCatalogos() {
       selectedAt: tsBogota(row.selected_at), externalExecution: row.external_execution }));
   }
 
-  const creativeFlowProbe = await supabase.rpc("flujo_creativo_e2e_disponible");
+  const creativeFlowProbe = await capabilityResult("flujo_creativo_e2e_disponible");
   const creativeFlowProbeMissing = creativeFlowProbe.error &&
     (creativeFlowProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(creativeFlowProbe.error.message || ""));
   if (creativeFlowProbe.error && !creativeFlowProbeMissing) throw new Error(creativeFlowProbe.error.message);
@@ -1126,23 +1222,32 @@ export async function fetchCatalogos() {
    Vacío es LEGÍTIMO acá (la operación real arranca en 0). */
 
 export async function fetchOperativo() {
-  const q = await Promise.all([
-    supabase.from("orders").select("id,fecha,hora,canal,customer_id,barrio,direccion,zona,dom_cobrado,dom_costo,descuento,benefit_id,pago,comprobante,estado,obs,pagado_en,metricas_cliente_actualizadas,campaign_id,creative_id,origen_detalle").order("fecha", { ascending: false }).order("hora", { ascending: false }),
-    supabase.from("order_items").select("id,order_id,product_id,nombre,sabor,salsa,relleno,figura,cant,precio,costo_unitario,es_caja,parent_item_id,caja_num,es_sub_momo").order("id"),
+  const operationalSnapshot = await optionalSnapshot("momos_operational_snapshot_v1");
+  const operationalKeys = [
+    "orders", "order_items", "order_item_adiciones", "customers", "deliveries", "evidences", "benefits",
+    "claims", "inventory_movements", "inventory_reservations", "production_suggestions", "audit_logs",
+    "users_lookup", "inventory_lookup", "products_lookup", "production_batches", "lote_figuras",
+    "subreceta_producciones", "variantes",
+  ];
+  const q = operationalSnapshot
+    ? operationalKeys.map((key) => ({ data: operationalSnapshot[key] || [], error: null }))
+    : await Promise.all([
+    supabase.from("orders").select("id,fecha,hora,canal,customer_id,barrio,direccion,zona,dom_cobrado,dom_costo,descuento,benefit_id,pago,comprobante,estado,obs,pagado_en,metricas_cliente_actualizadas,campaign_id,creative_id,origen_detalle").order("fecha", { ascending: false }).order("hora", { ascending: false }).limit(100),
+    supabase.from("order_items").select("id,order_id,product_id,nombre,sabor,salsa,relleno,figura,cant,precio,costo_unitario,es_caja,parent_item_id,caja_num,es_sub_momo").order("id", { ascending: false }).limit(500),
     supabase.from("order_item_adiciones").select("order_item_id,nombre,precio,cant,insumo_id,insumo_cant"),
-    supabase.from("customers").select("id,nombre,telefono,instagram,barrio,direccion,canal,primera,ultima,total,pedidos,cumple,favoritos,estado,notas").order("id"),
-    supabase.from("deliveries").select("id,order_id,proveedor,costo_real,cobrado,zona,h_solicitud,h_salida,h_entrega,codigo,estado,obs").order("id"),
-    supabase.from("evidences").select("id,order_id,tipo,storage_path,fecha,user_id").order("fecha"),
-    supabase.from("benefits").select("id,customer_id,beneficio,tipo_beneficio,valor,producto_gratis_id,condicion,minimo,activacion,vence,estado,pedido_uso,obs").order("id"),
-    supabase.from("claims").select("id,order_id,customer_id,fecha,tipo,entregado_en,reclamo_en,descr,resp,decision,solucion,costo,estado,evidencia").order("id"),
-    supabase.from("inventory_movements").select("id,fecha,tipo,item_id,cant,nota").order("fecha", { ascending: false }),
-    supabase.from("inventory_reservations").select("id,order_id,tipo,product_id,item_id,nombre,cantidad,fecha,estado,batch_id,figura").order("id"),
-    supabase.from("production_suggestions").select("id,fecha,product_id,item_id,cantidad,motivo,order_id,estado,area,order_item_id").order("id"),
-    supabase.from("audit_logs").select("id,fecha,user_id,entidad,entidad_id,accion,de,a").order("fecha", { ascending: false }),
+    supabase.from("customers").select("id,nombre,telefono,instagram,barrio,direccion,canal,primera,ultima,total,pedidos,cumple,favoritos,estado,notas").order("ultima", { ascending: false, nullsFirst: false }).limit(250),
+    supabase.from("deliveries").select("id,order_id,proveedor,costo_real,cobrado,zona,h_solicitud,h_salida,h_entrega,codigo,estado,obs").order("id", { ascending: false }).limit(100),
+    supabase.from("evidences").select("id,order_id,tipo,storage_path,fecha,user_id").order("fecha", { ascending: false }).limit(150),
+    supabase.from("benefits").select("id,customer_id,beneficio,tipo_beneficio,valor,producto_gratis_id,condicion,minimo,activacion,vence,estado,pedido_uso,obs").order("id", { ascending: false }).limit(100),
+    supabase.from("claims").select("id,order_id,customer_id,fecha,tipo,entregado_en,reclamo_en,descr,resp,decision,solucion,costo,estado,evidencia").order("id", { ascending: false }).limit(100),
+    supabase.from("inventory_movements").select("id,fecha,tipo,item_id,cant,nota").order("fecha", { ascending: false }).limit(50),
+    supabase.from("inventory_reservations").select("id,order_id,tipo,product_id,item_id,nombre,cantidad,fecha,estado,batch_id,figura").order("id", { ascending: false }).limit(150),
+    supabase.from("production_suggestions").select("id,fecha,product_id,item_id,cantidad,motivo,order_id,estado,area,order_item_id").order("id", { ascending: false }).limit(100),
+    supabase.from("audit_logs").select("id,fecha,user_id,entidad,entidad_id,accion,de,a").order("fecha", { ascending: false }).limit(50),
     supabase.from("users").select("id,rol,nombre"),
     supabase.from("inventory_items").select("id,nombre,unidad"),
     supabase.from("products").select("id,nombre"),
-    supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras").order("id", { ascending: false }),
+    supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras").order("id", { ascending: false }).limit(100),
     supabase.from("lote_figuras").select("batch_id,figura,cant,perfectas,imperfectas,descartadas,consumidas").order("batch_id", { ascending: false }),
     supabase.from("subreceta_producciones").select("id,fecha,subreceta_id,gramos_nominales,gramos_obtenidos,costo_batch,faltantes,resp_user_id,obs,created_at").order("created_at", { ascending: false }).limit(50),
     supabase.from("v_variantes_disponibles").select("product_id,producto,figura,sabor,gramaje_g,disponibles,vencimiento_proximo").order("producto").order("figura").order("sabor"),
@@ -1154,28 +1259,35 @@ export async function fetchOperativo() {
   // Empaque trazable se despliega después del paquete 01-08. Mientras la
   // migración 09 todavía no exista, la lectura opcional queda vacía y no rompe
   // el resto de la operación durante el rollout.
-  const packingResult = await supabase
-    .from("packing_verifications")
-    .select("order_id,user_id,verified_at,line_ids,order_signature,snapshot")
-    .order("verified_at", { ascending: false });
+  const packingResult = operationalSnapshot
+    ? { data: operationalSnapshot.packing_verifications || [], error: null }
+    : await supabase
+      .from("packing_verifications")
+      .select("order_id,user_id,verified_at,line_ids,order_signature,snapshot")
+      .order("verified_at", { ascending: false }).limit(100);
   const packingMissing = packingResult.error && ["42P01", "PGRST205"].includes(packingResult.error.code);
   if (packingResult.error && !packingMissing) throw new Error(packingResult.error.message);
   const packingRows = packingMissing ? [] : (packingResult.data || []);
 
   // Control operativo (migración 14) es opcional durante el rollout. La sonda
   // evita consultar tablas inexistentes y mantiene utilizable la versión 13.
-  const operationalProbe = await supabase.rpc("operacion_pedido_disponible");
+  const operationalProbe = await capabilityResult("operacion_pedido_disponible");
   const operationalProbeMissing = operationalProbe.error
     && (operationalProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(operationalProbe.error.message || ""));
   if (operationalProbe.error && !operationalProbeMissing) throw new Error(operationalProbe.error.message);
   const operationalControlReady = !operationalProbeMissing && operationalProbe.data === true;
   let assignmentRows = []; let progressRows = []; let incidentRows = []; let handoffRows = [];
-  if (operationalControlReady) {
+  if (operationalControlReady && operationalSnapshot) {
+    assignmentRows = operationalSnapshot.order_stage_assignments || [];
+    progressRows = operationalSnapshot.order_line_progress || [];
+    incidentRows = operationalSnapshot.order_incidents || [];
+    handoffRows = operationalSnapshot.order_dispatch_handoffs || [];
+  } else if (operationalControlReady) {
     const operationalResults = await Promise.all([
-      supabase.from("order_stage_assignments").select("id,order_id,stage,user_id,status,claimed_at,released_at,release_reason").order("claimed_at", { ascending: false }),
-      supabase.from("order_line_progress").select("order_item_id,order_id,stage,status,user_id,updated_at,version"),
-      supabase.from("order_incidents").select("id,order_id,order_item_id,area,type,description,status,created_by,created_at,resolved_by,resolved_at,resolution").order("created_at", { ascending: false }),
-      supabase.from("order_dispatch_handoffs").select("order_id,status,packing_user_id,logistics_user_id,offered_at,accepted_at,package_signature,note,version"),
+      supabase.from("order_stage_assignments").select("id,order_id,stage,user_id,status,claimed_at,released_at,release_reason").order("claimed_at", { ascending: false }).limit(150),
+      supabase.from("order_line_progress").select("order_item_id,order_id,stage,status,user_id,updated_at,version").order("updated_at", { ascending: false }).limit(500),
+      supabase.from("order_incidents").select("id,order_id,order_item_id,area,type,description,status,created_by,created_at,resolved_by,resolved_at,resolution").order("created_at", { ascending: false }).limit(100),
+      supabase.from("order_dispatch_handoffs").select("order_id,status,packing_user_id,logistics_user_id,offered_at,accepted_at,package_signature,note,version").order("offered_at", { ascending: false }).limit(100),
     ]);
     const operationalError = operationalResults.find((result) => result.error);
     if (operationalError) throw new Error(operationalError.error.message);
@@ -1184,17 +1296,21 @@ export async function fetchOperativo() {
 
   // CRM v2 (migración 15) también es opcional durante el despliegue. El CRM
   // histórico sigue visible con customers/orders aunque estas tablas aún no existan.
-  const crmProbe = await supabase.rpc("crm_clientes_disponible");
+  const crmProbe = await capabilityResult("crm_clientes_disponible");
   const crmProbeMissing = crmProbe.error
     && (crmProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(crmProbe.error.message || ""));
   if (crmProbe.error && !crmProbeMissing) throw new Error(crmProbe.error.message);
   const crmServerReady = !crmProbeMissing && crmProbe.data === true;
   let crmProfileRows = []; let contactRows = []; let activationRows = [];
-  if (crmServerReady) {
+  if (crmServerReady && operationalSnapshot) {
+    crmProfileRows = operationalSnapshot.customer_crm_profiles || [];
+    contactRows = operationalSnapshot.customer_contacts || [];
+    activationRows = operationalSnapshot.customer_activations || [];
+  } else if (crmServerReady) {
     const crmResults = await Promise.all([
       supabase.from("customer_crm_profiles").select("customer_id,contact_allowed,contact_reason,preferred_channel,acquisition_source,referred_by_customer_id,updated_by,updated_at"),
-      supabase.from("customer_contacts").select("id,customer_id,channel,reason,outcome,notes,follow_up_on,activation_id,order_id,created_by,created_at").order("created_at", { ascending: false }),
-      supabase.from("customer_activations").select("id,customer_id,type,title,message,status,benefit_id,expires_on,converted_order_id,created_by,created_at,updated_at").order("created_at", { ascending: false }),
+      supabase.from("customer_contacts").select("id,customer_id,channel,reason,outcome,notes,follow_up_on,activation_id,order_id,created_by,created_at").order("created_at", { ascending: false }).limit(100),
+      supabase.from("customer_activations").select("id,customer_id,type,title,message,status,benefit_id,expires_on,converted_order_id,created_by,created_at,updated_at").order("created_at", { ascending: false }).limit(100),
     ]);
     const crmError = crmResults.find((result) => result.error);
     if (crmError) throw new Error(crmError.error.message);
@@ -1203,10 +1319,12 @@ export async function fetchOperativo() {
 
   // La cuarentena aparece con la migración 11. Es opcional durante el rollout
   // para que el front siga cargando entre la publicación y la ejecución SQL.
-  const quarantineResult = await supabase
-    .from("v_variantes_cuarentena")
-    .select("product_id,producto,figura,sabor,gramaje_g,disponibles,vencimiento_proximo")
-    .order("producto").order("figura").order("sabor");
+  const quarantineResult = operationalSnapshot
+    ? { data: operationalSnapshot.variantes_cuarentena || [], error: null }
+    : await supabase
+      .from("v_variantes_cuarentena")
+      .select("product_id,producto,figura,sabor,gramaje_g,disponibles,vencimiento_proximo")
+      .order("producto").order("figura").order("sabor");
   const quarantineMissing = quarantineResult.error && ["42P01", "PGRST205"].includes(quarantineResult.error.code);
   if (quarantineResult.error && !quarantineMissing) throw new Error(quarantineResult.error.message);
   const quarantineRows = quarantineMissing ? [] : (quarantineResult.data || []);
@@ -1254,16 +1372,11 @@ export async function fetchOperativo() {
     codigo: nz(d.codigo), estado: d.estado, obs: nz(d.obs),
   }));
 
-  // Evidencias: bucket privado → signed URLs (8 h; se regeneran en cada hidratación)
-  let urlDe = {};
-  const paths = evids.map((e) => e.storage_path).filter(Boolean);
-  if (paths.length) {
-    const { data: firmadas, error: errFirma } = await supabase.storage.from("evidencias").createSignedUrls(paths, 60 * 60 * 8);
-    if (!errFirma && firmadas) firmadas.forEach((f, i) => { if (f.signedUrl) urlDe[paths[i]] = f.signedUrl; });
-  }
+  // Evidencias: solo metadatos durante la sincronización. La URL privada se
+  // firma por 15 minutos cuando una persona abre la evidencia exacta.
   const evidences = evids.map((e) => ({
     id: e.id, orderId: e.order_id, tipo: e.tipo,
-    url: urlDe[e.storage_path] || "",
+    storagePath: nz(e.storage_path), url: "",
     fecha: fechaBogota(e.fecha), hora: horaBogota(e.fecha),
     user: nz(rolDe[e.user_id]), // la maqueta guarda el ROL del que subió
   }));
@@ -1427,5 +1540,5 @@ export async function fetchOperativo() {
     gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations };
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
 }

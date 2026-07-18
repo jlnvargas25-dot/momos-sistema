@@ -1,5 +1,20 @@
 # HANDOFF — MOMOS OPS (léelo al empezar una sesión nueva)
 
+## ✅ Hito 56 — Data Sync y rendimiento (2026-07-17 · aplicado y validado)
+
+- La cadena técnica vigente llega a `20260717_56_data_sync_rendimiento`. H55 y H56 ya están aplicados en Supabase; sus SQL se conservan como historial y **no deben reaplicarse** en la base actual.
+- El frontend usa manifiesto y snapshots acotados, una coordinación Realtime por dominios, historial paginado y carga diferida de evidencias, vistas previas y datos de Agencia.
+- Agencia no se consulta mientras se opera Cocina, Pedidos o Producción. Los cambios recibidos durante una lectura generan una sola lectura posterior y no se pierden.
+- Archivos canónicos: `supabase/data-sync-rendimiento-v1.sql`, `supabase/tests/test-data-sync-rendimiento-v1.sql`, `src/lib/read-model.js` y `src/lib/sync-coordinator.js`.
+- **Validación cerrada:** adversarial H56 PASS, cadena ordenada 01–56 PASS con rollback total, suite local 466/466 PASS y build Vite PASS.
+
+## ✅ Hito 55 — Identidad de marca operable (2026-07-17 · aplicado y validado)
+
+- La identidad oficial usa `agency_brand_kits`; logos y colores se vinculan al kit exacto. `agency_brand_color_tokens` usa `kit_id`, no la implementación paralela basada directamente en `brand_profile_id`.
+- Biblioteca conserva los originales; Identidad declara logos, paleta, tipografías, voz y reglas oficiales para Pauta y Orgánico. Un kit aprobado queda inmutable y sella sus gates creativos.
+- Archivos canónicos: `supabase/identidad-marca-v1.sql`, `supabase/tests/test-identidad-marca-v1.sql`, `src/lib/brand-identity.js` y `src/lib/brand-identity-api.js`.
+- **Validación cerrada:** migración `20260717_55_identidad_marca` aplicada; adversarial específico y aceptación ordenada PASS con rollback total.
+
 ## ✅ Hito 54 — Biblioteca Creativa vía MCP (2026-07-17 · aplicado y validado)
 
 - La cadena técnica vigente ya llegó al **Hito 54**, `20260717_54_mcp_biblioteca_creativa`, aplicado y validado; no debe confundirse con los nombres históricos de producto usados antes en este documento.

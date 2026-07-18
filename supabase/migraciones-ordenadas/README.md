@@ -85,6 +85,28 @@ Aplicar únicamente después de confirmar que `20260717_53_motor_crecimiento_mul
 
 **Estado H54:** migración aplicada; prueba adversarial y aceptación 01–54 PASS con rollback total. SQL parseable, suite local 453/453 y build PASS. Reiniciá una sesión MCP anterior antes de comprobar la búsqueda y referencia de un original real desde Codex.
 
+## Hito 55 · Identidad de marca operable (aplicado y validado)
+
+Aplicado después de `20260717_54_mcp_biblioteca_creativa`:
+
+54. `../identidad-marca-v1.sql` — instala el kit oficial versionado, enlaza logos reales de Biblioteca y usa `agency_brand_color_tokens.kit_id` para la paleta semántica. Los kits aprobados y sus gates quedan sellados.
+55. `../tests/test-identidad-marca-v1.sql` — valida logos, paleta, versionado, inmutabilidad, PII, gates y RBAC; siempre hace rollback.
+56. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–55; siempre hace rollback.
+
+**Estado H55:** migración `20260717_55_identidad_marca` ya aplicada; adversarial específico y aceptación ordenada PASS con rollback total. No debe reemplazarse por la implementación paralela que vinculaba los tokens de color directamente mediante `brand_profile_id`.
+
+## Hito 56 · Data Sync y rendimiento (aplicado y validado)
+
+Aplicado después de `20260717_55_identidad_marca`:
+
+57. `../data-sync-rendimiento-v1.sql` — instala manifiesto y snapshots acotados para catálogos y operación, además de historial paginado por cursor.
+58. `../tests/test-data-sync-rendimiento-v1.sql` — valida sesión, snapshots, paginación, dominios, capacidades, PII y RBAC; siempre hace rollback.
+59. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–56; siempre hace rollback.
+
+**Estado H56:** migración `20260717_56_data_sync_rendimiento` ya aplicada y validada. El frontend usa coordinación Realtime, carga Agencia solamente en sus vistas, pagina el historial y firma evidencias o vistas previas únicamente cuando se solicitan.
+
+Los SQL H55 y H56 se conservan aquí como historial reproducible de la base. No deben volver a ejecutarse en la base actual cuando sus IDs ya aparecen en `public.momos_ops_migrations`.
+
 No ejecutes el worker de postproducción 1.1.0 con trabajos pendientes hasta aplicar el paso de audio: el worker nuevo exige el contrato `audio_binding` y falla cerrado si el servidor aún entrega el contrato H47 antiguo.
 
 Después de cada paso ejecutá:

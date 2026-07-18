@@ -1,0 +1,215 @@
+export const SYNC_DOMAINS = Object.freeze({
+  CATALOGS: "catalogos",
+  OPERATIONS: "operativo",
+  AGENCY: "agencia",
+});
+
+const KNOWN_DOMAINS = new Set(Object.values(SYNC_DOMAINS));
+
+const OPERATIONAL_VIEWS = new Set([
+  "pedidos", "empaque", "inventario terminado", "domicilios",
+  "reclamos", "historial operativo", "clientes", "beneficios", "finanzas",
+]);
+
+const CATALOG_VIEWS = new Set([
+  "productos", "configuracion",
+]);
+
+const MIXED_OPERATIONAL_VIEWS = new Set(["dashboard", "produccion", "inventario", "reportes"]);
+const AGENCY_VIEWS = new Set(["agencia momos", "crecimiento", "marketing", "creativos", "calendario", "resultados"]);
+
+const OPERATIONAL_TABLES = new Set([
+  "orders", "order_items", "order_item_adiciones", "packing_verifications", "evidences", "deliveries",
+  "order_stage_assignments", "order_line_progress", "order_incidents", "order_dispatch_handoffs",
+  "customers", "benefits", "customer_crm_profiles", "customer_contacts", "customer_activations",
+  "claims", "inventory_movements", "inventory_reservations", "production_suggestions",
+  "production_batches", "lote_figuras", "subreceta_producciones", "production_runs", "production_run_items", "audit_logs",
+]);
+
+const AGENCY_TABLES = new Set([
+  "campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks",
+  "content_distributions", "distribution_connector_jobs", "brand_media_assets", "brand_media_usages",
+  "creative_generation_jobs", "creative_connector_runs", "agency_integrations",
+]);
+
+function normalizedKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+export function syncDomainsForView(view) {
+  const key = normalizedKey(view);
+  if (OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.OPERATIONS];
+  if (CATALOG_VIEWS.has(key)) return [SYNC_DOMAINS.CATALOGS];
+  if (MIXED_OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS];
+  if (AGENCY_VIEWS.has(key)) return [SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.OPERATIONS];
+  return [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS];
+}
+
+export function syncDomainForTable(table) {
+  const key = normalizedKey(table);
+  if (OPERATIONAL_TABLES.has(key)) return SYNC_DOMAINS.OPERATIONS;
+  if (AGENCY_TABLES.has(key) || key.startsWith("agency_")) return SYNC_DOMAINS.AGENCY;
+  return SYNC_DOMAINS.CATALOGS;
+}
+
+export function normalizeSyncDomains(domains) {
+  const values = Array.isArray(domains) ? domains : domains ? [domains] : Object.values(SYNC_DOMAINS);
+  return [...new Set(values.filter((domain) => KNOWN_DOMAINS.has(domain)))];
+}
+
+export function shouldSyncRealtimeEvent(lastServerAt, commitTimestamp) {
+  const commitAt = Date.parse(String(commitTimestamp || ""));
+  const snapshotAt = Date.parse(String(lastServerAt || ""));
+  if (!Number.isFinite(commitAt) || !Number.isFinite(snapshotAt)) return true;
+  return snapshotAt < commitAt;
+}
+
+export function shouldQueueRealtimeDomain({ domain, visibleDomains, activeDomains, lastServerAt, commitTimestamp }) {
+  const visible = visibleDomains instanceof Set ? visibleDomains : new Set(normalizeSyncDomains(visibleDomains));
+  if (!visible.has(domain)) return false;
+  const activeSet = activeDomains instanceof Set ? activeDomains : new Set(normalizeSyncDomains(activeDomains));
+  // Un commit que llega durante una lectura siempre deja una lectura posterior.
+  // No se compara por reloj porque el snapshot en vuelo pudo empezar antes.
+  if (activeSet.has(domain)) return true;
+  return shouldSyncRealtimeEvent(lastServerAt, commitTimestamp);
+}
+
+export function createSyncCoordinator({ loaders, apply, onState = () => {}, now = () => Date.now() }) {
+  if (!loaders || typeof apply !== "function") throw new Error("El coordinador necesita loaders y apply.");
+  let pending = new Set();
+  let activeDomains = new Set();
+  let active = null;
+  let epoch = 0;
+  let batchSequence = 0;
+  let disposed = false;
+  const lastSuccessAt = Object.fromEntries(Object.values(SYNC_DOMAINS).map((domain) => [domain, 0]));
+  const lastServerAt = Object.fromEntries(Object.values(SYNC_DOMAINS).map((domain) => [domain, ""]));
+  const counters = { requests: 0, batches: 0, loads: 0, deduplicated: 0, cancelled: 0 };
+  const durationsMs = [];
+
+  function percentile95(values) {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)];
+  }
+
+  function emit(status, extra = {}) {
+    onState({
+      status,
+      pending: [...pending],
+      inFlight: Boolean(active),
+      counters: { ...counters },
+      durationsMs: [...durationsMs],
+      p95Ms: percentile95(durationsMs),
+      ...extra,
+    });
+  }
+
+  async function drain(currentEpoch) {
+    emit("syncing");
+    const failures = [];
+    while (!disposed && currentEpoch === epoch && pending.size) {
+      const domains = [...pending];
+      pending = new Set();
+      activeDomains = new Set(domains);
+      const batchId = ++batchSequence;
+      const startedAt = now();
+      counters.batches += 1;
+      counters.loads += domains.length;
+      try {
+        const settled = await Promise.all(domains.map(async (domain) => {
+          const loader = loaders[domain];
+          if (typeof loader !== "function") return { domain, error: new Error(`No existe loader para ${domain}.`) };
+          try { return { domain, data: await loader() }; }
+          catch (error) { return { domain, error }; }
+        }));
+        if (disposed || currentEpoch !== epoch) {
+          counters.cancelled += 1;
+          emit("cancelled", { batchId, domains });
+          return;
+        }
+        const payload = {};
+        settled.forEach((entry) => {
+          if (entry.error) failures.push(entry);
+          else payload[entry.domain] = entry.data;
+        });
+        const successfulDomains = Object.keys(payload);
+        if (successfulDomains.length) {
+          await apply(payload, { batchId, domains: successfulDomains });
+          const completedAt = now();
+          successfulDomains.forEach((domain) => {
+            lastSuccessAt[domain] = completedAt;
+            if (payload[domain]?.syncServerTime) lastServerAt[domain] = payload[domain].syncServerTime;
+          });
+          durationsMs.push(Math.max(0, completedAt - startedAt));
+          if (durationsMs.length > 50) durationsMs.shift();
+        }
+        emit(failures.length ? "partial" : "synced", {
+          batchId, domains: successfulDomains, durationMs: durationsMs.at(-1) || 0, p95Ms: percentile95(durationsMs),
+        });
+      } finally {
+        // Una excepción al aplicar React no puede dejar el dominio marcado como
+        // activo para siempre: la siguiente solicitud debe poder reintentarlo.
+        activeDomains = new Set();
+      }
+    }
+    if (failures.length) {
+      const error = new Error(failures.map(({ domain, error }) => `${domain}: ${error?.message || error}`).join(" · "));
+      error.failures = failures;
+      throw error;
+    }
+  }
+
+  function request(domains, context = {}) {
+    if (disposed) return Promise.reject(new Error("El coordinador de sincronización está cerrado."));
+    const normalized = normalizeSyncDomains(domains);
+    if (!normalized.length) return Promise.resolve();
+    counters.requests += 1;
+    normalized.forEach((domain) => {
+      if (pending.has(domain)) counters.deduplicated += 1;
+      else if (activeDomains.has(domain)) {
+        // Un evento Realtime puede llegar despues de que el snapshot en vuelo
+        // ya fue tomado. Conservamos una sola lectura posterior; las solicitudes
+        // concurrentes normales siguen deduplicadas.
+        if (context.afterActive) pending.add(domain);
+        else counters.deduplicated += 1;
+      } else pending.add(domain);
+    });
+    if (!active) {
+      const currentEpoch = epoch;
+      active = drain(currentEpoch).finally(() => {
+        active = null;
+        if (!disposed && pending.size) request([...pending], { reason: "trailing" }).catch(() => {});
+        else emit("idle");
+      });
+    } else emit("queued", { reason: context.reason || "unspecified" });
+    return active;
+  }
+
+  function staleDomains(ttlByDomain, at = now()) {
+    return Object.values(SYNC_DOMAINS).filter((domain) => {
+      const ttl = Math.max(0, Number(ttlByDomain?.[domain] ?? 0));
+      return !lastSuccessAt[domain] || at - lastSuccessAt[domain] >= ttl;
+    });
+  }
+
+  function cancel() {
+    epoch += 1;
+    pending.clear();
+    disposed = true;
+    emit("cancelled");
+  }
+
+  function snapshot() {
+    return {
+      pending: [...pending], activeDomains: [...activeDomains], inFlight: Boolean(active),
+      lastSuccessAt: { ...lastSuccessAt }, lastServerAt: { ...lastServerAt }, counters: { ...counters }, durationsMs: [...durationsMs], p95Ms: percentile95(durationsMs),
+    };
+  }
+
+  return { request, staleDomains, cancel, snapshot };
+}

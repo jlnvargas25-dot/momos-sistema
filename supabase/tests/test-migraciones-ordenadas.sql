@@ -31,7 +31,8 @@ begin
     '20260716_47_postproduccion_exportacion','20260716_48_audio_postproduccion',
     '20260716_49_gobernanza_marca','20260716_50_flujo_creativo_e2e',
     '20260717_51_eliminacion_biblioteca','20260717_52_catalogo_figuras_toby',
-    '20260717_53_motor_crecimiento_multimodo','20260717_54_mcp_biblioteca_creativa'
+    '20260717_53_motor_crecimiento_multimodo','20260717_54_mcp_biblioteca_creativa',
+    '20260717_55_identidad_marca','20260717_56_data_sync_rendimiento'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -264,6 +265,18 @@ begin
   assert not has_function_privilege('authenticated','public.momos_get_brand_asset_reference(jsonb)','EXECUTE'), 'referencia privada de Biblioteca expuesta al navegador';
   assert not has_table_privilege('authenticated','public.agency_mcp_asset_claims','SELECT'), 'ledger privado de referencias expuesto al navegador';
   assert not has_table_privilege('service_role','public.agency_mcp_asset_claims','SELECT'), 'runtime MCP puede saltar el contrato con SQL directo';
+  assert public.identidad_marca_disponible(), 'falta Identidad de marca operable';
+  assert to_regprocedure('public.momos_sync_manifest_v1()') is not null, 'falta manifiesto único de Data Sync';
+  assert to_regprocedure('public.momos_core_snapshot_v1()') is not null and to_regprocedure('public.momos_operational_snapshot_v1()') is not null, 'faltan snapshots de Data Sync';
+  assert to_regprocedure('public.momos_history_page_v1(jsonb,integer)') is not null, 'falta historial paginado de Data Sync';
+  assert has_function_privilege('authenticated','public.momos_sync_manifest_v1()','EXECUTE'), 'la app no puede leer el manifiesto de Data Sync';
+  assert has_function_privilege('authenticated','public.momos_core_snapshot_v1()','EXECUTE') and has_function_privilege('authenticated','public.momos_operational_snapshot_v1()','EXECUTE'), 'la app no puede leer snapshots de Data Sync';
+  assert not has_function_privilege('anon','public.momos_sync_manifest_v1()','EXECUTE'), 'el manifiesto de Data Sync quedó público';
+  assert to_regclass('public.agency_brand_kits') is not null and to_regclass('public.agency_brand_kit_assets') is not null, 'faltan kit o logos oficiales de marca';
+  assert has_function_privilege('authenticated','public.obtener_identidad_marca(boolean)','EXECUTE'), 'la UI no puede leer Identidad de marca';
+  assert not has_table_privilege('authenticated','public.agency_brand_kits','UPDATE'), 'Identidad de marca admite reescritura directa';
+  assert not has_table_privilege('authenticated','public.brand_library','UPDATE'), 'la fuente verbal legado sigue editable';
+  assert exists(select 1 from information_schema.columns where table_schema='public' and table_name='agency_brand_gate_bindings' and column_name='brand_kit_id'), 'los gates no sellan el kit oficial';
   assert exists(select 1 from pg_trigger where tgname='creatives_master_lineage_guard' and not tgisinternal), 'creativo sellado admite sustitución';
   assert not has_table_privilege('authenticated','public.agency_decisions','UPDATE'), 'decisiones comerciales conservan escritura directa';
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
@@ -296,5 +309,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-54 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-56 PASS, rollback total' as resultado;
 rollback;

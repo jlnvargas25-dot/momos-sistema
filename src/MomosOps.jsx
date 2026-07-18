@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
-import { fetchCatalogos, fetchOperativo, fetchUserProfile } from "./lib/read-model";
+import { fetchBrandAssetSignedUrl, fetchCatalogos, fetchEvidenceSignedUrl, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile } from "./lib/read-model";
+import { createSyncCoordinator, normalizeSyncDomains, shouldQueueRealtimeDomain, syncDomainForTable, syncDomainsForView, SYNC_DOMAINS } from "./lib/sync-coordinator";
 import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, registrarSnapshotMotorCrecimiento, seleccionarModoCrecimiento, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, archivarActivoMarca, eliminarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
@@ -44,6 +45,8 @@ import { buildMetaConnectorCenter } from "./lib/agency-meta-connector";
 import { buildCreativeFlightCenter, creativeCandidatesForFlight, creativeRelayStep, publicationCandidatesForFlight, publicationDraftForFlight } from "./lib/agency-creative-flight";
 import { FRIENDLY_AGENCY_GOALS, buildFriendlyAgencyGuide } from "./lib/agency-friendly-guide";
 import { buildGrowthMultimodeEngine, growthSnapshotPayload } from "./lib/growth-multimode-engine";
+import { brandIdentitySummary, buildBrandIdentityView } from "./lib/brand-identity";
+import { fetchBrandIdentity } from "./lib/brand-identity-api";
 import { buildCommercialLearning } from "./lib/commercial-learning";
 import { buildCreativePackage } from "./lib/creative-package";
 import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
@@ -1096,9 +1099,9 @@ const storage = {
   },
 };
 
-async function dbLoad() {
+async function dbLoad(storageKey = DB_KEY) {
   try {
-    const r = await storage.get(DB_KEY);
+    const r = await storage.get(storageKey);
     if (r && typeof r.value === "string" && r.value.trim().length > 0) {
       const d = JSON.parse(r.value);
       if (!d || typeof d !== "object" || Array.isArray(d) || typeof d.version !== "number") {
@@ -1129,13 +1132,13 @@ async function dbLoad() {
   }
 }
 
-async function dbPersist(db) {
-  try { await storage.set(DB_KEY, JSON.stringify(db)); return true; }
+async function dbPersist(db, storageKey = DB_KEY) {
+  try { await storage.set(storageKey, JSON.stringify(db)); return true; }
   catch (e) { console.error("No se pudo guardar:", e); return false; }
 }
 
-async function dbReset() {
-  try { await storage.delete(DB_KEY); } catch (e) {}
+async function dbReset(storageKey = DB_KEY) {
+  try { await storage.delete(storageKey); } catch (e) {}
 }
 
 /* ================================================================
@@ -1197,7 +1200,7 @@ function addAudit(db, { user, entidad, entidadId, accion, de = "", a = "" }) {
 
 const itemsOf = (db, orderId) => db.order_items.filter((i) => i.orderId === orderId);
 const evidencesOf = (db, orderId) => db.evidences.filter((e) => e.orderId === orderId);
-const tieneEvidencia = (db, orderId, tipo) => evidencesOf(db, orderId).some((e) => e.tipo === tipo && e.url);
+const tieneEvidencia = (db, orderId, tipo) => evidencesOf(db, orderId).some((e) => e.tipo === tipo && (e.storagePath || e.url));
 // Labels de foto que faltan (con url) para pasar a `estado`; [] = nada pendiente.
 function faltanFotosPaso(db, o, estado) {
   return reqFotosPaso(o, estado)
@@ -1679,7 +1682,7 @@ function setOrderStatus(db, orderId, estado, user, opts = {}) {
     if (o.canal === "Rappi") {
       if (o.pago !== "Rappi (app)") return { ok: false, error: `El pedido ${orderId} es de Rappi: el pago debe ser "Rappi (app)".` };
     } else {
-      const tieneComprobante = evidencesOf(db, orderId).some((e) => e.tipo === "Comprobante de pago" && e.url);
+      const tieneComprobante = evidencesOf(db, orderId).some((e) => e.tipo === "Comprobante de pago" && (e.storagePath || e.url));
       if (!tieneComprobante) return { ok: false, error: `El pedido ${orderId} no puede marcarse "Pagado" sin subir la foto del comprobante de pago. MOMOS no acepta efectivo ni despacha sin pago confirmado.` };
     }
   }
@@ -2110,7 +2113,7 @@ function Modal({ title, onClose, children, wide, extraWide = false, topLayer = f
   );
 }
 
-function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOpenProduction, onOpenPacking }) {
+function GlobalKitchenOrderAlerts({ db, perfil, serverDataReady, onOpenProduction, onOpenPacking }) {
   const operationalRoles = normalizeRoles(perfil);
   const operationalRolesKey = operationalRoles.join("|");
   const canSeeKitchenCommands = hasAnyRole(operationalRoles, ["Administrador", "Cocina"]);
@@ -2126,10 +2129,6 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
   const knownOrderStatesRef = useRef(new Map());
   const alertsReadyRef = useRef(false);
   const delayReminderKeysRef = useRef(new Set());
-  const refreshOrdersRef = useRef(refrescar);
-  const watcherNameRef = useRef(null);
-  refreshOrdersRef.current = refrescar;
-  if (!watcherNameRef.current) watcherNameRef.current = `momoops-global-orders-${voiceCommandKey()}`;
 
   const catalogs = useMemo(() => ({
     customers: db?.customers || [],
@@ -2205,41 +2204,6 @@ function GlobalKitchenOrderAlerts({ db, perfil, refrescar, serverDataReady, onOp
       ? `${lead.orderId} lleva ${lead.elapsedMinutes} min en ${lead.area} · revisalo ahora`
       : `${fresh.length} pedidos demorados · ${urgent.length} urgentes`);
   }, [delayAlertsEnabled, serverDataReady, delayReminders]);
-
-  useEffect(() => {
-    if (!enabled || !serverDataReady) return undefined;
-    let refreshTimer = null;
-    let disposed = false;
-    const requestOrderRefresh = () => {
-      if (disposed || refreshTimer) return;
-      refreshTimer = setTimeout(async () => {
-        refreshTimer = null;
-        if (disposed) return;
-        try { await refreshOrdersRef.current?.(); } catch { /* el sondeo vuelve a intentar */ }
-      }, 650);
-    };
-    const channel = supabase
-      .channel(watcherNameRef.current)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, requestOrderRefresh)
-      .subscribe();
-    const poll = setInterval(async () => {
-      if (disposed || document.visibilityState !== "visible") return;
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id,estado,fecha,hora")
-        .order("fecha", { ascending: false })
-        .order("hora", { ascending: false })
-        .limit(25);
-      if (!error && (data || []).some((order) => order?.id
-        && (!knownOrderStatesRef.current.has(order.id) || knownOrderStatesRef.current.get(order.id) !== (order.estado || "")))) requestOrderRefresh();
-    }, 15000);
-    return () => {
-      disposed = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
-      clearInterval(poll);
-      supabase.removeChannel(channel);
-    };
-  }, [enabled, serverDataReady]);
 
   if (!enabled) return null;
 
@@ -3076,7 +3040,15 @@ function Dashboard({ db, go, user }) {
 /* ================= PEDIDOS ================= */
 
 function HistorialOperativo({ db }) {
-  const entries = useMemo(() => buildOperationalHistory(db), [db.audit_logs]);
+  const [olderAudit, setOlderAudit] = useState([]);
+  const [historyCursor, setHistoryCursor] = useState(db.auditCursor || null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const mergedAudit = useMemo(() => {
+    const byId = new Map([...(db.audit_logs || []), ...olderAudit].map((row) => [row.id, row]));
+    return [...byId.values()];
+  }, [db.audit_logs, olderAudit]);
+  const entries = useMemo(() => buildOperationalHistory({ ...db, audit_logs: mergedAudit }), [db, mergedAudit]);
   const [q, setQ] = useState("");
   const [area, setArea] = useState("");
   const [desde, setDesde] = useState("");
@@ -3103,6 +3075,26 @@ function HistorialOperativo({ db }) {
 
   function exportar() {
     downloadCSV("historial-operativo", ["Fecha", "Área", "Entidad", "ID", "Acción", "Antes", "Después", "Responsable"], filtered.map((entry) => [entry.at, entry.area, entry.entity, entry.entityId, entry.action, entry.from, entry.to, entry.actor]));
+  }
+
+  async function verMasHistorial() {
+    if (visible.length < filtered.length) {
+      setLimit((value) => value + 50);
+      return;
+    }
+    if (!historyCursor || loadingHistory) return;
+    setLoadingHistory(true);
+    setHistoryError("");
+    try {
+      const page = await fetchOperationalHistoryPage(historyCursor, 50);
+      setOlderAudit((rows) => [...rows, ...page.rows]);
+      setHistoryCursor(page.rows.length ? page.cursor : null);
+      setLimit((value) => value + page.rows.length);
+    } catch (error) {
+      setHistoryError(error.message);
+    } finally {
+      setLoadingHistory(false);
+    }
   }
 
   return (
@@ -3159,7 +3151,8 @@ function HistorialOperativo({ db }) {
           {!visible.length && <div className="p-10 text-center"><div className="text-3xl mb-2">⌕</div><div className="font-bold">No hay movimientos con esos filtros</div></div>}
         </div>
       </Card>
-      {visible.length < filtered.length && <div className="mt-3 text-center"><Btn kind="ghost" onClick={() => setLimit((value) => value + 50)}>Ver 50 movimientos más</Btn></div>}
+      {(visible.length < filtered.length || historyCursor) && <div className="mt-3 text-center"><Btn kind="ghost" onClick={verMasHistorial} disabled={loadingHistory}>{loadingHistory ? "Cargando…" : "Ver 50 movimientos más"}</Btn></div>}
+      {historyError && <div className="mt-2 text-center text-xs font-bold" style={{ color: T.red }}>{historyError}</div>}
     </div>
   );
 }
@@ -3883,6 +3876,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
   const [libre, setLibre] = useState(false); // muestra el picker manual para documentales
   const [subiendo, setSubiendo] = useState(false);
   const [foto, setFoto] = useState(null);
+  const [abriendoEvidenciaId, setAbriendoEvidenciaId] = useState(null);
   const [enviando, setEnviando] = useState(false); // guarda local: cambiar() y crearReclamo() son async vía props
   const [verificandoEmpaque, setVerificandoEmpaque] = useState(false);
   const [etiquetaDomicilio, setEtiquetaDomicilio] = useState(false);
@@ -3936,6 +3930,21 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
   }, [o.id, packingVerification?.verifiedAt]);
 
   const packingChecklistComplete = packingLines.length > 0 && packingLines.every((line) => checkedPackingLines.has(line.id));
+
+  async function abrirEvidencia(evidence) {
+    if (!evidence || abriendoEvidenciaId) return;
+    if (evidence.url) { setFoto(evidence); return; }
+    if (!evidence.storagePath) return;
+    setAbriendoEvidenciaId(evidence.id);
+    try {
+      const url = await fetchEvidenceSignedUrl(evidence.storagePath);
+      setFoto({ ...evidence, url });
+    } catch (error) {
+      setAviso({ titulo: "No se pudo abrir la evidencia", texto: error.message });
+    } finally {
+      setAbriendoEvidenciaId(null);
+    }
+  }
 
   async function confirmarChecklistEmpaque() {
     if (!packingChecklistComplete || verificandoEmpaque) return;
@@ -4218,9 +4227,9 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
         <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>EVIDENCIAS ({evs.length})</div>
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
           {evs.map((e) => (
-            <button key={e.id} onClick={() => e.url && setFoto(e)} className="rounded-xl overflow-hidden border text-left" style={{ borderColor: T.border, background: T.vainilla }}>
+            <button key={e.id} onClick={() => abrirEvidencia(e)} disabled={abriendoEvidenciaId === e.id || (!e.url && !e.storagePath)} className="rounded-xl overflow-hidden border text-left" style={{ borderColor: T.border, background: T.vainilla }}>
               {e.url ? <img src={e.url} alt={e.tipo} className="w-full h-20 object-cover" /> :
-                <div className="w-full h-20 flex items-center justify-center text-2xl" aria-hidden="true">📷</div>}
+                <div className="w-full h-20 flex flex-col items-center justify-center text-2xl" aria-hidden="true">📷<span className="text-[9px] font-bold mt-1">{abriendoEvidenciaId === e.id ? "Abriendo…" : "Abrir foto"}</span></div>}
               <div className="px-2 py-1">
                 <div className="text-[10px] font-bold leading-tight">{e.tipo}</div>
                 <div className="text-[9px]" style={{ color: T.choco2 }}>{e.hora} · {e.user}</div>
@@ -4854,8 +4863,6 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
   const orderAlertQueueRef = useRef([]);
   const orderAlertSpeakingRef = useRef(false);
   const flushOrderAlertsRef = useRef(null);
-  const refreshOrdersRef = useRef(refrescar);
-  const orderWatcherNameRef = useRef(null);
   const phraseBiasSupportedRef = useRef(nativeVoicePhraseBiasEnabled());
   const beginRecognitionRef = useRef(null);
   const startVoiceSessionRef = useRef(null);
@@ -4874,8 +4881,6 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
     && navigator.mediaDevices
     && typeof navigator.mediaDevices.getUserMedia === "function",
   );
-  refreshOrdersRef.current = refrescar;
-  if (!orderWatcherNameRef.current) orderWatcherNameRef.current = `momobot-orders-${voiceCommandKey()}`;
   const voiceCatalogs = useMemo(() => ({
     flavors,
     figures,
@@ -4984,41 +4989,6 @@ function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar
     });
     flushOrderAlertsRef.current?.();
   }, [serverDataReady, db.orders, db.order_items, db.customers, db.products]);
-
-  useEffect(() => {
-    if (!serverDataReady) return undefined;
-    let refreshTimer = null;
-    let disposed = false;
-    const requestOrderRefresh = () => {
-      if (disposed || refreshTimer) return;
-      refreshTimer = setTimeout(async () => {
-        refreshTimer = null;
-        if (disposed) return;
-        try { await refreshOrdersRef.current?.(); } catch { /* el sondeo vuelve a intentar */ }
-      }, 650);
-    };
-    const channel = supabase
-      .channel(orderWatcherNameRef.current)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, requestOrderRefresh)
-      .subscribe();
-    const poll = setInterval(async () => {
-      if (disposed || document.visibilityState !== "visible") return;
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id,estado,fecha,hora")
-        .order("fecha", { ascending: false })
-        .order("hora", { ascending: false })
-        .limit(25);
-      if (!error && (data || []).some((order) => order?.id
-        && (!knownOrderStatesRef.current.has(order.id) || knownOrderStatesRef.current.get(order.id) !== (order.estado || "")))) requestOrderRefresh();
-    }, 15000);
-    return () => {
-      disposed = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
-      clearInterval(poll);
-      supabase.removeChannel(channel);
-    };
-  }, [serverDataReady]);
 
   useEffect(() => {
     flushOrderAlertsRef.current?.();
@@ -9789,7 +9759,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
               ["domicilios", ["Id","Pedido","Proveedor","Zona","Cobrado","Costo","Solicitud","Salida","Entrega","Código","Estado"],
                 db.deliveries.map((d) => [d.id, d.orderId, d.proveedor, d.zona, d.cobrado, d.costoReal, d.hSolicitud, d.hSalida, d.hEntrega, d.codigo, d.estado])],
               ["evidencias", ["Id","Pedido","Tipo","Fecha","Hora","Usuario","Tiene foto"],
-                db.evidences.map((e) => [e.id, e.orderId, e.tipo, e.fecha, e.hora, e.user, e.url ? "Sí" : "No"])],
+                db.evidences.map((e) => [e.id, e.orderId, e.tipo, e.fecha, e.hora, e.user, (e.storagePath || e.url) ? "Sí" : "No"])],
               ["reclamos", ["Id","Fecha","Pedido","ClienteId","Tipo","H entrega","H reclamo","Entregado en","Reclamo en","Decisión","Solución","Costo","Estado","Descripción","Evidencia"],
                 db.claims.map((r) => [r.id, r.fecha || "", r.orderId, r.customerId, r.tipo, r.hEntrega, r.hReclamo, r.entregadoEn || "", r.reclamoEn || "", r.decision, r.solucion, r.costo, r.estado, r.desc || "", r.evidencia || ""])],
               ["beneficios", ["Id","ClienteId","Beneficio","Tipo","Valor","Producto gratis","Mínimo","Activación","Vence","Estado","Pedido"],
@@ -10775,6 +10745,52 @@ function CopyBtn({ texto, label = "Copiar texto" }) {
   );
 }
 
+function LazyBrandMediaPreview({ asset, mediaIcon }) {
+  const hostRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+  const [url, setUrl] = useState(asset.url || "");
+
+  useEffect(() => {
+    setUrl(asset.url || "");
+    setVisible(false);
+  }, [asset.id, asset.url]);
+
+  useEffect(() => {
+    const node = hostRef.current;
+    if (!node) return undefined;
+    if (typeof IntersectionObserver === "undefined") { setVisible(true); return undefined; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "160px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [asset.id]);
+
+  useEffect(() => {
+    if (!visible || url || !asset.storagePath) return undefined;
+    let alive = true;
+    fetchBrandAssetSignedUrl(asset.storagePath)
+      .then((signedUrl) => { if (alive) setUrl(signedUrl); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [visible, url, asset.storagePath]);
+
+  const isImage = asset.mediaType === "Foto" || asset.mediaType === "Logo"
+    || (asset.mediaType === "Diseño" && asset.mimeType?.startsWith("image/"));
+  return <div ref={hostRef} className="w-full h-full grid place-items-center overflow-hidden">
+    {url && isImage
+      ? <img src={url} alt={asset.name} className="w-full h-full object-cover" />
+      : url && asset.mediaType === "Video"
+        ? <video src={url} className="w-full h-full object-cover" preload="metadata" muted controls />
+        : url && asset.mediaType === "Audio"
+          ? <div className="px-4 w-full text-center"><div className="text-4xl mb-3">🎧</div><audio src={url} controls preload="none" className="w-full" /></div>
+          : <div className="text-center"><div className="text-4xl">{mediaIcon[asset.mediaType] || "✦"}</div>{visible && asset.storagePath && <div className="text-[9px] mt-2" style={{ color: T.choco2 }}>Cargando vista segura…</div>}</div>}
+  </div>;
+}
+
 // Traduce resultados técnicos a lenguaje simple
 function resultadoSimple(m) {
   if (m.pedidos === 0) return { texto: "Todavía no ha generado pedidos. Dale unos días o prueba otro contenido.", tono: "#96690F", bg: "#FBE8C8" };
@@ -11028,11 +11044,7 @@ function AgencyBrandStudio({ db, user, refrescar }) {
             const deletion = brandAssetDeletionReadiness(asset, db);
             return <article key={asset.id} className="rounded-3xl overflow-hidden border shadow-sm" style={{ borderColor: blocked ? "#E6B7AE" : T.border, background: "#fff" }}>
               <div className="h-40 grid place-items-center overflow-hidden" style={{ background: "linear-gradient(135deg,#F9ECDD,#F3D7DC)" }}>
-                {asset.mediaType === "Foto" || asset.mediaType === "Logo" || asset.mediaType === "Diseño" && asset.mimeType?.startsWith("image/")
-                  ? <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
-                  : asset.mediaType === "Video" ? <video src={asset.url} className="w-full h-full object-cover" preload="metadata" muted controls />
-                    : asset.mediaType === "Audio" ? <div className="px-4 w-full text-center"><div className="text-4xl mb-3">🎧</div><audio src={asset.url} controls className="w-full" /></div>
-                      : <div className="text-4xl">{mediaIcon[asset.mediaType] || "✦"}</div>}
+                <LazyBrandMediaPreview asset={asset} mediaIcon={mediaIcon} />
               </div>
               <div className="p-4">
                 <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{asset.mediaType} · {asset.source}</div><div className="font-extrabold leading-tight">{asset.name}</div></div><Badge label={asset.status} /></div>
@@ -12413,7 +12425,44 @@ function GrowthModeExplorer({ engine, selectedModeId, onSelectMode, onUseMode })
   </section>;
 }
 
-function AgencyFriendlyHome({ guide, selectedGoal, onSelectGoal, onContinue, onAdvanced, growthEngine, selectedGrowthModeId, onSelectGrowthMode, onUseGrowthMode }) {
+function BrandIdentitySummaryCard({ identity, loading, error, onOpen }) {
+  const summary = brandIdentitySummary(identity);
+  const statusBg = identity.ready ? "#DDEBD9" : "#FFF2D8";
+  const statusColor = identity.ready ? "#315B35" : "#7A5410";
+  return <button type="button" onClick={onOpen} className="momo-card-action w-full rounded-2xl border p-4 text-left" style={{ borderColor: identity.ready ? "#BFD8BE" : "#E7C078", background: T.surface }} aria-label="Abrir identidad de marca MOMOS">
+    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="flex items-start gap-3 min-w-0"><span className="w-10 h-10 rounded-2xl grid place-items-center text-lg shrink-0" style={{ background: T.coralSoft }}>✦</span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-[9px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>Identidad de marca</span><span className="rounded-full px-2 py-0.5 text-[8px] font-extrabold" style={{ background: statusBg, color: statusColor }}>{loading ? "Verificando" : error ? "Revisar conexión" : identity.statusLabel}</span></div><div className="display text-lg font-semibold mt-0.5">La guía visual y verbal de MOMOS</div><div className="text-[10px] mt-1 line-clamp-2" style={{ color: T.choco2 }}>{identity.positioning}</div></div></div>
+      <div className="grid grid-cols-3 gap-2 shrink-0">{[[summary.officialLogos,"Logos"],[summary.colors,"Colores"],[summary.rules,"Reglas"]].map(([value,label]) => <div key={label} className="rounded-xl border px-3 py-2 text-center min-w-[68px]" style={{ borderColor: T.border, background: "#FFFDFC" }}><div className="display text-lg font-semibold">{value}</div><div className="text-[7px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
+    </div>
+    <div className="mt-3 pt-2.5 border-t flex items-center justify-between gap-3 text-[9px]" style={{ borderColor: T.border }}><span style={{ color: T.choco2 }}>{error || `${identity.sourceLabel} · Biblioteca guarda archivos; Identidad declara su uso oficial.`}</span><span className="font-extrabold shrink-0" style={{ color: T.coral }}>Ver identidad <span aria-hidden="true">›</span></span></div>
+  </button>;
+}
+
+function BrandIdentityPanel({ identity, loading, error, onRetry, onOpenLibrary }) {
+  const modeCard = (mode, icon, bg, border, color) => {
+    const data = identity.contentModes?.[mode] || {};
+    return <div className="rounded-2xl border p-4" style={{ borderColor: border, background: bg }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color }}>{icon} {mode}</div><div className="display text-lg font-semibold mt-1">{data.purpose || (mode === "Pauta" ? "Conversión rentable y medible" : "Atención, afinidad y comunidad")}</div><div className="text-[10px] leading-relaxed mt-2" style={{ color: T.choco2 }}>{mode === "Pauta" ? "Oferta, audiencia, capacidad, atribución y CTA deben estar verificados." : "Valor antes de pedir; la venta solo se atribuye cuando existe un vínculo exacto."}</div><div className="flex flex-wrap gap-1.5 mt-3">{(data.primary_metrics || []).map((metric) => <span key={metric} className="rounded-full px-2 py-1 text-[8px] font-bold" style={{ background: T.surface, color }}>{metric}</span>)}</div></div>;
+  };
+  return <div className="space-y-4">
+    <div className="rounded-2xl border p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4" style={{ borderColor: identity.ready ? "#BFD8BE" : "#E7C078", background: identity.ready ? "#F7FBF5" : "#FFF9EC" }}>
+      <div><div className="text-[9px] uppercase tracking-[.16em] font-extrabold" style={{ color: identity.ready ? "#315B35" : "#7A5410" }}>{identity.statusLabel}</div><div className="display text-xl font-semibold mt-1">{identity.name} · {identity.sourceLabel}</div><div className="text-xs mt-1 max-w-2xl" style={{ color: T.choco2 }}>{identity.positioning}</div></div>
+      <div className="flex flex-wrap gap-2"><Btn small kind="ghost" onClick={onOpenLibrary}>Abrir Biblioteca</Btn>{(error || !identity.serverAvailable) && <Btn small onClick={onRetry}>{loading ? "Verificando…" : "Verificar H55"}</Btn>}</div>
+    </div>
+
+    {!identity.ready && <div className="rounded-xl px-3.5 py-3 text-[11px] font-semibold" style={{ background: "#FFF2D8", color: "#7A5410" }}>{error || identity.errors[0] || "La identidad verbal y visual base sigue disponible. Elegí un logo principal oficial para activar la protección completa."}</div>}
+
+    <section><div className="flex items-end justify-between gap-3 mb-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Firma oficial</div><h3 className="display text-lg font-semibold m-0">Logos aprobados</h3></div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold" style={{ background: T.vainilla }}>{identity.logos.length} vinculados</span></div>
+      {identity.logos.length ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{identity.logos.map((logo) => <div key={`${logo.role}-${logo.assetId}`} className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border, background: T.surface }}><div className="h-40 grid place-items-center p-5" style={{ background: logo.background === "Oscuro" ? T.choco : T.bg }}>{logo.signedUrl ? <img src={logo.signedUrl} alt={`${identity.name} · ${logo.role}`} className="max-w-full max-h-full object-contain" /> : <div className="text-center"><div className="text-3xl">✦</div><div className="text-[10px] mt-2" style={{ color: T.choco2 }}>Vista disponible al abrir desde el servidor</div></div>}</div><div className="p-3 border-t" style={{ borderColor: T.border }}><div className="font-extrabold text-sm capitalize">{logo.role.replaceAll("_", " ")}</div><div className="text-[9px] mt-1" style={{ color: T.choco2 }}>Mínimo {logo.minWidthPx} px · aire {logo.clearSpaceRatio}× · fondo {logo.background}</div></div></div>)}</div> : <div className="rounded-2xl border border-dashed p-6 text-center" style={{ borderColor: "#E7C078", background: "#FFF9EC" }}><div className="text-2xl">✦</div><div className="font-extrabold text-sm mt-2">Falta declarar el logo principal</div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>Subilo como tipo Logo en Biblioteca y vinculalo a una versión de identidad.</div></div>}
+    </section>
+
+    <section><div className="mb-2"><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Sistema visual</div><h3 className="display text-lg font-semibold m-0">Colores con una función clara</h3></div><div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">{identity.colors.map((color) => <div key={color.token} className="rounded-2xl border overflow-hidden" style={{ borderColor: T.border, background: T.surface }}><div className="h-16" style={{ background: color.colorHex }} /><div className="p-3"><div className="flex items-center justify-between gap-2"><span className="font-extrabold text-[11px]">{color.label}</span><code className="text-[9px]">{color.colorHex}</code></div><div className="text-[9px] mt-1" style={{ color: T.choco2 }}>{color.usage}</div></div></div>)}</div></section>
+
+    <div className="grid lg:grid-cols-2 gap-3"><section className="rounded-2xl border p-4" style={{ borderColor: T.border, background: T.surface }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Tipografía y estilo</div><div className="display text-2xl font-semibold mt-2">{identity.typography.display}</div><div className="text-sm font-bold">{identity.typography.body}</div><div className="flex flex-wrap gap-1.5 mt-3">{identity.visualStyle.map((item) => <span key={item} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{item}</span>)}</div></section><section className="rounded-2xl border p-4" style={{ borderColor: T.border, background: T.surface }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Voz de MOMOS</div><div className="flex flex-wrap gap-1.5 mt-2">{identity.tone.map((item) => <span key={item} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.rosa, color: "#8E4B5A" }}>{item}</span>)}</div><div className="mt-3 space-y-1">{identity.approvedPhrases.slice(0, 3).map((phrase) => <div key={phrase} className="text-xs italic">“{phrase}”</div>)}</div></section></div>
+    <section><div className="mb-2"><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Dos contratos distintos</div><h3 className="display text-lg font-semibold m-0">Pauta y Orgánico comparten marca, no objetivo</h3></div><div className="grid lg:grid-cols-2 gap-3">{modeCard("Pauta", "📣", "#FFF4E0", "#E7C078", "#7B5410")}{modeCard("Orgánico", "🌱", "#E8F1E4", "#BFD8BE", "#315B35")}</div></section>
+  </div>;
+}
+
+function AgencyFriendlyHome({ guide, selectedGoal, onSelectGoal, onContinue, onAdvanced, growthEngine, selectedGrowthModeId, onSelectGrowthMode, onUseGrowthMode, brandIdentity, brandIdentityLoading, brandIdentityError, onOpenIdentity }) {
   const goal = FRIENDLY_AGENCY_GOALS.find((item) => item.id === selectedGoal) || FRIENDLY_AGENCY_GOALS[0];
   const recommendation = guide.recommendations[selectedGoal] || null;
   const activeContent = selectedGoal === "content" ? guide.activeFlight : null;
@@ -12423,6 +12472,7 @@ function AgencyFriendlyHome({ guide, selectedGoal, onSelectGoal, onContinue, onA
         : selectedGoal === "results" ? "Ver análisis completo" : "Empezar contenido";
 
   return <div className="space-y-5">
+    <BrandIdentitySummaryCard identity={brandIdentity} loading={brandIdentityLoading} error={brandIdentityError} onOpen={onOpenIdentity} />
     <section aria-label="Inicio guiado de Agencia MOMOS">
       <div className="mb-3"><h3 className="display text-lg font-semibold m-0">¿Qué quieres hacer hoy?</h3><p className="text-xs mt-0.5 mb-0" style={{ color: T.choco2 }}>Elegí un resultado. MOMOS organiza el trabajo y te pide solo las decisiones necesarias.</p></div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3" role="tablist" aria-label="Objetivos de Agencia MOMOS">
@@ -12490,6 +12540,9 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const [selectedGoal, setSelectedGoal] = useState("content");
   const [advancedArea, setAdvancedArea] = useState("overview");
   const [advancedDetail, setAdvancedDetail] = useState(null);
+  const [brandIdentityDto, setBrandIdentityDto] = useState(null);
+  const [brandIdentityLoading, setBrandIdentityLoading] = useState(true);
+  const [brandIdentityError, setBrandIdentityError] = useState("");
   const [settingsForm, setSettingsForm] = useState(settings);
   const [briefForm, setBriefForm] = useState({ title: "", objective: "Ventas", channel: "Instagram", offer: "", crmSegment: "", proposedBudget: 0, notes: "" });
   const [creativeForm, setCreativeForm] = useState({ creativeId: "", briefId: "", prompt: "", negativePrompt: "", assetUrl: "" });
@@ -12511,11 +12564,29 @@ function AgenciaControl({ db, user, refrescar, go }) {
   const activeGrowthMode = growthEngine.modes.find((mode) => mode.id === selectedGrowthModeId)
     || growthEngine.modes.find((mode) => mode.id === growthEngine.recommendedModeId)
     || growthEngine.modes[0];
+  const brandIdentity = useMemo(() => buildBrandIdentityView(brandIdentityDto, db.agencyBrandProfile), [brandIdentityDto, db.agencyBrandProfile]);
+
+  async function loadBrandIdentity(includeHistory = false) {
+    setBrandIdentityLoading(true); setBrandIdentityError("");
+    try { setBrandIdentityDto(await fetchBrandIdentity({ includeHistory })); }
+    catch (error) { setBrandIdentityError(error.message || "No se pudo verificar la identidad oficial."); }
+    finally { setBrandIdentityLoading(false); }
+  }
+
+  useEffect(() => {
+    let active = true;
+    setBrandIdentityLoading(true); setBrandIdentityError("");
+    fetchBrandIdentity().then((data) => { if (active) setBrandIdentityDto(data); })
+      .catch((error) => { if (active) setBrandIdentityError(error.message || "No se pudo verificar la identidad oficial."); })
+      .finally(() => { if (active) setBrandIdentityLoading(false); });
+    return () => { active = false; };
+  }, [db.agencyBrandProfile?.fingerprint]);
 
   function showAdvanced(target = "") {
     const creativeTargets = new Set(["agency-collaboration-desk", "agency-retention-lab", "agency-scene-studio", "agency-motion-experience", "agency-scene-router", "agency-quality-control", "agency-approval-center"]);
     const protectionTargets = new Set(["agency-action-center"]);
-    setAdvancedArea(creativeTargets.has(target) ? "creative" : protectionTargets.has(target) ? "protection" : "overview");
+    const identityTargets = new Set(["agency-brand-identity"]);
+    setAdvancedArea(identityTargets.has(target) ? "identity" : creativeTargets.has(target) ? "creative" : protectionTargets.has(target) ? "protection" : "overview");
     const targetDetails = {
       "agency-collaboration-desk": "creative-collaboration",
       "agency-retention-lab": "creative-retention",
@@ -12525,6 +12596,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
       "agency-quality-control": "creative-studio",
       "agency-approval-center": "creative-library",
       "agency-action-center": "protection-actions",
+      "agency-brand-identity": "identity-overview",
     };
     setAdvancedDetail(targetDetails[target] || null);
     setAgencyView("advanced");
@@ -12739,6 +12811,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
   ];
   const advancedAreas = [
     { id: "overview", icon: "⌂", label: "Resumen", description: "Qué está avanzando", count: friendlyGuide.activeFlightCount },
+    { id: "identity", icon: "✦", label: "Marca", description: "Cómo debe verse", count: brandIdentity.logos.length },
     { id: "strategy", icon: "✦", label: "Oportunidades", description: "Qué conviene hacer", count: intelligence.recommendations.length },
     { id: "creative", icon: "🎨", label: "Crear", description: "Del guion al archivo", count: intelligence.pipeline.briefs },
     { id: "results", icon: "📊", label: "Resultados", description: "Qué funcionó", count: learning.summary.conclusive },
@@ -12746,6 +12819,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
   ];
   const advancedAreaCopy = {
     overview: ["Estado general", "Revisá el trabajo en curso y abrí únicamente el siguiente paso."],
+    identity: ["Identidad de MOMOS", "Logo, colores, tipografías, voz y estilo que deben respetar todas las piezas."],
     strategy: ["Decidir qué hacer", "MOMO OPS reúne oportunidades y alternativas para que el equipo elija."],
     creative: ["Construir contenido", "Guion, escenas, movimiento y calidad organizados como una sola ruta."],
     results: ["Aprender y mejorar", "Ventas, publicaciones y pauta convertidas en decisiones comprensibles."],
@@ -12756,6 +12830,10 @@ function AgenciaControl({ db, user, refrescar, go }) {
     overview: [
       { id: "overview-pipeline", icon: "🧭", eyebrow: "Estado general", title: "Recorrido de la agencia", description: "Mirá cuántas oportunidades, briefs, aprobaciones y piezas están avanzando.", metric: friendlyGuide.activeFlightCount, metricLabel: "trabajos activos", tone: "blue" },
       { id: "overview-flight", icon: "🎬", eyebrow: "Siguiente paso", title: "Producción creativa en curso", description: "Abrí únicamente el trabajo que necesita continuar ahora.", metric: intelligence.pipeline.creativeReview, metricLabel: "en revisión", tone: "coral" },
+    ],
+    identity: [
+      { id: "identity-overview", icon: "✦", eyebrow: "Fuente oficial", title: "Identidad de marca MOMOS", description: "Logo, paleta, tipografía, voz y reglas de uso reunidas en una versión aprobada.", metric: brandIdentity.logos.length, metricLabel: "logos oficiales", tone: brandIdentity.ready ? "green" : "gold" },
+      { id: "creative-library", icon: "🎨", eyebrow: "Archivos originales", title: "Biblioteca creativa", description: "Fotos, videos, logos y referencias con derechos y trazabilidad.", metric: (db.brandMediaAssets || []).length, metricLabel: "archivos", tone: "coral" },
     ],
     strategy: [
       { id: "strategy-opportunities", icon: "✦", eyebrow: "Radar comercial", title: "Oportunidades para crecer", description: "Recomendaciones explicadas con ventas, clientes, stock y contenido real.", metric: intelligence.recommendations.length, metricLabel: "oportunidades", tone: "coral" },
@@ -12793,10 +12871,10 @@ function AgenciaControl({ db, user, refrescar, go }) {
         <div className="p-4 sm:p-5">
           {!serverReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Vista inteligente activa · aplicá <code>agencia-comercial-v1.sql</code> para guardar briefs, aprobaciones y decisiones en el servidor.</div>}
 
-          {agencyView === "simple" ? <AgencyFriendlyHome guide={friendlyGuide} selectedGoal={selectedGoal} onSelectGoal={setSelectedGoal} onContinue={continueFriendlyGoal} onAdvanced={() => showAdvanced()} growthEngine={growthEngine} selectedGrowthModeId={activeGrowthMode?.id} onSelectGrowthMode={setSelectedGrowthModeId} onUseGrowthMode={useGrowthMode} /> : <>
+          {agencyView === "simple" ? <AgencyFriendlyHome guide={friendlyGuide} selectedGoal={selectedGoal} onSelectGoal={setSelectedGoal} onContinue={continueFriendlyGoal} onAdvanced={() => showAdvanced()} growthEngine={growthEngine} selectedGrowthModeId={activeGrowthMode?.id} onSelectGrowthMode={setSelectedGrowthModeId} onUseGrowthMode={useGrowthMode} brandIdentity={brandIdentity} brandIdentityLoading={brandIdentityLoading} brandIdentityError={brandIdentityError} onOpenIdentity={() => showAdvanced("agency-brand-identity")} /> : <>
           <div className="sticky top-2 z-20 rounded-2xl border p-3 mb-4 shadow-sm" style={{ borderColor: T.border, background: "rgba(255,253,250,.97)", backdropFilter: "blur(10px)" }}>
             <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Centro de Agencia MOMOS</div><div className="text-xs font-bold">Elegí el área que quieres revisar</div></div><Btn small kind="ghost" onClick={() => { setAgencyView("simple"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Inicio sencillo</Btn></div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2" role="tablist" aria-label="Áreas del Centro de Agencia MOMOS">{advancedAreas.map((area) => { const active = area.id === advancedArea; return <button key={area.id} type="button" role="tab" aria-selected={active} onClick={() => setAdvancedArea(area.id)} className="rounded-xl border px-3 py-2.5 text-left transition" style={{ borderColor: active ? "#E9A18F" : T.border, background: active ? "#FFF5F0" : T.surface }}><div className="flex items-center justify-between gap-2"><span className="text-sm">{area.icon}</span><span className="rounded-full min-w-5 h-5 px-1 grid place-items-center text-[8px] font-extrabold" style={{ background: active ? T.coralSoft : T.vainilla }}>{area.count}</span></div><div className="text-[11px] font-extrabold mt-1">{area.label}</div><div className="text-[8px]" style={{ color: T.choco2 }}>{area.description}</div></button>; })}</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2" role="tablist" aria-label="Áreas del Centro de Agencia MOMOS">{advancedAreas.map((area) => { const active = area.id === advancedArea; return <button key={area.id} type="button" role="tab" aria-selected={active} onClick={() => setAdvancedArea(area.id)} className="rounded-xl border px-3 py-2.5 text-left transition" style={{ borderColor: active ? "#E9A18F" : T.border, background: active ? "#FFF5F0" : T.surface }}><div className="flex items-center justify-between gap-2"><span className="text-sm">{area.icon}</span><span className="rounded-full min-w-5 h-5 px-1 grid place-items-center text-[8px] font-extrabold" style={{ background: active ? T.coralSoft : T.vainilla }}>{area.count}</span></div><div className="text-[11px] font-extrabold mt-1">{area.label}</div><div className="text-[8px]" style={{ color: T.choco2 }}>{area.description}</div></button>; })}</div>
           </div>
 
           <div className="rounded-2xl border px-4 py-3 mb-4 flex items-start gap-3" style={{ borderColor: T.border, background: T.vainilla }}><span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: T.surface }}>{activeAdvancedArea.icon}</span><div><div className="display text-base font-semibold">{advancedAreaCopy[advancedArea][0]}</div><div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>{advancedAreaCopy[advancedArea][1]}</div></div></div>
@@ -12822,6 +12900,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
 
           </Modal>}
           {advancedDetail === "overview-flight" && <Modal title="Producción creativa en curso" onClose={() => setAdvancedDetail(null)} extraWide><AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "identity-overview" && <Modal title="Identidad de marca MOMOS" onClose={() => setAdvancedDetail(null)} extraWide><BrandIdentityPanel identity={brandIdentity} loading={brandIdentityLoading} error={brandIdentityError} onRetry={() => loadBrandIdentity(true)} onOpenLibrary={() => { setAdvancedArea("identity"); setAdvancedDetail("creative-library"); }} /></Modal>}
           {advancedDetail === "protection-actions" && <Modal title="Acciones por aprobar" onClose={() => setAdvancedDetail(null)} extraWide><AgencyActionCenter db={db} go={go} refrescar={refrescar} /></Modal>}
           {advancedDetail === "protection-meta" && <Modal title="Permisos de inversión Meta" onClose={() => setAdvancedDetail(null)} extraWide><AgencyMetaAuthorizationPanel db={db} refrescar={refrescar} /></Modal>}
           {advancedDetail === "protection-guards" && <Modal title="Guardas de la agencia" onClose={() => setAdvancedDetail(null)}><div className="rounded-2xl p-4 mb-4 text-sm" style={{ background: T.vainilla }}>Definí límites claros. Ningún cambio publica, contacta ni gasta por sí solo.</div><Btn onClick={() => { setAdvancedDetail(null); setSettingsForm(settings); setSettingsOpen(true); }}>Revisar guardas</Btn></Modal>}
@@ -13879,9 +13958,39 @@ export default function MomosOps() {
   const saveTimer = useRef(null);
   const saveTokenRef = useRef(0);
   const syncRef = useRef("cargando");
+  const realtimeStatusRef = useRef("conectando");
+  const syncCoordinatorRef = useRef(null);
   const dbRef = useRef(null);
+  const sessionOwnerRef = useRef(null);
+  const activeStorageKeyRef = useRef(DB_KEY);
+  const visibleSyncDomainsRef = useRef(new Set(syncDomainsForView(vista)));
+  visibleSyncDomainsRef.current = new Set(syncDomainsForView(vista));
   useEffect(() => { syncRef.current = sync; }, [sync]);
+  useEffect(() => { realtimeStatusRef.current = realtimeStatus; }, [realtimeStatus]);
   useEffect(() => { dbRef.current = db; }, [db]);
+  useEffect(() => {
+    const nextUserId = session?.user?.id || null;
+    const previousUserId = sessionOwnerRef.current;
+    syncCoordinatorRef.current?.cancel();
+    syncCoordinatorRef.current = null;
+    hidratadoRef.current = false;
+    setCatalogosDe(null);
+    activeStorageKeyRef.current = nextUserId ? `${DB_KEY}:${nextUserId}` : DB_KEY;
+    if (previousUserId !== nextUserId && (previousUserId || nextUserId)) {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      saveTokenRef.current += 1;
+      const clean = seedDb();
+      dbRef.current = clean;
+      setDb(clean);
+      setSync(nextUserId ? "cargando" : "local");
+    }
+    sessionOwnerRef.current = nextUserId;
+    return () => {
+      syncCoordinatorRef.current?.cancel();
+      syncCoordinatorRef.current = null;
+    };
+  }, [session?.user?.id]);
   // Durante desarrollo, React Refresh conserva el estado del componente. Si
   // una versión nueva del frontend ya alcanzó la versión de los datos que
   // había activado el bloqueo, recargamos una sola vez para rehidratar sin
@@ -13904,7 +14013,14 @@ export default function MomosOps() {
     if (!session || !perfil || !db) return undefined;
     let timer = null;
     let alive = true;
-    const tables = ["orders", "order_items", "packing_verifications", "evidences", "deliveries"];
+    const pendingDomains = new Set();
+    const tables = [
+      "orders", "order_items", "order_item_adiciones", "packing_verifications", "evidences", "deliveries",
+      "customers", "benefits", "claims", "inventory_movements", "inventory_reservations", "production_suggestions",
+      "production_batches", "lote_figuras", "subreceta_producciones", "audit_logs",
+      "products", "combo_components", "inventory_items", "inventory_lots", "recipes", "users", "toppings", "figuras",
+      "catalog_values", "zonas", "proveedores_domicilio", "brand_library", "app_settings", "subrecetas", "subreceta_ingredientes", "figura_relleno",
+    ];
     if (db.operationalControlReady) tables.push("order_stage_assignments", "order_line_progress", "order_incidents", "order_dispatch_handoffs");
     if (db.crmServerReady) tables.push("customers", "benefits", "customer_crm_profiles", "customer_contacts", "customer_activations");
     if (db.agencyServerReady) tables.push("campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks", "agency_settings", "agency_briefs", "agency_decisions", "agency_creative_versions");
@@ -13929,15 +14045,28 @@ export default function MomosOps() {
     if (db.agencyMetaConnectorReady) tables.push("agency_meta_connector_dry_runs");
     if (db.agencyGrowthReady) tables.push("agency_growth_snapshots", "agency_growth_selections");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
-    const refresh = () => {
+    const refresh = (domain) => {
+      pendingDomains.add(domain);
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         if (!alive || !hidratadoRef.current) return;
-        refetchFocoRef.current?.().catch(() => setRealtimeStatus("reconectando"));
+        const domains = [...pendingDomains];
+        pendingDomains.clear();
+        refetchFocoRef.current?.(domains, { reason: "realtime", afterActive: true }).catch(() => setRealtimeStatus("reconectando"));
       }, 350);
     };
     tables.forEach((table) => {
-      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, refresh);
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+        const domain = syncDomainForTable(table);
+        const snapshot = syncCoordinatorRef.current?.snapshot() || {};
+        if (shouldQueueRealtimeDomain({
+          domain,
+          visibleDomains: visibleSyncDomainsRef.current,
+          activeDomains: new Set(snapshot.activeDomains || []),
+          lastServerAt: snapshot.lastServerAt?.[domain] || "",
+          commitTimestamp: payload?.commit_timestamp,
+        })) refresh(domain);
+      });
     });
     channel.subscribe((status) => {
       if (!alive) return;
@@ -13955,6 +14084,8 @@ export default function MomosOps() {
   const authUserId = session?.user?.id;
   useEffect(() => {
     if (!authUserId) { setPerfil(null); setPerfilError(null); return; }
+    setPerfil(null);
+    setPerfilError(null);
     let vivo = true;
     (async () => {
       try {
@@ -13972,9 +14103,11 @@ export default function MomosOps() {
 
   // ── Fase 3: hidratar desde Supabase (una vez por carga; re-usable tras cada escritura remota) ──
   // Maestros/catálogos + operativo + campaigns/creatives/content_posts/metrics_daily.
-  async function hidratarDesdeServidor() {
-    const [cat, op] = await Promise.all([fetchCatalogos(), fetchOperativo()]);
+  function aplicarDominiosServidor(payload) {
+    const cat = payload?.[SYNC_DOMAINS.AGENCY] || payload?.[SYNC_DOMAINS.CATALOGS];
+    const op = payload?.[SYNC_DOMAINS.OPERATIONS];
     update((d) => {
+      if (cat) {
       d.products = cat.products;
       d.productsServerReady = Boolean(cat.productsServerReady);
       d.inventory_items = cat.inventory_items;
@@ -13987,6 +14120,7 @@ export default function MomosOps() {
       d.subrecetas = cat.subrecetas || []; // Componentes+BOM: bases (mousses/cheesecake/ganache/salsas/crocante)
       d.subreceta_ingredientes = cat.subreceta_ingredientes || []; // receta maestra por 1000 g
       d.figura_relleno = cat.figura_relleno || []; // relleno configurable de figuras (20/15 g editables)
+      if (payload?.[SYNC_DOMAINS.AGENCY]) {
       d.campaigns = cat.campaigns || []; // Marketing Hito 2: campañas server-side (las demo locales se van al hidratar, decisión aprobada)
       d.creatives = cat.creatives || []; // Marketing contenido v1: Creativos server-side
       d.content_calendar = cat.content_calendar || []; // Calendario → content_posts
@@ -14078,10 +14212,32 @@ export default function MomosOps() {
       if (cat.marketingMensajes) d.marketing_mensajes = cat.marketingMensajes;
       if (cat.marketingTasks) d.marketing_tasks = cat.marketingTasks;
       if (cat.brand_library) d.brand_library = cat.brand_library;
+      }
       Object.assign(d.settings, cat.settingsCatalogos);
-      Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
+      }
+      if (op) Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
-    }, { silencioso: true });
+    }, { silencioso: true, persistir: false });
+  }
+
+  function hidratarDesdeServidor(dominios, context = {}) {
+    if (!syncCoordinatorRef.current) {
+      syncCoordinatorRef.current = createSyncCoordinator({
+        loaders: {
+          [SYNC_DOMAINS.CATALOGS]: () => fetchCatalogos({ includeAgency: false }),
+          [SYNC_DOMAINS.OPERATIONS]: fetchOperativo,
+          [SYNC_DOMAINS.AGENCY]: () => fetchCatalogos({ includeAgency: true }),
+        },
+        apply: aplicarDominiosServidor,
+        onState: (state) => {
+          if (import.meta.env.DEV && typeof window !== "undefined") {
+            window.MOMOS_SYNC_METRICS = state;
+            window.__MOMOS_SYNC_METRICS__ = state; // alias temporal para sesiones DEV anteriores
+          }
+        },
+      });
+    }
+    return syncCoordinatorRef.current.request(normalizeSyncDomains(dominios), context);
   }
 
   // Frescura multi-dispositivo: re-leer del servidor al volver a la pestaña/ventana
@@ -14098,24 +14254,34 @@ export default function MomosOps() {
       const ahora = Date.now();
       if (ahora - ultimoRefetchFocoRef.current < 60000) return;
       ultimoRefetchFocoRef.current = ahora;
-      refetchFocoRef.current?.().catch(() => {}); // silencioso: si falla, sigue la caché
+      const visibles = new Set(syncDomainsForView(vista));
+      const vencidos = syncCoordinatorRef.current?.staleDomains({
+        [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
+        [SYNC_DOMAINS.OPERATIONS]: 60_000,
+        [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
+      }).filter((domain) => visibles.has(domain)) || [];
+      if (vencidos.length) refetchFocoRef.current?.(vencidos, { reason: "focus" }).catch(() => {}); // si falla, sigue la caché
+    }
+    function sondeoRespaldo() {
+      if (realtimeStatusRef.current === "activo") return;
+      alVolver();
     }
     window.addEventListener("focus", alVolver);
     document.addEventListener("visibilitychange", alVolver);
-    const poll = setInterval(alVolver, 90000); // mismos guards y throttle que el foco
+    const poll = setInterval(sondeoRespaldo, 90000); // solo respalda una caída de Realtime
     return () => {
       window.removeEventListener("focus", alVolver);
       document.removeEventListener("visibilitychange", alVolver);
       clearInterval(poll);
     };
-  }, []);
+  }, [vista]);
 
   useEffect(() => {
     if (!perfil || !db || hidratadoRef.current) return;
     hidratadoRef.current = true;
     (async () => {
       try {
-        await hidratarDesdeServidor();
+        await hidratarDesdeServidor(syncDomainsForView(vista), { reason: "initial" });
         setCatalogosDe("servidor");
       } catch (e) {
         console.warn("Hidratación: no se pudo leer de Supabase; se usa la caché local.", e);
@@ -14123,6 +14289,17 @@ export default function MomosOps() {
       }
     })();
   }, [perfil, db]);
+
+  useEffect(() => {
+    if (!hidratadoRef.current || !syncCoordinatorRef.current) return;
+    const visibles = new Set(syncDomainsForView(vista));
+    const vencidos = syncCoordinatorRef.current.staleDomains({
+      [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
+      [SYNC_DOMAINS.OPERATIONS]: 30_000,
+      [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
+    }).filter((domain) => visibles.has(domain));
+    if (vencidos.length) hidratarDesdeServidor(vencidos, { reason: "view-enter" }).catch(() => {});
+  }, [vista, catalogosDe]);
 
   // Advertencia al cerrar la página si hay cambios pendientes + intento de guardado síncrono
   useEffect(() => {
@@ -14132,8 +14309,9 @@ export default function MomosOps() {
         try {
           if (dbRef.current) {
             const payload = JSON.stringify(dbRef.current);
-            storage.set(DB_KEY, payload); // best-effort al backend real (no se puede await en unload)
-            if (typeof localStorage !== "undefined") localStorage.setItem(DB_KEY, payload); // espejo
+            const storageKey = activeStorageKeyRef.current;
+            storage.set(storageKey, payload); // best-effort al backend real (no se puede await en unload)
+            if (typeof localStorage !== "undefined") localStorage.setItem(storageKey, payload); // espejo
           }
         } catch (err) { /* sin espacio o storage bloqueado */ }
         e.preventDefault();
@@ -14156,6 +14334,7 @@ export default function MomosOps() {
   useEffect(() => {
     (async () => {
       const guardado = await dbLoad();
+      if (sessionOwnerRef.current) return; // la sesión ya inicializó un estado aislado
       if (guardado && guardado._corruptStorage) {
         // base local dañada: NO cargar semilla ni sobrescribir
         setCorruptStorage(true);
@@ -14178,7 +14357,7 @@ export default function MomosOps() {
         if (guardado._migrated) {
           delete guardado._migrated;
           setDb(guardado);
-          const ok = await dbPersist(guardado);
+          const ok = await dbPersist(guardado, activeStorageKeyRef.current);
           setSync(ok ? "guardado" : "error");
         } else {
           setDb(guardado);
@@ -14187,7 +14366,7 @@ export default function MomosOps() {
       } else {
         const semilla = seedDb();
         setDb(semilla);
-        const ok = await dbPersist(semilla);
+        const ok = await dbPersist(semilla, activeStorageKeyRef.current);
         setSync(ok ? "guardado" : "error");
       }
     })();
@@ -14202,13 +14381,15 @@ export default function MomosOps() {
     dbRef.current = next; // referencia siempre al día (flush al cerrar + updates encadenados en el mismo tick)
     // silencioso: la hidratación de catálogos no marca "guardando" — perderla al cerrar no es pérdida (se re-hidrata)
     if (!(opts && opts.silencioso)) setSync("guardando");
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    const token = ++saveTokenRef.current;
-    saveTimer.current = setTimeout(async () => {
-      const ok = await dbPersist(next);
-      // #13: sólo el guardado MÁS reciente puede tocar el indicador de sync (evita "guardado" falso)
-      if (token === saveTokenRef.current) setSync(ok ? "guardado" : "error");
-    }, 600);
+    if (!(opts && opts.persistir === false)) {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const token = ++saveTokenRef.current;
+      saveTimer.current = setTimeout(async () => {
+        const ok = await dbPersist(next, activeStorageKeyRef.current);
+        // #13: sólo el guardado MÁS reciente puede tocar el indicador de sync (evita "guardado" falso)
+        if (token === saveTokenRef.current) setSync(ok ? "guardado" : "error");
+      }, 600);
+    }
     setDb(next);
     return result;
   }
@@ -14218,13 +14399,13 @@ export default function MomosOps() {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    await dbReset();
+    await dbReset(activeStorageKeyRef.current);
     const semilla = seedDb();
     dbRef.current = semilla;
     setDb(semilla);
     hidratadoRef.current = false; // la semilla pisó los catálogos: re-hidratar del servidor
     setCatalogosDe(null);
-    const ok = await dbPersist(semilla);
+    const ok = await dbPersist(semilla, activeStorageKeyRef.current);
     setSync(ok ? "guardado" : "error");
     setVista("Dashboard");
   }
@@ -14251,7 +14432,7 @@ export default function MomosOps() {
     setDb(next);
     hidratadoRef.current = false; // el backup pisó los catálogos: re-hidratar del servidor
     setCatalogosDe(null);
-    const ok = await dbPersist(next);
+    const ok = await dbPersist(next, activeStorageKeyRef.current);
     setSync(ok ? "guardado" : "error");
     if (!ok) throw new Error("No se pudo guardar el backup restaurado.");
   }
@@ -14393,8 +14574,12 @@ export default function MomosOps() {
   const user = rol;
   const moduloActivo = visibles.find((m) => m.id === activa) || visibles[0];
 
+  function refrescarVistaActual(context = {}) {
+    return hidratarDesdeServidor(syncDomainsForView(activa), { reason: "action", ...context });
+  }
+
   function render() {
-    const p = { db, update, user, refrescar: hidratarDesdeServidor, perfil, serverDataReady: Boolean(catalogosDe) };
+    const p = { db, update, user, refrescar: refrescarVistaActual, perfil, serverDataReady: Boolean(catalogosDe) };
     switch (activa) {
       case "Dashboard": return <Dashboard db={db} go={go} user={user} />;
       case "Pedidos": return <Pedidos {...p} focus={focus} />;
@@ -14430,7 +14615,6 @@ export default function MomosOps() {
       <GlobalKitchenOrderAlerts
         db={db}
         perfil={perfil}
-        refrescar={hidratarDesdeServidor}
         serverDataReady={Boolean(catalogosDe)}
         onOpenProduction={() => go("Producción")}
         onOpenPacking={() => go("Empaque")}

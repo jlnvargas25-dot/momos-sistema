@@ -17,7 +17,20 @@
 
 ## Próximos hitos
 
-> Estado de la cadena técnica al 2026-07-17: los pasos 01–54 están aplicados; H53 corresponde al motor de crecimiento multimodo y H54 a Biblioteca Creativa vía MCP. Las etiquetas históricas H48B y “H49 Mutación Meta” describen frentes de producto y no cambian esta secuencia técnica.
+> Estado de la cadena técnica al 2026-07-17: los pasos 01–56 están aplicados y validados. H54 corresponde a Biblioteca Creativa vía MCP, H55 a Identidad de Marca operable y H56 a Data Sync y rendimiento. Las etiquetas históricas H48B y “H49 Mutación Meta” describen frentes de producto y no cambian esta secuencia técnica.
+
+### Hito 55 — Identidad de marca operable (implementado y validado)
+
+- Kit oficial versionado para logos reales de Biblioteca, colores semánticos, tipografías, dirección visual, voz y reglas separadas para Pauta y Orgánico.
+- `agency_brand_color_tokens` y los activos oficiales se vinculan mediante `kit_id`. La implementación paralela incompatible no forma parte de la cadena canónica.
+- Migración `20260717_55_identidad_marca`, adversarial específico y aceptación ordenada aplicados y validados con rollback total.
+
+### Hito 56 — Data Sync y rendimiento (implementado y validado)
+
+- Manifiesto y snapshots acotados para catálogos y operación, historial paginado y carga diferida de archivos privados.
+- Una sola coordinación Realtime deduplica lecturas, conserva eventos recibidos durante una lectura y carga Agencia únicamente al entrar en sus vistas.
+- Migración `20260717_56_data_sync_rendimiento`, adversarial específico y aceptación ordenada 01–56 aplicados y validados con rollback total.
+- Los SQL H55/H56 se conservan como historial reproducible; no se vuelven a ejecutar cuando sus IDs ya existen en `public.momos_ops_migrations`.
 
 ### Hito 31 — Estudio creativo por escenas (implementado y validado)
 

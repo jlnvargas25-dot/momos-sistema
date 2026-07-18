@@ -38,7 +38,7 @@ export function brandAssetReadiness(asset = {}, today = new Date().toISOString()
   const warnings = [];
   if (!asset.id) reasons.push("El activo no tiene identidad trazable.");
   if (!BRAND_MEDIA_TYPES.includes(asset.mediaType)) reasons.push("El tipo de archivo no está permitido en la biblioteca.");
-  if (!clean(asset.storagePath) && !clean(asset.url)) reasons.push("El activo no tiene un archivo original disponible.");
+  if (asset.fileAvailable !== true && !clean(asset.storagePath) && !clean(asset.url)) reasons.push("El activo no tiene un archivo original disponible.");
   if (asset.status !== "Activo") reasons.push("El activo está archivado o bloqueado.");
   if (!BRAND_MEDIA_RIGHTS.includes(asset.rightsStatus) || ["Por verificar", "Restringido"].includes(asset.rightsStatus)) {
     reasons.push("Los derechos de uso no están aprobados.");
