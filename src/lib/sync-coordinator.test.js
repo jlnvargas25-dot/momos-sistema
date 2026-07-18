@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createSyncCoordinator, shouldQueueRealtimeDomain, shouldSyncRealtimeEvent, syncDomainForTable, syncDomainsForView, SYNC_DOMAINS } from "./sync-coordinator.js";
+import {
+  compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion,
+  shouldQueueAgencySnapshotVersion, shouldQueueRealtimeDomain, shouldSyncRealtimeEvent,
+  syncDomainForTable, syncDomainsForView, SYNC_DOMAINS,
+} from "./sync-coordinator.js";
 
 const deferred = () => {
   let resolve;
@@ -96,6 +100,9 @@ test("Realtime clasifica ordenes, catalogos y Agencia por separado", () => {
   assert.equal(syncDomainForTable("subreceta_producciones"), SYNC_DOMAINS.OPERATIONS);
   assert.equal(syncDomainForTable("inventory_items"), SYNC_DOMAINS.CATALOGS);
   assert.equal(syncDomainForTable("brand_media_assets"), SYNC_DOMAINS.AGENCY);
+  assert.equal(syncDomainForTable("marketing_guiones"), SYNC_DOMAINS.AGENCY);
+  assert.equal(syncDomainForTable("marketing_mensajes"), SYNC_DOMAINS.AGENCY);
+  assert.equal(syncDomainForTable("agency_snapshot_events"), SYNC_DOMAINS.AGENCY);
   assert.equal(syncDomainForTable("agency_storyboards"), SYNC_DOMAINS.AGENCY);
 });
 
@@ -104,6 +111,29 @@ test("Realtime no repite un commit ya incluido en la ultima lectura", () => {
   assert.equal(shouldSyncRealtimeEvent("2026-07-17T15:00:00.001Z", commit), false);
   assert.equal(shouldSyncRealtimeEvent("2026-07-17T14:59:59.999Z", commit), true);
   assert.equal(shouldSyncRealtimeEvent("2026-07-17T15:00:00.001Z", ""), true);
+});
+
+test("Realtime de Agencia deduplica bigint por versión y nunca por reloj", () => {
+  assert.equal(normalizeAgencySnapshotVersion("0009007199254740993"), "9007199254740993");
+  assert.equal(normalizeAgencySnapshotVersion(0), "");
+  assert.equal(compareAgencySnapshotVersions("9007199254740993", "9007199254740992"), 1);
+  assert.equal(compareAgencySnapshotVersions("9007199254740992", "9007199254740993"), -1);
+  assert.equal(compareAgencySnapshotVersions("42", "42"), 0);
+  assert.equal(shouldQueueAgencySnapshotVersion({
+    incomingVersion: "9007199254740993",
+    appliedVersion: "9007199254740992",
+    seenVersion: "9007199254740992",
+  }), true);
+  assert.equal(shouldQueueAgencySnapshotVersion({
+    incomingVersion: "9007199254740993",
+    appliedVersion: "9007199254740992",
+    seenVersion: "9007199254740993",
+  }), false, "la misma versión observada no encola otra lectura");
+  assert.equal(shouldQueueAgencySnapshotVersion({
+    incomingVersion: "9007199254740991",
+    appliedVersion: "9007199254740992",
+    seenVersion: "9007199254740992",
+  }), false);
 });
 
 test("Realtime ignora dominios fuera de vista y conserva commits durante una lectura", () => {

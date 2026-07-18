@@ -2,7 +2,7 @@
 begin;
 
 do $$
-declare v_id text;
+declare v_id text; v_sources text[];
 begin
   foreach v_id in array array[
     '20260714_01_evidencias_seguras','20260714_02_integridad_pedidos',
@@ -37,7 +37,7 @@ begin
     '20260718_59_mundo_animado','20260718_60_eliminacion_logo_oficial',
     '20260718_61_biblioteca_produccion','20260718_62_mcp_aprobacion_humana',
     '20260718_63_mcp_aprobacion_humana_rbac','20260718_64_integridad_snapshot_realtime',
-    '20260718_65_hechos_financieros'
+    '20260718_65_hechos_financieros','20260718_66_agency_snapshot_rendimiento'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -352,6 +352,92 @@ begin
       ~* '''contains_storage_references''(::text)?,[[:space:]]*false',
     'H65 perdió gate Administrador, fuente contable canónica o contrato de privacidad';
   assert has_table_privilege('authenticated','public.v_order_totals','SELECT'), 'H65 no puede leer la fuente contable canónica como invoker';
+  assert to_regprocedure('public.momos_agency_snapshot_v1(text)') is not null,
+    'falta snapshot escalonado de Agencia H66';
+  assert to_regprocedure('public.momos_agency_snapshots_v1()') is not null,
+    'falta bundle atomico de Agencia H66';
+  assert to_regclass('public.agency_snapshot_events') is not null,
+    'falta evento singleton sanitizado H66';
+  assert has_function_privilege('authenticated','public.momos_agency_snapshot_v1(text)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_agency_snapshot_v1(text)','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_agency_snapshot_v1(text)','EXECUTE'),
+    'H66 perdió su frontera exclusiva para sesiones autorizadas de Agencia';
+  assert has_function_privilege('authenticated','public.momos_agency_snapshots_v1()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_agency_snapshots_v1()','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_agency_snapshots_v1()','EXECUTE'),
+    'bundle H66 perdio su frontera exclusiva para sesiones autorizadas de Agencia';
+  assert not has_function_privilege('authenticated','public._momos_agency_scope_payload_v1(text)','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)','EXECUTE')
+    and not has_function_privilege('service_role','public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_agency_snapshot_source_tables_v1()','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_touch_agency_snapshot_event_v1()','EXECUTE'),
+    'H66 expuso un helper interno';
+  assert exists(
+    select 1 from pg_proc p
+    where p.oid='public.momos_agency_snapshot_v1(text)'::regprocedure
+      and p.provolatile='s' and p.prosecdef
+      and array_to_string(p.proconfig,'|') like '%search_path=pg_catalog, public, pg_temp%'
+  ), 'H66 dejó de ser STABLE SECURITY DEFINER con search_path cerrado';
+  assert exists(
+    select 1 from pg_proc p
+    where p.oid='public.momos_agency_snapshots_v1()'::regprocedure
+      and p.provolatile='s' and p.prosecdef
+      and array_to_string(p.proconfig,'|') like '%search_path=pg_catalog, public, pg_temp%'
+  ) and exists(
+    select 1 from pg_proc p
+    where p.oid='public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure
+      and p.provolatile='s' and p.prosecdef
+      and array_to_string(p.proconfig,'|') like '%search_path=pg_catalog, public, pg_temp%'
+  ), 'bundle/helper H66 perdieron STABLE SECURITY DEFINER o search_path cerrado';
+  assert position('current_user_has_any_role' in pg_get_functiondef('public.momos_agency_snapshot_v1(text)'::regprocedure))>0
+    and position('Administrador' in pg_get_functiondef('public.momos_agency_snapshot_v1(text)'::regprocedure))>0
+    and position('Marketing/CRM' in pg_get_functiondef('public.momos_agency_snapshot_v1(text)'::regprocedure))>0
+    and position('source_version' in pg_get_functiondef('public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure))>0
+    and pg_get_functiondef('public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure)
+      ~* '''customer_records_projected''(::text)?,[[:space:]]*false'
+    and pg_get_functiondef('public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure)
+      ~* '''secrets_projected''(::text)?,[[:space:]]*false'
+    and pg_get_functiondef('public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure)
+      ~* '''free_text_unverified''(::text)?,[[:space:]]*true'
+    and pg_get_functiondef('public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure)
+      ~* '''telemetry_allowed''(::text)?,[[:space:]]*false'
+    and position('agency-authorized-v1' in pg_get_functiondef('public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure))>0
+    and pg_get_functiondef('public._momos_agency_snapshot_envelope_v1(text,bigint,timestamp with time zone)'::regprocedure)
+      ~* '''external_execution''(::text)?,[[:space:]]*false'
+    and position('current_user_has_any_role' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('Administrador' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('Marketing/CRM' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('source_version' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('jsonb_build_array' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('''overview''' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('''workflow''' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('''production''' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0
+    and position('''measurement''' in pg_get_functiondef('public.momos_agency_snapshots_v1()'::regprocedure))>0,
+    'H66 perdió roles, privacidad, autoridad o alguno de sus cuatro scopes';
+  assert position('agency_snapshot_ready' in pg_get_functiondef('public._momos_agency_scope_payload_v1(text)'::regprocedure))>0
+    and position('agency_brand_identity' in pg_get_functiondef('public._momos_agency_scope_payload_v1(text)'::regprocedure))>0,
+    'H66 overview no declara readiness o Identidad segura';
+  assert exists(
+    select 1 from pg_class c
+    where c.oid='public.agency_snapshot_events'::regclass and c.relrowsecurity
+  ) and has_table_privilege('authenticated','public.agency_snapshot_events','SELECT')
+    and not has_table_privilege('authenticated','public.agency_snapshot_events','UPDATE')
+    and not has_table_privilege('anon','public.agency_snapshot_events','SELECT')
+    and not has_table_privilege('service_role','public.agency_snapshot_events','SELECT'),
+    'H66 perdió RLS o ACL cerrados del singleton';
+  v_sources:=public._momos_agency_snapshot_source_tables_v1();
+  assert cardinality(v_sources)=66
+    and array['agency_brand_kits','agency_brand_color_tokens','agency_brand_kit_assets']::text[] <@ v_sources
+    and not exists(
+      select 1 from unnest(v_sources) s(table_name)
+      where to_regclass(format('public.%I',s.table_name)) is null
+        or not exists(
+          select 1 from pg_trigger t
+          where t.tgrelid=to_regclass(format('public.%I',s.table_name))
+            and t.tgname='momos_agency_snapshot_event_v1'
+            and not t.tgisinternal and (t.tgtype::integer & 1)=0
+        )
+    ), 'H66 perdió fuentes o triggers por sentencia del singleton';
   assert to_regclass('public.agency_brand_kits') is not null and to_regclass('public.agency_brand_kit_assets') is not null, 'faltan kit o logos oficiales de marca';
   assert has_function_privilege('authenticated','public.obtener_identidad_marca(boolean)','EXECUTE'), 'la UI no puede leer Identidad de marca';
   assert not has_table_privilege('authenticated','public.agency_brand_kits','UPDATE'), 'Identidad de marca admite reescritura directa';
@@ -362,15 +448,23 @@ begin
   assert not has_table_privilege('authenticated','public.customer_contacts','INSERT'), 'contactos CRM conservan escritura directa';
   assert not has_table_privilege('authenticated','public.order_line_progress','UPDATE'), 'progreso conserva escritura directa';
   if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert not (select puballtables from pg_publication where pubname='supabase_realtime'), 'Realtime FOR ALL TABLES expone fuentes crudas';
     assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='orders'), 'orders no publica cambios en tiempo real';
     assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='order_line_progress'), 'progreso no publica cambios en tiempo real';
     assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='production_batches'), 'lotes de producción no publican cambios en tiempo real';
     assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='inventory_movements'), 'movimientos de inventario no publican cambios en tiempo real';
     assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='deliveries'), 'domicilios no publican cambios en tiempo real';
-    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='brand_asset_production_profiles'), 'perfiles de produccion creativa no publican cambios en tiempo real';
-    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='brand_production_packs'), 'paquetes de produccion creativa no publican cambios en tiempo real';
-    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='brand_production_pack_assets'), 'fuentes de paquetes creativos no publican cambios en tiempo real';
-    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='agency_mcp_human_approvals'), 'aprobaciones humanas MCP no publican cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='agency_snapshot_events'), 'evento sanitizado H66 no publica cambios en tiempo real';
+    assert not exists(
+      select 1 from pg_publication_tables p
+      join unnest(v_sources) s(table_name) on s.table_name=p.tablename
+      where p.pubname='supabase_realtime' and p.schemaname='public'
+    ), 'Realtime conserva fuentes H66 crudas';
+    assert not exists(
+      select 1 from pg_publication_tables
+      where pubname='supabase_realtime' and schemaname='public'
+        and tablename in ('brand_media_assets','brand_asset_production_profiles','brand_production_packs','brand_production_pack_assets')
+    ), 'Realtime conserva tablas de marca crudas';
   end if;
   assert not has_table_privilege('authenticated','public.products','UPDATE'), 'products conserva escritura directa';
   assert not has_table_privilege('authenticated','public.recipes','INSERT'), 'recipes conserva escritura directa';
@@ -396,5 +490,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-65 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-66 PASS, rollback total' as resultado;
 rollback;

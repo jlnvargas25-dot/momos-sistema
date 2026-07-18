@@ -59,7 +59,8 @@ function sanitizeSyncSource(value) {
 
 function sanitizeView(value) {
   const view = normalizedToken(value);
-  return KNOWN_VIEWS.has(view) ? view : "unknown";
+  const canonicalView = view === "crecimiento" ? "agencia-momos" : view;
+  return KNOWN_VIEWS.has(canonicalView) ? canonicalView : "unknown";
 }
 
 export function nearestRankPercentile(values, percentile) {
@@ -296,7 +297,7 @@ function resourceDomain(resource) {
   const key = normalizedToken(resource).replaceAll("-", "_");
   if (FINANCE_RESOURCES.has(key) || key.startsWith("finance_") || key.startsWith("financial_")) return "finanzas";
   if (OPERATIONAL_RESOURCES.has(key) || key.startsWith("momos_operational_") || key.startsWith("operational_")) return "operativo";
-  if (key.startsWith("agency_") || key.startsWith("brand_") || key.startsWith("creative_") || key.startsWith("content_")) return "agencia";
+  if (key === "obtener_identidad_marca" || key.startsWith("momos_agency_") || key.startsWith("agency_") || key.startsWith("brand_") || key.startsWith("creative_") || key.startsWith("content_")) return "agencia";
   return "catalogos";
 }
 

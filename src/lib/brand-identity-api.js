@@ -1,13 +1,16 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
 
 const isMissingRpc = (error) => error && (error.code === "PGRST202" || /could not find the function|schema cache/i.test(error.message || ""));
 
-export async function fetchBrandIdentity({ includeHistory = false } = {}) {
+export async function fetchBrandIdentity({ includeHistory = false, signAssets = false } = {}) {
   const result = await supabase.rpc("obtener_identidad_marca", { p_include_history: includeHistory });
   if (isMissingRpc(result.error)) return null;
   if (result.error) throw new Error(result.error.message);
   const dto = result.data || {};
   const assets = Array.isArray(dto.assets) ? dto.assets : [];
+  // La portada de Agencia solo necesita metadatos. Las rutas y URLs temporales
+  // se resuelven únicamente cuando la persona abre Identidad de marca.
+  if (!signAssets) return dto;
   const ids = [...new Set(assets.map((item) => Number(item.asset?.id)).filter(Number.isFinite))];
   if (!ids.length) return dto;
 

@@ -84,6 +84,39 @@ El modo `--enforce` se activará en CI cuando cada fase alcance su presupuesto; 
 - El Centro de asistentes y el cálculo financiero se cargan fuera del camino inicial. El JavaScript principal bajó de ~468,57 KB a ~446,94 KB gzip; Momobot (~16,95 KB), Centro de asistentes (~5,36 KB) y Finanzas (~6,87 KB) quedaron en chunks diferidos.
 - H64 y H65 pasaron sus pruebas adversariales individuales en Supabase. La cadena ordenada fue ampliada a 01–65 y es el último gate remoto del hito.
 
+## H66 · Snapshot y carga diferida por panel
+
+H66 cierra el cuello principal medido al abrir Agencia sin volver a hidratar los catálogos operativos:
+
+- Agencia usa cuatro snapshots cerrados: resumen, flujo creativo, producción y medición. Con H66 instalado los recibe dentro de una sola fotografía transaccional y ejecuta exactamente un RPC; si la migración aún no existe hace un solo probe y entrega el control al fallback compatible.
+- Un payload exclusivo de Agencia solo actualiza Agencia. Nunca reemplaza productos, inventario, usuarios, recetas ni configuración operativa.
+- Realtime se reconstruye al cambiar de panel y escucha únicamente los dominios visibles. Agencia no publica sus 66 fuentes crudas: todas invalidan un único `agency_snapshot_events` sanitizado que solo comunica versión y hora de cambio, sin filas, actores, notas, rutas ni secretos. Al quedar suscrito, el cliente compara una vez la versión del singleton para cerrar la ventana entre la fotografía inicial y la activación del canal.
+- El contrato de privacidad de Agencia es explícito y verificable: no proyecta registros de clientes ni secretos, reconoce que parte del texto libre no está verificado, prohíbe usar el payload como telemetría y declara las referencias de Storage solo en el alcance de producción.
+- Agencia, Pedidos/Empaque, Producción, Inventarios y Finanzas son entradas dinámicas. Finanzas lleva su motor en el mismo grafo estático del panel para evitar una segunda espera en cascada.
+- El resumen operativo de Agencia conserva Operación como contexto, pero ya no recarga catálogos core. Identidad oficial viaja como metadato seguro dentro del mismo bundle, por lo que el máximo teórico de apertura normal es tres lecturas: el bundle atómico de Agencia, una fotografía operativa y la comprobación de versión del relevo a Realtime. Las rutas y URLs temporales de los logos se solicitan solo cuando la persona abre el detalle de Identidad.
+
+Medición local final de H66, antes del gate remoto:
+
+| Métrica | Resultado |
+| --- | ---: |
+| JavaScript inicial gzip | 253.996 / 256.000 B · PASS |
+| Chunk JavaScript propio mayor | 470.115 / 512.000 B · PASS |
+| CSS inicial gzip | 7.388 / 30.720 B · PASS |
+| Chunks JavaScript | 20 |
+| Pruebas funcionales | 502 / 502 · PASS |
+| Pruebas de rendimiento | 21 / 21 · PASS |
+| Build de producción | PASS |
+
+Quedan dos objetivos estructurales que no bloquean el presupuesto de transferencia pero sí deben continuar en el siguiente hito: `MomosOps.jsx` tiene 6.635 líneas frente al objetivo de 5.000 y 479 estilos inline frente al objetivo de 400. La latencia autenticada p50/p95 se medirá después de aplicar H66 en Supabase; no se declara cumplida con una medición local.
+
+Deuda explícita para H67: algunas recomendaciones de Agencia aún combinan el snapshot H66 con productos, inventario, lotes y recetas del snapshot de Catálogos. Las mutaciones siguen protegidas por guards del servidor, pero para mantener esas señales frescas sin volver al fan-out deberá añadirse una versión compacta de hechos operativos al contrato de Agencia, no una nueva hidratación completa de Catálogos.
+
+Gate remoto, en orden:
+
+1. `supabase/agency-snapshot-rendimiento-v1.sql`
+2. `supabase/tests/test-agency-snapshot-rendimiento-v1.sql`
+3. `supabase/tests/test-migraciones-ordenadas.sql`
+
 ## Presupuesto de aceptación
 
 - JavaScript inicial: máximo 250 KiB gzip.

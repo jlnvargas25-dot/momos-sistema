@@ -27,7 +27,8 @@ const OPERATIONAL_TABLES = new Set([
 ]);
 
 const AGENCY_TABLES = new Set([
-  "campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks",
+  "agency_snapshot_events",
+  "campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_guiones", "marketing_mensajes", "marketing_tasks",
   "content_distributions", "distribution_connector_jobs", "brand_media_assets", "brand_media_usages",
   "brand_asset_production_profiles", "brand_production_packs", "brand_production_pack_assets",
   "creative_generation_jobs", "creative_connector_runs", "agency_integrations", "agency_mcp_human_approvals",
@@ -60,6 +61,37 @@ export function syncDomainForTable(table) {
 export function normalizeSyncDomains(domains) {
   const values = Array.isArray(domains) ? domains : domains ? [domains] : Object.values(SYNC_DOMAINS);
   return [...new Set(values.filter((domain) => KNOWN_DOMAINS.has(domain)))];
+}
+
+// PostgreSQL bigint puede superar Number.MAX_SAFE_INTEGER. Las versiones del
+// outbox se comparan como enteros decimales canónicos, nunca por reloj ni por
+// Number, para no perder eventos por redondeo en sesiones de larga duración.
+export function normalizeAgencySnapshotVersion(value) {
+  const raw = typeof value === "bigint" ? value.toString() : String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) return "";
+  const canonical = raw.replace(/^0+(?=\d)/, "");
+  return canonical !== "0" ? canonical : "";
+}
+
+export function compareAgencySnapshotVersions(left, right) {
+  const a = normalizeAgencySnapshotVersion(left);
+  const b = normalizeAgencySnapshotVersion(right);
+  if (!a || !b) return null;
+  if (a.length !== b.length) return a.length > b.length ? 1 : -1;
+  return a === b ? 0 : a > b ? 1 : -1;
+}
+
+export function shouldQueueAgencySnapshotVersion({ incomingVersion, appliedVersion, seenVersion }) {
+  const incoming = normalizeAgencySnapshotVersion(incomingVersion);
+  if (!incoming) return false;
+  const appliedComparison = compareAgencySnapshotVersions(incoming, appliedVersion);
+  const seenComparison = compareAgencySnapshotVersions(incoming, seenVersion);
+  // Una versión local ausente significa que todavía no existe un snapshot
+  // aplicable. El handshake inicial decidirá si debe cargarlo; los eventos se
+  // aceptan una sola vez respecto al mayor valor observado/aplicado.
+  const newerThanApplied = appliedComparison === null || appliedComparison > 0;
+  const newerThanSeen = seenComparison === null || seenComparison > 0;
+  return newerThanApplied && newerThanSeen;
 }
 
 export function shouldSyncRealtimeEvent(lastServerAt, commitTimestamp) {

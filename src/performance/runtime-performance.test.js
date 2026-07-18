@@ -72,11 +72,23 @@ test("ignora señales tardías de una ruta anterior", () => {
   assert.equal(telemetry.snapshot().routes.ready, 1);
 });
 
+test("mapea la vista Crecimiento a agencia-momos", () => {
+  const telemetry = createRuntimePerformance({ now: () => 10 });
+  const routeId = telemetry.startRoute("Crecimiento");
+
+  assert.equal(telemetry.snapshot().activeRoute.view, "agencia-momos");
+  assert.equal(telemetry.markUiCommitted(routeId), true);
+  assert.equal(telemetry.snapshot().routes.byView["agencia-momos"].ready, 1);
+});
+
 test("clasifica Supabase sin devolver URL, query, tabla cruda ni RPC cruda", () => {
   const cases = [
     ["https://x.supabase.co/rest/v1/orders?cliente=secreto", { domain: "operativo", kind: "rest" }],
     ["https://x.supabase.co/rest/v1/rpc/momos_operational_snapshot_v1", { domain: "operativo", kind: "rpc" }],
     ["https://x.supabase.co/rest/v1/rpc/agency_context_snapshot", { domain: "agencia", kind: "rpc" }],
+    ["https://x.supabase.co/rest/v1/rpc/momos_agency_snapshot", { domain: "agencia", kind: "rpc" }],
+    ["https://x.supabase.co/rest/v1/momos_agency_assets?select=id", { domain: "agencia", kind: "rest" }],
+    ["https://x.supabase.co/rest/v1/rpc/obtener_identidad_marca", { domain: "agencia", kind: "rpc" }],
     ["https://x.supabase.co/storage/v1/object/sign/brand-media/ruta", { domain: "agencia", kind: "storage" }],
     ["https://x.supabase.co/auth/v1/token", { domain: "catalogos", kind: "auth" }],
   ];

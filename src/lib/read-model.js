@@ -1,4 +1,5 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
+import { normalizeAgencySnapshotVersion } from "./sync-coordinator.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -48,6 +49,237 @@ async function optionalSnapshot(name) {
   if (missing) return null;
   if (result.error) throw new Error(result.error.message);
   return result.data && typeof result.data === "object" ? result.data : null;
+}
+
+export const AGENCY_SNAPSHOT_SCOPES = Object.freeze([
+  "overview", "workflow", "production", "measurement",
+]);
+
+const AGENCY_LEGACY_TOP_LEVEL_KEYS = Object.freeze({
+  content_calendar: "content_calendar",
+  creative_results: "creative_results",
+  content_distributions: "content_distributions",
+});
+
+const AGENCY_ROW_KEY_ALIASES = Object.freeze({
+  mensajes_whatsapp: "mensajesWhatsApp",
+});
+
+const agencyCamelKey = (key) => String(key || "").replace(/_([a-z0-9])/g, (_, letter) => letter.toUpperCase());
+
+function adaptAgencyRow(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [
+    AGENCY_ROW_KEY_ALIASES[key] || agencyCamelKey(key),
+    value,
+  ]));
+}
+
+export function adaptAgencySnapshotEnvelope(snapshot) {
+  if (!snapshot || typeof snapshot !== "object" || Number(snapshot.version) !== 1) {
+    throw new Error("El snapshot de Agencia no tiene una versión compatible.");
+  }
+  const scope = String(snapshot.scope || "").trim().toLowerCase();
+  const sourceVersion = normalizeAgencySnapshotVersion(snapshot.source_version);
+  if (!AGENCY_SNAPSHOT_SCOPES.includes(scope) || !snapshot.payload || typeof snapshot.payload !== "object") {
+    throw new Error("El snapshot de Agencia no tiene un alcance válido.");
+  }
+  const allowedRoles = snapshot.authority?.allowed_roles;
+  if (snapshot.authority?.read_only !== true
+      || snapshot.authority?.external_execution !== false
+      || snapshot.authority?.human_approval_required !== true
+      || !Array.isArray(allowedRoles)
+      || allowedRoles.length !== 2
+      || allowedRoles[0] !== "Administrador"
+      || allowedRoles[1] !== "Marketing/CRM") {
+    throw new Error("El snapshot de Agencia perdió su contrato de solo lectura.");
+  }
+  const privacy = snapshot.privacy || {};
+  if (privacy.projection !== "agency-authorized-v1"
+      || privacy.customer_records_projected !== false
+      || privacy.secrets_projected !== false
+      || privacy.free_text_unverified !== true
+      || privacy.telemetry_allowed !== false
+      || privacy.storage_references_projected !== (scope === "production")) {
+    throw new Error("El snapshot de Agencia no cumple el contrato de privacidad.");
+  }
+  if (!sourceVersion) {
+    throw new Error("El snapshot de Agencia no tiene una versión de fuente válida.");
+  }
+
+  const data = {};
+  Object.entries(snapshot.payload).forEach(([key, value]) => {
+    const legacyKey = AGENCY_LEGACY_TOP_LEVEL_KEYS[key] || agencyCamelKey(key);
+    if (key === "agency_action_queue" || key === "agency_brand_identity") data[legacyKey] = value;
+    else if (Array.isArray(value)) data[legacyKey] = value.map(adaptAgencyRow);
+    else if (value && typeof value === "object") data[legacyKey] = adaptAgencyRow(value);
+    else data[legacyKey] = value;
+  });
+
+  // La propuesta sellada conserva JSON interno en snake_case por contrato,
+  // pero el motor legado consume también sus campos principales en la raíz.
+  if (Array.isArray(data.agencyAgentProposals)) {
+    data.agencyAgentProposals = data.agencyAgentProposals.map((proposal) => {
+      const sealed = proposal.sealedPayload || {};
+      return {
+        ...proposal,
+        decisionType: sealed.decision_type,
+        title: sealed.title,
+        rationale: sealed.rationale,
+        evidence: sealed.evidence || {},
+        proposedAction: sealed.proposed_action || {},
+        requiredTools: sealed.required_tools || [],
+        confidence: Number(sealed.confidence || 0),
+        riskLevel: sealed.risk_level,
+        estimatedCostCop: Number(sealed.estimated_cost_cop || 0),
+        costCapCop: Number(sealed.cost_cap_cop || 0),
+        executionMode: sealed.execution_mode,
+        source: sealed.source,
+      };
+    });
+  }
+  if (Array.isArray(data.brandMediaAssets)) {
+    data.brandMediaAssets = data.brandMediaAssets.map((asset) => ({
+      ...asset,
+      url: "", // La URL firmada se solicita solo al abrir/mostrar el original.
+      productName: asset.productName || "",
+      contentHash: asset.contentHash || "",
+      notes: asset.notes || "",
+      generationMeta: asset.generationMeta || {},
+      productionProfile: asset.productionProfile ? adaptAgencyRow(asset.productionProfile) : null,
+    }));
+  }
+  if (Array.isArray(data.marketingGuiones)) {
+    data.marketingGuiones = data.marketingGuiones.map((script) => ({
+      ...script,
+      duracion: script.duracionSeg ? `${script.duracionSeg} seg` : "",
+      escena1: script.escenas?.[0] || "",
+      escena2: script.escenas?.[1] || "",
+      escena3: script.escenas?.[2] || "",
+      escena4: script.escenas?.[3] || "",
+    }));
+  }
+
+  return {
+    scope,
+    sourceVersion,
+    eventId: String(snapshot.event_id || ""),
+    serverTime: String(snapshot.server_time || ""),
+    privacy: snapshot.privacy,
+    authority: snapshot.authority,
+    data,
+  };
+}
+
+export function adaptAgencySnapshotsBundle(bundle) {
+  const sourceVersion = normalizeAgencySnapshotVersion(bundle?.source_version);
+  const rawSnapshots = bundle?.snapshots;
+  if (!bundle || Number(bundle.version) !== 1
+      || !sourceVersion || !Array.isArray(rawSnapshots)
+      || rawSnapshots.length !== AGENCY_SNAPSHOT_SCOPES.length) {
+    throw new Error("El bundle de Agencia no tiene una versión compatible.");
+  }
+  const adapted = rawSnapshots.map(adaptAgencySnapshotEnvelope);
+  const byScope = new Map();
+  adapted.forEach((snapshot) => {
+    if (byScope.has(snapshot.scope)) throw new Error("El bundle de Agencia contiene alcances duplicados.");
+    byScope.set(snapshot.scope, snapshot);
+  });
+  const keys = [...byScope.keys()].sort();
+  if (keys.join("|") !== [...AGENCY_SNAPSHOT_SCOPES].sort().join("|")) {
+    throw new Error("El bundle de Agencia no contiene los cuatro alcances cerrados.");
+  }
+  const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => {
+    const snapshot = byScope.get(scope);
+    if (snapshot.scope !== scope || snapshot.sourceVersion !== sourceVersion) {
+      throw new Error("Los alcances de Agencia no comparten la misma versión de fuente.");
+    }
+    return snapshot;
+  });
+  return { sourceVersion, serverTime: String(bundle.server_time || ""), snapshots };
+}
+
+export async function fetchAgencySnapshot(scope = "overview") {
+  const normalized = String(scope || "").trim().toLowerCase();
+  if (!AGENCY_SNAPSHOT_SCOPES.includes(normalized)) throw new Error("El alcance de Agencia no es válido.");
+  const result = await supabase.rpc("momos_agency_snapshot_v1", { p_scope: normalized });
+  const missing = result.error && (result.error.code === "PGRST202"
+    || /could not find the function|schema cache/i.test(result.error.message || ""));
+  if (missing) return null;
+  if (result.error) throw new Error(result.error.message);
+  return adaptAgencySnapshotEnvelope(result.data);
+}
+
+export async function fetchAgencySnapshotBundle() {
+  const result = await supabase.rpc("momos_agency_snapshots_v1");
+  const missing = result.error && (result.error.code === "PGRST202"
+    || /could not find the function|schema cache/i.test(result.error.message || ""));
+  if (missing) return null;
+  if (result.error) throw new Error(result.error.message);
+  return adaptAgencySnapshotsBundle(result.data);
+}
+
+export async function fetchAgencySnapshots(scopes = AGENCY_SNAPSHOT_SCOPES) {
+  const requested = [...new Set((scopes || []).map((scope) => String(scope || "").trim().toLowerCase()))];
+  if (!requested.length || requested.some((scope) => !AGENCY_SNAPSHOT_SCOPES.includes(scope))) {
+    throw new Error("Los alcances de Agencia no son válidos.");
+  }
+
+  // Un RPC entrega una fotografía transaccional de los cuatro scopes. Si H66
+  // aún no existe, esta misma llamada es el único probe del rollout.
+  const bundle = await fetchAgencySnapshotBundle();
+  if (!bundle) return null;
+  const snapshots = bundle.snapshots.filter((snapshot) => requested.includes(snapshot.scope));
+  return {
+    ...Object.assign({}, ...snapshots.map((snapshot) => snapshot.data)),
+    agencySnapshotVersion: bundle.sourceVersion,
+    agencySnapshotScopes: Object.fromEntries(snapshots.map((snapshot) => [snapshot.scope, {
+      sourceVersion: snapshot.sourceVersion,
+      eventId: snapshot.eventId,
+      serverTime: snapshot.serverTime,
+      privacy: snapshot.privacy,
+      authority: snapshot.authority,
+    }])),
+  };
+}
+
+// Loader exclusivo del dominio Agency. No vuelve a leer products, inventario,
+// usuarios ni recetas: el coordinador ya mantiene esos maestros en CATALOGS.
+// Con H66 instalado hace exactamente un RPC atómico; durante el
+// rollout devuelve null tras el primer probe para que el caller conserve su
+// fallback legado sin vaciar el estado vigente.
+export async function fetchAgencyCatalogos() {
+  const agency = await fetchAgencySnapshots();
+  if (!agency) return null;
+  const scopeMeta = Object.values(agency.agencySnapshotScopes || {});
+  const serverTimes = scopeMeta.map((item) => String(item?.serverTime || "")).filter(Boolean).sort();
+  return {
+    ...agency,
+    agencySnapshotReady: true,
+    syncSource: "agency-snapshots-v1",
+    syncSourceVersion: agency.agencySnapshotVersion,
+    syncServerTime: serverTimes.at(-1) || "",
+  };
+}
+
+// Cierre de rollout: la RPC H66 es también el único probe. Si aún no
+// existe, el loader legado se invoca con skipAgencySnapshot para impedir un
+// segundo probe encubierto dentro de fetchCatalogos.
+export async function fetchAgencyCatalogosConFallback(
+  legacyLoader = () => fetchCatalogos({ includeAgency: true, skipAgencySnapshot: true }),
+) {
+  const snapshots = await fetchAgencyCatalogos();
+  return snapshots || legacyLoader();
+}
+
+export async function fetchAgencySnapshotEventVersion() {
+  const { data, error } = await supabase
+    .from("agency_snapshot_events")
+    .select("version")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return normalizeAgencySnapshotVersion(data?.version);
 }
 
 async function multipleRolesCapability() {
@@ -117,6 +349,7 @@ export async function fetchFinancialFacts(from, to) {
 
 export async function fetchCatalogos(options = {}) {
   const includeAgency = options.includeAgency !== false;
+  const skipAgencySnapshot = options.skipAgencySnapshot === true;
   const multipleRolesReady = await multipleRolesCapability();
   const userColumns = multipleRolesReady ? "id,nombre,email,rol,roles,activo" : "id,nombre,email,rol,activo";
   const coreSnapshot = includeAgency ? null : await optionalSnapshot("momos_core_snapshot_v1");
@@ -321,6 +554,20 @@ export async function fetchCatalogos(options = {}) {
     syncServerTime: coreSnapshot?.server_time || "",
   };
   if (!includeAgency) return coreCatalogs;
+
+  // H66: un bundle atómico con cuatro scopes sustituye el fan-out de Agencia. El
+  // bloque legado inferior permanece como fallback forward-compatible hasta
+  // que la migración esté instalada en todos los entornos.
+  const agencySnapshots = skipAgencySnapshot ? null : await fetchAgencyCatalogos();
+  if (agencySnapshots) return {
+    ...coreCatalogs,
+    campaigns,
+    creatives,
+    content_calendar,
+    creative_results,
+    ...agencySnapshots,
+    syncSource: "agency-snapshot-v1",
+  };
 
   // Agencia Comercial v1 se hidrata de forma opcional durante el rollout de la
   // migración 16. Antes de aplicarla, Crecimiento conserva su biblioteca local.
