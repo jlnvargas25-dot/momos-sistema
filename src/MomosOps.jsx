@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { fetchBrandAssetSignedUrl, fetchCatalogos, fetchEvidenceSignedUrl, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile } from "./lib/read-model";
 import { createSyncCoordinator, normalizeSyncDomains, shouldQueueRealtimeDomain, syncDomainForTable, syncDomainsForView, SYNC_DOMAINS } from "./lib/sync-coordinator";
-import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, registrarSnapshotMotorCrecimiento, seleccionarModoCrecimiento, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, declararLogoPrincipalMarca, archivarActivoMarca, eliminarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
+import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, registrarSnapshotMotorCrecimiento, seleccionarModoCrecimiento, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, declararLogoPrincipalMarca, archivarActivoMarca, actualizarMetadatosActivoMarca, eliminarActivoMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -10745,17 +10745,18 @@ function CopyBtn({ texto, label = "Copiar texto" }) {
   );
 }
 
-function LazyBrandMediaPreview({ asset, mediaIcon }) {
+function LazyBrandMediaPreview({ asset, mediaIcon, eager = false, fit = "cover", controls = false }) {
   const hostRef = useRef(null);
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(eager);
   const [url, setUrl] = useState(asset.url || "");
 
   useEffect(() => {
     setUrl(asset.url || "");
-    setVisible(false);
-  }, [asset.id, asset.url]);
+    setVisible(eager);
+  }, [asset.id, asset.url, eager]);
 
   useEffect(() => {
+    if (eager) { setVisible(true); return undefined; }
     const node = hostRef.current;
     if (!node) return undefined;
     if (typeof IntersectionObserver === "undefined") { setVisible(true); return undefined; }
@@ -10767,7 +10768,7 @@ function LazyBrandMediaPreview({ asset, mediaIcon }) {
     }, { rootMargin: "160px" });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [asset.id]);
+  }, [asset.id, eager]);
 
   useEffect(() => {
     if (!visible || url || !asset.storagePath) return undefined;
@@ -10782,9 +10783,9 @@ function LazyBrandMediaPreview({ asset, mediaIcon }) {
     || (asset.mediaType === "Diseño" && asset.mimeType?.startsWith("image/"));
   return <div ref={hostRef} className="w-full h-full grid place-items-center overflow-hidden">
     {url && isImage
-      ? <img src={url} alt={asset.name} className="w-full h-full object-cover" />
+      ? <img src={url} alt={asset.name} className={`w-full h-full ${fit === "contain" ? "object-contain" : "object-cover"}`} />
       : url && asset.mediaType === "Video"
-        ? <video src={url} className="w-full h-full object-cover" preload="metadata" muted controls />
+        ? <video src={url} className={`w-full h-full ${fit === "contain" ? "object-contain" : "object-cover"}`} preload="metadata" muted controls={controls} />
         : url && asset.mediaType === "Audio"
           ? <div className="px-4 w-full text-center"><div className="text-4xl mb-3">🎧</div><audio src={url} controls preload="none" className="w-full" /></div>
           : <div className="text-center"><div className="text-4xl">{mediaIcon[asset.mediaType] || "✦"}</div>{visible && asset.storagePath && <div className="text-[9px] mt-2" style={{ color: T.choco2 }}>Cargando vista segura…</div>}</div>}
@@ -10797,6 +10798,14 @@ function resultadoSimple(m) {
   if (m.roas !== null && m.roas >= 2) return { texto: `Funcionó muy bien: generó ${m.pedidos} pedido(s) y rindió el dinero invertido.`, tono: "#3F6B42", bg: "#DDEBD9" };
   if (m.roas !== null && m.roas >= 1) return { texto: `Funcionó bien: generó ${m.pedidos} pedido(s).`, tono: "#3F6B42", bg: "#DDEBD9" };
   return { texto: `Funcionó regular: gastó más de lo que vendió. Revisa el precio o el mensaje, o prueba otro creativo.`, tono: "#A03B2A", bg: "#F6D4CD" };
+}
+
+function formatAssetSize(bytes) {
+  const size = Number(bytes || 0);
+  if (!Number.isFinite(size) || size <= 0) return "Sin tamaño verificable";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 ** 2).toFixed(1)} MB`;
 }
 
 function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdentityChanged }) {
@@ -10816,6 +10825,8 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
   const [showArchived, setShowArchived] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteAsset, setDeleteAsset] = useState(null);
+  const [detailAssetId, setDetailAssetId] = useState(null);
+  const [assetEditForm, setAssetEditForm] = useState(null);
   const [file, setFile] = useState(null);
   const emptyAssetForm = {
     collection: "Marca", brandRole: "Referencia visual", name: "", mediaType: "Foto", source: "MOMOS",
@@ -10836,6 +10847,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
   const visibleAssets = useMemo(() => searchBrandMediaAssets(library, query, {
     collection: libraryCollection, mediaType: mediaFilter, status: showArchived ? "" : "Activo",
   }), [library, query, libraryCollection, mediaFilter, showArchived]);
+  const detailAsset = useMemo(() => library.assets.find((asset) => String(asset.id) === String(detailAssetId)) || null, [library, detailAssetId]);
   const studioDraft = useMemo(() => buildCreativeStudioDraft(studio, db, hoyISO()), [studio, db]);
 
   function openAssetUpload(collection = libraryCollection, brandRole = "") {
@@ -10906,6 +10918,52 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
       await archivarActivoMarca(asset.id, reason);
       toast("ok", "Activo archivado; su historial y usos permanecen intactos");
       await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  function openAssetDetail(asset) {
+    setDetailAssetId(asset.id);
+    setAssetEditForm(null);
+  }
+
+  function beginAssetMetadataEdit(asset) {
+    const dependency = brandAssetDeletionReadiness(asset, db);
+    const officialLogo = asset.collection === "Marca" && asset.mediaType === "Logo" && /principal/i.test(asset.roleLabel || "");
+    setAssetEditForm({
+      semanticLocked: !dependency.allowed || officialLogo,
+      name: asset.name || "", collection: asset.collection || "Marca",
+      productId: asset.productId || "", figure: asset.figure || "", flavor: asset.flavor || "",
+      shotType: asset.shotType || "", orientation: asset.orientation || "Vertical",
+      containsPeople: Boolean(asset.containsPeople), rightsStatus: asset.rightsStatus || "Por verificar",
+      rightsExpiresAt: asset.rightsExpiresAt || "", aiUseAllowed: Boolean(asset.aiUseAllowed),
+      tags: (asset.tags || []).filter((tag) => !/^momos:/i.test(String(tag))).join(", "),
+      notes: asset.notes || "",
+    });
+  }
+
+  async function saveAssetMetadata() {
+    if (!detailAsset || !assetEditForm) return;
+    try {
+      if (!canWrite) throw new Error("Solo Administración o Marketing/CRM pueden corregir la Biblioteca.");
+      if (assetEditForm.name.trim().length < 3) throw new Error("Escribí un nombre descriptivo de al menos 3 caracteres.");
+      if (assetEditForm.collection === "Productos" && !assetEditForm.productId) throw new Error("Elegí el producto relacionado.");
+      const result = await actualizarMetadatosActivoMarca(detailAsset.id, {
+        name: assetEditForm.name.trim(), collection: assetEditForm.collection,
+        product_id: assetEditForm.collection === "Productos" ? assetEditForm.productId : null,
+        figure: assetEditForm.collection === "Productos" ? assetEditForm.figure.trim() : "",
+        flavor: assetEditForm.collection === "Productos" ? assetEditForm.flavor.trim() : "",
+        shot_type: assetEditForm.shotType.trim(), orientation: assetEditForm.orientation,
+        contains_people: assetEditForm.containsPeople, rights_status: assetEditForm.rightsStatus,
+        rights_expires_at: assetEditForm.rightsExpiresAt || null, ai_use_allowed: assetEditForm.aiUseAllowed,
+        tags: assetEditForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        notes: assetEditForm.notes.trim(),
+      });
+      setAssetEditForm(null);
+      toast("ok", result.semantic_locked
+        ? "Información descriptiva corregida; la clasificación histórica permaneció protegida"
+        : `Información corregida y guardada como versión ${result.version}`);
+      await refrescar();
+      await onIdentityChanged?.();
     } catch (error) { toast("error", error.message); }
   }
 
@@ -11083,18 +11141,22 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
             const problem = asset.duplicate ? "Archivo duplicado" : asset.readiness.reasons[0];
             const deletion = brandAssetDeletionReadiness(asset, db);
             return <article key={asset.id} className="rounded-3xl overflow-hidden border shadow-sm" style={{ borderColor: blocked ? "#E6B7AE" : T.border, background: "#fff" }}>
-              <div className="h-40 grid place-items-center overflow-hidden" style={{ background: "linear-gradient(135deg,#F9ECDD,#F3D7DC)" }}>
+              <button type="button" onClick={() => openAssetDetail(asset)} className="relative w-full h-40 grid place-items-center overflow-hidden group border-0 p-0" style={{ background: "linear-gradient(135deg,#F9ECDD,#F3D7DC)" }} aria-label={`Ver ${asset.name} completo`}>
                 <LazyBrandMediaPreview asset={asset} mediaIcon={mediaIcon} />
-              </div>
+                <span className="absolute right-3 bottom-3 rounded-full px-2.5 py-1 text-[9px] font-extrabold opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity" style={{ background: "rgba(255,255,255,.92)", color: T.choco }}>⛶ Ver completo</span>
+              </button>
               <div className="p-4">
                 <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{asset.collection} · {asset.mediaType} · {asset.source}</div><div className="font-extrabold leading-tight">{asset.name}</div></div><Badge label={asset.status} /></div>
                 <div className="text-xs mt-2" style={{ color: T.choco2 }}>{asset.collection === "Marca" ? asset.roleLabel : [asset.productName, asset.figure, asset.flavor, asset.roleLabel].filter(Boolean).join(" · ")}</div>
                 <div className="flex flex-wrap gap-1.5 mt-3"><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: blocked ? "#F6D4CD" : "#DDEBD9", color: blocked ? "#A03B2A" : "#315B35" }}>{blocked ? `⚠ ${problem}` : "✓ Listo para IA"}</span><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: T.vainilla }}>{asset.rightsStatus}</span>{asset.containsPeople && <span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: T.rosa }}>Con personas</span>}</div>
-                {canWrite && <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-x-4 gap-y-2" style={{ borderColor: T.border }}>
+                <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-x-4 gap-y-2" style={{ borderColor: T.border }}>
+                  <button type="button" onClick={() => openAssetDetail(asset)} className="border-0 bg-transparent p-0 text-[10px] font-extrabold underline" style={{ color: T.coral }}>Ver detalle</button>
+                  {canWrite && <>
                   {asset.status === "Activo" && <button type="button" onClick={() => archiveAsset(asset)} className="border-0 bg-transparent p-0 text-[10px] font-bold underline" style={{ color: T.choco2 }}>Archivar</button>}
                   {deletion.allowed ? <button type="button" onClick={() => setDeleteAsset(asset)} className="border-0 bg-transparent p-0 text-[10px] font-extrabold underline" style={{ color: "#A03B2A" }}>Eliminar definitivamente</button>
                     : <span className="text-[9px] font-bold" style={{ color: T.choco2 }} title={deletion.reasons.join(" ")}>🔒 En uso · solo se puede archivar</span>}
-                </div>}
+                  </>}
+                </div>
               </div>
             </article>;
           })}
@@ -11233,6 +11295,46 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
         {(() => { const guard = creativeAuthorizationGuard(authorizationJob, { maxCostCop: authorizationCap }, db, hoyISO()); return !guard.allowed && <div className="rounded-2xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>⛔ {guard.reasons.join(" ")}</div>; })()}
         <div className="flex gap-2"><BtnAsync onClick={authorizeJob} confirmar disabled={!creativeAuthorizationGuard(authorizationJob, { maxCostCop: authorizationCap }, db, hoyISO()).allowed} textoEnVuelo="Autorizando…">Autorizar gasto protegido</BtnAsync><Btn kind="ghost" onClick={() => setAuthorizationJob(null)}>Volver</Btn></div>
       </Modal>}
+
+      {detailAsset && (() => {
+        const dependency = brandAssetDeletionReadiness(detailAsset, db);
+        const semanticLocked = assetEditForm?.semanticLocked ?? (!dependency.allowed || (detailAsset.mediaType === "Logo" && /principal/i.test(detailAsset.roleLabel || "")));
+        const dimensions = detailAsset.width && detailAsset.height ? `${detailAsset.width} × ${detailAsset.height} px` : "Sin dimensiones registradas";
+        const hashLabel = detailAsset.contentHash ? `${detailAsset.contentHash.slice(0, 12)}…${detailAsset.contentHash.slice(-8)}` : "Sin huella";
+        return <Modal title={assetEditForm ? `Editar · ${detailAsset.name}` : detailAsset.name} onClose={() => { setDetailAssetId(null); setAssetEditForm(null); }} extraWide topLayer>
+          <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(340px,.75fr)] gap-5">
+            <div className="lg:sticky lg:top-20 self-start">
+              <div className="rounded-3xl overflow-hidden border h-[48vh] min-h-[320px] max-h-[680px] grid place-items-center" style={{ borderColor: T.border, background: "linear-gradient(135deg,#F4E9DE,#E9DED5)" }}>
+                <LazyBrandMediaPreview asset={detailAsset} mediaIcon={mediaIcon} eager fit="contain" controls />
+              </div>
+              <div className="rounded-2xl px-3 py-2.5 mt-3 text-[11px] flex gap-2 items-start" style={{ background: "#E8F1E4", color: "#315B35" }}><span>🔒</span><span><b>Original protegido.</b> Ver o corregir su ficha nunca sobrescribe el archivo, la huella SHA‑256 ni su procedencia.</span></div>
+            </div>
+
+            {!assetEditForm ? <div>
+              <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>{detailAsset.collection} · {detailAsset.mediaType} · {detailAsset.source}</div><div className="display text-2xl font-semibold mt-1">{detailAsset.name}</div><div className="text-sm mt-1" style={{ color: T.choco2 }}>{detailAsset.collection === "Marca" ? detailAsset.roleLabel : [detailAsset.productName, detailAsset.figure, detailAsset.flavor, detailAsset.roleLabel].filter(Boolean).join(" · ")}</div></div><Badge label={detailAsset.status} /></div>
+              <div className="flex flex-wrap gap-1.5 mt-3"><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: detailAsset.readiness.ready ? "#DDEBD9" : "#F6D4CD", color: detailAsset.readiness.ready ? "#315B35" : "#A03B2A" }}>{detailAsset.readiness.ready ? "✓ Listo para IA" : `⚠ ${detailAsset.readiness.reasons[0]}`}</span><span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: T.vainilla }}>{detailAsset.rightsStatus}</span>{detailAsset.containsPeople && <span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: T.rosa }}>Muestra personas</span>}</div>
+              <div className="grid sm:grid-cols-2 gap-2 my-4">
+                {[["Formato real",`${detailAsset.mimeType || detailAsset.mediaType} · ${formatAssetSize(detailAsset.sizeBytes)}`],["Resolución",dimensions],["Orientación",detailAsset.orientation || "Sin definir"],["Fecha de ingreso",detailAsset.createdAt || "Sin fecha"],["Uso con IA",detailAsset.aiUseAllowed ? "Permitido" : "No permitido"],["Huella del original",hashLabel]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2.5" style={{ borderColor: T.border, background: T.soft }}><div className="text-[8px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-[11px] font-extrabold mt-0.5 break-words">{value}</div></div>)}
+              </div>
+              {detailAsset.tags?.filter((tag) => !/^momos:/i.test(String(tag))).length > 0 && <div className="mb-4"><div className="text-[9px] uppercase font-extrabold mb-1.5" style={{ color: T.choco2 }}>Etiquetas</div><div className="flex flex-wrap gap-1.5">{detailAsset.tags.filter((tag) => !/^momos:/i.test(String(tag))).map((tag) => <span key={tag} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{tag}</span>)}</div></div>}
+              <div className="rounded-2xl border p-3 mb-4" style={{ borderColor: T.border, background: "#fff" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Notas y alcance del permiso</div><div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: detailAsset.notes ? T.choco : T.choco2 }}>{detailAsset.notes || "No se registraron notas adicionales."}</div>{detailAsset.rightsExpiresAt && <div className="text-[10px] mt-2 font-bold" style={{ color: T.coral }}>Permiso vigente hasta {detailAsset.rightsExpiresAt}</div>}</div>
+              {semanticLocked && <div className="rounded-2xl px-3 py-2.5 mb-4 text-[11px]" style={{ background: "#FFF2D8", color: "#7A5410" }}><b>Clasificación protegida:</b> este original ya fue usado o pertenece a la identidad oficial. Se pueden corregir nombre, etiquetas y notas, pero no cambiar qué representa.</div>}
+              <div className="flex flex-wrap gap-2">{canWrite && <Btn onClick={() => beginAssetMetadataEdit(detailAsset)}>Editar información</Btn>}<Btn kind="ghost" onClick={() => { setDetailAssetId(null); setAssetEditForm(null); }}>Cerrar</Btn></div>
+            </div> : <div>
+              <div className="rounded-2xl px-3 py-2.5 mb-4 text-[11px]" style={{ background: semanticLocked ? "#FFF2D8" : "#E5EEF7", color: semanticLocked ? "#7A5410" : "#315A7D" }}>{semanticLocked ? <><b>Este archivo ya tiene historia.</b> Solo nombre, etiquetas y notas están habilitados; la clasificación y los permisos permanecen sellados.</> : <><b>Corrección versionada.</b> MOMO OPS guardará la ficha anterior y registrará quién hizo este cambio.</>}</div>
+              <Field label="Nombre descriptivo"><Input value={assetEditForm.name} onChange={(event) => setAssetEditForm({ ...assetEditForm, name: event.target.value })} /></Field>
+              <div className="grid sm:grid-cols-2 gap-3"><Field label="Colección"><Select disabled={semanticLocked} options={["Marca","Productos"]} value={assetEditForm.collection} onChange={(event) => setAssetEditForm({ ...assetEditForm, collection: event.target.value })} /></Field><Field label="Tipo de archivo"><Input value={`${detailAsset.mediaType} · ${detailAsset.source}`} disabled /></Field></div>
+              {assetEditForm.collection === "Marca" ? <div className="grid sm:grid-cols-2 gap-3"><Field label="Uso dentro de la marca"><Select disabled={semanticLocked} options={BRAND_ASSET_ROLES} value={assetEditForm.shotType || "Referencia visual"} onChange={(event) => setAssetEditForm({ ...assetEditForm, shotType: event.target.value })} /></Field><Field label="Orientación"><Select disabled={semanticLocked} options={["Vertical","Horizontal","Cuadrado","Documento"]} value={assetEditForm.orientation} onChange={(event) => setAssetEditForm({ ...assetEditForm, orientation: event.target.value })} /></Field></div>
+                : <><div className="grid sm:grid-cols-2 gap-3"><Field label="Producto relacionado"><select disabled={semanticLocked} className={inputCls} style={inputStyle} value={assetEditForm.productId} onChange={(event) => setAssetEditForm({ ...assetEditForm, productId: event.target.value })}><option value="">Elegir producto…</option>{(db.products || []).filter((product) => product.activo !== false).map((product) => <option key={product.id} value={product.id}>{product.nombre}</option>)}</select></Field><Field label="Orientación"><Select disabled={semanticLocked} options={["Vertical","Horizontal","Cuadrado","Audio","Documento"]} value={assetEditForm.orientation} onChange={(event) => setAssetEditForm({ ...assetEditForm, orientation: event.target.value })} /></Field></div><div className="grid sm:grid-cols-3 gap-3"><Field label="Figura"><Input disabled={semanticLocked} value={assetEditForm.figure} onChange={(event) => setAssetEditForm({ ...assetEditForm, figure: event.target.value })} /></Field><Field label="Sabor"><Input disabled={semanticLocked} value={assetEditForm.flavor} onChange={(event) => setAssetEditForm({ ...assetEditForm, flavor: event.target.value })} /></Field><Field label="Tipo de toma"><Input disabled={semanticLocked} value={assetEditForm.shotType} onChange={(event) => setAssetEditForm({ ...assetEditForm, shotType: event.target.value })} /></Field></div></>}
+              <div className="grid sm:grid-cols-2 gap-3"><Field label="Derechos"><Select disabled={semanticLocked} options={BRAND_MEDIA_RIGHTS} value={assetEditForm.rightsStatus} onChange={(event) => setAssetEditForm({ ...assetEditForm, rightsStatus: event.target.value })} /></Field><Field label="Vencimiento del permiso"><Input disabled={semanticLocked} type="date" value={assetEditForm.rightsExpiresAt} onChange={(event) => setAssetEditForm({ ...assetEditForm, rightsExpiresAt: event.target.value })} /></Field></div>
+              <div className="rounded-2xl border px-3 py-2 mb-3" style={{ borderColor: T.border }}><label className="flex gap-2 items-start text-sm font-bold"><input disabled={semanticLocked} type="checkbox" className="mt-1" checked={assetEditForm.containsPeople} onChange={(event) => setAssetEditForm({ ...assetEditForm, containsPeople: event.target.checked })} /><span>El archivo muestra personas</span></label><label className="flex gap-2 items-start text-sm font-bold mt-2"><input disabled={semanticLocked} type="checkbox" className="mt-1" checked={assetEditForm.aiUseAllowed} onChange={(event) => setAssetEditForm({ ...assetEditForm, aiUseAllowed: event.target.checked })} /><span>Permitir edición o generación con IA</span></label></div>
+              <Field label="Etiquetas separadas por coma"><Input value={assetEditForm.tags} onChange={(event) => setAssetEditForm({ ...assetEditForm, tags: event.target.value })} placeholder="oreo, close-up, cocina, fondo rosa" /></Field>
+              <Field label="Notas y alcance del permiso"><textarea className={inputCls} style={inputStyle} rows="4" value={assetEditForm.notes} onChange={(event) => setAssetEditForm({ ...assetEditForm, notes: event.target.value })} /></Field>
+              <div className="flex flex-wrap gap-2"><BtnAsync onClick={saveAssetMetadata} disabled={assetEditForm.name.trim().length < 3 || (assetEditForm.collection === "Productos" && !assetEditForm.productId)} textoEnVuelo="Guardando versión…">Guardar corrección</BtnAsync><Btn kind="ghost" onClick={() => setAssetEditForm(null)}>Cancelar edición</Btn></div>
+            </div>}
+          </div>
+        </Modal>;
+      })()}
 
       {deleteAsset && <Modal title="Eliminar archivo de la Biblioteca" onClose={() => setDeleteAsset(null)} topLayer>
         <div className="rounded-2xl p-4 mb-4 flex gap-3" style={{ background: "#FFF1ED", border: "1px solid #E9B1A5" }}>

@@ -666,6 +666,15 @@ export async function archivarActivoMarca(assetId, reason) {
   return data;
 }
 
+export async function actualizarMetadatosActivoMarca(assetId, metadata = {}) {
+  const { data, error } = await supabase.rpc("actualizar_metadatos_activo_marca", {
+    p_asset_id: assetId,
+    p: metadata,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function eliminarActivoMarca(assetId) {
   const prepared = await supabase.rpc("preparar_eliminacion_activo_marca", { p_asset_id: assetId });
   if (prepared.error) throw new Error(prepared.error.message);

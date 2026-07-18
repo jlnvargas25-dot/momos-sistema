@@ -33,7 +33,7 @@ begin
     '20260717_51_eliminacion_biblioteca','20260717_52_catalogo_figuras_toby',
     '20260717_53_motor_crecimiento_multimodo','20260717_54_mcp_biblioteca_creativa',
     '20260717_55_identidad_marca','20260717_56_data_sync_rendimiento',
-    '20260717_57_reingreso_archivo_eliminado'
+    '20260717_57_reingreso_archivo_eliminado','20260718_58_edicion_biblioteca'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -246,6 +246,13 @@ begin
   assert not has_table_privilege('authenticated','public.agency_master_releases','UPDATE'), 'el relevo exacto admite reescritura directa';
   assert exists(select 1 from pg_trigger where tgname='content_distributions_master_lineage_before' and not tgisinternal), 'distribución puede saltar el máster exacto';
   assert public.eliminacion_biblioteca_disponible(), 'falta eliminación segura de Biblioteca';
+  assert public.edicion_biblioteca_disponible(), 'falta edición segura y versionada de Biblioteca';
+  assert to_regclass('public.brand_media_asset_metadata_versions') is not null,
+    'falta historial de metadatos de Biblioteca';
+  assert not has_table_privilege('authenticated','public.brand_media_assets','UPDATE'),
+    'edición de Biblioteca permite saltarse la RPC protegida';
+  assert not has_table_privilege('authenticated','public.brand_media_asset_metadata_versions','INSERT'),
+    'edición de Biblioteca permite fabricar versiones';
   assert has_function_privilege('authenticated','public.preparar_eliminacion_activo_marca(bigint)','EXECUTE'), 'falta preparar eliminación de Biblioteca';
   assert has_function_privilege('authenticated','public.cancelar_eliminacion_activo_marca(bigint,text)','EXECUTE'), 'falta compensación de eliminación de Biblioteca';
   assert has_function_privilege('authenticated','public.confirmar_eliminacion_activo_marca(bigint)','EXECUTE'), 'falta cierre de eliminación de Biblioteca';
@@ -310,5 +317,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-57 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-58 PASS, rollback total' as resultado;
 rollback;
