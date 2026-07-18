@@ -173,6 +173,7 @@ export function brandAssetDeletionReadiness(asset = {}, db = {}) {
   if (asset.status === "Eliminando") reasons.push("La eliminación ya está en proceso.");
   if (asset.status === "Eliminado") reasons.push("El archivo ya fue eliminado.");
   if (animationAssetIsCanonical(asset)) reasons.push("Es una referencia canónica del Mundo animado.");
+  if (asset.productionProfile?.canonical) reasons.push("Es una referencia canónica de producción.");
   if (list(db.brandMediaUsages).some((usage) => String(usage.assetId) === id)) reasons.push("Ya fue usado en una pieza creativa.");
   if (list(db.creativeGenerationJobs).some((job) => String(job.outputAssetId || "") === id || contains(job.inputAssetIds))) reasons.push("Está ligado a un trabajo creativo.");
   if (list(db.agencyStoryboardShots).some((shot) => contains(shot.inputAssetIds))) reasons.push("Está incluido en una escena aprobada o en preparación.");
@@ -181,6 +182,8 @@ export function brandAssetDeletionReadiness(asset = {}, db = {}) {
   if (list(db.agencyPostproductionAudioBindings).some((binding) => String(binding.assetId || "") === id)) reasons.push("Está seleccionado como audio de un máster.");
   if (list(db.agencyMasterReleases).some((release) => String(release.outputAssetId || "") === id)) reasons.push("Está ligado a una publicación trazable.");
   if (list(db.brandMediaAssets).some((candidate) => String(candidate.originalAssetId || "") === id)) reasons.push("Es el original de otra versión conservada.");
+  const approvedPackIds = new Set(list(db.brandProductionPacks).filter((pack) => pack.status === "Aprobado").map((pack) => String(pack.id)));
+  if (list(db.brandProductionPackAssets).some((member) => String(member.assetId) === id && approvedPackIds.has(String(member.packId)))) reasons.push("Pertenece a un paquete de producción aprobado.");
   return { allowed: reasons.length === 0, reasons: [...new Set(reasons)] };
 }
 

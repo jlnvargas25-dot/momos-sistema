@@ -675,6 +675,37 @@ export async function actualizarMetadatosActivoMarca(assetId, metadata = {}) {
   return data;
 }
 
+export async function clasificarActivoProduccion(assetId, profile = {}) {
+  const { data, error } = await supabase.rpc("clasificar_activo_produccion", {
+    p_asset_id: assetId,
+    p: profile,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearPaqueteProduccion(payload = {}) {
+  const { data, error } = await supabase.rpc("crear_paquete_produccion", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revisarPaqueteProduccion(packId, decision, note = "") {
+  const { data, error } = await supabase.rpc("revisar_paquete_produccion", {
+    p_pack_id: packId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearTrabajoDesdePaqueteProduccion(packId, payload = {}) {
+  const { data, error } = await supabase.rpc("preparar_trabajo_desde_paquete_produccion", {
+    p_pack_id: packId, p: payload,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function eliminarActivoMarca(assetId) {
   const prepared = await supabase.rpc("preparar_eliminacion_activo_marca", { p_asset_id: assetId });
   if (prepared.error) throw new Error(prepared.error.message);
@@ -732,6 +763,17 @@ export async function crearTrabajoCreativo(payload) {
 export async function autorizarTrabajoCreativo(jobId, maxCostCop) {
   const { data, error } = await supabase.rpc("autorizar_trabajo_creativo", {
     p_job_id: jobId, p_max_cost_cop: maxCostCop,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverAprobacionHumanaMcp(approvalId, decision, note, expectedFingerprint) {
+  const { data, error } = await supabase.rpc("resolver_aprobacion_humana_mcp", {
+    p_approval_id: approvalId,
+    p_decision: decision,
+    p_note: note,
+    p_expected_fingerprint: expectedFingerprint,
   });
   if (error) throw new Error(error.message);
   return data;

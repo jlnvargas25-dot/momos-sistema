@@ -11,10 +11,12 @@ import { z } from "zod";
 import {
   MOMOS_AGENCY_MCP_VERSION,
   buildAgencyMcpRun,
+  buildMcpHumanApprovalRequest,
   creativeContextRpc,
   normalizeAgencyMcpSnapshot,
   normalizeBrandAssetClaim,
   normalizeBrandAssetSearch,
+  normalizeMcpHumanApprovalStatus,
   sanitizeBrandAssetClaimForReference,
 } from "../src/lib/momos-agency-mcp.js";
 
@@ -441,11 +443,16 @@ async function selfTest() {
     || libraryContract?.claim_schema !== "momos-brand-asset-claim/v1"
     || Number(libraryContract?.max_interactive_reference_bytes) !== BRAND_ASSET_MCP_MAX_BYTES
     || libraryContract?.external_execution_allowed !== false) throw new Error("El contrato MCP de Biblioteca Creativa no es compatible.");
-  const [context, libraryProbe] = await Promise.all([
+  const [context, libraryProbe, approvalContract] = await Promise.all([
     rpc("obtener_contexto_director_agencia").then(normalizeAgencyMcpSnapshot), probeBrandLibrarySearch(),
+    rpc("mcp_aprobacion_humana_contrato"),
   ]);
   if (libraryProbe.external_execution_allowed !== false) throw new Error("La prueba real de Biblioteca amplió permisos externos.");
-  process.stdout.write(`[MOMOS MCP] Salud OK · gateway ${available ? "activo" : "inactivo"} · biblioteca activa · contexto ${context.fingerprint.slice(0, 8)} · propuestas ${PROPOSALS_ENABLED ? "habilitadas" : "protegidas"}\n`);
+  if (approvalContract?.schema_version !== "momos-human-approval-contract/v1"
+    || approvalContract?.mcp_can_decide !== false || approvalContract?.external_execution_allowed !== false) {
+    throw new Error("El contrato MCP de aprobación humana no es compatible.");
+  }
+  process.stdout.write(`[MOMOS MCP] Salud OK · gateway ${available ? "activo" : "inactivo"} · biblioteca activa · aprobación humana activa · contexto ${context.fingerprint.slice(0, 8)} · propuestas ${PROPOSALS_ENABLED ? "habilitadas" : "protegidas"}\n`);
 }
 
 if (SELF_TEST) {
@@ -503,12 +510,14 @@ if (SELF_TEST) {
     description: "Comprueba el gateway semántico. No devuelve secretos ni ejecuta acciones.",
     inputSchema: z.object({}),
   }, async (input) => governedTool("momos_health", input, async () => {
-    const [gatewayActive, libraryActive, libraryProbe] = await Promise.all([
-      rpc("mcp_agency_gateway_disponible"), rpc("mcp_biblioteca_creativa_disponible"), probeBrandLibrarySearch(),
+    const [gatewayActive, libraryActive, approvalActive, libraryProbe] = await Promise.all([
+      rpc("mcp_agency_gateway_disponible"), rpc("mcp_biblioteca_creativa_disponible"),
+      rpc("mcp_aprobaciones_humanas_disponible"), probeBrandLibrarySearch(),
     ]);
     return {
-      ok: Boolean(gatewayActive) && Boolean(libraryActive), version: VERSION,
+      ok: Boolean(gatewayActive) && Boolean(libraryActive) && Boolean(approvalActive), version: VERSION,
       brand_library_active: Boolean(libraryActive), brand_library_probe_count: libraryProbe.count,
+      human_approval_active: Boolean(approvalActive), human_approval_decider: "MOMO OPS · Administración",
       proposals_enabled: PROPOSALS_ENABLED,
       external_execution_allowed: false,
     };
@@ -609,9 +618,42 @@ if (SELF_TEST) {
     return { ...result, external_execution: false, requires_human_approval: true };
   }, { mode: "Propuesta", subject: input.focus.slice(0, 180) }));
 
+  server.registerTool("momos_request_human_approval", {
+    title: "Solicitar aprobación humana en MOMO OPS",
+    description: "Registra el preflight exacto de un trabajo Higgsfield Preparado. No aprueba, no genera y no consume créditos; la decisión pertenece a Administración en MOMO OPS.",
+    inputSchema: z.object({
+      requestKey: z.string().min(3).max(180).regex(/^[A-Za-z0-9:_-]+$/),
+      jobId: z.number().int().positive(),
+      title: z.string().min(3).max(180),
+      expiresInHours: z.number().int().min(1).max(72).default(24),
+      contract: z.record(z.string(), z.unknown()),
+    }),
+  }, async (input) => governedTool("momos_request_human_approval", input, async () => {
+    const request = buildMcpHumanApprovalRequest({ ...input, workerId: WORKER_ID });
+    const result = await rpc("momos_solicitar_aprobacion_humana", { p: request });
+    return normalizeMcpHumanApprovalStatus(result, {
+      expectedApprovalId: result?.approval_id,
+      expectedFingerprint: result?.contract_fingerprint,
+    });
+  }, { mode: "Solicitud", subject: `creative-job:${input.jobId}` }));
+
+  server.registerTool("momos_get_human_approval", {
+    title: "Consultar decisión humana en MOMO OPS",
+    description: "Consulta una aprobación por id y huella exacta. No puede resolverla ni ejecutar el trabajo Higgsfield.",
+    inputSchema: z.object({
+      approvalId: z.number().int().positive(),
+      expectedFingerprint: z.string().regex(/^[0-9a-f]{32}$/),
+    }),
+  }, async (input) => governedTool("momos_get_human_approval", input, async () => {
+    const result = await rpc("momos_consultar_aprobacion_humana", {
+      p_approval_id: input.approvalId, p_expected_fingerprint: input.expectedFingerprint,
+    });
+    return normalizeMcpHumanApprovalStatus(result, input);
+  }, { subject: `human-approval:${input.approvalId}` }));
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`[MOMOS MCP] ${VERSION} listo por stdio · propuestas ${PROPOSALS_ENABLED ? "habilitadas" : "protegidas"}`);
+  console.error(`[MOMOS MCP] ${VERSION} listo por stdio · aprobación humana vía MOMO OPS · propuestas ${PROPOSALS_ENABLED ? "habilitadas" : "protegidas"}`);
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;

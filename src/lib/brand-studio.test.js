@@ -149,6 +149,18 @@ test("protege archivos ligados a escenas, audio, publicaciones o versiones", () 
   assert.ok(protectedAsset.reasons.length >= 4);
 });
 
+test("protege referencias canónicas o ligadas a un paquete de producción aprobado", () => {
+  const source = asset({ productionProfile: { canonical: true } });
+  const protectedAsset = brandAssetDeletionReadiness(source, db({
+    brandMediaAssets: [source],
+    brandProductionPacks: [{ id: 9, status: "Aprobado" }],
+    brandProductionPackAssets: [{ packId: 9, assetId: "A-1", role: "Producto" }],
+  }));
+  assert.equal(protectedAsset.allowed, false);
+  assert.match(protectedAsset.reasons.join(" "), /canónica de producción/i);
+  assert.match(protectedAsset.reasons.join(" "), /paquete de producción aprobado/i);
+});
+
 test("el logo oficial nunca cae en la eliminación genérica y exige administrador, H60 y frase exacta", () => {
   const logo = asset({ id: "LOGO-7", mediaType: "Logo", productId: "", productName: "", shotType: "Logo principal", roleLabel: "Logo principal", collection: "Marca" });
   assert.equal(isOfficialBrandLogo(logo), true);

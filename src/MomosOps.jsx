@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
+import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitives.jsx";
 import { supabase } from "./lib/supabase";
-import { fetchBrandAssetSignedUrl, fetchCatalogos, fetchEvidenceSignedUrl, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile } from "./lib/read-model";
+import { fetchBrandAssetSignedUrl, fetchCatalogos, fetchEvidenceSignedUrl, fetchFinancialFacts, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile } from "./lib/read-model";
 import { createSyncCoordinator, normalizeSyncDomains, shouldQueueRealtimeDomain, syncDomainForTable, syncDomainsForView, SYNC_DOMAINS } from "./lib/sync-coordinator";
 import { crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo, setReclamoEstado, editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearLote, setLoteEstado, empezarCongelamiento, convertirImperfectas, crearInsumo, entradaInsumo, entradaInsumoLote, desecharLoteInsumo, movimientoInsumo, setSugerenciaEstado, crearCorrida, desmoldarLote, producirSubreceta, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras, crearCampana, editarCampana, setCampanaEstado, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido, crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho, guardarConfiguracionAgencia, crearBriefAgencia, registrarSnapshotMotorCrecimiento, seleccionarModoCrecimiento, setEstadoBriefAgencia, crearDecisionAgencia, resolverDecisionAgencia, registrarResultadoAccionAgencia, registrarRecomendacionOrquestador, resolverPropuestaOrquestador, abrirMesaAgencia, agregarAporteMesaAgencia, prepararContratoCreativo, aprobarContratoCreativo, crearStoryboardAgencia, guardarTomaStoryboard, enviarStoryboardRevision, resolverStoryboardAgencia, prepararPlanMotion, resolverPlanMotion, prepararEnrutamientoEscenas, resolverEnrutamientoEscenas, registrarRevisionCalidadEscena, resolverRevisionCalidadEscena, prepararPaquetePostproduccion, resolverPaquetePostproduccion, autorizarExportacionPostproduccion, resolverControlMasterPostproduccion, reintentarExportacionPostproduccion, prepararGuionRetencion, resolverGuionRetencion, crearExperimentoRetencion, cerrarExperimentoRetencion, prepararDiagnosticoRetencion, resolverDiagnosticoRetencion, crearVersionCreativaAgencia, revisarVersionCreativaAgencia, subirActivoMarca, declararLogoPrincipalMarca, archivarActivoMarca, actualizarMetadatosActivoMarca, eliminarActivoMarca, eliminarLogoOficialMarca, crearTrabajoCreativo, autorizarTrabajoCreativo, cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa, guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararDiagnosticoMeta, resolverDiagnosticoMeta, crearEstudioIncrementalMeta, resolverEstudioIncrementalMeta, resolverMedicionIncrementalMeta, crearEscenariosInversionMeta, resolverEscenariosInversionMeta, solicitarAutorizacionInversionMeta, resolverAutorizacionInversionMeta, revocarAutorizacionInversionMeta, prepararDryRunMeta, prepararRelevoMasterCreativo, vincularPublicacionMaster, setIdeaMarketingEstado, crearTareaMarketing, setTareaMarketingEstado } from "./lib/rpc";
-import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, combineKitchenVoiceAlternatives, kitchenConversationPrompt, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderLookupAnswer, kitchenOrderQueueAnswer, kitchenOrderStateEvents, kitchenReadyOrderCommands, kitchenRecognitionWatchdogMs, kitchenSpeechTimeoutMs, kitchenTaskVocabularyPhrases, kitchenVoiceControl, kitchenVoicePauseMs, kitchenVocabularyPhrases, mergeKitchenConversation, normalizeKitchenDelaySettings, parseKitchenVoice, selectKitchenVoiceAlternative, selectKitchenVoiceControl, splitKitchenVoiceClosure, splitKitchenWakeWord } from "./lib/kitchen-voice";
+import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderStateEvents, kitchenReadyOrderCommands, normalizeKitchenDelaySettings } from "./lib/kitchen-voice";
 import { canCreateOrder, canManageDeliveryHandoff, deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES, orderEvidencePermission, orderIntakePrimaryAction, orderTransitionPermission } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
 import { buildFinishedInventory } from "./lib/finished-inventory";
@@ -12,16 +13,13 @@ import { inventorySupplyMode } from "./lib/inventory-supply-mode";
 import { calculateSubrecipeBatch } from "./lib/subrecipe-scaling";
 import { explainOperationalError } from "./lib/operational-errors";
 import { evaluateComboVariantAvailability, evaluateExactVariantDemand } from "./lib/variant-availability";
-import { momobotContextAnswer, momobotContextSnapshot } from "./lib/momobot-context";
-import { canAutoStartMomobot, isCurrentMomobotAuthorization, momobotModeAfterExecution, momobotModeAfterReadOnly } from "./lib/momobot-session";
 import { buildPackingChecklistLines, buildPackingGuide, findPackingVerification, packingStationProgress, packingVerificationMatchesLines } from "./lib/packing-workflow";
 import { buildPackingQueue } from "./lib/packing-queue";
 import { KITCHEN_ISSUE_GUIDANCE, kitchenQuickCommandState } from "./lib/kitchen-command";
 import { buildPurchaseAssistant } from "./lib/purchase-assistant";
 import { buildSalesReceptionAssistant } from "./lib/sales-reception-assistant";
-import { buildOperationalFinance } from "./lib/operational-finance";
+import { measureSyncLoad, runtimePerformance } from "./performance/runtime-telemetry";
 import { buildKitchenProductionPlan, productionRunDraft } from "./lib/production-planner";
-import { buildAssistantControlCenter } from "./lib/assistant-control-center";
 import { activeStageAssignment, canOperateStage, dispatchHandoffFor, lineProgressFor, openOrderIncidents, operationalStageForOrder, STAGE_LINE_STATUSES } from "./lib/operational-control";
 import { buildOrderTraceability, traceabilityHealth } from "./lib/order-traceability";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
@@ -54,8 +52,12 @@ import { buildDistributionRoom, distributionChecklistFor, validateDistributionAc
 import { enrichDistributionWithDispatch } from "./lib/commercial-dispatch";
 import { buildActiveReservationDashboard, buildInventoryHistory, buildOperationalHistory, isActiveClaim, isActiveDelivery, isActiveInventoryReservation, isActiveOrder, isActiveProductionBatch, isPackingHistoryOrder, partitionByActivity } from "./lib/operational-history";
 import { ANIMATION_ASSET_KINDS, ANIMATION_ASSET_ROLES, BRAND_ASSET_ROLES, BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, brandAssetDeletionPolicy, brandAssetDeletionReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, isOfficialBrandLogo, searchBrandMediaAssets } from "./lib/brand-studio";
+import { clasificarActivoProduccion, crearPaqueteProduccion, crearTrabajoDesdePaqueteProduccion, resolverAprobacionHumanaMcp, revisarPaqueteProduccion } from "./lib/rpc";
+import { PRODUCTION_COMPONENT_TYPES, PRODUCTION_CONSENT_STATUSES, PRODUCTION_HAND_ASSIGNMENTS, PRODUCTION_INTERACTIONS, PRODUCTION_PACK_ROLES, PRODUCTION_PHYSICAL_STATES, PRODUCTION_QA_STATUSES, PRODUCTION_SOURCE_QUALITIES, PRODUCTION_VIEW_ANGLES, buildProductionLibrary, defaultProductionProfile, productionProfilePayload } from "./lib/production-library";
 import { CREATIVE_PROVIDERS, buildCreativeProductionQueue, creativeAuthorizationGuard } from "./lib/creative-production";
 import { AGENCY_INTEGRATION_ENVIRONMENTS, agencyProviderExecutionGuard, buildAgencyIntegrationCenter } from "./lib/agency-integrations";
+
+const LazyVoiceKitchenPanel = lazy(() => import("./features/production/VoiceKitchenPanel.jsx"));
 
 /* ================================================================
    MOMOS OPS v3 — Operación + Agencia Interna de D'Momos Sweet Love
@@ -731,7 +733,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -753,7 +755,7 @@ function normalizeDbShape(d) {
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
     "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions", "distributionConnectorJobs",
-    "brandMediaAssets", "creativeGenerationJobs", "brandMediaUsages", "agencyIntegrations", "creativeConnectorRuns", "agencyMetaConnectorDryRuns",
+    "brandMediaAssets", "brandProductionPacks", "brandProductionPackAssets", "creativeGenerationJobs", "brandMediaUsages", "agencyIntegrations", "creativeConnectorRuns", "agencyMetaConnectorDryRuns",
     "agencyMotionPlans", "agencyMotionRecipes", "agencyMotionObservations", "agencySceneQualityReviews", "agencyPostproductionPackages", "agencyPostproductionExports", "agencyPostproductionWorkers", "agencyPostproductionAudioBindings",
     "agencyBrandGateBindings", "agencyMasterReleases", "agencyMasterReleaseEvents",
     "marketing_ideas", "marketing_guiones", "marketing_mensajes", "marketing_tasks",
@@ -2675,6 +2677,10 @@ function MiniSelect({ value, onChange, options, placeholder, disabled }) {
   );
 }
 
+const VOICE_PANEL_UI = Object.freeze({
+  T, Card, Btn, BtnAsync, inputCls, inputStyle, toast, vibrar,
+});
+
 function Empty({ icon, text }) {
   return (
     <Card className="p-8 text-center">
@@ -2707,14 +2713,30 @@ function Bars({ data, money }) {
 function Dashboard({ db, go, user }) {
   const [tick, setTick] = useState(0);
   const [assistantCenterOpen, setAssistantCenterOpen] = useState(false);
+  const [assistantCenterRuntime, setAssistantCenterRuntime] = useState(null);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    let active = true;
+    import("./lib/assistant-control-center.js").then((runtime) => {
+      if (active) setAssistantCenterRuntime(runtime);
+    }).catch(() => {
+      if (active) setAssistantCenterRuntime({ error: true });
+    });
+    return () => { active = false; };
+  }, []);
   const hoy = hoyISO();
-  const assistantCenter = useMemo(() => buildAssistantControlCenter(db, {
-    today: hoy,
-    now: new Date().toISOString(),
-    financeFrom: hoy,
-    financeTo: hoy,
-  }), [db, hoy, tick]);
+  const assistantCenter = useMemo(() => assistantCenterRuntime?.buildAssistantControlCenter
+    ? assistantCenterRuntime.buildAssistantControlCenter(db, {
+      today: hoy,
+      now: new Date().toISOString(),
+      financeFrom: hoy,
+      financeTo: hoy,
+    })
+    : {
+      primary: { title: assistantCenterRuntime?.error ? "No se pudo preparar el centro de asistentes" : "Preparando prioridades operativas", detail: "El resto del Dashboard ya está disponible.", ownerRoles: ["MOMOS OPS"], nextAction: assistantCenterRuntime?.error ? "Recargar la aplicación." : "Esperar un instante." },
+      assistants: [], tasks: [], policy: "Las acciones sensibles siempre requieren confirmación humana.",
+      summary: { health: assistantCenterRuntime?.error ? "Atención" : "Preparando", tasks: 0, critical: 0, blocking: 0 },
+    }, [assistantCenterRuntime, db, hoy, tick]);
   const deHoy = db.orders.filter((o) => o.fecha === hoy && o.estado !== "Cancelado");
   const ventasHoy = deHoy.filter(esPedidoCobrado).reduce((s, o) => s + orderTotal(db, o), 0);
   const activos = db.orders.filter((o) => !["Entregado","Cancelado"].includes(o.estado));
@@ -3115,19 +3137,13 @@ function HistorialOperativo({ db }) {
         Rastro registrado desde <b style={{ color: T.coral }}>{primerRegistro ? primerRegistro.slice(0, 10) : "—"}</b> hasta hoy.
       </div>
 
-      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-4 rounded-2xl" role="tablist" aria-label="Áreas del historial">
-        {[["Todas", ""], ...areas.map((a) => [a, a])].map(([label, value]) => {
-          const count = value ? entries.filter((e) => e.area === value).length : entries.length;
-          const activo = area === value;
-          return (
-            <button key={label} type="button" role="tab" aria-selected={activo} onClick={() => setArea(value)}
-              className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
-              style={activo ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
-              {label} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: activo ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedTabs
+        ariaLabel="Áreas del historial"
+        value={area}
+        onChange={setArea}
+        items={[["Todas", ""], ...areas.map((name) => [name, name])]}
+        getCount={(value) => value ? entries.filter((entry) => entry.area === value).length : entries.length}
+      />
 
       <Card className="p-3 mb-4">
         <div className="grid sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_150px_150px_auto] gap-2 items-center">
@@ -4788,1224 +4804,6 @@ const PREP_TIPOS = [
   ["cheesecake", "Cheesecake"], ["ganache", "Ganache"], ["salsa", "Salsas"], ["crocante", "Crocante"],
 ];
 
-const VOICE_KITCHEN_EXAMPLE = "Se está preparando 200 gramos de ganache, ingrésalos. Se van a producir 20 Lizis: 3 de limón, 4 de coco, 3 de banano, 5 de Oreo y 5 de Milo. Van a ingresar a congelación, empieza cronómetro.";
-const VOICE_PHRASE_BIAS_KEY = "momos-voice-native-phrases";
-
-function nativeVoicePhraseBiasEnabled() {
-  try { return window.localStorage.getItem(VOICE_PHRASE_BIAS_KEY) !== "unsupported"; }
-  catch { return true; }
-}
-
-function rememberUnsupportedVoicePhrases(ref) {
-  ref.current = false;
-  try { window.localStorage.setItem(VOICE_PHRASE_BIAS_KEY, "unsupported"); } catch { /* el corrector local sigue activo */ }
-}
-
-function voiceCommandKey() {
-  try { if (crypto && crypto.randomUUID) return "voice-" + crypto.randomUUID(); } catch { /* fallback abajo */ }
-  return "voice-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
-}
-
-function voiceOutcomeCount(count, singular, plural) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function voiceOrderItems(madeToOrder) {
-  const items = madeToOrder?.items?.length
-    ? madeToOrder.items
-    : [{ quantity: madeToOrder?.quantity || 0, productName: madeToOrder?.productName || "producto" }];
-  return items.map((item) => `${item.quantity} × ${item.productName}`).join("; ");
-}
-
-function voiceSummary(draft) {
-  const parts = [];
-  const preparations = draft.preparations?.length ? draft.preparations : (draft.preparation ? [draft.preparation] : []);
-  preparations.forEach((preparation) => parts.push(`preparar ${preparation.nominalGrams} gramos de ${preparation.subrecipeName}${preparation.usage ? `, ${preparation.usage.toLowerCase()}` : ""}`));
-  const productions = draft.productions?.length ? draft.productions : (draft.production ? [draft.production] : []);
-  productions.forEach((production) => parts.push(`producir ${production.calculatedTotal} ${production.figure}: ${production.runs.map((run) => `${run.quantity} de ${run.flavor}`).join(", ")}`));
-  if (draft.madeToOrder) parts.push(`iniciar el pedido ${draft.madeToOrder.orderId}${draft.madeToOrder.customerName ? ` de ${draft.madeToOrder.customerName}` : ""}. La comanda contiene ${draft.madeToOrder.orderContent || voiceOrderItems(draft.madeToOrder)}`);
-  if (draft.orderHandoff) parts.push(`marcar el pedido ${draft.orderHandoff.orderId}${draft.orderHandoff.customerName ? ` de ${draft.orderHandoff.customerName}` : ""} como Listo para empaque`);
-  if (draft.unmolding) parts.push(`desmoldar el lote ${draft.unmolding.batchId}: ${voiceOutcomeCount(draft.unmolding.perfectas, "perfecta", "perfectas")}, ${voiceOutcomeCount(draft.unmolding.imperfectas, "imperfecta", "imperfectas")} y ${voiceOutcomeCount(draft.unmolding.descartadas, "descartada", "descartadas")}`);
-  if (draft.freezeBatchIds?.length) parts.push(`iniciar la congelación de ${draft.freezeBatchIds.length === 1 ? `el lote ${draft.freezeBatchIds[0]}` : `los lotes ${draft.freezeBatchIds.join(", ")}`}`);
-  else if (draft.startFreezing) parts.push("iniciar la congelación de los lotes nuevos");
-  return "Entendí: " + parts.join("; ") + ". ¿Está correcto?";
-}
-
-function VoiceKitchenPanel({ db, perfil, flavors, figures, subrecipes, refrescar, serverDataReady, requestedOrder }) {
-  const [transcript, setTranscript] = useState("");
-  const [listening, setListening] = useState(false);
-  const [speechError, setSpeechError] = useState("");
-  const [draft, setDraft] = useState(null);
-  const [result, setResult] = useState(null);
-  const [replyByVoice, setReplyByVoice] = useState(true);
-  const [executionLabel, setExecutionLabel] = useState("Ejecutando…");
-  const [executed, setExecuted] = useState(false);
-  const [voiceMode, setVoiceMode] = useState("idle");
-  const [voiceActivity, setVoiceActivity] = useState("idle");
-  const [conversation, setConversation] = useState([]);
-  const recognitionRef = useRef(null);
-  const recognitionSessionRef = useRef({ active: false, mode: "dictation", baseText: "", currentText: "", starting: false, restartTimer: null, turnTimer: null, watchdogTimer: null, activityTimer: null, restartDelay: 180, failures: 0, generation: 0, attempt: 0 });
-  const transcriptRef = useRef("");
-  const draftRef = useRef(null);
-  const executedRef = useRef(false);
-  const executingRef = useRef(false);
-  const conversationContextRef = useRef("");
-  const conversationTurnsRef = useRef(0);
-  const readOnlyTurnsRef = useRef(0);
-  const assistantMemoryRef = useRef({ lastTopic: "", lastOrderId: null, lastBatchId: null });
-  const speechTokenRef = useRef(0);
-  const speechSafetyTimerRef = useRef(null);
-  const speechInProgressRef = useRef(false);
-  const handsFreeCommandRef = useRef(false);
-  const authorizationAttemptRef = useRef(0);
-  const knownOrderStatesRef = useRef(new Map((db.orders || []).filter((order) => order?.id).map((order) => [order.id, order.estado || ""])));
-  const orderAlertsReadyRef = useRef(false);
-  const orderAlertQueueRef = useRef([]);
-  const orderAlertSpeakingRef = useRef(false);
-  const flushOrderAlertsRef = useRef(null);
-  const phraseBiasSupportedRef = useRef(nativeVoicePhraseBiasEnabled());
-  const beginRecognitionRef = useRef(null);
-  const startVoiceSessionRef = useRef(null);
-  const finishDictationRef = useRef(null);
-  const handleWakeWordRef = useRef(null);
-  const handleVoiceControlRef = useRef(null);
-  const handleConversationReplyRef = useRef(null);
-  const interpretTranscriptRef = useRef(null);
-  const executeCommandRef = useRef(null);
-  const commandKeyRef = useRef(null);
-  const progressRef = useRef({ bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() });
-  const SpeechRecognitionApi = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
-  const voiceInputAvailable = Boolean(
-    SpeechRecognitionApi
-    && typeof navigator !== "undefined"
-    && navigator.mediaDevices
-    && typeof navigator.mediaDevices.getUserMedia === "function",
-  );
-  const voiceCatalogs = useMemo(() => ({
-    flavors,
-    figures,
-    subrecipes,
-    figureFillings: db.figura_relleno || [],
-    products: db.products || [],
-    inventory: db.inventory_items || [],
-    inventoryLots: db.inventory_lots || [],
-    batches: db.production_batches || [],
-    orders: db.orders || [],
-    orderItems: db.order_items || [],
-    customers: db.customers || [],
-    variants: db.variantes || [],
-    suggestions: db.production_suggestions || [],
-    reservations: db.inventory_reservations || [],
-    auditLogs: db.audit_logs || [],
-    delaySettings: normalizeKitchenDelaySettings(db.settings || {}),
-    extras: [
-      ...(db.settings.salsas || []),
-      ...(db.settings.rellenos || []),
-      ...(db.settings.toppings || []).map((item) => item?.nombre || item).filter(Boolean),
-    ],
-  }), [db, flavors, figures, subrecipes]);
-  const voicePhrases = useMemo(() => kitchenVocabularyPhrases(voiceCatalogs), [voiceCatalogs]);
-  const voiceTaskPhrases = useMemo(() => new Set(kitchenTaskVocabularyPhrases()), []);
-  const contextSnapshot = useMemo(() => momobotContextSnapshot(voiceCatalogs), [voiceCatalogs]);
-
-  useEffect(() => () => {
-    const session = recognitionSessionRef.current;
-    session.active = false;
-    session.generation += 1;
-    if (session.restartTimer) clearTimeout(session.restartTimer);
-    if (session.turnTimer) clearTimeout(session.turnTimer);
-    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
-    if (session.activityTimer) clearTimeout(session.activityTimer);
-    try { recognitionRef.current?.abort(); } catch { /* nada que limpiar */ }
-    speechTokenRef.current += 1;
-    authorizationAttemptRef.current += 1;
-    speechInProgressRef.current = false;
-    if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
-    speechSafetyTimerRef.current = null;
-    try { window.speechSynthesis?.cancel(); } catch { /* degradación silenciosa */ }
-  }, []);
-
-  const [abierto, setAbierto] = useState(false);
-
-  useEffect(() => {
-    if (!requestedOrder?.orderId) return undefined;
-    setAbierto(true);
-    const command = `Preparar el pedido ${requestedOrder.orderId}`;
-    stopVoiceSession({ abort: true, nextMode: "idle" });
-    cancelSpeech();
-    changeTranscript(command);
-    const timer = setTimeout(() => interpretTranscriptRef.current?.(command), 60);
-    return () => clearTimeout(timer);
-  }, [requestedOrder?.token]);
-
-  useEffect(() => {
-    if (!voiceInputAvailable) return undefined;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        if (!navigator.permissions?.query) {
-          if (!cancelled) setSpeechError("Tocá “Activar Momobot” una vez para autorizar el micrófono.");
-          return;
-        }
-        const permission = await navigator.permissions.query({ name: "microphone" });
-        if (cancelled) return;
-        if (canAutoStartMomobot({
-          permissionState: permission.state,
-          sessionActive: recognitionSessionRef.current.active,
-          speechInProgress: speechInProgressRef.current,
-          hasDraft: Boolean(draftRef.current),
-          authorizing: recognitionSessionRef.current.starting,
-        })) startVoiceSessionRef.current?.("standby");
-        else if (permission.state === "denied") setSpeechError("El micrófono está bloqueado. Permitilo en el candado de la barra de direcciones y tocá “Activar Momobot”.");
-        else setSpeechError("Tocá “Activar Momobot” una vez para conceder el micrófono.");
-      } catch {
-        if (!cancelled) setSpeechError("Tocá “Activar Momobot” una vez para autorizar el micrófono.");
-      }
-    }, 420);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [voiceInputAvailable]);
-
-  useEffect(() => {
-    const orders = db.orders || [];
-    if (!serverDataReady || !orderAlertsReadyRef.current) {
-      knownOrderStatesRef.current = new Map(orders.filter((order) => order?.id).map((order) => [order.id, order.estado || ""]));
-      if (serverDataReady) orderAlertsReadyRef.current = true;
-      return;
-    }
-    const detected = kitchenOrderStateEvents(orders, knownOrderStatesRef.current);
-    knownOrderStatesRef.current = detected.nextStates;
-    detected.events.slice().reverse().forEach(({ order, type }) => {
-      const alert = kitchenOrderAlert(order, {
-        customers: db.customers || [],
-        products: db.products || [],
-        orderItems: db.order_items || [],
-      }, { eventType: type });
-      if (!alert) return;
-      const enriched = {
-        ...alert,
-        detectedAt: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
-      };
-      orderAlertQueueRef.current.push(enriched);
-    });
-    flushOrderAlertsRef.current?.();
-  }, [serverDataReady, db.orders, db.order_items, db.customers, db.products]);
-
-  useEffect(() => {
-    flushOrderAlertsRef.current?.();
-  }, [voiceMode, listening, replyByVoice]);
-
-  function cancelSpeech() {
-    speechTokenRef.current += 1;
-    speechInProgressRef.current = false;
-    if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
-    speechSafetyTimerRef.current = null;
-    try { window.speechSynthesis?.cancel(); } catch { /* degradación silenciosa */ }
-  }
-
-  function speak(text, onDone) {
-    const done = typeof onDone === "function" ? onDone : null;
-    if (!replyByVoice || !text || typeof window === "undefined" || !("speechSynthesis" in window)) {
-      done?.();
-      return;
-    }
-    try {
-      cancelSpeech();
-      const token = speechTokenRef.current;
-      const utterance = new SpeechSynthesisUtterance(text);
-      let finished = false;
-      let safetyTimer = null;
-      speechInProgressRef.current = true;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        speechInProgressRef.current = false;
-        if (safetyTimer) clearTimeout(safetyTimer);
-        if (speechSafetyTimerRef.current === safetyTimer) speechSafetyTimerRef.current = null;
-        if (token !== speechTokenRef.current) return;
-        done?.();
-        setTimeout(() => flushOrderAlertsRef.current?.(), 0);
-      };
-      utterance.lang = "es-CO";
-      utterance.rate = 0.98;
-      utterance.onend = finish;
-      utterance.onerror = finish;
-      safetyTimer = setTimeout(() => {
-        try { window.speechSynthesis.cancel(); } catch { /* el callback igual libera la escucha */ }
-        finish();
-      }, kitchenSpeechTimeoutMs(text));
-      speechSafetyTimerRef.current = safetyTimer;
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      speechInProgressRef.current = false;
-      if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
-      speechSafetyTimerRef.current = null;
-      done?.();
-      setTimeout(() => flushOrderAlertsRef.current?.(), 0);
-    }
-  }
-
-  function flushOrderAlerts() {
-    if (orderAlertSpeakingRef.current || speechInProgressRef.current || !orderAlertQueueRef.current.length) return;
-    const session = recognitionSessionRef.current;
-    const inConversation = session.active && session.mode !== "standby";
-    const busy = inConversation || ["authorizing", "processing", "executing"].includes(voiceMode);
-    if (busy) return;
-    const alert = orderAlertQueueRef.current.shift();
-    if (!alert) return;
-    const resumeStandby = session.active && session.mode === "standby";
-    if (resumeStandby) stopVoiceSession({ abort: true, nextMode: "idle" });
-    orderAlertSpeakingRef.current = true;
-    speak(alert.text, () => {
-      orderAlertSpeakingRef.current = false;
-      if (resumeStandby) startVoiceSession("standby");
-      setTimeout(() => flushOrderAlertsRef.current?.(), 250);
-    });
-  }
-
-  function addConversationMessage(role, text) {
-    const clean = String(text || "").trim();
-    if (!clean) return;
-    setConversation((current) => [...current, { id: voiceCommandKey(), role, text: clean }].slice(-8));
-  }
-
-  function resetVoiceDraft({ keepConversation = false } = {}) {
-    setDraft(null);
-    draftRef.current = null;
-    setResult(null);
-    setExecuted(false);
-    executedRef.current = false;
-    commandKeyRef.current = null;
-    progressRef.current = { bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() };
-    conversationContextRef.current = "";
-    conversationTurnsRef.current = 0;
-    handsFreeCommandRef.current = false;
-    if (!keepConversation) {
-      readOnlyTurnsRef.current = 0;
-      setConversation([]);
-    }
-  }
-
-  function changeTranscript(value, { keepConversation = false } = {}) {
-    if (recognitionSessionRef.current.active && recognitionSessionRef.current.mode === "standby") stopVoiceSession();
-    const nextValue = String(value || "");
-    setTranscript(nextValue);
-    transcriptRef.current = nextValue;
-    resetVoiceDraft({ keepConversation });
-  }
-
-  function stopVoiceSession({ abort = false, nextMode = "idle" } = {}) {
-    authorizationAttemptRef.current += 1;
-    const session = recognitionSessionRef.current;
-    session.active = false;
-    session.starting = false;
-    session.generation += 1;
-    if (session.restartTimer) clearTimeout(session.restartTimer);
-    if (session.turnTimer) clearTimeout(session.turnTimer);
-    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
-    if (session.activityTimer) clearTimeout(session.activityTimer);
-    session.restartTimer = null;
-    session.turnTimer = null;
-    session.watchdogTimer = null;
-    session.activityTimer = null;
-    const recognition = recognitionRef.current;
-    recognitionRef.current = null;
-    try { if (abort) recognition?.abort(); else recognition?.stop(); } catch { /* ya estaba detenida */ }
-    setListening(false);
-    setVoiceMode(nextMode);
-    setVoiceActivity("idle");
-  }
-
-  function markVoiceActivity(session, generation, activity) {
-    if (!session.active || session.generation !== generation) return;
-    if (session.activityTimer) clearTimeout(session.activityTimer);
-    setVoiceActivity(activity);
-    if (activity === "hearing" || activity === "wake") {
-      session.activityTimer = setTimeout(() => {
-        if (session.active && session.generation === generation) setVoiceActivity("listening");
-      }, activity === "wake" ? kitchenVoicePauseMs("standby") + 250 : 1100);
-    }
-  }
-
-  function preserveCurrentDictation(session) {
-    if (session.mode !== "dictation" || !session.currentText) return;
-    session.baseText = [session.baseText, session.currentText].filter(Boolean).join(" ").trim();
-    session.currentText = "";
-    transcriptRef.current = session.baseText;
-    setTranscript(session.baseText);
-  }
-
-  function queueRecognitionRestart(session, generation, { delay = 180, abort = true, message = "" } = {}) {
-    if (!session.active || session.generation !== generation) return;
-    preserveCurrentDictation(session);
-    if (session.restartTimer) clearTimeout(session.restartTimer);
-    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
-    session.watchdogTimer = null;
-    session.starting = false;
-    const recognition = recognitionRef.current;
-    recognitionRef.current = null;
-    setListening(true);
-    setVoiceMode(session.mode);
-    setVoiceActivity("recovering");
-    if (message) setSpeechError(message);
-    session.restartTimer = setTimeout(() => {
-      session.restartTimer = null;
-      if (!session.active || session.generation !== generation) return;
-      setVoiceActivity("starting");
-      beginRecognitionRef.current?.();
-    }, delay);
-    if (abort) {
-      try { recognition?.abort(); } catch { /* el reinicio vigilado continúa */ }
-    }
-  }
-
-  function armRecognitionWatchdog(session, generation, attempt, recognition, phase) {
-    if (session.watchdogTimer) clearTimeout(session.watchdogTimer);
-    session.watchdogTimer = setTimeout(() => {
-      if (!session.active || session.generation !== generation || session.attempt !== attempt || recognitionRef.current !== recognition) return;
-      queueRecognitionRestart(session, generation, {
-        delay: 220,
-      });
-    }, kitchenRecognitionWatchdogMs(phase));
-  }
-
-  async function authorizeAndStartVoiceSession(mode, options = {}) {
-    if (!voiceInputAvailable) {
-      setVoiceMode("idle");
-      setListening(false);
-      setSpeechError("Este navegador no permite usar el micrófono con Momobot. Abrí MOMOS OPS en Chrome o Edge.");
-      return;
-    }
-    stopVoiceSession({ abort: true, nextMode: "authorizing" });
-    const authorizationAttempt = authorizationAttemptRef.current;
-    cancelSpeech();
-    setSpeechError("Esperando autorización del micrófono…");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      await new Promise((resolve) => setTimeout(resolve, 180));
-      if (!isCurrentMomobotAuthorization(authorizationAttempt, authorizationAttemptRef.current)) return;
-      setSpeechError("");
-      startVoiceSession(mode, options);
-    } catch (error) {
-      if (!isCurrentMomobotAuthorization(authorizationAttempt, authorizationAttemptRef.current)) return;
-      setVoiceMode("idle");
-      setListening(false);
-      const blocked = error?.name === "NotAllowedError" || error?.name === "SecurityError";
-      setSpeechError(blocked
-        ? "El micrófono quedó bloqueado. Permitilo en el candado de la barra de direcciones y volvé a tocar “Activar Momobot”."
-        : "No pude abrir el micrófono. Revisá que esté conectado y que ninguna otra aplicación lo esté usando.");
-    }
-  }
-
-  function startVoiceSession(mode, { clearDictation = false } = {}) {
-    if (!voiceInputAvailable) {
-      setSpeechError("Este navegador no permite usar el micrófono con Momobot. Abrí MOMOS OPS en Chrome o Edge.");
-      setVoiceMode("idle");
-      return;
-    }
-    cancelSpeech();
-    stopVoiceSession({ abort: true, nextMode: mode });
-    if (clearDictation) changeTranscript("");
-    const session = recognitionSessionRef.current;
-    session.active = true;
-    session.mode = mode;
-    session.baseText = mode === "dictation" && !clearDictation ? transcriptRef.current.trim() : "";
-    session.currentText = "";
-    session.failures = 0;
-    session.restartDelay = 180;
-    if (session.turnTimer) clearTimeout(session.turnTimer);
-    session.turnTimer = null;
-    session.generation += 1;
-    setVoiceMode(mode);
-    setListening(true);
-    setVoiceActivity("starting");
-    setSpeechError("");
-    session.restartTimer = setTimeout(() => beginRecognitionRef.current?.(), 80);
-  }
-
-  function processActionAlternatives(alternatives) {
-    const readOnlyAlternative = alternatives.find((alternative) => kitchenOrderLookupAnswer(alternative?.transcript, voiceCatalogs) || kitchenOrderQueueAnswer(alternative?.transcript, voiceCatalogs));
-    if (readOnlyAlternative) {
-      interpretTranscriptRef.current?.(readOnlyAlternative.transcript, { handsFree: true, continuation: true, spokenText: readOnlyAlternative.transcript });
-      return;
-    }
-    const controlSelection = selectKitchenVoiceControl(alternatives);
-    const heard = controlSelection.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript;
-    const control = controlSelection.control;
-    if (controlSelection.ambiguous) {
-      setSpeechError("Escuché dos órdenes posibles. Repetí solo confirmar, editar o cancelar.");
-      return;
-    }
-    if (control) {
-      handleVoiceControlRef.current?.(control);
-      return;
-    }
-    handleConversationReplyRef.current?.(heard);
-  }
-
-  function processFollowupAlternatives(alternatives) {
-    const readOnlyAlternative = alternatives.find((alternative) => kitchenOrderLookupAnswer(alternative?.transcript, voiceCatalogs) || kitchenOrderQueueAnswer(alternative?.transcript, voiceCatalogs));
-    if (readOnlyAlternative) {
-      interpretTranscriptRef.current?.(readOnlyAlternative.transcript, { handsFree: true, continuation: true, spokenText: readOnlyAlternative.transcript });
-      return;
-    }
-    const controlSelection = selectKitchenVoiceControl(alternatives);
-    const heard = controlSelection.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript;
-    const control = controlSelection.control;
-    if (controlSelection.ambiguous) {
-      setSpeechError("Escuché dos órdenes posibles. Repetí una sola respuesta.");
-      return;
-    }
-    if (control) handleVoiceControlRef.current?.(control);
-    else handleConversationReplyRef.current?.(heard);
-  }
-
-  function recognitionEventAlternatives(event) {
-    const groups = [];
-    for (let i = event.resultIndex || 0; i < event.results.length; i += 1) {
-      const alternatives = [];
-      for (let j = 0; j < event.results[i].length; j += 1) {
-        alternatives.push({ transcript: event.results[i][j].transcript, confidence: event.results[i][j].confidence });
-      }
-      if (alternatives.length) groups.push(alternatives);
-    }
-    return combineKitchenVoiceAlternatives(groups);
-  }
-
-  function beginRecognition() {
-    const session = recognitionSessionRef.current;
-    if (!session.active || session.starting || recognitionRef.current || !SpeechRecognitionApi) return;
-    const generation = session.generation;
-    session.attempt += 1;
-    const attempt = session.attempt;
-    session.starting = true;
-    try {
-      const recognition = new SpeechRecognitionApi();
-      recognition.lang = "es-CO";
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 5;
-      try {
-        const Phrase = window.SpeechRecognitionPhrase || window.webkitSpeechRecognitionPhrase;
-        if (phraseBiasSupportedRef.current && Phrase && "phrases" in recognition) {
-          recognition.phrases = voicePhrases.slice(0, 300).map((phrase) => new Phrase(phrase, phrase === "Momobot" || voiceTaskPhrases.has(phrase) ? 10 : 8));
-        }
-      } catch { rememberUnsupportedVoicePhrases(phraseBiasSupportedRef); }
-      recognition.onstart = () => {
-        if (recognitionSessionRef.current.generation !== generation || session.attempt !== attempt) return;
-        session.starting = false;
-        session.failures = 0;
-        setListening(true);
-        setVoiceActivity("listening");
-        setSpeechError("");
-        armRecognitionWatchdog(session, generation, attempt, recognition, "listening");
-        vibrar("tap");
-      };
-      const noteAudioActivity = () => {
-        if (!session.active || session.generation !== generation || session.attempt !== attempt) return;
-        markVoiceActivity(session, generation, "hearing");
-        armRecognitionWatchdog(session, generation, attempt, recognition, "listening");
-      };
-      recognition.onaudiostart = noteAudioActivity;
-      recognition.onsoundstart = noteAudioActivity;
-      recognition.onspeechstart = noteAudioActivity;
-      recognition.onresult = (event) => {
-        if (!session.active || session.generation !== generation || session.attempt !== attempt) return;
-        session.failures = 0;
-        session.restartDelay = 180;
-        if (session.turnTimer) clearTimeout(session.turnTimer);
-        session.turnTimer = null;
-        markVoiceActivity(session, generation, "hearing");
-        armRecognitionWatchdog(session, generation, attempt, recognition, "listening");
-        if (session.mode === "standby") {
-          let pendingWake = null;
-          let lastHeard = "";
-          let heardFinalWithoutWake = false;
-          for (let i = event.resultIndex || 0; i < event.results.length; i += 1) {
-            const alternatives = [];
-            for (let j = 0; j < event.results[i].length; j += 1) {
-              alternatives.push({ transcript: event.results[i][j].transcript, confidence: event.results[i][j].confidence });
-            }
-            const wakeAlternative = alternatives.find((alternative) => splitKitchenWakeWord(alternative.transcript).woke);
-            const heard = wakeAlternative?.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript;
-            const wake = splitKitchenWakeWord(heard);
-            lastHeard = heard || lastHeard;
-            if (wake.woke) {
-              if (event.results[i].isFinal) {
-                handleWakeWordRef.current?.(wake.text);
-                return;
-              }
-              pendingWake = wake.text;
-              markVoiceActivity(session, generation, "wake");
-              setSpeechError("Te oigo. Terminá la frase y hacé una pausa.");
-            }
-            if (event.results[i].isFinal) {
-              const standbySelection = selectKitchenVoiceControl(alternatives);
-              const standbyControl = standbySelection.control;
-              if (standbySelection.ambiguous) {
-                setSpeechError("Escuché dos controles posibles. Repetí solo editar, limpiar o cancelar.");
-                return;
-              }
-              if (standbyControl === "close") {
-                handleVoiceControlRef.current?.("close");
-                return;
-              }
-              const hasPendingDraft = Boolean(draftRef.current && !executedRef.current);
-              if (hasPendingDraft && ["edit", "cancel", "repeat", "new"].includes(standbyControl)) {
-                handleVoiceControlRef.current?.(standbyControl);
-                return;
-              }
-              if (hasPendingDraft && !standbyControl && heard) {
-                handleConversationReplyRef.current?.(heard);
-                return;
-              }
-            }
-            if (event.results[i].isFinal && !wake.woke) heardFinalWithoutWake = true;
-          }
-          if (pendingWake !== null) {
-            session.turnTimer = setTimeout(() => {
-              if (session.active && session.generation === generation && session.mode === "standby") handleWakeWordRef.current?.(pendingWake);
-            }, kitchenVoicePauseMs("standby"));
-          } else if (heardFinalWithoutWake && lastHeard) {
-            setSpeechError(`Sí te oí: “${lastHeard}”. Para abrir un turno, empezá diciendo Momobot.`);
-          }
-          return;
-        }
-        if (session.mode === "action") {
-          const alternatives = recognitionEventAlternatives(event);
-          const lastResult = event.results[event.results.length - 1];
-          if (lastResult?.isFinal) {
-            processActionAlternatives(alternatives);
-            return;
-          }
-          if (alternatives.length) {
-            session.turnTimer = setTimeout(() => processActionAlternatives(alternatives), kitchenVoicePauseMs("action"));
-          }
-          return;
-        }
-        if (session.mode === "followup") {
-          const alternatives = recognitionEventAlternatives(event);
-          const lastResult = event.results[event.results.length - 1];
-          if (lastResult?.isFinal) {
-            processFollowupAlternatives(alternatives);
-            return;
-          }
-          if (alternatives.length) {
-            session.turnTimer = setTimeout(() => processFollowupAlternatives(alternatives), kitchenVoicePauseMs("followup"));
-          }
-          return;
-        }
-
-        setSpeechError("");
-        const parts = [];
-        for (let i = 0; i < event.results.length; i += 1) {
-          const alternatives = [];
-          for (let j = 0; j < event.results[i].length; j += 1) {
-            alternatives.push({ transcript: event.results[i][j].transcript, confidence: event.results[i][j].confidence });
-          }
-          const readOnlyAlternative = alternatives.find((alternative) => kitchenOrderLookupAnswer(alternative?.transcript, voiceCatalogs) || kitchenOrderQueueAnswer(alternative?.transcript, voiceCatalogs));
-          parts.push(readOnlyAlternative?.transcript || selectKitchenVoiceAlternative(alternatives, voiceCatalogs).transcript);
-        }
-        session.currentText = parts.join(" ").trim();
-        const fullText = [session.baseText, session.currentText].filter(Boolean).join(" ").trim();
-        transcriptRef.current = fullText;
-        setTranscript(fullText);
-        const lastResult = event.results[event.results.length - 1];
-        const closure = splitKitchenVoiceClosure(fullText);
-        if (lastResult?.isFinal && closure.closed) finishDictationRef.current?.(closure.text);
-        else if (fullText) {
-          session.turnTimer = setTimeout(() => finishDictationRef.current?.(fullText), kitchenVoicePauseMs("dictation", Boolean(lastResult?.isFinal)));
-        }
-      };
-      recognition.onerror = (event) => {
-        if (session.generation !== generation || session.attempt !== attempt) return;
-        session.starting = false;
-        const errorCode = event.error || "unknown";
-        if (errorCode === "aborted" && session.active) {
-          if (!session.restartTimer) queueRecognitionRestart(session, generation, { delay: 180, abort: false });
-          return;
-        }
-        if (errorCode === "no-speech" && session.active) {
-          const message = session.mode === "standby"
-            ? "Momobot sigue atenta. Estoy renovando la escucha para que no se congele."
-            : session.mode === "followup"
-              ? "No escuché tu respuesta todavía. Momobot sigue atento."
-              : session.mode === "action"
-                ? "Sigo esperando tu confirmación o corrección."
-                : "Sigo escuchando. Termino el turno cuando hagas una pausa.";
-          queueRecognitionRestart(session, generation, { delay: 180, message });
-          return;
-        }
-        if (errorCode === "phrases-not-supported" && session.active) {
-          rememberUnsupportedVoicePhrases(phraseBiasSupportedRef);
-          queueRecognitionRestart(session, generation, {
-            delay: 180,
-            message: "Este navegador no admite el refuerzo nativo de frases. Momobot continúa con el corrector de vocabulario MOMOS.",
-          });
-          return;
-        }
-        if (errorCode === "network" && session.active) {
-          session.failures = Math.min(session.failures + 1, 6);
-          queueRecognitionRestart(session, generation, {
-            delay: Math.min(2400, 350 * session.failures),
-            message: "Momobot perdió por un instante el servicio de voz. Sigue reconectando automáticamente…",
-          });
-          return;
-        }
-        session.active = false;
-        setListening(false);
-        setVoiceMode("idle");
-        setVoiceActivity("idle");
-        const friendly = errorCode === "not-allowed" || errorCode === "service-not-allowed" ? "Para activar Momobot, permití el micrófono y tocá “Activar Momobot” una vez."
-          : errorCode === "audio-capture" ? "No encuentro un micrófono disponible. Revisá que esté conectado y permitido."
-          : session.mode === "standby" ? `Momobot no pudo quedar en espera (código: ${errorCode}). Tocá “Activar Momobot” para reintentar.`
-          : `Se interrumpió el reconocimiento de voz (código: ${errorCode}). Tocá el micrófono para retomarlo.`;
-        setSpeechError(friendly);
-      };
-      recognition.onend = () => {
-        if (recognitionRef.current === recognition) recognitionRef.current = null;
-        if (session.generation !== generation || session.attempt !== attempt) return;
-        session.starting = false;
-        if (!session.active) { setListening(false); return; }
-        if (session.restartTimer) return;
-        const delay = session.restartDelay || 180;
-        session.restartDelay = 180;
-        queueRecognitionRestart(session, generation, { delay, abort: false });
-      };
-      recognitionRef.current = recognition;
-      recognition.start();
-      armRecognitionWatchdog(session, generation, attempt, recognition, "starting");
-    } catch (e) {
-      session.starting = false;
-      recognitionRef.current = null;
-      if (session.active && session.generation === generation && session.attempt === attempt && session.failures < 6) {
-        session.failures += 1;
-        queueRecognitionRestart(session, generation, {
-          delay: Math.min(2400, 350 * session.failures),
-          abort: false,
-          message: `Momobot está reabriendo el micrófono (${session.failures}/6)…`,
-        });
-        return;
-      }
-      session.active = false;
-      setListening(false);
-      setVoiceMode("idle");
-      setVoiceActivity("idle");
-      setSpeechError("No pude mantener activo el reconocimiento: " + (e?.message || "error del navegador") + ".");
-    }
-  }
-
-  function finishDictation(value) {
-    const cleanText = String(value || "").trim();
-    stopVoiceSession({ nextMode: "processing" });
-    if (!cleanText) {
-      setSpeechError("");
-      setVoiceMode("idle");
-      speak("Micrófono cerrado. No registré ninguna acción nueva.");
-      return;
-    }
-    transcriptRef.current = cleanText;
-    setTranscript(cleanText);
-    setTimeout(() => interpretTranscriptRef.current?.(cleanText, { handsFree: true }), 120);
-  }
-
-  function handleWakeWord(remainder) {
-    stopVoiceSession({ nextMode: "dictation" });
-    readOnlyTurnsRef.current = 0;
-    setSpeechError("");
-    vibrar("tap");
-    const closure = splitKitchenVoiceClosure(remainder);
-    const control = kitchenVoiceControl(closure.text);
-    if (control) {
-      handleVoiceControlRef.current?.(control);
-      return;
-    }
-    changeTranscript(closure.text);
-    if (closure.text) {
-      finishDictation(closure.text);
-      return;
-    }
-    speak("Te oigo, empecemos.", () => startVoiceSession("dictation", { clearDictation: true }));
-  }
-
-  function resumeMomobotStandby() {
-    if (voiceInputAvailable) startVoiceSession("standby");
-  }
-
-  function continueMomobotAfterExecution() {
-    setDraft(null);
-    draftRef.current = null;
-    setExecuted(false);
-    executedRef.current = false;
-    commandKeyRef.current = null;
-    progressRef.current = { bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() };
-    conversationContextRef.current = "";
-    conversationTurnsRef.current = 0;
-    readOnlyTurnsRef.current = 0;
-    setTranscript("");
-    transcriptRef.current = "";
-    startVoiceSession("dictation");
-  }
-
-  function handleVoiceControl(control) {
-    const currentDraft = draftRef.current;
-    stopVoiceSession({ nextMode: control === "confirm" ? "executing" : "idle" });
-    setSpeechError("");
-    if (control === "confirm") {
-      if (executingRef.current) {
-        speak("Ya estoy registrando este comando. Esperá un momento.");
-        return;
-      }
-      if (!currentDraft?.canExecute || executedRef.current) {
-        speak(executedRef.current ? "Este comando ya fue aplicado." : "Todavía no puedo confirmar. Decí editar para dictar el comando nuevamente.", () => {
-          if (!executedRef.current) startVoiceSession("action");
-        });
-        return;
-      }
-      executeCommandRef.current?.();
-      return;
-    }
-    if (control === "edit" || control === "new") {
-      changeTranscript("");
-      speak("Listo, corrijámoslo. Contame nuevamente la tarea con tus palabras; termino el turno cuando hagas una pausa.", () => startVoiceSession("dictation"));
-      return;
-    }
-    if (control === "repeat") {
-      const prompt = currentDraft ? kitchenConversationPrompt(currentDraft, voiceCatalogs) : null;
-      const summary = currentDraft?.canExecute
-        ? voiceSummary(currentDraft) + " Podés decir sí, editar o cancelar."
-        : prompt?.text || "Todavía no tengo una tarea para resumir.";
-      speak(summary, () => startVoiceSession(currentDraft?.canExecute || !prompt?.recoverable ? "action" : "followup"));
-      return;
-    }
-    if (control === "cancel") {
-      changeTranscript("");
-      speak("Comando cancelado. No registré nada. Momobot queda en espera.", resumeMomobotStandby);
-      return;
-    }
-    if (control === "close") speak("Micrófono cerrado. El borrador sigue sin registrar.");
-  }
-
-  function handleConversationReply(reply) {
-    const heard = String(reply || "").trim();
-    if (!heard) {
-      speak("No alcancé a oír la respuesta. Intentemos otra vez.", () => startVoiceSession("followup"));
-      return;
-    }
-    stopVoiceSession({ nextMode: "processing" });
-    const combined = mergeKitchenConversation(conversationContextRef.current || transcriptRef.current, heard, voiceCatalogs);
-    transcriptRef.current = combined;
-    setTranscript(combined);
-    setTimeout(() => interpretTranscriptRef.current?.(combined, { handsFree: true, continuation: true, spokenText: heard }), 100);
-  }
-
-  function toggleListening() {
-    if (recognitionSessionRef.current.active || listening) {
-      stopVoiceSession();
-      cancelSpeech();
-      return;
-    }
-    if (draftRef.current && !executedRef.current) startVoiceSession(draftRef.current.canExecute ? "action" : "followup");
-    else authorizeAndStartVoiceSession("dictation", { clearDictation: true });
-  }
-
-  function interpretTranscript(value, { handsFree = false, continuation = false, spokenText = value } = {}) {
-    const queryText = String(spokenText || value || "").trim();
-    const readOnlyAnswer = kitchenOrderLookupAnswer(queryText, voiceCatalogs)
-      || kitchenOrderQueueAnswer(queryText, voiceCatalogs)
-      || momobotContextAnswer(queryText, voiceCatalogs, assistantMemoryRef.current)
-      || kitchenOrderLookupAnswer(value, voiceCatalogs)
-      || kitchenOrderQueueAnswer(value, voiceCatalogs)
-      || momobotContextAnswer(value, voiceCatalogs, assistantMemoryRef.current);
-    if (readOnlyAnswer) {
-      const pendingDraft = draftRef.current && !executedRef.current ? draftRef.current : null;
-      stopVoiceSession({ nextMode: "processing" });
-      setSpeechError("");
-      setTranscript(queryText);
-      transcriptRef.current = queryText;
-      setResult({ type: "ok", text: readOnlyAnswer.text, warnings: [] });
-      assistantMemoryRef.current = {
-        ...assistantMemoryRef.current,
-        ...(readOnlyAnswer.memoryPatch || {}),
-        ...(readOnlyAnswer.orderId ? { lastTopic: "order", lastOrderId: readOnlyAnswer.orderId } : {}),
-        ...(readOnlyAnswer.paidOrderIds?.[0] ? { lastTopic: "order", lastOrderId: readOnlyAnswer.paidOrderIds[0] } : {}),
-      };
-      addConversationMessage("user", queryText);
-      addConversationMessage("assistant", readOnlyAnswer.text);
-      readOnlyTurnsRef.current += 1;
-      const resumeMode = momobotModeAfterReadOnly({
-        handsFree,
-        readOnlyTurns: readOnlyTurnsRef.current,
-        hasPendingDraft: Boolean(pendingDraft),
-        draftCanExecute: Boolean(pendingDraft?.canExecute),
-      });
-      if (handsFree) speak(readOnlyAnswer.text, resumeMode === "standby" ? resumeMomobotStandby : () => startVoiceSession(resumeMode));
-      else setVoiceMode("idle");
-      return;
-    }
-    readOnlyTurnsRef.current = 0;
-    handsFreeCommandRef.current = handsFree;
-    const next = parseKitchenVoice(value, voiceCatalogs);
-    if (!commandKeyRef.current) commandKeyRef.current = voiceCommandKey();
-    conversationContextRef.current = String(value || "").trim();
-    conversationTurnsRef.current = continuation ? conversationTurnsRef.current + 1 : 0;
-    progressRef.current = { bases: new Set(), runs: new Set(), batchIds: [], frozen: new Set(), unmolded: new Set(), orders: new Set(), ordersReady: new Set() };
-    setDraft(next);
-    draftRef.current = next;
-    setResult(null);
-    setExecuted(false);
-    executedRef.current = false;
-    if (handsFree) addConversationMessage("user", spokenText);
-    if (next.canExecute) {
-      vibrar("tap");
-      const message = voiceSummary(next) + (handsFree ? " Podés responder sí, dale, editar o cancelar." : "");
-      if (handsFree) addConversationMessage("assistant", message);
-      speak(message, handsFree ? () => startVoiceSession("action") : null);
-    } else {
-      vibrar("error");
-      const prompt = kitchenConversationPrompt(next, voiceCatalogs);
-      const keepTalking = handsFree && prompt.recoverable && conversationTurnsRef.current < 4;
-      const message = keepTalking
-        ? prompt.text
-        : prompt.recoverable
-          ? `${prompt.text} Si preferís empezar de nuevo, decí editar.`
-          : prompt.text;
-      if (handsFree) addConversationMessage("assistant", message);
-      speak(message, handsFree ? () => startVoiceSession(keepTalking ? "followup" : "action") : null);
-    }
-  }
-
-  function interpretCommand() {
-    interpretTranscript(transcriptRef.current || transcript);
-  }
-
-  async function executeCommand() {
-    const currentDraft = draftRef.current;
-    if (!currentDraft?.canExecute || executedRef.current || executingRef.current) return;
-    executingRef.current = true;
-    stopVoiceSession({ nextMode: "executing" });
-    cancelSpeech();
-    const key = commandKeyRef.current || voiceCommandKey();
-    commandKeyRef.current = key;
-    const note = (`[Comando de voz ${key}] ${currentDraft.transcript}`).slice(0, 1800);
-    const progress = progressRef.current;
-    const applied = [];
-    const operationWarnings = [];
-    try {
-      const preparations = currentDraft.preparations?.length ? currentDraft.preparations : (currentDraft.preparation ? [currentDraft.preparation] : []);
-      for (let i = 0; i < preparations.length; i += 1) {
-        if (progress.bases.has(i)) continue;
-        const preparation = preparations[i];
-        setExecutionLabel(`Registrando ${preparation.subrecipeName}…`);
-        const response = await producirSubreceta({
-          subreceta_id: preparation.subrecipeId,
-          gramos_nominales: preparation.nominalGrams,
-          gramos_obtenidos: preparation.obtainedGrams,
-          resp_user_id: perfil?.id || null,
-          obs: note,
-          idempotency_key: key + "-base-" + i,
-        });
-        progress.bases.add(i);
-        applied.push(`${preparation.subrecipeName}: ${preparation.obtainedGrams} g`);
-        if (Array.isArray(response?.faltantes) && response.faltantes.length) operationWarnings.push(...response.faltantes.map((x) => `${x.insumo}: faltan ${x.faltan} ${x.unidad}`));
-      }
-
-      const productions = currentDraft.productions?.length ? currentDraft.productions : (currentDraft.production ? [currentDraft.production] : []);
-      if (productions.length) {
-        const filling = db.settings.rellenos?.[0];
-        if (!filling) throw new Error("No hay un relleno predeterminado configurado para crear las corridas.");
-        for (let productionIndex = 0; productionIndex < productions.length; productionIndex += 1) {
-          const production = productions[productionIndex];
-          for (let runIndex = 0; runIndex < production.runs.length; runIndex += 1) {
-            const runKey = `${productionIndex}:${runIndex}`;
-            if (progress.runs.has(runKey)) continue;
-            const run = production.runs[runIndex];
-            setExecutionLabel(`Creando ${run.quantity} ${production.figure} de ${run.flavor}…`);
-            const response = await crearCorrida({
-              sabor: run.flavor,
-              relleno: filling,
-              figuras: [{ figura: production.figure, cant: run.quantity }],
-              resp_user_id: perfil?.id || null,
-              horas_congelacion: db.settings.horasCongelacion || 10,
-              obs: note,
-              idempotency_key: `${key}-production-${productionIndex}-run-${runIndex}`,
-            });
-            progress.runs.add(runKey);
-            applied.push(`${run.quantity} ${production.figure} de ${run.flavor}`);
-            const lots = Array.isArray(response?.lotes) ? response.lotes : [];
-            lots.forEach((lot) => {
-              const id = lot.batch_id || lot.id;
-              if (id && !progress.batchIds.includes(id)) progress.batchIds.push(id);
-            });
-            if (Array.isArray(response?.faltantes) && response.faltantes.length) operationWarnings.push(...response.faltantes.map((x) => `${x.insumo}: faltan ${x.faltan} ${x.unidad}`));
-          }
-        }
-      }
-
-      if (currentDraft.madeToOrder && !progress.orders.has(currentDraft.madeToOrder.orderId)) {
-        const orderPreparation = currentDraft.madeToOrder;
-        const sourceOrder = db.orders.find((order) => order.id === orderPreparation.orderId);
-        const permission = orderTransitionPermission(perfil, sourceOrder?.estado || "Pagado", "En producción");
-        if (!permission.allowed) throw new Error(permission.reason);
-        setExecutionLabel(`Iniciando preparación del pedido ${orderPreparation.orderId}…`);
-        const response = await setOrderStatusRemoto(orderPreparation.orderId, "En producción");
-        progress.orders.add(orderPreparation.orderId);
-        applied.push(`${orderPreparation.orderId} en producción · ${voiceOrderItems(orderPreparation)}`);
-        if (Array.isArray(response?.faltantes) && response.faltantes.length) {
-          operationWarnings.push(`El pedido inició con ${response.faltantes.length} faltante${response.faltantes.length === 1 ? "" : "s"} de inventario. Revisá el detalle del pedido.`);
-        }
-      }
-
-      if (currentDraft.orderHandoff && !progress.ordersReady.has(currentDraft.orderHandoff.orderId)) {
-        const handoff = currentDraft.orderHandoff;
-        const sourceOrder = db.orders.find((order) => order.id === handoff.orderId);
-        const permission = orderTransitionPermission(perfil, sourceOrder?.estado || "En producción", "Listo para empaque");
-        if (!permission.allowed) throw new Error(permission.reason);
-        setExecutionLabel(`Entregando el pedido ${handoff.orderId} a Empaque…`);
-        if (db.operationalControlReady) await completarEtapaPedido(handoff.orderId, "Cocina");
-        await setOrderStatusRemoto(handoff.orderId, "Listo para empaque");
-        progress.ordersReady.add(handoff.orderId);
-        applied.push(`${handoff.orderId} listo para empaque`);
-      }
-
-      if (currentDraft.startFreezing) {
-        const freezingTargets = [...new Set([...(currentDraft.freezeBatchIds || []), ...progress.batchIds])];
-        if (!freezingTargets.length) throw new Error("No tengo un lote validado para iniciar su congelación.");
-        for (let i = 0; i < freezingTargets.length; i += 1) {
-          const batchId = freezingTargets[i];
-          if (progress.frozen.has(batchId)) continue;
-          setExecutionLabel(`Iniciando congelación ${batchId} · ${i + 1}/${freezingTargets.length}…`);
-          await empezarCongelamiento(batchId);
-          progress.frozen.add(batchId);
-        }
-        applied.push(`${progress.frozen.size} cronómetro${progress.frozen.size === 1 ? "" : "s"} de congelación`);
-      }
-
-      if (currentDraft.unmolding && !progress.unmolded.has(currentDraft.unmolding.batchId)) {
-        const outcome = currentDraft.unmolding;
-        setExecutionLabel(`Desmoldando ${outcome.batchId}…`);
-        await desmoldarLote(outcome.batchId, outcome.perfectas, outcome.imperfectas, outcome.descartadas);
-        progress.unmolded.add(outcome.batchId);
-        applied.push(`${outcome.batchId} desmoldado: ${voiceOutcomeCount(outcome.perfectas, "perfecta", "perfectas")}, ${voiceOutcomeCount(outcome.imperfectas, "imperfecta", "imperfectas")} y ${voiceOutcomeCount(outcome.descartadas, "descartada", "descartadas")}`);
-      }
-
-      setExecutionLabel("Actualizando la cocina…");
-      try { await refrescar(); }
-      catch { operationWarnings.push("Las acciones se aplicaron, pero la vista no se pudo actualizar. Recargá para verlas."); }
-      const uniqueApplied = [...new Set(applied)];
-      const text = uniqueApplied.length ? uniqueApplied.join(" · ") : "Comando aplicado";
-      setResult({ type: "ok", text, warnings: [...new Set(operationWarnings)] });
-      setExecuted(true);
-      executedRef.current = true;
-      setVoiceMode("idle");
-      toast("ok", "Comando de cocina aplicado");
-      const nextMode = momobotModeAfterExecution({ handsFree: handsFreeCommandRef.current, voiceAvailable: voiceInputAvailable, succeeded: true });
-      if (nextMode === "dictation") {
-        const message = "Listo. " + text + ". ¿Qué hacemos después? Si terminaste, decí cierra.";
-        addConversationMessage("assistant", message);
-        speak(message, continueMomobotAfterExecution);
-      } else speak("Listo. " + text + ". Momobot queda en espera.", resumeMomobotStandby);
-    } catch (e) {
-      const partial = progress.bases.size || progress.runs.size || progress.frozen.size || progress.unmolded.size || progress.orders.size;
-      const friendlyError = explainOperationalError(e, { inventory: db.inventory_items || [], subrecipes });
-      const detail = (partial ? "Hay pasos ya aplicados y protegidos contra duplicados. " : "") + friendlyError;
-      setResult({ type: "error", text: detail, warnings: [] });
-      setVoiceMode("idle");
-      toast("error", detail);
-      speak("No pude completar todo el comando. Revisá el mensaje en pantalla. No inicié pasos posteriores al error.", resumeMomobotStandby);
-    } finally {
-      executingRef.current = false;
-    }
-  }
-
-  beginRecognitionRef.current = beginRecognition;
-  startVoiceSessionRef.current = startVoiceSession;
-  finishDictationRef.current = finishDictation;
-  handleWakeWordRef.current = handleWakeWord;
-  handleVoiceControlRef.current = handleVoiceControl;
-  handleConversationReplyRef.current = handleConversationReply;
-  interpretTranscriptRef.current = interpretTranscript;
-  executeCommandRef.current = executeCommand;
-  flushOrderAlertsRef.current = flushOrderAlerts;
-
-  const voiceStatusLabel = listening
-    ? voiceActivity === "recovering" ? "Reconectando oído…"
-      : voiceActivity === "starting" ? "Abriendo micrófono…"
-        : voiceActivity === "wake" ? "Momobot te oyó · terminá la frase"
-          : voiceActivity === "hearing" ? "Te estoy oyendo…"
-            : voiceMode === "standby" ? "Atenta · decí “Momobot”"
-              : voiceMode === "action" ? "Esperando confirmar o editar"
-                : voiceMode === "followup" ? "Escuchando tu respuesta"
-                  : "Te escucho · hacé una pausa"
-    : voiceMode === "authorizing" ? "Autorizando micrófono…"
-      : voiceMode === "processing" ? "Interpretando…"
-        : draft && !executed ? "Tocá para dar una orden" : "Tocá para hablar";
-  const standbyStatus = voiceActivity === "recovering" ? "↻ Reconectando escucha"
-    : voiceActivity === "starting" ? "◌ Abriendo micrófono"
-      : voiceActivity === "wake" ? "● Momobot detectada"
-        : voiceActivity === "hearing" ? "● Voz detectada"
-          : "● Micrófono activo · decí Momobot";
-
-  return (
-    <div className="momo-momobot-fab" data-open={abierto ? "true" : "false"}>
-      {!abierto ? (
-        <button type="button" onClick={() => setAbierto(true)} data-listening={listening}
-          className="momo-voice-orb w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl shadow-xl"
-          style={{ background: T.coral }} title="MomoBot · copiloto de cocina"
-          aria-label={listening ? "Momobot escuchando · abrir copiloto de cocina" : "Abrir Momobot copiloto de cocina"}>
-          {listening ? <span className="momo-voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> : "🎙️"}
-        </button>
-      ) : (
-      <Card id="momobot-cocina" data-testid="momobot-panel" className="momo-modal-sheet momo-momobot-panel p-4 w-[min(94vw,720px)] max-h-[82vh] overflow-y-auto shadow-2xl">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-3 border-b" style={{ borderColor: T.border }}>
-        <div className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0" style={{ background: T.coralSoft }} aria-hidden="true">✨</span>
-          <div><div className="text-[9px] uppercase tracking-[.18em] font-extrabold" style={{ color: T.coral }}>Asistente de Cocina MOMOS</div><div className="text-sm font-extrabold" style={{ color: T.choco }}>Momobot · manos libres</div></div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full px-2.5 py-1 text-[9px] font-extrabold" style={{ background: listening ? T.coralSoft : "#DDEBD9", color: listening ? "#A54830" : "#315B35" }}>{listening ? "● Te estoy escuchando" : "✓ Confirmás antes de registrar"}</span>
-          <button type="button" onClick={() => setAbierto(false)} aria-label="Minimizar Momobot" title="Minimizar" className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold border shrink-0 transition" style={{ background: T.surface, borderColor: T.border, color: T.choco2 }}>✕</button>
-        </div>
-      </div>
-      <div data-testid="momobot-layout" className="momo-momobot-layout">
-        <div className="momo-momobot-rail">
-          <button type="button" onClick={toggleListening} disabled={voiceMode === "authorizing"} data-listening={listening} aria-pressed={listening}
-            className="momo-voice-orb momo-momobot-voice-orb rounded-full flex items-center justify-center text-white font-bold"
-            style={{ background: T.coral }} aria-label={listening ? voiceMode === "standby" ? "Desactivar Momobot" : "Cerrar micrófono" : draft && !executed ? "Escuchar una orden de voz" : "Empezar dictado continuo"}>
-            {listening ? <span className="momo-voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> : "🎙️"}
-          </button>
-          <span className="momo-momobot-status text-[10px] font-extrabold uppercase tracking-[.1em]" style={{ color: listening ? "#A03B2A" : T.choco2 }}>
-            {voiceStatusLabel}
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-            <div>
-              <div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Momobot</div>
-              <div className="display momo-momobot-title font-semibold">¿Qué necesitas hacer?</div>
-              <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>Decí “Momobot” y hablá natural. Si falta algo te lo preguntará antes de registrar.</div>
-              <div className="grid grid-cols-3 gap-2 mt-2 max-w-md">
-                {[[listening ? "Activa" : "Lista","Escucha"],[contextSnapshot.paid + contextSnapshot.kitchen + contextSnapshot.packing,"Pedidos"],[contextSnapshot.activeLots,"Lotes"]].map(([value,label]) => <div key={label} className="rounded-xl border px-2.5 py-1.5 text-center" style={{ borderColor: T.border, background: "#FFFDFC" }}><div className="text-xs font-extrabold">{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}
-              </div>
-              {voiceMode === "standby" && <div className="inline-flex mt-2 rounded-full px-2 py-0.5 text-[9px] font-extrabold" role="status" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>{standbyStatus}</div>}
-              {!voiceInputAvailable && <div className="text-[10px] font-extrabold mt-1" style={{ color: "#A03B2A" }}>Este visor no ofrece micrófono para Momobot · abrí la app en Chrome o Edge</div>}
-              <div className="mt-2 rounded-xl px-3 py-2 text-[10px] font-semibold" style={{ background: T.vainilla, color: T.choco2 }}>Podés decir: “¿Qué hago ahora?”, “¿Cómo va el lote 31?” o “Prepará 5 Lizis de Oreo”.</div>
-            </div>
-            <label className="flex items-center gap-1.5 text-[11px] font-bold rounded-full px-3 py-1.5 shrink-0" style={{ color: T.choco2, background: T.surface, border: `1px solid ${T.border}` }}>
-              <input type="checkbox" checked={replyByVoice} onChange={(e) => setReplyByVoice(e.target.checked)} /> Responder por voz
-            </label>
-          </div>
-          {conversation.length > 0 && (
-            <div className="rounded-2xl p-3 mb-2 space-y-2" aria-live="polite" style={{ background: T.soft, border: `1px solid ${T.border}` }}>
-              <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={{ color: T.choco2 }}>Conversación con Momobot</div>
-              {conversation.map((message) => (
-                <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className="max-w-[92%] rounded-2xl px-3 py-2 text-xs font-semibold" style={message.role === "user"
-                    ? { background: T.rosa, color: "#6D3541" }
-                    : { background: T.vainilla, color: T.choco }}>
-                    <span className="font-extrabold">{message.role === "user" ? "Cocina" : "Momobot"}: </span>{message.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <textarea value={transcript} onChange={(e) => changeTranscript(e.target.value)} rows={3}
-            className={inputCls + " resize-y"} style={{ ...inputStyle, borderColor: "#EAC8BA", boxShadow: "inset 0 1px 0 rgba(84,56,43,.03)" }}
-            placeholder="Ej: Producir 10 Lizis: 4 de limón y 6 de Oreo; después iniciar congelación." aria-label="Comando de cocina" />
-          {speechError && <div className="mt-2 text-xs font-bold rounded-xl px-3 py-2" style={{ background: "#FFF4E0", color: "#96690F" }}>{speechError}</div>}
-          <div className="flex flex-wrap gap-2 mt-2">
-            <Btn small onClick={interpretCommand} disabled={!transcript.trim() || listening || voiceMode === "processing" || voiceMode === "executing"}>Interpretar comando</Btn>
-            <Btn small kind="ghost" onClick={() => changeTranscript(VOICE_KITCHEN_EXAMPLE)}>Usar ejemplo</Btn>
-            {(transcript || draft || result) && <Btn small kind="ghost" onClick={() => changeTranscript("")}>Limpiar</Btn>}
-            {voiceInputAvailable && !listening && voiceMode === "idle" && <Btn small kind="ghost" onClick={() => authorizeAndStartVoiceSession("standby")}>Activar “Momobot”</Btn>}
-          </div>
-        </div>
-      </div>
-
-      {draft && (
-        <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
-          <div className="text-xs font-extrabold uppercase tracking-[.12em] mb-2" style={{ color: T.choco2 }}>Esto entendió MOMOS</div>
-          {draft.corrections?.length > 0 && (
-            <div className="text-xs font-bold rounded-xl px-3 py-2 mb-2" style={{ background: "#E3EFE0", color: "#3F6B42" }}>
-              ✓ Afiné vocabulario MOMOS: {draft.corrections.map((item) => `“${item.heard}” → ${item.understoodAs}`).join(" · ")}
-            </div>
-          )}
-          {draft.errors.map((error) => <div key={error} className="text-xs font-bold rounded-xl px-3 py-2 mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>✕ {error}</div>)}
-          {draft.warnings.map((warning) => <div key={warning} className="text-xs font-bold rounded-xl px-3 py-2 mb-2" style={{ background: "#FFF4E0", color: "#96690F" }}>△ {warning}</div>)}
-          <div className="grid sm:grid-cols-3 gap-2">
-            {(draft.preparations?.length ? draft.preparations : (draft.preparation ? [draft.preparation] : [])).map((preparation) => (
-              <div key={preparation.subrecipeId} className="rounded-2xl p-3" style={{ background: "#F7ECD9" }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: T.choco2 }}>Preparar base</div>
-                <div className="font-bold text-sm mt-1">{preparation.subrecipeName}</div>
-                <div className="text-xs mt-1">{preparation.nominalGrams} g preparados → {preparation.obtainedGrams} g obtenidos</div>
-                {preparation.usage && <div className="text-[10px] font-extrabold mt-1" style={{ color: preparation.usage.includes("Relleno") ? "#8E4B5A" : T.choco2 }}>↳ {preparation.usage}</div>}
-              </div>
-            ))}
-            {(draft.productions?.length ? draft.productions : (draft.production ? [draft.production] : [])).map((production, productionIndex) => (
-              <div key={`${production.figure}-${productionIndex}`} className="rounded-2xl p-3" style={{ background: "#F3D7DC" }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#8E4B5A" }}>Producción · {production.calculatedTotal} total</div>
-                <div className="font-bold text-sm mt-1">{production.figure}</div>
-                <div className="text-xs mt-1">{production.runs.map((run) => `${run.quantity} ${run.flavor}`).join(" · ")}</div>
-              </div>
-            ))}
-            {draft.madeToOrder && (
-              <div className="rounded-2xl p-3" style={{ background: "#F7ECD9" }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#96690F" }}>Preparación bajo pedido</div>
-                <div className="font-bold text-sm mt-1">Pedido {draft.madeToOrder.orderId}{draft.madeToOrder.customerName ? ` · ${draft.madeToOrder.customerName}` : ""}</div>
-                <div className="text-xs mt-1">Comanda: {draft.madeToOrder.orderContent || draft.madeToOrder.items.map((item) => `${item.quantity} × ${item.productName}`).join(" · ")}</div>
-                <div className="text-[10px] font-extrabold mt-1" style={{ color: "#3F6B42" }}>✓ Orden pagada y contenido verificado</div>
-                <div className="text-[10px] font-extrabold mt-1" style={{ color: "#96690F" }}>Al confirmar, el pedido completo pasa a En producción y registra su inicio en Cocina</div>
-              </div>
-            )}
-            {draft.orderHandoff && (
-              <div className="rounded-2xl p-3 border" style={{ background: T.vainilla, borderColor: T.border }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#A54830" }}>Entrega de Cocina a Empaque</div>
-                <div className="font-bold text-sm mt-1">Pedido {draft.orderHandoff.orderId}{draft.orderHandoff.customerName ? ` · ${draft.orderHandoff.customerName}` : ""}</div>
-                <div className="text-xs mt-1">{draft.orderHandoff.orderContent}</div>
-                <div className="text-[10px] font-extrabold mt-2" style={{ color: "#A54830" }}>Al confirmar pasa a Listo para empaque y avisa al equipo de Empaque.</div>
-              </div>
-            )}
-            {draft.startFreezing && (
-              <div className="rounded-2xl p-3" style={{ background: T.vainilla }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#3E5C7E" }}>{draft.production ? "Después" : "Acción sobre lote"}</div>
-                <div className="font-bold text-sm mt-1">❄️ Iniciar congelación</div>
-                <div className="text-xs mt-1">{draft.freezeBatchIds?.length
-                  ? `${draft.freezeBatchIds.join(", ")} · lote${draft.freezeBatchIds.length === 1 ? "" : "s"} existente${draft.freezeBatchIds.length === 1 ? "" : "s"} validado${draft.freezeBatchIds.length === 1 ? "" : "s"}`
-                  : "Solo en los lotes que cree este comando"} · objetivo {db.settings.horasCongelacion || 10} h</div>
-              </div>
-            )}
-            {draft.unmolding && (
-              <div className="rounded-2xl p-3" style={{ background: T.vainilla }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "#3F6B42" }}>Desmolde · {draft.unmolding.total} total</div>
-                <div className="font-bold text-sm mt-1">🧊 {draft.unmolding.batchId}</div>
-                <div className="text-xs mt-1">{voiceOutcomeCount(draft.unmolding.perfectas, "perfecta", "perfectas")} · {voiceOutcomeCount(draft.unmolding.imperfectas, "imperfecta", "imperfectas")} · {voiceOutcomeCount(draft.unmolding.descartadas, "descartada", "descartadas")}</div>
-                <div className="text-[10px] font-extrabold mt-1" style={{ color: "#3F6B42" }}>Al confirmar pasa a Listo y actualiza el stock</div>
-              </div>
-            )}
-          </div>
-          <div className="text-[11px] font-semibold mt-2" style={{ color: T.choco2 }}>Manos libres: respondé “sí”, “dale”, “hazlo”, “editar”, “repetir” o “cancelar”. “Cierra” solo apaga el micrófono. La conversación original quedará en las observaciones.</div>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <BtnAsync confirmar="¿Ejecutar? Tocá de nuevo" textoEnVuelo={executionLabel} disabled={!draft.canExecute || executed} onClick={executeCommand}>
-              {executed ? "Aplicado ✓" : "Confirmar y registrar"}
-            </BtnAsync>
-            <Btn kind="ghost" onClick={() => { stopVoiceSession(); resetVoiceDraft(); }}>Cancelar</Btn>
-          </div>
-        </div>
-      )}
-
-      {result && (
-        <div className="mt-3 rounded-2xl px-4 py-3 text-sm font-bold" role={result.type === "error" ? "alert" : "status"}
-          style={result.type === "error" ? { background: "#F6D4CD", color: "#A03B2A" } : { background: "#E3EFE0", color: "#3F6B42" }}>
-          {result.type === "error" ? "✕ " : "✓ "}{result.text}
-          {result.warnings?.length > 0 && <div className="text-xs mt-2 font-semibold">Atención: {result.warnings.join(" · ")}</div>}
-        </div>
-      )}
-
-    </Card>
-      )}
-    </div>
-  );
-}
 
 function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focus }) {
   const [, setTick] = useState(0);
@@ -6015,7 +4813,10 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
   const [queueRequest, setQueueRequest] = useState(null);
   const corridaIdemKeyRef = useRef(null); // 1 por apertura del form: tolera retries de red sin duplicar la corrida
   const s = db.settings;
-  const sabores = [...s.saboresFrutales, ...s.saboresCremosos];
+  const sabores = useMemo(
+    () => [...(s.saboresFrutales || []), ...(s.saboresCremosos || [])],
+    [s.saboresFrutales, s.saboresCremosos],
+  );
   // Producción v2: solo figuras activas CON product_id se pueden producir (contrato de RPC punto 4).
   const figurasProducibles = useMemo(() => (db.figuras || []).filter((f) => f.activo && f.productId), [db.figuras]);
   const productoDeFigura = useMemo(() => {
@@ -6162,10 +4963,11 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
       return;
     }
     setQueueRequest({ orderId, token: `${orderId}-${Date.now()}` });
-    setTimeout(() => {
-      const panel = document.getElementById("momobot-cocina");
-      if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
+  }
+
+  function enfocarMomobotListo() {
+    const panel = document.getElementById("momobot-cocina");
+    if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function cambiarPedidoDesdeCocina(orderId, estado) {
@@ -6435,7 +5237,9 @@ function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focu
         onReady={(orderId) => cambiarPedidoDesdeCocina(orderId, "Listo para empaque")}
         onMomobot={() => { const orderId = detallePedidoCocina.id; setDetallePedidoCocinaId(null); alistarPedidoDesdeCola(orderId); }}
         onClose={() => setDetallePedidoCocinaId(null)} refrescar={refrescar} perfil={perfil} />}
-      <VoiceKitchenPanel db={db} perfil={perfil} flavors={sabores} figures={figurasProducibles} subrecipes={subrecetasActivas} refrescar={refrescar} serverDataReady={serverDataReady} requestedOrder={queueRequest} />
+      <Suspense fallback={<Card className="p-4 mb-5" role="status" aria-live="polite"><div className="text-xs font-extrabold uppercase tracking-wider" style={{ color: T.coral }}>Momobot</div><div className="text-sm font-semibold mt-1" style={{ color: T.choco2 }}>Preparando el asistente de cocina…</div></Card>}>
+        <LazyVoiceKitchenPanel db={db} perfil={perfil} flavors={sabores} figures={figurasProducibles} subrecipes={subrecetasActivas} refrescar={refrescar} serverDataReady={serverDataReady} requestedOrder={queueRequest} onReady={enfocarMomobotListo} ui={VOICE_PANEL_UI} />
+      </Suspense>
       <div className="mb-4 flex gap-2 flex-wrap"><Btn onClick={abrirNuevaCorrida}>＋ Nueva producción</Btn>{subrecetasActivas.length > 0 && <Btn kind="soft" onClick={() => abrirPrepararBase()}>🥣 Preparar elaboración</Btn>}</div>
 
       <KitchenProductionAssistantFab
@@ -6861,15 +5665,13 @@ function InventarioTerminado({ db, go }) {
         </div>
       )}
 
-      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-3 rounded-2xl" role="tablist" aria-label="Vistas del inventario terminado">
-        {tabs.map(([name, count]) => (
-          <button key={name} type="button" role="tab" aria-selected={tab === name} onClick={() => setTab(name)}
-            className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
-            style={tab === name ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
-            {name} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: tab === name ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        ariaLabel="Vistas del inventario terminado"
+        value={tab}
+        onChange={setTab}
+        className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-3 rounded-2xl"
+        items={tabs.map(([name, count]) => [name, name, count])}
+      />
 
       {tab === "Figuras" && (
         <>
@@ -7469,19 +6271,13 @@ function Inventario({ db, update, user, focus, refrescar, go }) {
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
       </div>
 
-      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-4 rounded-2xl" role="tablist" aria-label="Categorías de insumos">
-        {[["Todas", ""], ...cats.map((c) => [c, c])].map(([label, value]) => {
-          const count = value ? db.inventory_items.filter((i) => i.cat === value).length : totalInsumos;
-          const activo = fCat === value;
-          return (
-            <button key={label} type="button" role="tab" aria-selected={activo} onClick={() => setFCat(value)}
-              className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
-              style={activo ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
-              {label} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: activo ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedTabs
+        ariaLabel="Categorías de insumos"
+        value={fCat}
+        onChange={setFCat}
+        items={[["Todas", ""], ...cats.map((category) => [category, category])]}
+        getCount={(value) => value ? db.inventory_items.filter((item) => item.cat === value).length : totalInsumos}
+      />
 
       {(() => {
         const compras = db.production_suggestions.filter((s) => {
@@ -8013,19 +6809,13 @@ function Productos({ db, user, refrescar, serverDataReady }) {
         {puedeEditar && <Btn small kind="rosa" onClick={() => { setForm(nuevoProductoVacio()); setEditandoProd(null); setErrProd(""); setAbrirForm(true); }}>＋ Nuevo producto</Btn>}
       </div>
 
-      <div className="momo-segmented-tabs inline-flex max-w-full gap-1 overflow-x-auto p-1.5 mb-4 rounded-2xl" role="tablist" aria-label="Categorías de productos">
-        {[["Todas", ""], ...cats.map((c) => [c, c])].map(([label, value]) => {
-          const count = value ? db.products.filter((p) => p.cat === value).length : totalProductos;
-          const activo = fCatProd === value;
-          return (
-            <button key={label} type="button" role="tab" aria-selected={activo} onClick={() => setFCatProd(value)}
-              className="momo-segmented-tab shrink-0 rounded-xl px-3 py-2 text-xs font-bold border-0"
-              style={activo ? { background: T.coral, color: "#fff" } : { background: "transparent", color: T.choco2 }}>
-              {value ? `${CAT_EMOJI[value] || ""} ${label}`.trim() : label} <span className="ml-1 inline-flex min-w-5 h-5 px-1 rounded-full items-center justify-center text-[10px]" style={{ background: activo ? "rgba(255,255,255,.2)" : "#fff" }}>{count}</span>
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedTabs
+        ariaLabel="Categorías de productos"
+        value={fCatProd}
+        onChange={setFCatProd}
+        items={[["Todas", ""], ...cats.map((category) => [`${CAT_EMOJI[category] || ""} ${category}`.trim(), category])]}
+        getCount={(value) => value ? db.products.filter((product) => product.cat === value).length : totalProductos}
+      />
       {cats.filter((cat) => !fCatProd || cat === fCatProd).map((cat) => (
         <div key={cat}>
           <SectionTitle>{CAT_EMOJI[cat]} {cat}</SectionTitle>
@@ -9004,27 +7794,65 @@ function Finanzas({ db, update, user }) {
   const [desde, setDesde] = useState(dISO(-30));
   const [hasta, setHasta] = useState(hoyISO());
   const [asistenteAbierto, setAsistenteAbierto] = useState(false);
-  const financeAssistant = useMemo(() => buildOperationalFinance(db, { from: desde, to: hasta }), [db, desde, hasta]);
+  const financeRequestRef = useRef(0);
+  const financeKey = `${desde}|${hasta}`;
+  const [financeRead, setFinanceRead] = useState({ key: "", status: "idle", data: null, error: "" });
+  const [financeRuntime, setFinanceRuntime] = useState(null);
 
-  const enRango = db.orders.filter((o) => o.fecha >= desde && o.fecha <= hasta);
-  const vendidos = enRango.filter(esPedidoCobrado);
+  useEffect(() => {
+    let active = true;
+    import("./lib/operational-finance.js")
+      .then((runtime) => { if (active) setFinanceRuntime(runtime); })
+      .catch(() => {
+        if (active) setFinanceRead({ key: financeKey, status: "error", data: null, error: "No se pudo cargar el asistente financiero." });
+      });
+    return () => { active = false; };
+  }, []);
 
-  const ventasProductos = vendidos.reduce((s, o) => s + orderSubtotal(db, o) - (o.descuento || 0), 0);
-  const cogs = vendidos.reduce((s, o) => s + orderCOGS(db, o), 0);
-  const margenBruto = ventasProductos - cogs;
-  const domCobrado = vendidos.reduce((s, o) => s + (o.domCobrado || 0), 0);
-  const domCosto = vendidos.reduce((s, o) => s + (o.domCosto || 0), 0);
-  const subsidio = vendidos.reduce((s, o) => s + Math.max(0, (o.domCosto || 0) - (o.domCobrado || 0)), 0);
-  const costoReclamos = db.claims.filter((r) => {
-    if (!["Aprobado","Compensado"].includes(r.estado)) return false;
-    const o = db.orders.find((x) => x.id === r.orderId);
-    const f = r.fecha || (o ? o.fecha : null);
-    return f && f >= desde && f <= hasta;
-  }).reduce((s, r) => s + (r.costo || 0), 0);
+  const financeFallback = useMemo(() => financeRuntime
+    ? financeRuntime.buildOperationalFinance(db, { from: desde, to: hasta })
+    : null, [db, desde, hasta, financeRuntime]);
+
+  useEffect(() => {
+    if (!financeRuntime) return undefined;
+    const requestId = ++financeRequestRef.current;
+    let active = true;
+    setFinanceRead({ key: financeKey, status: "loading", data: null, error: "" });
+    fetchFinancialFacts(desde, hasta)
+      .then((payload) => {
+        if (!active || requestId !== financeRequestRef.current) return;
+        const range = financeRuntime.validateFinancialDateRange(desde, hasta);
+        const data = financeRuntime.normalizeFinancialFacts(payload, range);
+        setFinanceRead({ key: financeKey, status: "ready", data, error: "" });
+      })
+      .catch((error) => {
+        if (!active || requestId !== financeRequestRef.current) return;
+        setFinanceRead({ key: financeKey, status: "error", data: null, error: error?.message || "No se pudo completar la lectura financiera." });
+      });
+    return () => { active = false; };
+  }, [desde, hasta, financeKey, financeRuntime]);
+
+  const financeAssistant = useMemo(() => {
+    if (financeRuntime && financeRead.status === "ready" && financeRead.key === financeKey && financeRead.data) {
+      return financeRuntime.buildOperationalFinanceFromFacts(financeRead.data);
+    }
+    return financeFallback;
+  }, [financeFallback, financeKey, financeRead, financeRuntime]);
+  if (!financeAssistant) {
+    return <div><SectionTitle>Finanzas operativas</SectionTitle><InlineNotice icon={financeRead.status === "error" ? "⚠️" : "⏳"} title={financeRead.status === "error" ? "No se pudo abrir Finanzas" : "Preparando Finanzas"} tone={financeRead.status === "error" ? "danger" : "warning"}>{financeRead.error || "Cargando el asistente y los controles del periodo solo para esta vista."}</InlineNotice></div>;
+  }
+  const financeSummary = financeAssistant.summary;
+  const ventasProductos = financeSummary.productRevenue;
+  const cogs = financeSummary.cogs;
+  const margenBruto = financeSummary.grossMargin;
+  const domCobrado = financeSummary.deliveryCollected;
+  const domCosto = financeSummary.recordedDeliveryCosts;
+  const subsidio = financeSummary.deliverySubsidy;
+  const costoReclamos = financeSummary.recognizedClaimsForPeriod;
   const pautaMensual = db.settings.pautaMensual || 0;
-  const diasRango = Math.max(1, diasEntre(desde, hasta) + 1);
-  const pauta = Math.round(pautaMensual / 30 * diasRango);
-  const utilidad = margenBruto + (domCobrado - domCosto) - pauta - costoReclamos;
+  const diasRango = financeSummary.rangeDays;
+  const pauta = financeSummary.manualAdAllocation;
+  const utilidad = financeSummary.estimatedProfit;
 
   function exportar() {
     downloadCSV("finanzas",
@@ -9061,6 +7889,22 @@ function Finanzas({ db, update, user }) {
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
       </div>
 
+      {financeRead.status === "loading" && (
+        <InlineNotice icon="⏳" title="Consolidando el periodo" className="mb-4">
+          Finanzas está leyendo todos los hechos del rango; mientras termina, muestra una vista local parcial.
+        </InlineNotice>
+      )}
+      {financeRead.status === "error" && (
+        <InlineNotice icon="⚠️" title="Lectura local parcial" tone="danger" className="mb-4">
+          {financeRead.error} Los valores visibles sirven para operar, pero pueden omitir registros antiguos hasta recuperar la lectura completa.
+        </InlineNotice>
+      )}
+      {financeRead.status === "ready" && financeRead.key === financeKey && (
+        <div className="rounded-2xl px-4 py-3 mb-4 text-xs font-bold" style={{ background: "#E5F0E1", color: "#3F6B42", border: "1px solid #BFD8BA" }} role="status">
+          ✓ Periodo completo consolidado en servidor · {financeSummary.ordersReviewed} pedido{financeSummary.ordersReviewed === 1 ? "" : "s"} revisado{financeSummary.ordersReviewed === 1 ? "" : "s"}.
+        </div>
+      )}
+
       <Card className="p-4 mb-4" onClick={() => setAsistenteAbierto(true)} style={{ background: "linear-gradient(135deg,#FFF4EA,#FFFFFF)", borderColor: financeAssistant.summary.blocking ? "#E7B36E" : "#A7C9A4" }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -9076,7 +7920,7 @@ function Finanzas({ db, update, user }) {
       </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat icon="💵" label="Ventas de producto" value={fmt(ventasProductos)} sub={vendidos.length + " pedidos cobrados"} tone={T.coral} />
+        <Stat icon="💵" label="Ventas de producto" value={fmt(ventasProductos)} sub={financeSummary.paidOrders + " pedidos cobrados"} tone={T.coral} />
         <Stat icon="🧾" label="Costo de producto" value={fmt(cogs)} sub="estimado por receta" />
         <Stat icon="📈" label="Margen bruto" value={fmt(margenBruto)} sub={ventasProductos ? pct(margenBruto / ventasProductos) + " de las ventas" : "—"} tone="#3F6B42" />
         <Stat icon="✨" label="Utilidad estimada" value={fmt(utilidad)} sub="tras domicilios, pauta y reclamos" tone={utilidad >= 0 ? "#3F6B42" : "#A03B2A"} />
@@ -10365,7 +9209,7 @@ function Calendario({ db, refrescar }) {
         <Stat icon="✦" label="Por programar" value={<CountUp value={commercialCalendar.summary.unscheduledApproved} />} sub="creativos aprobados" tone="#3F6B42" />
       </div>
 
-      {commercialCalendar.summary.blocked > 0 && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF1ED", color: "#A03B2A", border: "1px solid #F0C1B8" }} role="alert"><span className="text-lg">⚠</span><div><div className="text-sm font-extrabold">{commercialCalendar.summary.blocked} publicación(es) no deberían programarse todavía</div><div className="text-xs mt-0.5">Revisá aprobación del creativo, copy, canal, campaña y disponibilidad antes de continuar.</div></div></div>}
+      {commercialCalendar.summary.blocked > 0 && <InlineNotice icon="⚠" title={`${commercialCalendar.summary.blocked} publicación(es) no deberían programarse todavía`} tone="danger" role="alert">Revisá aprobación del creativo, copy, canal, campaña y disponibilidad antes de continuar.</InlineNotice>}
 
       {commercialCalendar.agenda.length > 0 && <>
         <SectionTitle>Agenda priorizada de Marketing</SectionTitle>
@@ -10392,9 +9236,17 @@ function Calendario({ db, refrescar }) {
       </>}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="momo-segmented-tabs inline-flex gap-1 p-1.5 rounded-2xl" role="tablist" aria-label="Bandejas del calendario">
-          {["Activas","Distribución","Historial"].map((tab) => <button key={tab} type="button" role="tab" aria-selected={vista === tab} onClick={() => setVista(tab)} className="rounded-xl border-0 px-4 py-2 text-xs font-extrabold" style={{ background: vista === tab ? T.coral : "transparent", color: vista === tab ? "#fff" : T.choco2 }}>{tab} <span className="ml-1 opacity-75">{tab === "Activas" ? commercialCalendar.active.length : tab === "Distribución" ? distributionRoom.queue.length : commercialCalendar.history.length}</span></button>)}
-        </div>
+        <SegmentedTabs
+          ariaLabel="Bandejas del calendario"
+          value={vista}
+          onChange={setVista}
+          className="momo-segmented-tabs inline-flex gap-1 p-1.5 rounded-2xl"
+          tabClassName="rounded-xl border-0 px-4 py-2 text-xs font-extrabold"
+          countClassName="ml-1 opacity-75"
+          plainCount
+          items={["Activas", "Distribución", "Historial"]}
+          getCount={(tab) => tab === "Activas" ? commercialCalendar.active.length : tab === "Distribución" ? distributionRoom.queue.length : commercialCalendar.history.length}
+        />
         <div className="flex gap-2"><Btn onClick={() => { setForm(vacio); setNueva(true); }}>＋ Nueva publicación</Btn>
         <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
         </div>
@@ -10442,8 +9294,8 @@ function Calendario({ db, refrescar }) {
           );
         })}
       </div> : vista === "Distribución" ? <div id="agency-distribution-room" className="scroll-mt-24">
-        {!db.distributionServerReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🛡️</span><div><div className="text-sm font-extrabold">Vista previa protegida</div><div className="text-xs mt-0.5">Aplicá la migración 19 para guardar checklist, aprobación humana y evidencia externa.</div></div></div>}
-        {db.distributionServerReady && !db.distributionConnectorReady && <div className="rounded-2xl px-4 py-3 mb-4 flex items-start gap-3" style={{ background: "#FFF5E4", border: "1px solid #EDD4A8", color: "#7B5410" }} role="status"><span className="text-lg">🔌</span><div><div className="text-sm font-extrabold">Distribución manual activa</div><div className="text-xs mt-0.5">La migración 29 habilita la cola protegida para Meta y borradores de TikTok; hasta entonces el registro manual sigue disponible.</div></div></div>}
+        {!db.distributionServerReady && <InlineNotice icon="🛡️" title="Vista previa protegida">Aplicá la migración 19 para guardar checklist, aprobación humana y evidencia externa.</InlineNotice>}
+        {db.distributionServerReady && !db.distributionConnectorReady && <InlineNotice icon="🔌" title="Distribución manual activa">La migración 29 habilita la cola protegida para Meta y borradores de TikTok; hasta entonces el registro manual sigue disponible.</InlineNotice>}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
           <Stat icon="⏱️" label="Deben salir" value={<CountUp value={distributionRoom.summary.due} />} tone={T.coral} />
           <Stat icon="✓" label="Aprobadas" value={<CountUp value={distributionRoom.summary.ready} />} tone="#3F6B42" />
@@ -10812,20 +9664,27 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
   const ready = Boolean(db.brandMediaReady);
   const animationReady = Boolean(db.mundoAnimadoReady);
   const officialLogoDeletionReady = Boolean(db.officialLogoDeletionReady);
+  const productionAssetsReady = Boolean(db.brandProductionReady);
   const productionReady = Boolean(db.creativeProductionReady);
   const reviewReady = Boolean(db.creativeReviewReady);
   const iterationReady = Boolean(db.creativeIterationReady);
+  const humanApprovalReady = Boolean(db.mcpHumanApprovalReady);
   const canWrite = hasRole(user, "Administrador") || hasRole(user, "Marketing/CRM");
   const isAdmin = hasRole(user, "Administrador");
   const library = useMemo(() => buildBrandMediaLibrary(db, hoyISO()), [db]);
+  const productionLibrary = useMemo(() => buildProductionLibrary(db), [db]);
   const productionQueue = useMemo(() => buildCreativeProductionQueue(db), [db]);
   const integrationCenter = useMemo(() => buildAgencyIntegrationCenter(db, new Date()), [db]);
+  const humanApprovals = useMemo(() => (db.mcpHumanApprovals || []).slice(0, 8), [db.mcpHumanApprovals]);
   const canConfigureIntegrations = hasRole(user, "Administrador");
   const [section, setSection] = useState("Biblioteca");
   const [query, setQuery] = useState("");
   const [mediaFilter, setMediaFilter] = useState("");
   const [libraryCollection, setLibraryCollection] = useState("Marca");
   const [showArchived, setShowArchived] = useState(false);
+  const [productionComponentFilter, setProductionComponentFilter] = useState("");
+  const [packOpen, setPackOpen] = useState(false);
+  const [packForm, setPackForm] = useState({ name: "", purpose: "", productId: "", figure: "", channel: "Instagram", targetFormat: "Reel 9:16", description: "", requiredRoles: ["Producto"], members: [] });
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteAsset, setDeleteAsset] = useState(null);
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false);
@@ -10838,11 +9697,12 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
     productId: "", figure: "", flavor: "", shotType: "Referencia visual", orientation: "Vertical",
     animationKind: "Personaje", animationCanon: false,
     containsPeople: false, rightsStatus: "Propio", rightsExpiresAt: "", aiUseAllowed: true, tags: "", notes: "",
+    productionEnabled: false, ...defaultProductionProfile("Producto"),
   };
   const [assetForm, setAssetForm] = useState(emptyAssetForm);
   const [studio, setStudio] = useState({
     creativeId: "", briefId: "", operation: "Componer", provider: "Por conectar",
-    targetChannel: "Instagram", targetFormat: "Reel 9:16", assetIds: [], instructions: "",
+    targetChannel: "Instagram", targetFormat: "Reel 9:16", assetIds: [], instructions: "", productionPackId: "",
   });
   const [authorizationJob, setAuthorizationJob] = useState(null);
   const [authorizationCap, setAuthorizationCap] = useState("30000");
@@ -10854,6 +9714,8 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
     collection: libraryCollection, mediaType: mediaFilter, status: showArchived ? "" : "Activo",
   }), [library, query, libraryCollection, mediaFilter, showArchived]);
   const detailAsset = useMemo(() => library.assets.find((asset) => String(asset.id) === String(detailAssetId)) || null, [library, detailAssetId]);
+  const visibleProductionAssets = useMemo(() => productionLibrary.active.filter((asset) => !productionComponentFilter || asset.productionProfile?.componentType === productionComponentFilter), [productionLibrary.active, productionComponentFilter]);
+  const approvedProductionPacks = useMemo(() => productionLibrary.packs.filter((pack) => pack.status === "Aprobado" && pack.readiness.ready), [productionLibrary.packs]);
   const deletePolicy = useMemo(() => brandAssetDeletionPolicy(deleteAsset || {}, db, {
     isAdmin, officialLogoDeletionReady,
   }), [deleteAsset, db, isAdmin, officialLogoDeletionReady]);
@@ -10882,10 +9744,12 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
       return;
     }
     const role = brandRole || (isBrand ? "Referencia visual" : isAnimation ? "Diseño base" : "Producto");
+    const productionComponent = isBrand ? "Marca" : isAnimation ? "Personaje" : "Producto";
     setLibraryCollection(collection);
     setAssetForm({
       ...emptyAssetForm, collection, brandRole: isBrand ? role : "", shotType: role, animationKind,
       mediaType: /logo/i.test(role) ? "Logo" : isBrand || isAnimation ? "Foto" : "Video",
+      productionEnabled: productionAssetsReady, ...defaultProductionProfile(productionComponent),
     });
     setFile(null);
     setUploadOpen(true);
@@ -10940,8 +9804,18 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
         await declararLogoPrincipalMarca(result.asset_id);
         await onIdentityChanged?.();
       }
+      let productionProfileError = "";
+      if (assetForm.productionEnabled && productionAssetsReady) {
+        try {
+          await clasificarActivoProduccion(result.asset_id, productionProfilePayload(assetForm));
+        } catch (error) {
+          productionProfileError = error.message;
+        }
+      }
       setUploadOpen(false); setFile(null); setAssetForm(emptyAssetForm);
-      toast("ok", isPrimaryLogo ? "Logo principal guardado y declarado en la identidad oficial de MOMOS" : `Original guardado en ${assetForm.collection}`);
+      toast(productionProfileError ? "alert" : "ok", productionProfileError
+        ? `El original quedó protegido, pero falta completar su ficha de producción: ${productionProfileError}`
+        : isPrimaryLogo ? "Logo principal guardado y declarado en la identidad oficial de MOMOS" : `Original guardado en ${assetForm.collection}`);
       await refrescar();
     } catch (error) { toast("error", error.message); }
   }
@@ -10976,6 +9850,8 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
   function beginAssetMetadataEdit(asset) {
     const dependency = brandAssetDeletionReadiness(asset, db);
     const officialLogo = asset.collection === "Marca" && asset.mediaType === "Logo" && /principal/i.test(asset.roleLabel || "");
+    const defaultComponent = asset.collection === "Marca" ? "Marca" : asset.collection === "Animación" ? "Personaje" : "Producto";
+    const productionProfile = asset.productionProfile || defaultProductionProfile(defaultComponent);
     setAssetEditForm({
       semanticLocked: !dependency.allowed || officialLogo,
       name: asset.name || "", collection: asset.collection || "Marca",
@@ -10986,6 +9862,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
       rightsExpiresAt: asset.rightsExpiresAt || "", aiUseAllowed: Boolean(asset.aiUseAllowed),
       tags: (asset.tags || []).filter((tag) => !/^(momos:|animacion:tipo:|animacion:canon$)/i.test(String(tag))).join(", "),
       notes: asset.notes || "",
+      productionEnabled: Boolean(asset.productionProfile), ...productionProfile,
     });
   }
 
@@ -11013,6 +9890,10 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
         tags: [...animationTags, ...userTags],
         notes: assetEditForm.notes.trim(),
       });
+      if (assetEditForm.productionEnabled) {
+        if (!productionAssetsReady) throw new Error("La información general se guardó, pero falta aplicar la migración 61 para la ficha de producción.");
+        await clasificarActivoProduccion(detailAsset.id, productionProfilePayload(assetEditForm));
+      }
       setAssetEditForm(null);
       toast("ok", result.semantic_locked
         ? "Información descriptiva corregida; la clasificación histórica permaneció protegida"
@@ -11025,6 +9906,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
   function toggleStudioAsset(assetId) {
     setStudio((current) => ({
       ...current,
+      productionPackId: "",
       assetIds: current.assetIds.some((id) => String(id) === String(assetId))
         ? current.assetIds.filter((id) => String(id) !== String(assetId))
         : [...current.assetIds, assetId],
@@ -11037,18 +9919,96 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
       const freshDraft = buildCreativeStudioDraft(studio, db, hoyISO());
       if (!freshDraft.audit.passed) throw new Error(freshDraft.audit.errors[0]);
       const prompt = [freshDraft.prompt, studio.instructions.trim()].filter(Boolean).join(" Instrucciones adicionales: ");
-      await crearTrabajoCreativo({
+      const payload = {
         creative_id: studio.creativeId || null, brief_id: studio.briefId || null,
         operation: freshDraft.operation, provider: studio.provider,
         input_asset_ids: freshDraft.assets.map((asset) => asset.id),
         target_channel: freshDraft.channel, target_format: freshDraft.format,
         prompt, negative_prompt: freshDraft.negativePrompt,
         output_spec: { ...freshDraft.spec, output_mode: "new_asset", preserve_originals: true },
-      });
-      setStudio((current) => ({ ...current, assetIds: [], instructions: "" }));
+      };
+      if (studio.productionPackId) await crearTrabajoDesdePaqueteProduccion(Number(studio.productionPackId), payload);
+      else await crearTrabajoCreativo(payload);
+      setStudio((current) => ({ ...current, assetIds: [], instructions: "", productionPackId: "" }));
       toast("ok", ["Higgsfield", "Kling"].includes(studio.provider)
         ? `Trabajo ${studio.provider} preparado y auditado; revisá y autorizá su tope antes de enviarlo`
         : "Trabajo creativo preparado con originales y marca congelados");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  function openPackCreator() {
+    setPackForm({ name: "", purpose: "", productId: "", figure: "", channel: "Instagram", targetFormat: "Reel 9:16", description: "", requiredRoles: ["Producto"], members: [] });
+    setPackOpen(true);
+  }
+
+  function suggestedPackRole(asset) {
+    const component = asset.productionProfile?.componentType;
+    if (asset.mediaType === "Logo") return "Logo";
+    return ({ Producto: "Producto", Empaque: "Empaque", Manos: "Mano", "Presentador UGC": "Presentador", Locación: "Locación", Movimiento: "Movimiento", Marca: "Identidad", Audio: "Audio", Personaje: "Continuidad" })[component] || "Continuidad";
+  }
+
+  function togglePackAsset(asset) {
+    setPackForm((current) => {
+      const selected = current.members.some((member) => String(member.assetId) === String(asset.id));
+      return { ...current, members: selected
+        ? current.members.filter((member) => String(member.assetId) !== String(asset.id))
+        : [...current.members, { assetId: asset.id, role: suggestedPackRole(asset), required: true }],
+      };
+    });
+  }
+
+  function setPackMemberRole(assetId, role) {
+    setPackForm((current) => ({ ...current, members: current.members.map((member) => String(member.assetId) === String(assetId) ? { ...member, role } : member) }));
+  }
+
+  function togglePackRequiredRole(role) {
+    setPackForm((current) => ({ ...current, requiredRoles: current.requiredRoles.includes(role)
+      ? current.requiredRoles.filter((item) => item !== role)
+      : [...current.requiredRoles, role],
+    }));
+  }
+
+  function applyProductionPack(packId) {
+    const pack = approvedProductionPacks.find((item) => String(item.id) === String(packId));
+    if (!pack) {
+      setStudio((current) => ({ ...current, productionPackId: "" }));
+      return;
+    }
+    setStudio((current) => ({
+      ...current, productionPackId: String(pack.id),
+      assetIds: [...new Set(pack.readiness.members.map((member) => member.assetId))],
+      targetChannel: pack.channel || current.targetChannel,
+      targetFormat: pack.targetFormat || current.targetFormat,
+    }));
+  }
+
+  async function saveProductionPack() {
+    try {
+      if (!productionAssetsReady) throw new Error("Aplicá primero la migración 61 de Biblioteca de producción.");
+      if (packForm.name.trim().length < 3 || packForm.purpose.trim().length < 8) throw new Error("Escribí un nombre y un propósito claro para el paquete.");
+      if (!packForm.members.length) throw new Error("Elegí al menos una referencia aprobada.");
+      if (!packForm.requiredRoles.length) throw new Error("Elegí al menos un rol obligatorio.");
+      const result = await crearPaqueteProduccion({
+        name: packForm.name.trim(), purpose: packForm.purpose.trim(), product_id: packForm.productId || null,
+        figure: packForm.figure.trim(), channel: packForm.channel, target_format: packForm.targetFormat,
+        description: packForm.description.trim(), requirements: { required_roles: packForm.requiredRoles },
+        members: packForm.members.map((member, index) => ({ asset_id: member.assetId, role: member.role, sequence: index + 1, required: member.required, notes: "" })),
+      });
+      setPackOpen(false);
+      toast(result.readiness?.ready ? "ok" : "alert", result.readiness?.ready
+        ? "Paquete creado y listo para revisión humana"
+        : `Paquete guardado como borrador: ${result.readiness?.reasons?.[0] || "faltan referencias"}`);
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function reviewProductionPack(pack, decision) {
+    const note = window.prompt(decision === "Aprobar" ? "¿Qué identidad, producto, permisos y continuidad verificaste?" : "Nota para la revisión del paquete:", decision === "Aprobar" ? "Identidad, producto, derechos, QA y continuidad verificados." : "Listo para revisión de Administración.");
+    if (note === null) return;
+    try {
+      await revisarPaqueteProduccion(pack.id, decision, note);
+      toast("ok", decision === "Aprobar" ? "Paquete aprobado; ya puede usarse como referencia controlada para Higgsfield" : "Paquete enviado a revisión sin ejecutar motores ni consumir créditos");
       await refrescar();
     } catch (error) { toast("error", error.message); }
   }
@@ -11084,6 +10044,24 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
       await autorizarTrabajoCreativo(authorizationJob.id, guard.maxCostCop);
       setAuthorizationJob(null);
       toast("ok", "Trabajo autorizado con tope protegido; queda listo para el conector del motor");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
+  async function resolveHumanApproval(approval, decision) {
+    if (!isAdmin || approval.status !== "Pendiente") return;
+    const action = decision === "Aprobar" ? "aprobar" : "rechazar";
+    const note = window.prompt(`Nota humana para ${action} el preflight #${approval.id}`, decision === "Aprobar"
+      ? "Modelo, referencias, cámara y costo verificados."
+      : "Indicá qué debe corregirse antes de volver a solicitar aprobación.");
+    if (note == null) return;
+    if (note.trim().length < 3) { toast("alert", "La decisión necesita una nota de al menos 3 caracteres"); return; }
+    if (decision === "Aprobar" && !window.confirm(`Aprobar este preflight autorizará el trabajo #${approval.jobId} con un tope de ${fmt(Number(approval.contract?.max_cost_cop || 0))}. ¿Continuar?`)) return;
+    try {
+      await resolverAprobacionHumanaMcp(approval.id, decision, note.trim(), approval.contractFingerprint);
+      toast("ok", decision === "Aprobar"
+        ? "Preflight aprobado por una persona; el trabajo quedó autorizado con el contrato exacto"
+        : "Preflight rechazado sin consumir créditos");
       await refrescar();
     } catch (error) { toast("error", error.message); }
   }
@@ -11189,7 +10167,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
           <div><div className="text-[9px] font-extrabold tracking-[.18em] uppercase" style={{ color: T.coral }}>MOMOS BRAND INTELLIGENCE</div><div className="display text-xl font-semibold">Biblioteca + Estudio Creativo</div><div className="text-xs" style={{ color: T.choco2 }}>Originales, producción e integraciones externas bajo una sola trazabilidad.</div></div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {["Biblioteca", "Estudio", "Producción", "Integraciones"].map((item) => <button key={item} type="button" onClick={() => setSection(item)} className="rounded-full border px-3 py-2 text-[11px] font-extrabold" style={{ borderColor: section === item ? T.coral : T.border, background: section === item ? T.coral : "#fff", color: section === item ? "#fff" : T.choco }}>{item}</button>)}
+          {["Biblioteca", "Activos de producción", "Estudio", "Producción", "Integraciones"].map((item) => <button key={item} type="button" onClick={() => setSection(item)} className="rounded-full border px-3 py-2 text-[11px] font-extrabold" style={{ borderColor: section === item ? T.coral : T.border, background: section === item ? T.coral : "#fff", color: section === item ? "#fff" : T.choco }}>{item}</button>)}
           <Btn small disabled={!ready || !canWrite || (libraryCollection === "Animación" && !animationReady)} onClick={() => openAssetUpload(libraryCollection)}>＋ Subir archivo</Btn>
         </div>
       </div>
@@ -11238,6 +10216,26 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
           })}
         </div> : <Empty icon={libraryCollection === "Animación" ? "🎞️" : "🖼️"} text={ready ? (libraryCollection === "Marca" ? "Todavía no hay archivos de identidad en esta vista. Subí el logo o agregá referencias visuales de MOMOS." : libraryCollection === "Animación" ? (animationReady ? "Todavía no hay personajes ni elementos del mundo animado. Empezá por el diseño base de Momo." : "Mundo animado se habilitará al aplicar la migración 59.") : "Todavía no hay fotos o videos de producto que coincidan con la búsqueda.") : "La biblioteca aparecerá aquí cuando se aplique la migración 20."} />}
         {libraryCollection === "Animación" && animationEntities.length > 0 && <div className="mt-5"><div className="text-[9px] uppercase tracking-[.14em] font-extrabold mb-2" style={{ color: T.coral }}>Personajes y elementos del mundo</div><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">{animationEntities.map((entity) => <button key={entity.name} type="button" onClick={() => setQuery(entity.name)} className="rounded-2xl border p-3 text-left" style={{ borderColor: T.border, background: T.soft }}><span className="flex items-center justify-between gap-2"><span className="font-extrabold text-sm">{entity.name}</span><span className="display text-xl font-semibold" style={{ color: T.coral }}>{entity.count}</span></span><span className="block text-[9px] mt-1" style={{ color: T.choco2 }}>{entity.kinds.join(" · ")} · {entity.roles.slice(0,3).join(" · ") || "Sin material clasificado"}</span>{entity.canonical > 0 && <span className="inline-block rounded-full px-2 py-1 text-[8px] font-extrabold mt-2" style={{ background: "#E9DDF2", color: "#65437D" }}>★ {entity.canonical} referencia(s) canónica(s)</span>}</button>)}</div></div>}
+      </div> : section === "Activos de producción" ? <div className="p-4 sm:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-4">
+          <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Fuente de verdad para video</div><div className="display text-2xl font-semibold">Biblioteca de producción</div><div className="text-sm max-w-3xl" style={{ color: T.choco2 }}>Componentes reutilizables con vista, estado físico, interacción, consentimiento y QA. Un paquete aprobado puede alimentar Higgsfield sin volver a buscar referencias.</div></div>
+          <div className="flex flex-wrap gap-2"><Btn small kind="soft" disabled={!productionAssetsReady || !canWrite} onClick={() => openAssetUpload("Productos")}>＋ Subir componente</Btn><Btn small disabled={!productionAssetsReady || !canWrite || productionLibrary.approved.length === 0} onClick={openPackCreator}>Armar paquete</Btn></div>
+        </div>
+        {!productionAssetsReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>🛡️ Aplicá <code>biblioteca-produccion-v1.sql</code> después del paso 60. La Biblioteca actual permanece intacta hasta entonces.</div>}
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 mb-5">
+          {[["Clasificados",productionLibrary.summary.profiled],["QA aprobado",productionLibrary.summary.approved],["Manos / UGC",productionLibrary.summary.humanComponents],["Locaciones",productionLibrary.summary.locations],["Ángulos",productionLibrary.summary.multiviewAngles],["Packs aprobados",productionLibrary.summary.approvedPacks]].map(([label,value]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: T.coral }}>{value}</div></div>)}
+        </div>
+        <div className="mb-5"><div className="flex items-end justify-between gap-3 mb-2"><div><div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Cobertura reutilizable</div><div className="font-extrabold">Qué puede pedir hoy un guion</div></div><button type="button" className="border-0 bg-transparent text-[10px] font-extrabold underline" style={{ color: T.coral }} onClick={() => setProductionComponentFilter("")}>Ver todos</button></div>
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">{productionLibrary.componentCoverage.map((item) => <button type="button" key={item.componentType} onClick={() => setProductionComponentFilter(item.componentType)} className="rounded-2xl border p-3 text-left" style={{ borderColor: productionComponentFilter === item.componentType ? T.coral : item.ready ? "#B8D3B2" : T.border, background: item.ready ? "#F4FAF2" : "#FFF9F2" }}><span className="flex justify-between gap-2"><span className="text-xs font-extrabold">{item.componentType}</span><span className="display text-lg font-semibold" style={{ color: item.ready ? "#315B35" : T.coral }}>{item.approved}</span></span><span className="block text-[9px] mt-1" style={{ color: item.ready ? "#315B35" : T.choco2 }}>{item.ready ? `${item.count} clasificado(s)` : "Falta capturar y aprobar"}</span></button>)}</div>
+        </div>
+        <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)] gap-4">
+          <div><div className="flex items-end justify-between gap-3 mb-3"><div><div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Activos preparados</div><div className="display text-xl font-semibold">{productionComponentFilter || "Todos los componentes"}</div></div><span className="rounded-full px-3 py-1.5 text-[10px] font-extrabold" style={{ background: T.vainilla }}>{visibleProductionAssets.length}</span></div>
+            {visibleProductionAssets.length ? <div className="grid sm:grid-cols-2 gap-3">{visibleProductionAssets.map((asset) => { const profile = asset.productionProfile; const state = asset.productionReadiness; return <article key={asset.id} className="rounded-3xl border overflow-hidden" style={{ borderColor: state.ready ? "#B8D3B2" : "#E6B7AE", background: "#fff" }}><button type="button" onClick={() => openAssetDetail(asset)} className="w-full h-36 border-0 p-0 overflow-hidden grid place-items-center" style={{ background: "linear-gradient(135deg,#F9ECDD,#F3D7DC)" }}><LazyBrandMediaPreview asset={asset} mediaIcon={mediaIcon} /></button><div className="p-3"><div className="flex justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>{profile.componentType} · {profile.viewAngle}</div><div className="font-extrabold text-sm">{asset.name}</div></div><span className="rounded-full px-2 py-1 h-fit text-[8px] font-extrabold" style={{ background: state.ready ? "#DDEBD9" : "#F6D4CD", color: state.ready ? "#315B35" : "#A03B2A" }}>{state.ready ? "APROBADO" : profile.qaStatus.toUpperCase()}</span></div><div className="text-[10px] mt-1" style={{ color: T.choco2 }}>{[profile.physicalState,profile.interactionType,profile.locationName].filter((value) => value && !["No aplica","Ninguna"].includes(value)).join(" · ") || "Sin interacción adicional"}</div>{state.warnings[0] && <div className="rounded-xl px-2 py-1.5 mt-2 text-[9px] font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>⚠ {state.warnings[0]}</div>}<button type="button" onClick={() => openAssetDetail(asset)} className="border-0 bg-transparent p-0 mt-2 text-[10px] font-extrabold underline" style={{ color: T.coral }}>Ver y editar ficha</button></div></article>; })}</div> : <Empty icon="🎬" text={productionAssetsReady ? "No hay componentes con este filtro. Clasificá un original desde su ficha en Biblioteca o subí una referencia nueva." : "La sección quedará disponible al aplicar la migración 61."} />}
+          </div>
+          <div><div className="flex items-end justify-between gap-3 mb-3"><div><div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Referencias selladas</div><div className="display text-xl font-semibold">Paquetes de producción</div></div></div>
+            {productionLibrary.packs.length ? <div className="space-y-2">{productionLibrary.packs.map((pack) => <article key={pack.id} className="rounded-2xl border p-3" style={{ borderColor: pack.status === "Aprobado" ? "#B8D3B2" : T.border, background: pack.status === "Aprobado" ? "#F4FAF2" : "#fff" }}><div className="flex justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>V{pack.version} · {pack.channel} · {pack.targetFormat}</div><div className="font-extrabold text-sm">{pack.name}</div></div><Badge label={pack.status} /></div><div className="text-[10px] my-2" style={{ color: T.choco2 }}>{pack.purpose}</div><div className="flex flex-wrap gap-1">{pack.readiness.members.map((member) => <span key={`${member.assetId}-${member.role}`} className="rounded-full px-2 py-1 text-[8px] font-bold" style={{ background: T.vainilla }}>{member.role}</span>)}</div>{!pack.readiness.ready && <div className="rounded-xl px-2 py-1.5 mt-2 text-[9px] font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>{pack.readiness.reasons[0]}</div>}<div className="flex flex-wrap gap-2 mt-3">{pack.status === "Borrador" && <Btn small kind="ghost" disabled={!canWrite} onClick={() => reviewProductionPack(pack,"Enviar a revisión")}>Enviar a revisión</Btn>}{pack.status === "En revisión" && <Btn small confirmar disabled={!isAdmin || !pack.readiness.ready} onClick={() => reviewProductionPack(pack,"Aprobar")}>Aprobar paquete</Btn>}</div></article>)}</div> : <div className="rounded-2xl border p-4 text-xs" style={{ borderColor: T.border, color: T.choco2 }}>Todavía no hay paquetes. El primero puede reunir producto, bolsa, manos, presentador y locación para la prueba UGC “Dulce Antojo”.</div>}
+          </div>
+        </div>
       </div> : section === "Estudio" ? <div className="p-4 sm:p-5">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(310px,.75fr)] gap-4">
           <div>
@@ -11245,12 +10243,13 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
               <div className="text-[10px] uppercase tracking-[.14em] font-extrabold mb-3" style={{ color: T.coral }}>01 · Encargo creativo trazable</div>
               <div className="grid sm:grid-cols-2 gap-3"><Field label="Creativo base"><select className={inputCls} style={inputStyle} value={studio.creativeId} onChange={(event) => setStudio({ ...studio, creativeId: event.target.value })}><option value="">Sin creativo</option>{(db.creatives || []).map((creative) => <option key={creative.id} value={creative.id}>{creative.titulo}</option>)}</select></Field><Field label="Brief aprobado o en curso"><select className={inputCls} style={inputStyle} value={studio.briefId} onChange={(event) => setStudio({ ...studio, briefId: event.target.value })}><option value="">Sin brief</option>{(db.agencyBriefs || []).map((brief) => <option key={brief.id} value={brief.id}>#{brief.id} · {brief.title}</option>)}</select></Field></div>
               <div className="grid sm:grid-cols-2 gap-3"><Field label="Operación"><Select options={BRAND_STUDIO_OPERATIONS} value={studio.operation} onChange={(event) => setStudio({ ...studio, operation: event.target.value })} /></Field><Field label="Motor"><Select options={CREATIVE_PROVIDERS} value={studio.provider} onChange={(event) => setStudio({ ...studio, provider: event.target.value })} /></Field></div>
-              <div className="grid sm:grid-cols-2 gap-3"><Field label="Canal"><Select options={["Instagram","TikTok","Facebook","WhatsApp","Multicanal"]} value={studio.targetChannel} onChange={(event) => setStudio({ ...studio, targetChannel: event.target.value })} /></Field><Field label="Formato"><Select options={BRAND_STUDIO_FORMATS} value={studio.targetFormat} onChange={(event) => setStudio({ ...studio, targetFormat: event.target.value })} /></Field></div>
+              <div className="grid sm:grid-cols-2 gap-3"><Field label="Canal"><Select options={["Instagram","TikTok","Facebook","WhatsApp","Multicanal"]} value={studio.targetChannel} onChange={(event) => setStudio({ ...studio, targetChannel: event.target.value, productionPackId: "" })} /></Field><Field label="Formato"><Select options={BRAND_STUDIO_FORMATS} value={studio.targetFormat} onChange={(event) => setStudio({ ...studio, targetFormat: event.target.value, productionPackId: "" })} /></Field></div>
               <Field label="Instrucciones adicionales (opcional)"><textarea className={inputCls} style={inputStyle} rows="3" value={studio.instructions} onChange={(event) => setStudio({ ...studio, instructions: event.target.value })} placeholder="Ej. conservar el close-up real, agregar fondo de cocina cálido y cerrar con logo…" /></Field>
             </div>
 
             <div className="rounded-3xl border p-4" style={{ borderColor: T.border }}>
               <div className="flex items-end justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>02 · Fuentes reales</div><div className="display text-lg font-semibold">Elegí qué material puede usar</div></div><span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: T.vainilla }}>{studio.assetIds.length} elegido(s)</span></div>
+              {approvedProductionPacks.length > 0 && <div className="rounded-2xl border p-3 mb-3" style={{ borderColor: "#C8B3D9", background: "#FBF7FD" }}><Field label="Paquete de producción aprobado"><select className={inputCls} style={inputStyle} value={studio.productionPackId} onChange={(event) => applyProductionPack(event.target.value)}><option value="">Selección manual de originales</option>{approvedProductionPacks.map((pack) => <option key={pack.id} value={pack.id}>{pack.name} · V{pack.version} · {pack.readiness.members.length} referencias</option>)}</select></Field><div className="text-[9px]" style={{ color: T.choco2 }}>{studio.productionPackId ? "MOMO OPS sellará la versión y huella del paquete dentro del trabajo. Cambiar un activo vuelve a selección manual." : "Elegir un paquete carga únicamente sus referencias aprobadas."}</div></div>}
               {library.readyForAi.length ? <div className="grid sm:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1">{library.readyForAi.map((asset) => {
                 const selected = studio.assetIds.some((id) => String(id) === String(asset.id));
                 return <button key={asset.id} type="button" onClick={() => toggleStudioAsset(asset.id)} className="rounded-2xl border p-2.5 text-left flex gap-3" style={{ borderColor: selected ? T.coral : T.border, background: selected ? T.coralSoft : "#fff" }}>
@@ -11286,17 +10285,41 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
         {!productionReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>🛡️ La cola ya está diseñada, pero falta aplicar la migración 22 de Producción Creativa para autorizar costos y conectar motores sin exponer secretos.</div>}
         {!reviewReady && productionQueue.summary.completed > 0 && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>✦ Hay salidas privadas esperando decisión. Aplicá <code>revision-creativa-v1.sql</code> para aprobar, pedir cambios o descartar sin publicar automáticamente.</div>}
         {!iterationReady && productionQueue.summary.changesRequested > 0 && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>↻ Hay correcciones esperando nueva versión. Aplicá <code>versiones-creativas-v1.sql</code> para conservar el original y preparar otro intento sin heredar gasto.</div>}
+        <section className="rounded-3xl border p-4 mb-5" style={{ borderColor: humanApprovalReady ? "#C8B3D9" : T.border, background: humanApprovalReady ? "#FBF7FD" : T.soft }}>
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: "#76508C" }}>MCP · decisión humana</div><div className="display text-xl font-semibold">Preflights exactos antes de gastar créditos</div><div className="text-xs max-w-3xl" style={{ color: T.choco2 }}>Codex puede solicitar y consultar. No puede aprobarse a sí mismo: solo Administración decide en MOMO OPS y cualquier cambio de prompt, referencias o trabajo invalida la solicitud.</div></div><span className="rounded-full px-3 py-2 text-[10px] font-extrabold" style={{ background: humanApprovals.some((item) => item.status === "Pendiente") ? "#FFF2D8" : "#DDEBD9", color: humanApprovals.some((item) => item.status === "Pendiente") ? "#7A5410" : "#315B35" }}>{humanApprovals.filter((item) => item.status === "Pendiente").length} pendiente(s)</span></div>
+          {!humanApprovalReady && <div className="rounded-2xl px-3 py-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Aplicá <code>mcp-aprobacion-humana-v1.sql</code> después de la migración 61 para activar las tools y esta bandeja.</div>}
+          {humanApprovalReady && !humanApprovals.length && <div className="rounded-2xl px-3 py-4 text-xs text-center" style={{ background: "#fff", color: T.choco2 }}>Todavía no hay solicitudes. La tool <code>momos_request_human_approval</code> creará aquí el primer preflight, sin consumir créditos.</div>}
+          {humanApprovalReady && humanApprovals.length > 0 && <div className="grid xl:grid-cols-2 gap-3">{humanApprovals.map((approval) => {
+            const contract = approval.contract || {};
+            const referenceAssets = (contract.references || []).map((reference) => ({ ...reference, asset: library.assets.find((asset) => String(asset.id) === String(reference.asset_id)) }));
+            const tone = approval.status === "Aprobada" ? { border: "#B8D3B2", bg: "#F4FAF2" } : approval.status === "Pendiente" ? { border: "#E1C37E", bg: "#FFFCF4" } : { border: "#E6B7AE", bg: "#FFF8F6" };
+            return <article key={approval.id} className="rounded-3xl border p-4" style={{ borderColor: tone.border, background: tone.bg }}>
+              <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: "#76508C" }}>APROBACIÓN #{approval.id} · TRABAJO #{approval.jobId}</div><div className="display text-lg font-semibold">{approval.title}</div><div className="text-[10px]" style={{ color: T.choco2 }}>Solicitada {approval.requestedAt} · vence {approval.expiresAt}</div></div><Badge label={approval.status} /></div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-3">
+                {[["Modelo",contract.model || "—"],["Duración",`${contract.duration_seconds || 0} s`],["Formato",`${contract.target_format || "—"} · ${contract.aspect_ratio || "—"}`],["Costo",`${Number(contract.estimated_credits || 0)} créditos`]].map(([label,value]) => <div key={label} className="rounded-xl border px-2.5 py-2" style={{ borderColor: T.border, background: "rgba(255,255,255,.8)" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-[11px] font-extrabold break-words">{value}</div></div>)}
+              </div>
+              <div className="text-xs space-y-1.5"><div><b>Superficie / workflow:</b> {contract.surface || "—"}{contract.workflow ? ` · ${contract.workflow}` : ""}</div><div><b>Salida:</b> {contract.resolution || "—"} · {contract.outputs || 1} variante(s) · audio {contract.audio ? "sí" : "no"}</div><div><b>Lente:</b> {contract.lens || "—"}</div><div><b>Movimiento:</b> {contract.camera_movement || "—"}</div><div><b>Luz:</b> {contract.lighting || "—"}</div><div><b>Tope:</b> {fmt(Number(contract.max_cost_cop || 0))} · saldo declarado {Number(contract.balance_credits || 0)} créditos</div>{contract.production_pack_id && <div><b>Paquete:</b> #{contract.production_pack_id} · <code>{String(contract.production_pack_fingerprint || "").slice(0, 10)}…</code></div>}</div>
+              <div className="mt-3"><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Referencias aprobadas</div><div className="flex flex-wrap gap-1.5 mt-1">{referenceAssets.map((reference) => <span key={`${reference.asset_id}-${reference.role}`} className="rounded-full px-2.5 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{reference.role}: {reference.asset?.name || `Activo #${reference.asset_id}`} · {String(reference.asset_fingerprint || "").slice(0, 8)}</span>)}</div></div>
+              <details className="mt-3 rounded-2xl border p-3" style={{ borderColor: T.border, background: "rgba(255,255,255,.8)" }}><summary className="text-xs font-extrabold">Ver prompt, riesgos y criterios</summary><div className="text-xs whitespace-pre-wrap mt-2">{contract.prompt}</div><div className="text-[9px] mt-2" style={{ color: T.choco2 }}>Versión {contract.prompt_version} · huella <code>{contract.prompt_fingerprint}</code></div>{(contract.risks || []).length > 0 && <div className="mt-2 text-[11px]"><b>Riesgos:</b> {(contract.risks || []).join(" · ")}</div>}<div className="mt-1 text-[11px]"><b>Aceptación:</b> {(contract.acceptance_criteria || []).join(" · ")}</div></details>
+              {approval.decisionNote && <div className="rounded-2xl px-3 py-2 mt-3 text-xs" style={{ background: "#fff" }}><b>Decisión humana:</b> {approval.decisionNote}</div>}
+              <div className="rounded-2xl px-3 py-2 mt-3 text-[10px] font-bold" style={{ background: "#E5EEF7", color: "#315A7D" }}>No se consumen créditos al solicitar o revisar. Aprobar autoriza el trabajo exacto; el MCP nunca recibe una tool para decidir.</div>
+              {approval.status === "Pendiente" && <div className="flex flex-wrap gap-2 mt-3">{isAdmin ? <><BtnAsync small confirmar onClick={() => resolveHumanApproval(approval, "Aprobar")}>Aprobar preflight exacto</BtnAsync><BtnAsync small kind="ghost" onClick={() => resolveHumanApproval(approval, "Rechazar")}>Rechazar y corregir</BtnAsync></> : <span className="text-[10px] font-bold" style={{ color: "#7A5410" }}>Esperando a una persona con rol Administrador.</span>}</div>}
+            </article>;
+          })}</div>}
+        </section>
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 mb-5">
           {[["Por autorizar",productionQueue.summary.prepared],["Autorizados",productionQueue.summary.authorized],["Generando",productionQueue.summary.running],["Con novedad",productionQueue.summary.failed],["Por revisar",productionQueue.summary.pendingReview],["Aprobados",productionQueue.summary.approved]].map(([label,value]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: label === "Aprobados" ? "#3F6B42" : T.coral }}>{value}</div></div>)}
         </div>
         {productionQueue.active.length ? <div className="grid lg:grid-cols-2 gap-3">{productionQueue.active.map((job) => {
           const creative = (db.creatives || []).find((item) => item.id === job.creativeId);
           const execution = agencyProviderExecutionGuard(job.provider, db, new Date());
+          const jobApproval = (db.mcpHumanApprovals || []).find((item) => String(item.jobId) === String(job.id));
           return <article key={job.id} className="rounded-3xl border p-4" style={{ borderColor: job.status === "Fallido" ? "#E6B7AE" : T.border, background: "#fff" }}>
             <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>TRABAJO #{job.id} · {job.provider}{job.revisionNumber > 1 ? ` · V${job.revisionNumber}` : ""}</div><div className="display text-lg font-semibold">{creative?.titulo || job.operation}</div><div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{job.targetFormat} · {job.inputAssetIds.length} fuente(s){job.revisionOfJobId ? ` · corrige #${job.revisionOfJobId}` : ""}</div></div><Badge label={job.status} /></div>
             <div className="mt-3 pl-3 border-l-2 text-xs space-y-1" style={{ borderColor: T.rosa }}><div><b>Motor sugerido:</b> {job.recommendedProvider}</div><div><b>Tope protegido:</b> {job.maxCostCop ? fmt(job.maxCostCop) : "Sin autorizar"}</div>{job.outputSpec?.revision_feedback && <div><b>Cambio solicitado:</b> {job.outputSpec.revision_feedback}</div>}{job.errorMessage && <div style={{ color: "#A03B2A" }}><b>Novedad:</b> {job.errorMessage}</div>}</div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {job.status === "Preparado" && <BtnAsync small disabled={!productionReady || !canWrite || job.provider === "Por conectar"} onClick={() => { setAuthorizationJob(job); setAuthorizationCap(String(job.maxCostCop || 30000)); }}>Autorizar con tope</BtnAsync>}
+              {job.status === "Preparado" && !jobApproval && <BtnAsync small disabled={!productionReady || !canWrite || job.provider === "Por conectar"} onClick={() => { setAuthorizationJob(job); setAuthorizationCap(String(job.maxCostCop || 30000)); }}>Autorizar con tope</BtnAsync>}
+              {job.status === "Preparado" && jobApproval && <span className="rounded-full px-3 py-2 text-[10px] font-extrabold" style={{ background: jobApproval.status === "Pendiente" ? "#FFF2D8" : "#F6D4CD", color: jobApproval.status === "Pendiente" ? "#7A5410" : "#A03B2A" }}>MCP · {jobApproval.status === "Pendiente" ? "espera decisión humana" : `${jobApproval.status}; requiere preflight nuevo`}</span>}
               {job.status === "Fallido" && <BtnAsync small kind="soft" disabled={!productionReady || !canWrite} onClick={() => retryJob(job)}>Revisar y reintentar</BtnAsync>}
               {["Preparado","Autorizado","Fallido"].includes(job.status) && <BtnAsync small kind="ghost" disabled={!productionReady || !canWrite} onClick={() => cancelJob(job)}>Cancelar trabajo</BtnAsync>}
               {job.status === "Autorizado" && <span className="rounded-full px-3 py-2 text-[10px] font-extrabold" style={{ background: execution.allowed ? "#DDEBD9" : "#FFF2D8", color: execution.allowed ? "#315B35" : "#7A5410" }}>{execution.allowed ? "Conector activo · listo para ejecutar" : `En espera · ${execution.reasons[0] || "conector pendiente"}`}</span>}
@@ -11343,6 +10366,13 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
         </div>
         <div className="rounded-2xl px-4 py-3 mt-4 text-xs" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Activación segura:</b> Administración solo identifica aquí la cuenta. Kling usa una API Key y los demás proveedores su autenticación correspondiente, siempre en el runtime privado. MOMO OPS exige heartbeat reciente, tope de costo y revisión humana antes de publicar.</div>
       </div>}
+
+      {packOpen && <Modal title="Nuevo paquete de producción" onClose={() => setPackOpen(false)} extraWide topLayer>
+        <div className="rounded-2xl px-3 py-2.5 mb-4 text-xs" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Un paquete no genera ni consume créditos.</b> Solo congela las referencias que después podrá recibir Higgsfield, junto con sus permisos y QA.</div>
+        <div className="grid lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-4"><div><Field label="Nombre"><Input value={packForm.name} onChange={(event) => setPackForm({ ...packForm, name: event.target.value })} placeholder="Dulce Antojo · UGC bolsa y cucharada" /></Field><Field label="Propósito"><textarea className={inputCls} style={inputStyle} rows="3" value={packForm.purpose} onChange={(event) => setPackForm({ ...packForm, purpose: event.target.value })} placeholder="Mostrar la bolsa, sacar a Max, presentarlo a cámara y probarlo con cuchara." /></Field><div className="grid sm:grid-cols-2 gap-2"><Field label="Producto"><select className={inputCls} style={inputStyle} value={packForm.productId} onChange={(event) => setPackForm({ ...packForm, productId: event.target.value })}><option value="">Sin producto único</option>{(db.products || []).filter((product) => product.activo !== false).map((product) => <option key={product.id} value={product.id}>{product.nombre}</option>)}</select></Field><Field label="Figura / personaje"><Input value={packForm.figure} onChange={(event) => setPackForm({ ...packForm, figure: event.target.value })} placeholder="Max" /></Field></div><div className="grid sm:grid-cols-2 gap-2"><Field label="Canal"><Select options={["Instagram","TikTok","Facebook","WhatsApp","Multicanal"]} value={packForm.channel} onChange={(event) => setPackForm({ ...packForm, channel: event.target.value })} /></Field><Field label="Formato"><Select options={BRAND_STUDIO_FORMATS} value={packForm.targetFormat} onChange={(event) => setPackForm({ ...packForm, targetFormat: event.target.value })} /></Field></div><Field label="Notas de continuidad"><textarea className={inputCls} style={inputStyle} rows="2" value={packForm.description} onChange={(event) => setPackForm({ ...packForm, description: event.target.value })} placeholder="Bolsa idéntica, cuchara visible, luz de ventana izquierda…" /></Field><div className="text-[9px] uppercase font-extrabold mb-2" style={{ color: T.coral }}>Roles obligatorios</div><div className="flex flex-wrap gap-1.5 mb-4">{PRODUCTION_PACK_ROLES.map((role) => <label key={role} className="rounded-full border px-2 py-1 text-[9px] font-bold flex items-center gap-1" style={{ borderColor: packForm.requiredRoles.includes(role) ? T.coral : T.border, background: packForm.requiredRoles.includes(role) ? T.coralSoft : "#fff" }}><input type="checkbox" checked={packForm.requiredRoles.includes(role)} onChange={() => togglePackRequiredRole(role)} />{role}</label>)}</div></div>
+          <div><div className="flex items-end justify-between gap-2 mb-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>Solo QA aprobado</div><div className="font-extrabold">Elegí las referencias</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: T.vainilla }}>{packForm.members.length} elegidas</span></div><div className="grid sm:grid-cols-2 gap-2 max-h-[520px] overflow-y-auto pr-1">{productionLibrary.approved.map((asset) => { const member = packForm.members.find((item) => String(item.assetId) === String(asset.id)); return <article key={asset.id} className="rounded-2xl border p-2.5" style={{ borderColor: member ? T.coral : T.border, background: member ? T.coralSoft : "#fff" }}><label className="flex gap-2 items-start cursor-pointer"><input type="checkbox" className="mt-1" checked={Boolean(member)} onChange={() => togglePackAsset(asset)} /><span className="min-w-0"><span className="block text-[9px] uppercase font-extrabold" style={{ color: T.coral }}>{asset.productionProfile.componentType} · {asset.productionProfile.viewAngle}</span><span className="block text-xs font-extrabold truncate">{asset.name}</span><span className="block text-[9px]" style={{ color: T.choco2 }}>{asset.productionProfile.physicalState} · {asset.productionProfile.sourceQuality}</span></span></label>{member && <select className={`${inputCls} mt-2`} style={inputStyle} value={member.role} onChange={(event) => setPackMemberRole(asset.id,event.target.value)}>{PRODUCTION_PACK_ROLES.map((role) => <option key={role}>{role}</option>)}</select>}</article>; })}</div>{!productionLibrary.approved.length && <div className="rounded-2xl px-3 py-4 text-xs" style={{ background: "#FFF2D8", color: "#7A5410" }}>Primero aprobá el QA de al menos un componente en su ficha.</div>}</div></div>
+        <div className="flex flex-wrap gap-2 mt-4"><BtnAsync confirmar onClick={saveProductionPack} disabled={packForm.name.trim().length < 3 || packForm.purpose.trim().length < 8 || !packForm.members.length || !packForm.requiredRoles.length}>Guardar paquete borrador</BtnAsync><Btn kind="ghost" onClick={() => setPackOpen(false)}>Cancelar</Btn></div>
+      </Modal>}
 
       {integrationEdit && <Modal title={`Configurar ${integrationEdit.provider}`} onClose={() => setIntegrationEdit(null)} topLayer>
         <div className="rounded-2xl px-4 py-3 mb-4 text-sm" style={{ background: "#E5EEF7", color: "#315A7D" }}><b>Acá no se pegan tokens, API Keys ni contraseñas.</b> Solo identificamos la cuenta que MOMO OPS debe usar. La credencial se configura después en el runtime privado del worker.</div>
@@ -11394,6 +10424,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
               <div className="grid sm:grid-cols-2 gap-2 my-4">
                 {[["Formato real",`${detailAsset.mimeType || detailAsset.mediaType} · ${formatAssetSize(detailAsset.sizeBytes)}`],["Resolución",dimensions],["Orientación",detailAsset.orientation || "Sin definir"],["Fecha de ingreso",detailAsset.createdAt || "Sin fecha"],["Uso con IA",detailAsset.aiUseAllowed ? "Permitido" : "No permitido"],["Huella del original",hashLabel]].map(([label,value]) => <div key={label} className="rounded-2xl border px-3 py-2.5" style={{ borderColor: T.border, background: T.soft }}><div className="text-[8px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="text-[11px] font-extrabold mt-0.5 break-words">{value}</div></div>)}
               </div>
+              {detailAsset.productionProfile ? <div className="rounded-2xl border p-3 mb-4" style={{ borderColor: "#C8B3D9", background: "#FBF7FD" }}><div className="flex items-start justify-between gap-2"><div><div className="text-[9px] uppercase font-extrabold" style={{ color: "#65437D" }}>Ficha de producción</div><div className="font-extrabold text-sm">{detailAsset.productionProfile.componentType} · {detailAsset.productionProfile.viewAngle}</div></div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold" style={{ background: detailAsset.productionProfile.qaStatus === "Aprobado" ? "#DDEBD9" : "#FFF2D8", color: detailAsset.productionProfile.qaStatus === "Aprobado" ? "#315B35" : "#7A5410" }}>QA {detailAsset.productionProfile.qaStatus}</span></div><div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-[10px]" style={{ color: T.choco2 }}><div><b>Estado:</b> {detailAsset.productionProfile.physicalState}</div><div><b>Interacción:</b> {detailAsset.productionProfile.interactionType}</div><div><b>Calidad:</b> {detailAsset.productionProfile.sourceQuality}</div><div><b>Consentimiento:</b> {detailAsset.productionProfile.consentStatus}</div>{detailAsset.productionProfile.locationName && <div className="col-span-2"><b>Locación:</b> {detailAsset.productionProfile.locationName}</div>}</div>{detailAsset.productionProfile.continuityNotes && <div className="text-[10px] mt-2"><b>Continuidad:</b> {detailAsset.productionProfile.continuityNotes}</div>}</div> : productionAssetsReady && <div className="rounded-2xl px-3 py-2.5 mb-4 text-[11px]" style={{ background: "#FFF2D8", color: "#7A5410" }}><b>Sin ficha de producción.</b> Editá la información para clasificar vista, estado, interacción, locación y QA.</div>}
               {detailAsset.tags?.filter((tag) => !/^(momos:|animacion:tipo:|animacion:canon$)/i.test(String(tag))).length > 0 && <div className="mb-4"><div className="text-[9px] uppercase font-extrabold mb-1.5" style={{ color: T.choco2 }}>Etiquetas</div><div className="flex flex-wrap gap-1.5">{detailAsset.tags.filter((tag) => !/^(momos:|animacion:tipo:|animacion:canon$)/i.test(String(tag))).map((tag) => <span key={tag} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{tag}</span>)}</div></div>}
               <div className="rounded-2xl border p-3 mb-4" style={{ borderColor: T.border, background: "#fff" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Notas y alcance del permiso</div><div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: detailAsset.notes ? T.choco : T.choco2 }}>{detailAsset.notes || "No se registraron notas adicionales."}</div>{detailAsset.rightsExpiresAt && <div className="text-[10px] mt-2 font-bold" style={{ color: T.coral }}>Permiso vigente hasta {detailAsset.rightsExpiresAt}</div>}</div>
               {semanticLocked && <div className="rounded-2xl px-3 py-2.5 mb-4 text-[11px]" style={{ background: "#FFF2D8", color: "#7A5410" }}><b>Clasificación protegida:</b> este original ya fue usado o pertenece a la identidad oficial. Se pueden corregir nombre, etiquetas y notas, pero no cambiar qué representa.</div>}
@@ -11407,6 +10438,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
                   : <><div className="grid sm:grid-cols-2 gap-3"><Field label="Producto relacionado"><select disabled={semanticLocked} className={inputCls} style={inputStyle} value={assetEditForm.productId} onChange={(event) => setAssetEditForm({ ...assetEditForm, productId: event.target.value })}><option value="">Elegir producto…</option>{(db.products || []).filter((product) => product.activo !== false).map((product) => <option key={product.id} value={product.id}>{product.nombre}</option>)}</select></Field><Field label="Orientación"><Select disabled={semanticLocked} options={["Vertical","Horizontal","Cuadrado","Audio","Documento"]} value={assetEditForm.orientation} onChange={(event) => setAssetEditForm({ ...assetEditForm, orientation: event.target.value })} /></Field></div><div className="grid sm:grid-cols-3 gap-3"><Field label="Figura"><Input disabled={semanticLocked} value={assetEditForm.figure} onChange={(event) => setAssetEditForm({ ...assetEditForm, figure: event.target.value })} /></Field><Field label="Sabor"><Input disabled={semanticLocked} value={assetEditForm.flavor} onChange={(event) => setAssetEditForm({ ...assetEditForm, flavor: event.target.value })} /></Field><Field label="Tipo de toma"><Input disabled={semanticLocked} value={assetEditForm.shotType} onChange={(event) => setAssetEditForm({ ...assetEditForm, shotType: event.target.value })} /></Field></div></>}
               <div className="grid sm:grid-cols-2 gap-3"><Field label="Derechos"><Select disabled={semanticLocked} options={BRAND_MEDIA_RIGHTS} value={assetEditForm.rightsStatus} onChange={(event) => setAssetEditForm({ ...assetEditForm, rightsStatus: event.target.value })} /></Field><Field label="Vencimiento del permiso"><Input disabled={semanticLocked} type="date" value={assetEditForm.rightsExpiresAt} onChange={(event) => setAssetEditForm({ ...assetEditForm, rightsExpiresAt: event.target.value })} /></Field></div>
               <div className="rounded-2xl border px-3 py-2 mb-3" style={{ borderColor: T.border }}><label className="flex gap-2 items-start text-sm font-bold"><input disabled={semanticLocked} type="checkbox" className="mt-1" checked={assetEditForm.containsPeople} onChange={(event) => setAssetEditForm({ ...assetEditForm, containsPeople: event.target.checked })} /><span>El archivo muestra personas</span></label><label className="flex gap-2 items-start text-sm font-bold mt-2"><input disabled={semanticLocked} type="checkbox" className="mt-1" checked={assetEditForm.aiUseAllowed} onChange={(event) => setAssetEditForm({ ...assetEditForm, aiUseAllowed: event.target.checked })} /><span>Permitir edición o generación con IA</span></label></div>
+              <div className="rounded-3xl border p-3 mb-3" style={{ borderColor: "#C8B3D9", background: "#FBF7FD" }}><label className="flex gap-2 items-start text-sm font-extrabold"><input type="checkbox" disabled={!productionAssetsReady} className="mt-1" checked={assetEditForm.productionEnabled} onChange={(event) => setAssetEditForm({ ...assetEditForm, productionEnabled: event.target.checked })} /><span>Ficha de producción<span className="block text-[10px] font-normal" style={{ color: T.choco2 }}>Clasifica este original para UGC, manos, multivistas, locaciones y paquetes.</span></span></label>{assetEditForm.productionEnabled && <div className="mt-3"><div className="grid sm:grid-cols-3 gap-2"><Field label="Componente"><Select options={PRODUCTION_COMPONENT_TYPES} value={assetEditForm.componentType} onChange={(event) => { const componentType = event.target.value; setAssetEditForm({ ...assetEditForm, ...defaultProductionProfile(componentType), componentType, productionEnabled: true, containsPeople: ["Manos","Presentador UGC"].includes(componentType) ? true : assetEditForm.containsPeople }); }} /></Field><Field label="Vista"><Select options={PRODUCTION_VIEW_ANGLES} value={assetEditForm.viewAngle} onChange={(event) => setAssetEditForm({ ...assetEditForm, viewAngle: event.target.value })} /></Field><Field label="Estado físico"><Select options={PRODUCTION_PHYSICAL_STATES} value={assetEditForm.physicalState} onChange={(event) => setAssetEditForm({ ...assetEditForm, physicalState: event.target.value })} /></Field></div><div className="grid sm:grid-cols-3 gap-2"><Field label="Interacción"><Select options={PRODUCTION_INTERACTIONS} value={assetEditForm.interactionType} onChange={(event) => setAssetEditForm({ ...assetEditForm, interactionType: event.target.value })} /></Field><Field label="Mano asignada"><Select options={PRODUCTION_HAND_ASSIGNMENTS} value={assetEditForm.handAssignment} onChange={(event) => setAssetEditForm({ ...assetEditForm, handAssignment: event.target.value })} /></Field><Field label="Calidad fuente"><Select options={PRODUCTION_SOURCE_QUALITIES} value={assetEditForm.sourceQuality} onChange={(event) => setAssetEditForm({ ...assetEditForm, sourceQuality: event.target.value })} /></Field></div>{assetEditForm.componentType === "Locación" && <Field label="Locación"><Input value={assetEditForm.locationName} onChange={(event) => setAssetEditForm({ ...assetEditForm, locationName: event.target.value })} /></Field>}<div className="grid sm:grid-cols-2 gap-2"><Field label="Dirección de luz"><Input value={assetEditForm.lightDirection} onChange={(event) => setAssetEditForm({ ...assetEditForm, lightDirection: event.target.value })} /></Field><Field label="Referencia de escala"><Input value={assetEditForm.scaleReference} onChange={(event) => setAssetEditForm({ ...assetEditForm, scaleReference: event.target.value })} /></Field></div><div className="grid sm:grid-cols-2 gap-2"><Field label="QA visual"><Select options={PRODUCTION_QA_STATUSES} value={assetEditForm.qaStatus} onChange={(event) => setAssetEditForm({ ...assetEditForm, qaStatus: event.target.value })} /></Field><Field label="Consentimiento"><Select disabled={!['Manos','Presentador UGC'].includes(assetEditForm.componentType)} options={PRODUCTION_CONSENT_STATUSES} value={assetEditForm.consentStatus} onChange={(event) => setAssetEditForm({ ...assetEditForm, consentStatus: event.target.value })} /></Field></div><Field label="Continuidad"><textarea className={inputCls} style={inputStyle} rows="2" value={assetEditForm.continuityNotes} onChange={(event) => setAssetEditForm({ ...assetEditForm, continuityNotes: event.target.value })} /></Field></div>}</div>
               <Field label="Etiquetas separadas por coma"><Input value={assetEditForm.tags} onChange={(event) => setAssetEditForm({ ...assetEditForm, tags: event.target.value })} placeholder="oreo, close-up, cocina, fondo rosa" /></Field>
               <Field label="Notas y alcance del permiso"><textarea className={inputCls} style={inputStyle} rows="4" value={assetEditForm.notes} onChange={(event) => setAssetEditForm({ ...assetEditForm, notes: event.target.value })} /></Field>
               <div className="flex flex-wrap gap-2"><BtnAsync onClick={saveAssetMetadata} disabled={assetEditForm.name.trim().length < 3 || (assetEditForm.collection === "Productos" && !assetEditForm.productId) || (assetEditForm.collection === "Animación" && (!animationReady || assetEditForm.figure.trim().length < 2))} textoEnVuelo="Guardando versión…">Guardar corrección</BtnAsync><Btn kind="ghost" onClick={() => setAssetEditForm(null)}>Cancelar edición</Btn></div>
@@ -11443,6 +10475,11 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
         <div className="grid sm:grid-cols-2 gap-3"><Field label="Derechos"><Select options={BRAND_MEDIA_RIGHTS} value={assetForm.rightsStatus} onChange={(event) => setAssetForm({ ...assetForm, rightsStatus: event.target.value })} /></Field><Field label="Vencimiento del permiso (opcional)"><Input type="date" value={assetForm.rightsExpiresAt} onChange={(event) => setAssetForm({ ...assetForm, rightsExpiresAt: event.target.value })} /></Field></div>
         <div className="rounded-2xl border px-3 py-2 mb-3" style={{ borderColor: T.border }}><label className="flex gap-2 items-start text-sm font-bold"><input type="checkbox" className="mt-1" checked={assetForm.containsPeople} onChange={(event) => setAssetForm({ ...assetForm, containsPeople: event.target.checked })} /><span>El archivo muestra personas<span className="block text-[10px] font-normal" style={{ color: T.choco2 }}>Para usarlo con IA, los derechos deben quedar en Autorizado.</span></span></label><label className="flex gap-2 items-start text-sm font-bold mt-2"><input type="checkbox" className="mt-1" checked={assetForm.aiUseAllowed} onChange={(event) => setAssetForm({ ...assetForm, aiUseAllowed: event.target.checked })} /><span>Permitir edición o generación con IA<span className="block text-[10px] font-normal" style={{ color: T.choco2 }}>El original sigue privado y no se modifica.</span></span></label></div>
         {assetForm.containsPeople && assetForm.rightsStatus !== "Autorizado" && <div className="rounded-2xl px-3 py-2 mb-3 text-xs font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>⚠ Se puede catalogar, pero el servidor bloqueará su uso con IA hasta registrar autorización explícita.</div>}
+        <div className="rounded-3xl border p-3 mb-3" style={{ borderColor: productionAssetsReady ? "#C8B3D9" : T.border, background: productionAssetsReady ? "#FBF7FD" : T.soft }}>
+          <label className="flex gap-2 items-start text-sm font-extrabold"><input type="checkbox" className="mt-1" disabled={!productionAssetsReady} checked={assetForm.productionEnabled} onChange={(event) => setAssetForm({ ...assetForm, productionEnabled: event.target.checked })} /><span>Crear ficha de producción<span className="block text-[10px] font-normal" style={{ color: T.choco2 }}>Hace que este original pueda encontrarse como manos, UGC, vista, locación o componente de un paquete.</span></span></label>
+          {assetForm.productionEnabled && <div className="mt-3"><div className="grid sm:grid-cols-3 gap-2"><Field label="Componente"><Select options={PRODUCTION_COMPONENT_TYPES} value={assetForm.componentType} onChange={(event) => { const componentType = event.target.value; setAssetForm({ ...assetForm, ...defaultProductionProfile(componentType), componentType, productionEnabled: true, containsPeople: ["Manos","Presentador UGC"].includes(componentType) ? true : assetForm.containsPeople }); }} /></Field><Field label="Vista"><Select options={PRODUCTION_VIEW_ANGLES} value={assetForm.viewAngle} onChange={(event) => setAssetForm({ ...assetForm, viewAngle: event.target.value })} /></Field><Field label="Estado físico"><Select options={PRODUCTION_PHYSICAL_STATES} value={assetForm.physicalState} onChange={(event) => setAssetForm({ ...assetForm, physicalState: event.target.value })} /></Field></div><div className="grid sm:grid-cols-3 gap-2"><Field label="Interacción"><Select options={PRODUCTION_INTERACTIONS} value={assetForm.interactionType} onChange={(event) => setAssetForm({ ...assetForm, interactionType: event.target.value })} /></Field><Field label="Mano asignada"><Select options={PRODUCTION_HAND_ASSIGNMENTS} value={assetForm.handAssignment} onChange={(event) => setAssetForm({ ...assetForm, handAssignment: event.target.value })} /></Field><Field label="Calidad de fuente"><Select options={PRODUCTION_SOURCE_QUALITIES} value={assetForm.sourceQuality} onChange={(event) => setAssetForm({ ...assetForm, sourceQuality: event.target.value })} /></Field></div>{assetForm.componentType === "Locación" && <Field label="Nombre de la locación"><Input value={assetForm.locationName} onChange={(event) => setAssetForm({ ...assetForm, locationName: event.target.value })} placeholder="Cocina MOMOS, casa creadora, tienda…" /></Field>}<div className="grid sm:grid-cols-2 gap-2"><Field label="Dirección de luz"><Input value={assetForm.lightDirection} onChange={(event) => setAssetForm({ ...assetForm, lightDirection: event.target.value })} placeholder="Ventana izquierda, cálida frontal…" /></Field><Field label="Referencia de escala"><Input value={assetForm.scaleReference} onChange={(event) => setAssetForm({ ...assetForm, scaleReference: event.target.value })} placeholder="Cuchara, mano, regla, bolsa…" /></Field></div><div className="grid sm:grid-cols-2 gap-2"><Field label="QA visual"><Select options={PRODUCTION_QA_STATUSES} value={assetForm.qaStatus} onChange={(event) => setAssetForm({ ...assetForm, qaStatus: event.target.value })} /></Field><Field label="Consentimiento"><Select disabled={!['Manos','Presentador UGC'].includes(assetForm.componentType)} options={PRODUCTION_CONSENT_STATUSES} value={assetForm.consentStatus} onChange={(event) => setAssetForm({ ...assetForm, consentStatus: event.target.value })} /></Field></div><Field label="Continuidad y observaciones de QA"><textarea className={inputCls} style={inputStyle} rows="2" value={assetForm.continuityNotes} onChange={(event) => setAssetForm({ ...assetForm, continuityNotes: event.target.value })} placeholder="Qué debe mantenerse idéntico entre tomas; anotar escarcha, reflejos, fondo o deformaciones." /></Field></div>}
+          {!productionAssetsReady && <div className="text-[10px] mt-2" style={{ color: T.choco2 }}>Disponible al aplicar la migración 61.</div>}
+        </div>
         <Field label="Etiquetas separadas por coma"><Input value={assetForm.tags} onChange={(event) => setAssetForm({ ...assetForm, tags: event.target.value })} placeholder={assetForm.collection === "Animación" ? "feliz, frontal, manos, escala, cocina" : "oreo, close-up, cuchara, fondo rosa"} /></Field>
         <Field label={assetForm.collection === "Animación" ? "Notas de diseño, uso y continuidad" : "Notas y alcance del permiso"}><textarea className={inputCls} style={inputStyle} rows="3" value={assetForm.notes} onChange={(event) => setAssetForm({ ...assetForm, notes: event.target.value })} /></Field>
         <div className="flex flex-wrap gap-2"><BtnAsync onClick={saveAsset} disabled={!file || assetForm.name.trim().length < 3 || (assetForm.collection === "Productos" && !assetForm.productId) || (assetForm.collection === "Animación" && (!animationReady || assetForm.figure.trim().length < 2))} textoEnVuelo="Protegiendo original…">{assetForm.collection === "Marca" && assetForm.brandRole === "Logo principal" ? "Guardar y declarar logo principal" : assetForm.collection === "Animación" ? "Guardar en Mundo animado" : `Guardar en ${assetForm.collection}`}</BtnAsync><Btn kind="ghost" onClick={() => { setUploadOpen(false); setFile(null); }}>Cancelar</Btn></div>
@@ -12839,6 +11876,7 @@ function AgenciaControl({ db, user, refrescar, go }) {
     setBrandStudioIntent({ key: Date.now(), collection: "Marca", ...intent });
     setAdvancedArea("identity");
     setAdvancedDetail("creative-library");
+    setAgencyView("advanced");
   }
 
   function manualGoalSource(goalId) {
@@ -13104,7 +12142,14 @@ function AgenciaControl({ db, user, refrescar, go }) {
       <div className="rounded-2xl overflow-hidden border shadow-sm" style={{ borderColor: T.border, background: T.surface }}>
         <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b" style={{ borderColor: T.border, background: T.surface }}>
           <div className="flex items-start gap-3 min-w-0"><span className="w-10 h-10 rounded-2xl grid place-items-center text-lg shrink-0" style={{ background: T.coralSoft }}>✦</span><div><div className="flex flex-wrap items-center gap-2"><span className="text-[9px] font-extrabold tracking-[.18em] uppercase" style={{ color: T.coral }}>MOMO OPS Intelligence</span><span className="rounded-full px-2 py-0.5 text-[8px] font-extrabold" style={{ background: settings.paused ? "#F6D4CD" : "#DDEBD9", color: settings.paused ? "#A03B2A" : "#315B35" }}>{settings.paused ? "Pausada" : "Protegida"}</span></div><h2 className="display text-xl font-semibold mt-0.5 mb-0">Tu agencia comercial</h2><p className="text-xs mt-1 mb-0 max-w-2xl" style={{ color: T.choco2 }}>Elegí qué quieres lograr. MOMOS prepara una propuesta y vos aprobás el resultado.</p></div></div>
-          <div className="grid grid-cols-3 gap-2 shrink-0">{[["✓","Marca"],["✓","Revisión"],["✓","Datos reales"]].map(([value,label]) => <div key={label} className="rounded-xl border px-3 py-2 text-center min-w-[72px]" style={{ borderColor: T.border, background: "#FFFDFC" }}><div className="display text-lg font-semibold" style={{ color: "#3F6B42" }}>{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
+          <div className="flex flex-col gap-2 shrink-0">
+            <div className="grid grid-cols-3 gap-2">{[["✓","Marca"],["✓","Revisión"],["✓","Datos reales"]].map(([value,label]) => <div key={label} className="rounded-xl border px-3 py-2 text-center min-w-[72px]" style={{ borderColor: T.border, background: "#FFFDFC" }}><div className="display text-lg font-semibold" style={{ color: "#3F6B42" }}>{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
+            <button type="button" aria-label="Abrir Biblioteca de fotos, videos y marca" onClick={() => openBrandLibrary()} className="w-full rounded-xl border px-3 py-2.5 flex items-center gap-3 text-left transition hover:-translate-y-px hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1" style={{ borderColor: "#E9A18F", background: "#FFF5F0", "--tw-ring-color": T.coral }}>
+              <span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: T.coralSoft }} aria-hidden="true">🖼️</span>
+              <span className="flex-1 min-w-0"><span className="block text-xs font-extrabold" style={{ color: T.choco }}>Abrir Biblioteca</span><span className="block text-[9px]" style={{ color: T.choco2 }}>Fotos, videos, logos y marca · {(db.brandMediaAssets || []).filter((asset) => asset.status === "Activo").length} activos</span></span>
+              <span className="text-base font-bold" style={{ color: T.coral }} aria-hidden="true">›</span>
+            </button>
+          </div>
         </div>
 
         <div className="p-4 sm:p-5">
@@ -14086,6 +13131,11 @@ function TareasRedes({ db, update, user, refrescar }) {
 // Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
 // sus cambios no llegan al servidor y la próxima hidratación los pisa.
 const MODULOS_EN_MIGRACION = ["Beneficios", "Finanzas", "Configuración"];
+const PERFORMANCE_FRESHNESS_TTL = Object.freeze({
+  [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
+  [SYNC_DOMAINS.OPERATIONS]: 30_000,
+  [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
+});
 
 function BannerMigracion({ modulo }) {
   const configuracion = modulo === "Configuración";
@@ -14199,6 +13249,7 @@ export default function MomosOps() {
   const syncRef = useRef("cargando");
   const realtimeStatusRef = useRef("conectando");
   const syncCoordinatorRef = useRef(null);
+  const performanceRouteRef = useRef(0);
   const dbRef = useRef(null);
   const sessionOwnerRef = useRef(null);
   const activeStorageKeyRef = useRef(DB_KEY);
@@ -14266,6 +13317,8 @@ export default function MomosOps() {
     if (db.distributionServerReady) tables.push("content_distributions");
     if (db.distributionConnectorReady) tables.push("distribution_connector_jobs");
     if (db.brandMediaReady) tables.push("brand_media_assets", "creative_generation_jobs", "brand_media_usages");
+    if (db.brandProductionReady) tables.push("brand_asset_production_profiles", "brand_production_packs", "brand_production_pack_assets");
+    if (db.mcpHumanApprovalReady) tables.push("agency_mcp_human_approvals");
     if (db.agencyIntegrationsReady) tables.push("agency_integrations");
     if (db.higgsfieldConnectorReady || db.klingConnectorReady) tables.push("creative_connector_runs");
     if (db.agencyCollaborationReady) tables.push("agency_collaboration_rooms", "agency_collaboration_entries", "agency_creative_contracts");
@@ -14317,7 +13370,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.distributionConnectorReady), Boolean(db?.brandMediaReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady), Boolean(db?.agencyCollaborationReady), Boolean(db?.agencySceneStudioReady), Boolean(db?.agencyMotionReady), Boolean(db?.agencySceneRouterReady), Boolean(db?.agencyQualityReady), Boolean(db?.agencyPostproductionExportReady), Boolean(db?.agencyPostproductionAudioReady), Boolean(db?.agencyRetentionReady), Boolean(db?.agencyLoopLearningReady), Boolean(db?.agencyMetaReady), Boolean(db?.agencyMetaIncrementalityReady), Boolean(db?.agencyMetaInvestmentReady), Boolean(db?.agencyMetaAuthorizationReady), Boolean(db?.agencyMetaConnectorReady), Boolean(db?.agencyGrowthReady)]);
+  }, [session?.user?.id, perfil?.id, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencyServerReady), Boolean(db?.distributionServerReady), Boolean(db?.distributionConnectorReady), Boolean(db?.brandMediaReady), Boolean(db?.mcpHumanApprovalReady), Boolean(db?.agencyIntegrationsReady), Boolean(db?.higgsfieldConnectorReady), Boolean(db?.klingConnectorReady), Boolean(db?.agencyCollaborationReady), Boolean(db?.agencySceneStudioReady), Boolean(db?.agencyMotionReady), Boolean(db?.agencySceneRouterReady), Boolean(db?.agencyQualityReady), Boolean(db?.agencyPostproductionExportReady), Boolean(db?.agencyPostproductionAudioReady), Boolean(db?.agencyRetentionReady), Boolean(db?.agencyLoopLearningReady), Boolean(db?.agencyMetaReady), Boolean(db?.agencyMetaIncrementalityReady), Boolean(db?.agencyMetaInvestmentReady), Boolean(db?.agencyMetaAuthorizationReady), Boolean(db?.agencyMetaConnectorReady), Boolean(db?.agencyGrowthReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -14371,9 +13424,14 @@ export default function MomosOps() {
       d.brandMediaReady = Boolean(cat.brandMediaReady);
       d.mundoAnimadoReady = Boolean(cat.mundoAnimadoReady);
       d.officialLogoDeletionReady = Boolean(cat.officialLogoDeletionReady);
+      d.brandProductionReady = Boolean(cat.brandProductionReady);
+      d.brandProductionPacks = cat.brandProductionPacks || [];
+      d.brandProductionPackAssets = cat.brandProductionPackAssets || [];
       d.creativeProductionReady = Boolean(cat.creativeProductionReady);
       d.creativeReviewReady = Boolean(cat.creativeReviewReady);
       d.creativeIterationReady = Boolean(cat.creativeIterationReady);
+      d.mcpHumanApprovalReady = Boolean(cat.mcpHumanApprovalReady);
+      d.mcpHumanApprovals = cat.mcpHumanApprovals || [];
       d.brandMediaAssets = cat.brandMediaAssets || [];
       d.creativeGenerationJobs = cat.creativeGenerationJobs || [];
       d.brandMediaUsages = cat.brandMediaUsages || [];
@@ -14465,12 +13523,23 @@ export default function MomosOps() {
     if (!syncCoordinatorRef.current) {
       syncCoordinatorRef.current = createSyncCoordinator({
         loaders: {
-          [SYNC_DOMAINS.CATALOGS]: () => fetchCatalogos({ includeAgency: false }),
-          [SYNC_DOMAINS.OPERATIONS]: fetchOperativo,
-          [SYNC_DOMAINS.AGENCY]: () => fetchCatalogos({ includeAgency: true }),
+          [SYNC_DOMAINS.CATALOGS]: () => measureSyncLoad(
+            SYNC_DOMAINS.CATALOGS,
+            () => fetchCatalogos({ includeAgency: false }),
+          ),
+          [SYNC_DOMAINS.OPERATIONS]: () => measureSyncLoad(SYNC_DOMAINS.OPERATIONS, fetchOperativo),
+          [SYNC_DOMAINS.AGENCY]: () => measureSyncLoad(
+            SYNC_DOMAINS.AGENCY,
+            () => fetchCatalogos({ includeAgency: true }),
+          ),
         },
         apply: aplicarDominiosServidor,
         onState: (state) => {
+          if (["synced", "partial"].includes(state.status)) {
+            (state.domains || []).forEach((domain) => {
+              runtimePerformance.markDomainReady(domain, performanceRouteRef.current);
+            });
+          }
           if (import.meta.env.DEV && typeof window !== "undefined") {
             window.MOMOS_SYNC_METRICS = state;
             window.__MOMOS_SYNC_METRICS__ = state; // alias temporal para sesiones DEV anteriores
@@ -14565,12 +13634,31 @@ export default function MomosOps() {
   }, []);
 
   function go(v, payload) {
-    if (v !== vista) vibrar("tap");
+    const cambiaVista = v !== vista;
+    if (cambiaVista) {
+      vibrar("tap");
+      const requiredDomains = syncDomainsForView(v);
+      const staleDomains = new Set(
+        syncCoordinatorRef.current?.staleDomains(PERFORMANCE_FRESHNESS_TTL)
+          || requiredDomains,
+      );
+      performanceRouteRef.current = runtimePerformance.startRoute(v, {
+        requiredDomains,
+        freshDomains: requiredDomains.filter((domain) => !staleDomains.has(domain)),
+      });
+    }
     setFocus(payload || null);
     setVista(v);
     const reducirMovimiento = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: reducirMovimiento ? "auto" : "smooth" }));
   }
+
+  useEffect(() => {
+    const routeId = performanceRouteRef.current;
+    if (!routeId) return undefined;
+    const frame = requestAnimationFrame(() => runtimePerformance.markUiCommitted(routeId));
+    return () => cancelAnimationFrame(frame);
+  }, [vista]);
 
   useEffect(() => {
     (async () => {

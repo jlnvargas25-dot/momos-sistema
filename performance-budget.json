@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "budgets": {
+    "initialJsGzipBytes": 256000,
+    "largestJsChunkRawBytes": 512000,
+    "initialCssGzipBytes": 30720,
+    "momosOpsSourceLines": 5000,
+    "inlineStyleOccurrences": 400
+  },
+  "runtimeTargets": {
+    "interactionP75Ms": 200,
+    "syncP95Ms": 800,
+    "backendReadP95Ms": 500,
+    "initialDataReads": 3,
+    "agencyOpenRequests": 5,
+    "agencyReadyP95Ms": 800,
+    "financeOpenRequests": 5,
+    "financeReadyP95Ms": 800
+  }
+}

@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test src/lib/*.test.js",
+    "test:performance": "node --test src/performance/*.test.js",
+    "perf:budget": "node scripts/performance-budget.mjs",
     "test:voice": "node --test src/lib/kitchen-voice.test.js",
     "test:workflow": "node --test src/lib/order-workflow.test.js",
     "worker:higgsfield": "node scripts/higgsfield-worker.mjs",

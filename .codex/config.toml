@@ -15,5 +15,9 @@ enabled_tools = [
   "momos_agency_snapshot",
   "momos_meta_observatory",
   "momos_creative_context",
+  "momos_search_brand_assets",
+  "momos_get_brand_asset_reference",
   "momos_submit_proposals",
+  "momos_request_human_approval",
+  "momos_get_human_approval",
 ]

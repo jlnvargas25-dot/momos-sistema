@@ -1,14 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import {
   MOMOS_AGENCY_MCP_TOOLS,
   assertMcpPayloadSafe,
   brandAssetSearchQueryFingerprint,
   buildAgencyMcpRun,
+  buildMcpHumanApprovalRequest,
   creativeContextRpc,
   normalizeBrandAssetClaim,
   normalizeBrandAssetSearch,
+  normalizeMcpHumanApprovalStatus,
   sanitizeBrandAssetClaimForReference,
   normalizeAgencyMcpSnapshot,
 } from "./momos-agency-mcp.js";
@@ -18,6 +21,7 @@ test("el MCP publica una superficie pequeña y sin SQL libre", () => {
     "momos_health", "momos_agency_snapshot", "momos_meta_observatory",
     "momos_creative_context", "momos_search_brand_assets",
     "momos_get_brand_asset_reference", "momos_submit_proposals",
+    "momos_request_human_approval", "momos_get_human_approval",
   ]);
   assert.equal(MOMOS_AGENCY_MCP_TOOLS.some((name) => /sql|shell|publish|budget/i.test(name)), false);
   const runtime = readFileSync(new URL("../../scripts/momos-agency-mcp.mjs", import.meta.url), "utf8");
@@ -27,6 +31,92 @@ test("el MCP publica una superficie pequeña y sin SQL libre", () => {
   assert.match(runtime, /replaceAll\(BRAND_REFERENCE_DIR, "\[ruta local redactada\]"\)/);
   assert.doesNotMatch(runtime, /local_path\s*:/);
   assert.doesNotMatch(runtime, /local-temporary-file/);
+});
+
+const approvalPrompt = "UGC vertical: muestra la bolsa MOMOS, saca a Max, lo presenta a cámara y prueba una cucharada.";
+const approvalContract = (overrides = {}) => ({
+  schemaVersion: "momos-human-approval-contract/v1",
+  provider: "Higgsfield",
+  surface: "Cinema Studio",
+  model: "Veo 3.1",
+  workflow: "Ingredients to Video",
+  objective: "Probar un antojo UGC con Max y la bolsa MOMOS.",
+  durationSeconds: 8,
+  aspectRatio: "9:16",
+  targetChannel: "Instagram",
+  targetFormat: "Reel 9:16",
+  resolution: "1080p",
+  audio: true,
+  outputs: 1,
+  references: [{ assetId: 20, assetFingerprint: "e".repeat(32), role: "Producto" }],
+  productionPackId: 9,
+  productionPackFingerprint: "f".repeat(32),
+  lens: "24mm anamórfica, sin fisheye",
+  cameraMovement: "Handheld UGC contenido con acercamiento físico corto.",
+  lighting: "Luz suave de ventana izquierda, sombras consistentes.",
+  prompt: approvalPrompt,
+  promptVersion: "ugc-max-v1",
+  promptFingerprint: createHash("md5").update(approvalPrompt, "utf8").digest("hex"),
+  estimatedCredits: 54,
+  maxCostCop: 30000,
+  balanceCredits: 120,
+  risks: ["No deformar a Max ni inventar texto en la bolsa."],
+  acceptanceCriteria: ["Max y la bolsa conservan la identidad aprobada."],
+  generationAllowed: false,
+  externalExecution: false,
+  ...overrides,
+});
+
+test("la solicitud MCP prepara un preflight Higgsfield exacto sin autoaprobar", () => {
+  const result = buildMcpHumanApprovalRequest({
+    requestKey: "approval-ugc-max-01", workerId: "codex-momos", jobId: 77,
+    title: "Prueba UGC Max con bolsa", expiresInHours: 24, contract: approvalContract(),
+  });
+  assert.equal(result.job_id, 77);
+  assert.equal(result.contract.model, "Veo 3.1");
+  assert.equal(result.contract.duration_seconds, 8);
+  assert.equal(result.contract.references[0].asset_fingerprint, "e".repeat(32));
+  assert.equal(result.contract.generation_allowed, false);
+  assert.equal(result.contract.external_execution, false);
+  assert.equal(Object.hasOwn(result.contract, "api_key"), false);
+});
+
+test("el preflight rechaza permisos abiertos, huellas, referencias y costos inconsistentes", () => {
+  const request = (contract) => buildMcpHumanApprovalRequest({
+    requestKey: "approval-safe", workerId: "codex-momos", jobId: 77,
+    title: "Preflight protegido", contract,
+  });
+  assert.throws(() => request(approvalContract({ generationAllowed: true })), /ampliar permisos/);
+  assert.throws(() => request(approvalContract({ promptFingerprint: "a".repeat(32) })), /huella del prompt/);
+  assert.throws(() => request(approvalContract({ balanceCredits: 20 })), /saldo de créditos/);
+  assert.throws(() => request(approvalContract({ references: [] })), /referencias únicas/);
+  assert.throws(() => request(approvalContract({ references: [
+    { assetId: 20, assetFingerprint: "e".repeat(32), role: "Producto" },
+    { assetId: 20, assetFingerprint: "e".repeat(32), role: "Empaque" },
+  ] })), /referencias únicas/);
+  assert.throws(() => request({ ...approvalContract(), api_key: "secreto" }), /no puede atravesar/);
+});
+
+test("la consulta MCP solo acepta la decisión del preflight esperado", () => {
+  const base = {
+    schema_version: "momos-human-approval-status/v1", approval_id: 31, job_id: 77,
+    status: "Pendiente", contract_fingerprint: "a".repeat(32),
+    requested_at: new Date().toISOString(), expires_at: new Date(Date.now() + 3600000).toISOString(),
+    decided_at: null, decision_summary: "", requires_human_approval: true,
+    generation_authorized: false, external_execution_allowed: false,
+  };
+  assert.equal(normalizeMcpHumanApprovalStatus(base, {
+    expectedApprovalId: 31, expectedFingerprint: "a".repeat(32),
+  }).status, "Pendiente");
+  assert.throws(() => normalizeMcpHumanApprovalStatus(base, {
+    expectedApprovalId: 32, expectedFingerprint: "a".repeat(32),
+  }), /no corresponde/);
+  assert.throws(() => normalizeMcpHumanApprovalStatus({ ...base, status: "Aprobada" }, {
+    expectedApprovalId: 31, expectedFingerprint: "a".repeat(32),
+  }), /permisos inconsistentes/);
+  assert.throws(() => normalizeMcpHumanApprovalStatus({ ...base, external_execution_allowed: true }, {
+    expectedApprovalId: 31, expectedFingerprint: "a".repeat(32),
+  }), /ampliar permisos/);
 });
 
 const safeAsset = (overrides = {}) => ({

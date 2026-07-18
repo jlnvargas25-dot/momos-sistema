@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 const FORBIDDEN_KEY = /(api[_-]?key|access[_-]?token|refresh[_-]?token|app[_-]?secret|password|service[_-]?role|authorization)/i;
 
-export const MOMOS_AGENCY_MCP_VERSION = "1.1.0";
+export const MOMOS_AGENCY_MCP_VERSION = "1.2.0";
 
 export const MOMOS_AGENCY_MCP_TOOLS = Object.freeze([
   "momos_health",
@@ -12,6 +12,8 @@ export const MOMOS_AGENCY_MCP_TOOLS = Object.freeze([
   "momos_search_brand_assets",
   "momos_get_brand_asset_reference",
   "momos_submit_proposals",
+  "momos_request_human_approval",
+  "momos_get_human_approval",
 ]);
 
 const BRAND_ASSET_MEDIA_TYPES = new Set(["Foto", "Video", "Audio", "Logo", "Diseño"]);
@@ -65,10 +67,48 @@ const DECISION_TYPES = new Set([
   "Escalar presupuesto", "Reponer stock", "Revisar creativo", "Revisar oferta", "Otro",
 ]);
 
+const HUMAN_APPROVAL_SCHEMA = "momos-human-approval-contract/v1";
+const HUMAN_APPROVAL_STATUS_SCHEMA = "momos-human-approval-status/v1";
+const HUMAN_APPROVAL_ASPECT_RATIOS = new Set(["9:16", "16:9", "1:1", "4:5"]);
+const HUMAN_APPROVAL_RESOLUTIONS = new Set(["720p", "1080p", "4K"]);
+const HUMAN_APPROVAL_REFERENCE_ROLES = new Set([
+  "Identidad", "Producto", "Empaque", "Mano", "Presentador", "Locación", "Movimiento",
+  "Logo", "Audio", "Start frame", "End frame", "Continuidad", "Referencia",
+]);
+const HUMAN_APPROVAL_STATUSES = new Set(["Pendiente", "Aprobada", "Rechazada", "Vencida", "Cancelada"]);
+const HUMAN_APPROVAL_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/;
+
 const asObject = (value, label) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} debe ser un objeto.`);
   return value;
 };
+
+function safeHumanApprovalText(value, label, { minLength = 0, maxLength = 500 } = {}) {
+  const text = String(value ?? "").trim();
+  if (text.length < minLength || text.length > maxLength || HUMAN_APPROVAL_CONTROL.test(text)
+    || METADATA_EMAIL.test(text) || METADATA_URL.test(text) || METADATA_SECRET.test(text)) {
+    throw new Error(`${label} contiene texto, PII o secretos no permitidos.`);
+  }
+  return text;
+}
+
+function humanApprovalNumber(value, label, { min = 0, max = Number.MAX_SAFE_INTEGER, integer = false } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min || number > max || (integer && !Number.isInteger(number))) {
+    throw new Error(`${label} es inválido.`);
+  }
+  return number;
+}
+
+function normalizeHumanApprovalReference(value) {
+  const reference = asObject(value, "Cada referencia del preflight");
+  const assetId = humanApprovalNumber(reference.assetId ?? reference.asset_id, "El activo de referencia", { min: 1, integer: true });
+  const assetFingerprint = String(reference.assetFingerprint ?? reference.asset_fingerprint ?? "").trim().toLowerCase();
+  const role = String(reference.role || "").trim();
+  if (!/^[0-9a-f]{32}$/.test(assetFingerprint)) throw new Error("Una referencia no tiene la huella sellada de MOMO OPS.");
+  if (!HUMAN_APPROVAL_REFERENCE_ROLES.has(role)) throw new Error("Una referencia usa un rol fuera de la lista cerrada.");
+  return { asset_id: assetId, asset_fingerprint: assetFingerprint, role };
+}
 
 function safeBrandMetadataText(value, label, { allowEmpty = true, maxLength = 180 } = {}) {
   const text = String(value ?? "").trim();
@@ -330,6 +370,145 @@ export function sanitizeBrandAssetClaimForReference(claimValue) {
   const claim = normalizeBrandAssetClaim(claimValue);
   const { storage_path: _storagePath, ...asset } = claim.asset;
   return { asset, grant: claim.grant };
+}
+
+export function buildMcpHumanApprovalRequest(input = {}) {
+  assertMcpPayloadSafe(input);
+  const requestKey = String(input.requestKey ?? input.request_key ?? "").trim();
+  const workerId = String(input.workerId ?? input.worker_id ?? "").trim();
+  const jobId = humanApprovalNumber(input.jobId ?? input.job_id, "El trabajo creativo", { min: 1, integer: true });
+  const title = safeHumanApprovalText(input.title, "El título de aprobación", { minLength: 3, maxLength: 180 });
+  const expiresInHours = humanApprovalNumber(input.expiresInHours ?? input.expires_in_hours ?? 24, "La vigencia", { min: 1, max: 72, integer: true });
+  const source = asObject(input.contract, "El contrato de aprobación");
+  if (!/^[A-Za-z0-9:_-]{3,180}$/.test(requestKey)) throw new Error("La aprobación necesita una clave idempotente válida.");
+  if (!/^[A-Za-z0-9._:-]{2,120}$/.test(workerId)) throw new Error("El worker MCP es inválido.");
+  if ((source.schemaVersion ?? source.schema_version) !== HUMAN_APPROVAL_SCHEMA) throw new Error("La versión del preflight no es compatible.");
+  if (String(source.provider || "").trim() !== "Higgsfield") throw new Error("La aprobación humana MCP solo admite trabajos Higgsfield.");
+  if ((source.generationAllowed ?? source.generation_allowed) !== false
+    || (source.externalExecution ?? source.external_execution) !== false) {
+    throw new Error("El MCP no puede ampliar permisos de generación o ejecución externa.");
+  }
+
+  const prompt = safeHumanApprovalText(source.prompt, "El prompt", { minLength: 12, maxLength: 6000 });
+  const promptFingerprint = String(source.promptFingerprint ?? source.prompt_fingerprint ?? "").trim().toLowerCase();
+  const expectedPromptFingerprint = createHash("md5").update(prompt, "utf8").digest("hex");
+  if (!/^[0-9a-f]{32}$/.test(promptFingerprint) || promptFingerprint !== expectedPromptFingerprint) {
+    throw new Error("La huella del prompt no corresponde al texto exacto mostrado para aprobación.");
+  }
+  const references = Array.isArray(source.references) ? source.references.map(normalizeHumanApprovalReference) : [];
+  if (!references.length || references.length > 20 || new Set(references.map((item) => item.asset_id)).size !== references.length) {
+    throw new Error("El preflight requiere entre 1 y 20 referencias únicas.");
+  }
+  const risks = Array.isArray(source.risks)
+    ? source.risks.map((item) => safeHumanApprovalText(item, "Un riesgo", { minLength: 3, maxLength: 300 })) : [];
+  const acceptanceCriteria = Array.isArray(source.acceptanceCriteria ?? source.acceptance_criteria)
+    ? (source.acceptanceCriteria ?? source.acceptance_criteria)
+      .map((item) => safeHumanApprovalText(item, "Un criterio de aceptación", { minLength: 3, maxLength: 300 })) : [];
+  if (risks.length > 8 || !acceptanceCriteria.length || acceptanceCriteria.length > 12) {
+    throw new Error("Riesgos o criterios de aceptación fuera de los límites permitidos.");
+  }
+  const aspectRatio = String(source.aspectRatio ?? source.aspect_ratio ?? "").trim();
+  const resolution = String(source.resolution || "").trim();
+  if (!HUMAN_APPROVAL_ASPECT_RATIOS.has(aspectRatio)) throw new Error("La relación de aspecto no pertenece a la lista cerrada.");
+  if (!HUMAN_APPROVAL_RESOLUTIONS.has(resolution)) throw new Error("La resolución no pertenece a la lista cerrada.");
+  if (typeof source.audio !== "boolean") throw new Error("El preflight debe indicar si incluye audio.");
+  const estimatedCredits = humanApprovalNumber(source.estimatedCredits ?? source.estimated_credits, "Los créditos estimados", { min: Number.EPSILON });
+  const maxCostCop = humanApprovalNumber(source.maxCostCop ?? source.max_cost_cop, "El tope en COP", { min: Number.EPSILON });
+  const balanceCredits = humanApprovalNumber(source.balanceCredits ?? source.balance_credits, "El saldo de créditos", { min: 0 });
+  if (balanceCredits < estimatedCredits) throw new Error("El saldo de créditos no cubre el preflight solicitado.");
+  const productionPackIdValue = source.productionPackId ?? source.production_pack_id ?? null;
+  const productionPackId = productionPackIdValue == null || productionPackIdValue === ""
+    ? null : humanApprovalNumber(productionPackIdValue, "El paquete de producción", { min: 1, integer: true });
+  const productionPackFingerprint = String(source.productionPackFingerprint ?? source.production_pack_fingerprint ?? "").trim().toLowerCase();
+  if ((productionPackId == null) !== (productionPackFingerprint === "")) {
+    throw new Error("El paquete de producción y su huella deben viajar juntos.");
+  }
+  if (productionPackFingerprint && !/^[0-9a-f]{32}$/.test(productionPackFingerprint)) {
+    throw new Error("La huella del paquete de producción es inválida.");
+  }
+  const promptVersion = String(source.promptVersion ?? source.prompt_version ?? "").trim();
+  if (!/^[A-Za-z0-9._:-]{1,80}$/.test(promptVersion)) throw new Error("La versión del prompt es inválida.");
+
+  return {
+    request_key: requestKey,
+    worker_id: workerId,
+    job_id: jobId,
+    title,
+    expires_in_hours: expiresInHours,
+    contract: {
+      schema_version: HUMAN_APPROVAL_SCHEMA,
+      provider: "Higgsfield",
+      surface: safeHumanApprovalText(source.surface, "La superficie Higgsfield", { minLength: 2, maxLength: 120 }),
+      model: safeHumanApprovalText(source.model, "El modelo Higgsfield", { minLength: 2, maxLength: 120 }),
+      workflow: safeHumanApprovalText(source.workflow, "El workflow", { maxLength: 160 }),
+      objective: safeHumanApprovalText(source.objective, "El objetivo", { minLength: 8, maxLength: 500 }),
+      duration_seconds: humanApprovalNumber(source.durationSeconds ?? source.duration_seconds, "La duración", { min: 1, max: 300 }),
+      aspect_ratio: aspectRatio,
+      target_channel: safeHumanApprovalText(source.targetChannel ?? source.target_channel, "El canal", { minLength: 2, maxLength: 80 }),
+      target_format: safeHumanApprovalText(source.targetFormat ?? source.target_format, "El formato", { minLength: 2, maxLength: 120 }),
+      resolution,
+      audio: source.audio,
+      outputs: humanApprovalNumber(source.outputs, "La cantidad de salidas", { min: 1, max: 4, integer: true }),
+      references,
+      production_pack_id: productionPackId,
+      production_pack_fingerprint: productionPackFingerprint,
+      lens: safeHumanApprovalText(source.lens, "La lente", { minLength: 2, maxLength: 120 }),
+      camera_movement: safeHumanApprovalText(source.cameraMovement ?? source.camera_movement, "El movimiento de cámara", { minLength: 3, maxLength: 500 }),
+      lighting: safeHumanApprovalText(source.lighting, "La iluminación", { minLength: 3, maxLength: 500 }),
+      prompt,
+      prompt_version: promptVersion,
+      prompt_fingerprint: promptFingerprint,
+      estimated_credits: estimatedCredits,
+      max_cost_cop: maxCostCop,
+      balance_credits: balanceCredits,
+      risks,
+      acceptance_criteria: acceptanceCriteria,
+      generation_allowed: false,
+      external_execution: false,
+    },
+  };
+}
+
+export function normalizeMcpHumanApprovalStatus(value, { expectedApprovalId, expectedFingerprint } = {}) {
+  const status = asObject(value, "La respuesta de aprobación humana");
+  assertMcpPayloadSafe(status);
+  const approvalId = humanApprovalNumber(status.approval_id ?? status.approvalId, "La aprobación", { min: 1, integer: true });
+  const jobId = humanApprovalNumber(status.job_id ?? status.jobId, "El trabajo aprobado", { min: 1, integer: true });
+  const contractFingerprint = String(status.contract_fingerprint ?? status.contractFingerprint ?? "").trim().toLowerCase();
+  const state = String(status.status || "").trim();
+  if (status.schema_version !== HUMAN_APPROVAL_STATUS_SCHEMA) throw new Error("La versión del estado de aprobación no es compatible.");
+  if (!HUMAN_APPROVAL_STATUSES.has(state)) throw new Error("El estado de aprobación no pertenece a la lista cerrada.");
+  if (!/^[0-9a-f]{32}$/.test(contractFingerprint)) throw new Error("La aprobación no tiene una huella válida.");
+  if (Number(expectedApprovalId) !== approvalId || String(expectedFingerprint || "").trim().toLowerCase() !== contractFingerprint) {
+    throw new Error("La respuesta no corresponde a la aprobación y preflight consultados.");
+  }
+  if (status.external_execution_allowed !== false) throw new Error("La consulta de aprobación intentó ampliar permisos externos.");
+  const requiresHumanApproval = status.requires_human_approval === true;
+  const generationAuthorized = status.generation_authorized === true;
+  if ((state === "Pendiente") !== requiresHumanApproval || (state === "Aprobada") !== generationAuthorized
+    || (requiresHumanApproval && generationAuthorized)) {
+    throw new Error("El estado de aprobación contiene permisos inconsistentes.");
+  }
+  const requestedAt = String(status.requested_at || "").trim();
+  const expiresAt = String(status.expires_at || "").trim();
+  const decidedAt = status.decided_at == null ? null : String(status.decided_at).trim();
+  if (!Number.isFinite(Date.parse(requestedAt)) || !Number.isFinite(Date.parse(expiresAt))
+    || (decidedAt && !Number.isFinite(Date.parse(decidedAt)))) throw new Error("Las fechas de aprobación son inválidas.");
+  return {
+    schema_version: HUMAN_APPROVAL_STATUS_SCHEMA,
+    approval_id: approvalId,
+    job_id: jobId,
+    status: state,
+    contract_fingerprint: contractFingerprint,
+    requested_at: requestedAt,
+    expires_at: expiresAt,
+    decided_at: decidedAt,
+    decision_summary: safeHumanApprovalText(status.decision_summary, "El resumen de decisión", { maxLength: 500 }),
+    duplicate: Boolean(status.duplicate),
+    requires_human_approval: requiresHumanApproval,
+    generation_authorized: generationAuthorized,
+    external_execution_allowed: false,
+  };
 }
 
 function normalizeProposal(value) {

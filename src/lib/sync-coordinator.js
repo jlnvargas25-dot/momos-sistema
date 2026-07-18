@@ -29,7 +29,8 @@ const OPERATIONAL_TABLES = new Set([
 const AGENCY_TABLES = new Set([
   "campaigns", "creatives", "content_posts", "metrics_daily", "marketing_ideas", "marketing_tasks",
   "content_distributions", "distribution_connector_jobs", "brand_media_assets", "brand_media_usages",
-  "creative_generation_jobs", "creative_connector_runs", "agency_integrations",
+  "brand_asset_production_profiles", "brand_production_packs", "brand_production_pack_assets",
+  "creative_generation_jobs", "creative_connector_runs", "agency_integrations", "agency_mcp_human_approvals",
 ]);
 
 function normalizedKey(value) {

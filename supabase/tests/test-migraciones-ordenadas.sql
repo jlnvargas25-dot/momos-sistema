@@ -34,7 +34,10 @@ begin
     '20260717_53_motor_crecimiento_multimodo','20260717_54_mcp_biblioteca_creativa',
     '20260717_55_identidad_marca','20260717_56_data_sync_rendimiento',
     '20260717_57_reingreso_archivo_eliminado','20260718_58_edicion_biblioteca',
-    '20260718_59_mundo_animado','20260718_60_eliminacion_logo_oficial'
+    '20260718_59_mundo_animado','20260718_60_eliminacion_logo_oficial',
+    '20260718_61_biblioteca_produccion','20260718_62_mcp_aprobacion_humana',
+    '20260718_63_mcp_aprobacion_humana_rbac','20260718_64_integridad_snapshot_realtime',
+    '20260718_65_hechos_financieros'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -280,6 +283,34 @@ begin
   assert not has_function_privilege('authenticated','public.momos_get_brand_asset_reference(jsonb)','EXECUTE'), 'referencia privada de Biblioteca expuesta al navegador';
   assert not has_table_privilege('authenticated','public.agency_mcp_asset_claims','SELECT'), 'ledger privado de referencias expuesto al navegador';
   assert not has_table_privilege('service_role','public.agency_mcp_asset_claims','SELECT'), 'runtime MCP puede saltar el contrato con SQL directo';
+  assert public.biblioteca_produccion_disponible(), 'falta Biblioteca de produccion para motores creativos';
+  assert to_regclass('public.brand_asset_production_profiles') is not null
+    and to_regclass('public.brand_production_packs') is not null
+    and to_regclass('public.brand_production_pack_assets') is not null,
+    'faltan perfiles, paquetes o fuentes de produccion creativa';
+  assert has_function_privilege('authenticated','public.clasificar_activo_produccion(bigint,jsonb)','EXECUTE'),
+    'falta clasificacion gobernada de activos para produccion';
+  assert not has_table_privilege('authenticated','public.brand_asset_production_profiles','INSERT')
+    and not has_table_privilege('authenticated','public.brand_production_packs','UPDATE'),
+    'Biblioteca de produccion admite escritura directa';
+  assert public.mcp_aprobaciones_humanas_disponible(), 'falta aprobacion humana del flujo MCP';
+  assert to_regclass('public.agency_mcp_human_approvals') is not null,
+    'falta bandeja de aprobaciones humanas MCP';
+  assert has_function_privilege('service_role','public.momos_solicitar_aprobacion_humana(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.momos_consultar_aprobacion_humana(bigint,text)','EXECUTE'),
+    'runtime MCP sin solicitud o consulta gobernada';
+  assert not has_function_privilege('service_role','public.resolver_aprobacion_humana_mcp(bigint,text,text,text)','EXECUTE'),
+    'runtime MCP puede autoaprobar';
+  assert has_function_privilege('authenticated','public.resolver_aprobacion_humana_mcp(bigint,text,text,text)','EXECUTE'),
+    'bandeja humana sin resolucion autenticada';
+  assert not has_table_privilege('service_role','public.agency_mcp_human_approvals','SELECT')
+    and not has_table_privilege('service_role','public.agency_mcp_human_approvals','INSERT')
+    and not has_table_privilege('service_role','public.agency_mcp_human_approvals','UPDATE'),
+    'runtime MCP conserva acceso SQL directo a aprobaciones';
+  assert has_table_privilege('authenticated','public.agency_mcp_human_approvals','SELECT')
+    and not has_table_privilege('authenticated','public.agency_mcp_human_approvals','INSERT')
+    and not has_table_privilege('authenticated','public.agency_mcp_human_approvals','UPDATE'),
+    'bandeja humana perdio lectura RLS o admite decisiones directas';
   assert public.identidad_marca_disponible(), 'falta Identidad de marca operable';
   assert to_regprocedure('public.momos_sync_manifest_v1()') is not null, 'falta manifiesto único de Data Sync';
   assert position('mundo_animado_disponible' in pg_get_functiondef('public.momos_sync_manifest_v1()'::regprocedure))>0,
@@ -291,6 +322,36 @@ begin
   assert has_function_privilege('authenticated','public.momos_sync_manifest_v1()','EXECUTE'), 'la app no puede leer el manifiesto de Data Sync';
   assert has_function_privilege('authenticated','public.momos_core_snapshot_v1()','EXECUTE') and has_function_privilege('authenticated','public.momos_operational_snapshot_v1()','EXECUTE'), 'la app no puede leer snapshots de Data Sync';
   assert not has_function_privilege('anon','public.momos_sync_manifest_v1()','EXECUTE'), 'el manifiesto de Data Sync quedó público';
+  assert not has_function_privilege('service_role','public.momos_operational_snapshot_v1()','EXECUTE'), 'el snapshot operativo permite saltar la sesión autenticada';
+  assert pg_get_functiondef('public.momos_operational_snapshot_v1()'::regprocedure)
+      ~* 'pb[.]estado[[:space:]]*=[[:space:]]*''Listo''(::text)?'
+    and position('pb.stock_contabilizado' in pg_get_functiondef('public.momos_operational_snapshot_v1()'::regprocedure))>0
+    and pg_get_functiondef('public.momos_operational_snapshot_v1()'::regprocedure)
+      ~* 'coalesce[(]pb[.]vencimiento,[[:space:]]*pb[.]vence[)][[:space:]]*>=[[:space:]]*current_date'
+    and pg_get_functiondef('public.momos_operational_snapshot_v1()'::regprocedure)
+      ~* '[(]lf[.]perfectas[[:space:]]*-[[:space:]]*lf[.]consumidas[)][[:space:]]*>[[:space:]]*0',
+    'H64 perdió la conservación de lotes Listo vigentes con stock vendible';
+  assert to_regprocedure('public.momos_financial_facts_v1(date,date)') is not null, 'falta lectura financiera completa H65';
+  assert has_function_privilege('authenticated','public.momos_financial_facts_v1(date,date)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_financial_facts_v1(date,date)','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_financial_facts_v1(date,date)','EXECUTE'),
+    'H65 perdió su frontera autenticada y exclusiva para sesiones administrativas';
+  assert exists(
+    select 1 from pg_proc p
+    where p.oid='public.momos_financial_facts_v1(date,date)'::regprocedure
+      and p.prosecdef is false and p.provolatile='s'
+  ), 'H65 dejó de ser STABLE SECURITY INVOKER';
+  assert pg_get_functiondef('public.momos_financial_facts_v1(date,date)'::regprocedure)
+      ~* 'has_current_role[(]''Administrador''(::text)?[)]'
+    and position('v_order_totals' in pg_get_functiondef('public.momos_financial_facts_v1(date,date)'::regprocedure))>0
+    and pg_get_functiondef('public.momos_financial_facts_v1(date,date)'::regprocedure)
+      ~* '''contains_pii''(::text)?,[[:space:]]*false'
+    and pg_get_functiondef('public.momos_financial_facts_v1(date,date)'::regprocedure)
+      ~* '''contains_free_text''(::text)?,[[:space:]]*false'
+    and pg_get_functiondef('public.momos_financial_facts_v1(date,date)'::regprocedure)
+      ~* '''contains_storage_references''(::text)?,[[:space:]]*false',
+    'H65 perdió gate Administrador, fuente contable canónica o contrato de privacidad';
+  assert has_table_privilege('authenticated','public.v_order_totals','SELECT'), 'H65 no puede leer la fuente contable canónica como invoker';
   assert to_regclass('public.agency_brand_kits') is not null and to_regclass('public.agency_brand_kit_assets') is not null, 'faltan kit o logos oficiales de marca';
   assert has_function_privilege('authenticated','public.obtener_identidad_marca(boolean)','EXECUTE'), 'la UI no puede leer Identidad de marca';
   assert not has_table_privilege('authenticated','public.agency_brand_kits','UPDATE'), 'Identidad de marca admite reescritura directa';
@@ -303,6 +364,13 @@ begin
   if exists(select 1 from pg_publication where pubname='supabase_realtime') then
     assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='orders'), 'orders no publica cambios en tiempo real';
     assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='order_line_progress'), 'progreso no publica cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='production_batches'), 'lotes de producción no publican cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='inventory_movements'), 'movimientos de inventario no publican cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='deliveries'), 'domicilios no publican cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='brand_asset_production_profiles'), 'perfiles de produccion creativa no publican cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='brand_production_packs'), 'paquetes de produccion creativa no publican cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='brand_production_pack_assets'), 'fuentes de paquetes creativos no publican cambios en tiempo real';
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='agency_mcp_human_approvals'), 'aprobaciones humanas MCP no publican cambios en tiempo real';
   end if;
   assert not has_table_privilege('authenticated','public.products','UPDATE'), 'products conserva escritura directa';
   assert not has_table_privilege('authenticated','public.recipes','INSERT'), 'recipes conserva escritura directa';
@@ -328,5 +396,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-60 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-65 PASS, rollback total' as resultado;
 rollback;

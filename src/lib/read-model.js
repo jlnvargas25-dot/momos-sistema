@@ -102,6 +102,19 @@ export async function fetchOperationalHistoryPage(cursor = null, limit = 50) {
   };
 }
 
+export async function fetchFinancialFacts(from, to) {
+  const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+  if (!isoDate.test(String(from || "")) || !isoDate.test(String(to || "")) || from > to) throw new Error("El rango financiero no es válido.");
+  const days = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86400000) + 1;
+  if (!Number.isFinite(days) || days < 1 || days > 367) throw new Error("El rango financiero no puede superar 367 días.");
+  const { data, error } = await supabase.rpc("momos_financial_facts_v1", {
+    p_from: from,
+    p_to: to,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function fetchCatalogos(options = {}) {
   const includeAgency = options.includeAgency !== false;
   const multipleRolesReady = await multipleRolesCapability();
@@ -962,6 +975,7 @@ export async function fetchCatalogos(options = {}) {
   const brandMediaReady = !brandMediaProbeMissing && brandMediaProbe.data === true;
   let mundoAnimadoReady = false;
   let officialLogoDeletionReady = false;
+  let brandProductionReady = false;
   if (brandMediaReady) {
     const animationProbe = await capabilityResult("mundo_animado_disponible");
     const animationProbeMissing = animationProbe.error &&
@@ -973,6 +987,11 @@ export async function fetchCatalogos(options = {}) {
       (officialLogoDeletionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(officialLogoDeletionProbe.error.message || ""));
     if (officialLogoDeletionProbe.error && !officialLogoDeletionMissing) throw new Error(officialLogoDeletionProbe.error.message);
     officialLogoDeletionReady = !officialLogoDeletionMissing && officialLogoDeletionProbe.data === true;
+    const brandProductionProbe = await capabilityResult("biblioteca_produccion_disponible");
+    const brandProductionMissing = brandProductionProbe.error &&
+      (brandProductionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandProductionProbe.error.message || ""));
+    if (brandProductionProbe.error && !brandProductionMissing) throw new Error(brandProductionProbe.error.message);
+    brandProductionReady = !brandProductionMissing && brandProductionProbe.data === true;
   }
   let creativeProductionReady = false; let creativeReviewReady = false; let creativeIterationReady = false;
   if (brandMediaReady) {
@@ -996,7 +1015,33 @@ export async function fetchCatalogos(options = {}) {
       }
     }
   }
+  let mcpHumanApprovalReady = false; let mcpHumanApprovals = [];
+  if (creativeProductionReady) {
+    const humanApprovalProbe = await capabilityResult("mcp_aprobaciones_humanas_disponible");
+    const humanApprovalMissing = humanApprovalProbe.error &&
+      (humanApprovalProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(humanApprovalProbe.error.message || ""));
+    if (humanApprovalProbe.error && !humanApprovalMissing) throw new Error(humanApprovalProbe.error.message);
+    mcpHumanApprovalReady = !humanApprovalMissing && humanApprovalProbe.data === true;
+    if (mcpHumanApprovalReady) {
+      const approvalResult = await supabase.from("agency_mcp_human_approvals")
+        .select("id,request_key,worker_id,job_id,title,status,approval_contract,contract_fingerprint,job_fingerprint,requested_at,expires_at,decided_by,decided_at,decision_note")
+        .order("requested_at", { ascending: false }).limit(100);
+      if (approvalResult.error) throw new Error(approvalResult.error.message);
+      mcpHumanApprovals = (approvalResult.data || []).map((row) => {
+        const expired = row.status === "Pendiente" && Date.parse(row.expires_at) <= Date.now();
+        return {
+          id: row.id, requestKey: row.request_key, workerId: row.worker_id, jobId: row.job_id,
+          title: row.title, status: expired ? "Vencida" : row.status, storedStatus: row.status,
+          contract: row.approval_contract || {}, contractFingerprint: row.contract_fingerprint,
+          jobFingerprint: row.job_fingerprint, requestedAt: tsBogota(row.requested_at),
+          requestedAtIso: row.requested_at, expiresAt: tsBogota(row.expires_at), expiresAtIso: row.expires_at,
+          decidedBy: nz(row.decided_by), decidedAt: tsBogota(row.decided_at), decisionNote: nz(row.decision_note),
+        };
+      });
+    }
+  }
   let brandMediaAssets = []; let creativeGenerationJobs = []; let brandMediaUsages = [];
+  let brandProductionPacks = []; let brandProductionPackAssets = [];
   if (brandMediaReady) {
     const brandMediaResults = await Promise.all([
       supabase.from("brand_media_assets")
@@ -1064,6 +1109,45 @@ export async function fetchCatalogos(options = {}) {
       endSecond: row.end_second == null ? null : Number(row.end_second), createdBy: row.created_by,
       createdAt: tsBogota(row.created_at),
     }));
+    if (brandProductionReady) {
+      const productionResults = await Promise.all([
+        supabase.from("brand_asset_production_profiles")
+          .select("asset_id,component_type,view_angle,physical_state,interaction_type,hand_assignment,location_name,light_direction,scale_reference,continuity_notes,source_quality,qa_status,qa_notes,consent_status,canonical,created_by,created_at,updated_by,updated_at"),
+        supabase.from("brand_production_packs")
+          .select("id,name,purpose,version,status,product_id,figure,channel,target_format,description,requirements,fingerprint,created_by,created_at,reviewed_by,reviewed_at,review_note")
+          .neq("status", "Archivado").order("created_at", { ascending: false }).limit(100),
+        supabase.from("brand_production_pack_assets")
+          .select("pack_id,asset_id,role,sequence,required,notes,added_by,added_at")
+          .order("pack_id", { ascending: false }).order("sequence", { ascending: true }).limit(500),
+      ]);
+      const productionError = productionResults.find((result) => result.error);
+      if (productionError) throw new Error(productionError.error.message);
+      const [profileRows, packRows, packAssetRows] = productionResults.map((result) => result.data || []);
+      const profileByAsset = new Map(profileRows.map((row) => [String(row.asset_id), {
+        assetId: row.asset_id, componentType: row.component_type, viewAngle: row.view_angle,
+        physicalState: row.physical_state, interactionType: row.interaction_type,
+        handAssignment: row.hand_assignment, locationName: nz(row.location_name),
+        lightDirection: nz(row.light_direction), scaleReference: nz(row.scale_reference),
+        continuityNotes: nz(row.continuity_notes), sourceQuality: row.source_quality,
+        qaStatus: row.qa_status, qaNotes: nz(row.qa_notes), consentStatus: row.consent_status,
+        canonical: row.canonical, createdBy: row.created_by, createdAt: tsBogota(row.created_at),
+        updatedBy: row.updated_by, updatedAt: tsBogota(row.updated_at),
+      }]));
+      brandMediaAssets = brandMediaAssets.map((asset) => ({
+        ...asset, productionProfile: profileByAsset.get(String(asset.id)) || null,
+      }));
+      brandProductionPacks = packRows.map((row) => ({
+        id: row.id, name: row.name, purpose: row.purpose, version: Number(row.version), status: row.status,
+        productId: nz(row.product_id, null), figure: nz(row.figure), channel: row.channel,
+        targetFormat: row.target_format, description: nz(row.description), requirements: row.requirements || {},
+        fingerprint: row.fingerprint, createdBy: row.created_by, createdAt: tsBogota(row.created_at),
+        reviewedBy: nz(row.reviewed_by), reviewedAt: tsBogota(row.reviewed_at), reviewNote: nz(row.review_note),
+      }));
+      brandProductionPackAssets = packAssetRows.map((row) => ({
+        packId: row.pack_id, assetId: row.asset_id, role: row.role, sequence: Number(row.sequence),
+        required: row.required, notes: nz(row.notes), addedBy: row.added_by, addedAt: tsBogota(row.added_at),
+      }));
+    }
   }
 
   // Centro de Integraciones (migración 23). La app solo lee estado, salud y
@@ -1219,7 +1303,7 @@ export async function fetchCatalogos(options = {}) {
     agencyMetaInvestmentReady, agencyMetaInvestmentScenarios,
     agencyMetaAuthorizationReady, agencyMetaInvestmentAuthorizations, agencyMetaInvestmentExecutionJobs,
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
-    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,
     agencyGrowthReady, agencyGrowthPolicies, agencyGrowthSnapshots, agencyGrowthSelections,
