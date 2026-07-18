@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { brandAssetCollection, brandAssetDeletionReadiness, brandAssetReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, searchBrandMediaAssets } from "./brand-studio.js";
+import { animationAssetIsCanonical, animationAssetKind, brandAssetCollection, brandAssetDeletionPolicy, brandAssetDeletionReadiness, brandAssetReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, isOfficialBrandLogo, searchBrandMediaAssets } from "./brand-studio.js";
 
 const asset = (overrides = {}) => ({
   id: "A-1", name: "Lizi Oreo vertical", mediaType: "Video", source: "MOMOS", productId: "PR-1",
@@ -67,6 +67,37 @@ test("una foto general de marca ya no exige producto relacionado", () => {
   assert.equal(result.warnings.some((warning) => /producto/i.test(warning)), false);
 });
 
+test("separa Mundo animado sin mezclar personajes con Marca o Productos", () => {
+  const momo = asset({ id: "ANI-1", mediaType: "Diseño", productId: "", productName: "", figure: "Momo", flavor: "Base", shotType: "Turnaround", tags: ["momos:animacion", "animacion:tipo:personaje", "animacion:canon"] });
+  const world = buildBrandMediaLibrary(db({ brandMediaAssets: [momo] }), "2026-07-15");
+  assert.equal(brandAssetCollection(momo), "Animación");
+  assert.equal(animationAssetKind(momo), "Personaje");
+  assert.equal(animationAssetIsCanonical(momo), true);
+  assert.equal(world.summary.animationAssets, 1);
+  assert.equal(world.summary.animationCharacters, 1);
+  assert.equal(world.summary.brandAssets, 0);
+  assert.equal(world.summary.productAssets, 0);
+});
+
+test("Mundo animado exige identificar el personaje o elemento", () => {
+  const result = brandAssetReadiness(asset({ productId: "", productName: "", figure: "", flavor: "", tags: ["momos:animacion", "animacion:tipo:personaje"] }), "2026-07-15");
+  assert.equal(result.ready, false);
+  assert.match(result.reasons.join(" "), /personaje o elemento/i);
+});
+
+test("la búsqueda del mundo cruza personaje, variante y material", () => {
+  const toby = asset({ id: "ANI-2", mediaType: "Diseño", productId: "", productName: "", figure: "Toby", flavor: "Chef", shotType: "Expresiones", tags: ["momos:animacion", "animacion:tipo:personaje"] });
+  const library = buildBrandMediaLibrary(db({ brandMediaAssets: [toby] }), "2026-07-15");
+  assert.equal(searchBrandMediaAssets(library, "toby chef expresiones", { collection: "Animación" }).length, 1);
+});
+
+test("una referencia canónica no se puede eliminar como archivo huérfano", () => {
+  const canonical = asset({ id: "ANI-3", figure: "Momo", tags: ["momos:animacion", "animacion:tipo:personaje", "animacion:canon"] });
+  const result = brandAssetDeletionReadiness(canonical, db({ brandMediaAssets: [canonical] }));
+  assert.equal(result.allowed, false);
+  assert.match(result.reasons.join(" "), /canónica/i);
+});
+
 test("una composición exige archivo real y producto foco exacto", () => {
   const noAssets = buildCreativeStudioDraft({ creativeId: "CR-1", assetIds: [], operation: "Componer" }, db(), "2026-07-15");
   assert.equal(noAssets.audit.passed, false);
@@ -116,4 +147,28 @@ test("protege archivos ligados a escenas, audio, publicaciones o versiones", () 
   }));
   assert.equal(protectedAsset.allowed, false);
   assert.ok(protectedAsset.reasons.length >= 4);
+});
+
+test("el logo oficial nunca cae en la eliminación genérica y exige administrador, H60 y frase exacta", () => {
+  const logo = asset({ id: "LOGO-7", mediaType: "Logo", productId: "", productName: "", shotType: "Logo principal", roleLabel: "Logo principal", collection: "Marca" });
+  assert.equal(isOfficialBrandLogo(logo), true);
+  const unavailable = brandAssetDeletionPolicy(logo, db({ brandMediaAssets: [logo] }), { isAdmin: true, officialLogoDeletionReady: false });
+  assert.equal(unavailable.allowed, false);
+  assert.equal(unavailable.mode, "blocked");
+  const marketing = brandAssetDeletionPolicy(logo, db({ brandMediaAssets: [logo] }), { isAdmin: false, officialLogoDeletionReady: true });
+  assert.equal(marketing.allowed, false);
+  const admin = brandAssetDeletionPolicy(logo, db({ brandMediaAssets: [logo] }), { isAdmin: true, officialLogoDeletionReady: true });
+  assert.equal(admin.allowed, true);
+  assert.equal(admin.mode, "official-logo");
+  assert.equal(admin.confirmationPhrase, "ELIMINAR LOGO LOGO-7");
+});
+
+test("una dependencia creativa sigue bloqueando el logo aunque exista la ruta protegida", () => {
+  const logo = asset({ id: "LOGO-8", mediaType: "Logo", productId: "", productName: "", shotType: "Logo principal", roleLabel: "Logo principal", collection: "Marca" });
+  const policy = brandAssetDeletionPolicy(logo, db({
+    brandMediaAssets: [logo],
+    creativeGenerationJobs: [{ id: 8, inputAssetIds: ["LOGO-8"] }],
+  }), { isAdmin: true, officialLogoDeletionReady: true });
+  assert.equal(policy.allowed, false);
+  assert.match(policy.reasons.join(" "), /trabajo creativo/i);
 });

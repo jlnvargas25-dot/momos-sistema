@@ -960,6 +960,20 @@ export async function fetchCatalogos(options = {}) {
     (brandMediaProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandMediaProbe.error.message || ""));
   if (brandMediaProbe.error && !brandMediaProbeMissing) throw new Error(brandMediaProbe.error.message);
   const brandMediaReady = !brandMediaProbeMissing && brandMediaProbe.data === true;
+  let mundoAnimadoReady = false;
+  let officialLogoDeletionReady = false;
+  if (brandMediaReady) {
+    const animationProbe = await capabilityResult("mundo_animado_disponible");
+    const animationProbeMissing = animationProbe.error &&
+      (animationProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(animationProbe.error.message || ""));
+    if (animationProbe.error && !animationProbeMissing) throw new Error(animationProbe.error.message);
+    mundoAnimadoReady = !animationProbeMissing && animationProbe.data === true;
+    const officialLogoDeletionProbe = await capabilityResult("eliminacion_logo_oficial_disponible");
+    const officialLogoDeletionMissing = officialLogoDeletionProbe.error &&
+      (officialLogoDeletionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(officialLogoDeletionProbe.error.message || ""));
+    if (officialLogoDeletionProbe.error && !officialLogoDeletionMissing) throw new Error(officialLogoDeletionProbe.error.message);
+    officialLogoDeletionReady = !officialLogoDeletionMissing && officialLogoDeletionProbe.data === true;
+  }
   let creativeProductionReady = false; let creativeReviewReady = false; let creativeIterationReady = false;
   if (brandMediaReady) {
     const productionProbe = await capabilityResult("produccion_creativa_disponible");
@@ -1205,7 +1219,7 @@ export async function fetchCatalogos(options = {}) {
     agencyMetaInvestmentReady, agencyMetaInvestmentScenarios,
     agencyMetaAuthorizationReady, agencyMetaInvestmentAuthorizations, agencyMetaInvestmentExecutionJobs,
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
-    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, creativeProductionReady, creativeReviewReady, creativeIterationReady, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,
     agencyGrowthReady, agencyGrowthPolicies, agencyGrowthSnapshots, agencyGrowthSelections,

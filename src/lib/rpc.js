@@ -695,6 +695,34 @@ export async function eliminarActivoMarca(assetId) {
   return confirmed.data;
 }
 
+export async function eliminarLogoOficialMarca(assetId, confirmation) {
+  const prepared = await supabase.rpc("preparar_eliminacion_logo_oficial", {
+    p_asset_id: assetId,
+    p_confirmation: confirmation,
+  });
+  if (prepared.error) throw new Error(prepared.error.message);
+  const path = String(prepared.data?.storage_path || "");
+  const previousStatus = String(prepared.data?.previous_status || "Activo");
+  if (!path) {
+    await supabase.rpc("cancelar_eliminacion_activo_marca", { p_asset_id: assetId, p_previous_status: previousStatus });
+    throw new Error("MOMO OPS no encontró la ruta del logo; la eliminación fue cancelada.");
+  }
+  const removed = await supabase.storage.from("brand-assets").remove([path]);
+  if (removed.error) {
+    const rollback = await supabase.rpc("cancelar_eliminacion_activo_marca", { p_asset_id: assetId, p_previous_status: previousStatus });
+    const rollbackNote = rollback.error
+      ? " Además, requiere revisión porque no se pudo restaurar su estado."
+      : " El logo continúa activo en la identidad.";
+    throw new Error(`No se pudo borrar el logo real: ${removed.error.message}.${rollbackNote}`);
+  }
+  const confirmed = await supabase.rpc("confirmar_eliminacion_logo_oficial", {
+    p_asset_id: assetId,
+    p_confirmation: confirmation,
+  });
+  if (confirmed.error) throw new Error(`El logo fue retirado, pero falta cerrar su registro: ${confirmed.error.message}`);
+  return confirmed.data;
+}
+
 export async function crearTrabajoCreativo(payload) {
   const { data, error } = await supabase.rpc("crear_trabajo_creativo", { p: payload });
   if (error) throw new Error(error.message);

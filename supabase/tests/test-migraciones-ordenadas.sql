@@ -33,7 +33,8 @@ begin
     '20260717_51_eliminacion_biblioteca','20260717_52_catalogo_figuras_toby',
     '20260717_53_motor_crecimiento_multimodo','20260717_54_mcp_biblioteca_creativa',
     '20260717_55_identidad_marca','20260717_56_data_sync_rendimiento',
-    '20260717_57_reingreso_archivo_eliminado','20260718_58_edicion_biblioteca'
+    '20260717_57_reingreso_archivo_eliminado','20260718_58_edicion_biblioteca',
+    '20260718_59_mundo_animado','20260718_60_eliminacion_logo_oficial'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -247,6 +248,9 @@ begin
   assert exists(select 1 from pg_trigger where tgname='content_distributions_master_lineage_before' and not tgisinternal), 'distribución puede saltar el máster exacto';
   assert public.eliminacion_biblioteca_disponible(), 'falta eliminación segura de Biblioteca';
   assert public.edicion_biblioteca_disponible(), 'falta edición segura y versionada de Biblioteca';
+  assert public.mundo_animado_disponible(), 'falta Mundo animado y su taxonomía protegida';
+  assert public.eliminacion_logo_oficial_disponible(), 'falta eliminación protegida del logo oficial';
+  assert exists(select 1 from pg_trigger where tgname='validar_taxonomia_mundo_animado' and not tgisinternal), 'falta guard del Mundo animado';
   assert to_regclass('public.brand_media_asset_metadata_versions') is not null,
     'falta historial de metadatos de Biblioteca';
   assert not has_table_privilege('authenticated','public.brand_media_assets','UPDATE'),
@@ -257,6 +261,9 @@ begin
   assert has_function_privilege('authenticated','public.cancelar_eliminacion_activo_marca(bigint,text)','EXECUTE'), 'falta compensación de eliminación de Biblioteca';
   assert has_function_privilege('authenticated','public.confirmar_eliminacion_activo_marca(bigint)','EXECUTE'), 'falta cierre de eliminación de Biblioteca';
   assert not has_function_privilege('authenticated','public._motivos_bloqueo_eliminacion_activo(bigint)','EXECUTE'), 'helper privado de eliminación expuesto';
+  assert has_function_privilege('authenticated','public.preparar_eliminacion_logo_oficial(bigint,text)','EXECUTE'), 'falta preparar eliminación protegida del logo';
+  assert has_function_privilege('authenticated','public.confirmar_eliminacion_logo_oficial(bigint,text)','EXECUTE'), 'falta cerrar eliminación protegida del logo';
+  assert not has_function_privilege('authenticated','public._motivos_bloqueo_eliminacion_logo_oficial(bigint)','EXECUTE'), 'helper privado del logo expuesto';
   assert exists(select 1 from public.figuras where nombre='Momo' and activo), 'Momo falta en el catálogo activo de figuras';
   assert exists(select 1 from public.figuras where nombre='Toby' and activo and gramaje_g=280), 'Toby no está activo como figura de 280 g';
   assert to_regclass('public.agency_growth_snapshots') is not null, 'falta motor de crecimiento multimodo';
@@ -275,6 +282,10 @@ begin
   assert not has_table_privilege('service_role','public.agency_mcp_asset_claims','SELECT'), 'runtime MCP puede saltar el contrato con SQL directo';
   assert public.identidad_marca_disponible(), 'falta Identidad de marca operable';
   assert to_regprocedure('public.momos_sync_manifest_v1()') is not null, 'falta manifiesto único de Data Sync';
+  assert position('mundo_animado_disponible' in pg_get_functiondef('public.momos_sync_manifest_v1()'::regprocedure))>0,
+    'el manifiesto de Data Sync no incluye Mundo animado';
+  assert position('eliminacion_logo_oficial_disponible' in pg_get_functiondef('public.momos_sync_manifest_v1()'::regprocedure))>0,
+    'el manifiesto de Data Sync no incluye eliminación protegida del logo';
   assert to_regprocedure('public.momos_core_snapshot_v1()') is not null and to_regprocedure('public.momos_operational_snapshot_v1()') is not null, 'faltan snapshots de Data Sync';
   assert to_regprocedure('public.momos_history_page_v1(jsonb,integer)') is not null, 'falta historial paginado de Data Sync';
   assert has_function_privilege('authenticated','public.momos_sync_manifest_v1()','EXECUTE'), 'la app no puede leer el manifiesto de Data Sync';
@@ -317,5 +328,5 @@ begin
   ), 'hay tareas pendientes de pedidos terminales';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-58 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-60 PASS, rollback total' as resultado;
 rollback;
