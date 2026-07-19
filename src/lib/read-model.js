@@ -4,6 +4,7 @@ import { normalizeInventoryCursorToken } from "./inventory-cursor.js";
 import { inventoryCoreSnapshotBlockIsComplete } from "./inventory-sync-policy.js";
 import { agencyOperationalFactsReady as hasAgencyOperationalFacts, normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
 import { normalizeOrderDeltaBatch } from "./order-delta.js";
+import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -469,6 +470,22 @@ export async function fetchOrderDeltas(orderIds) {
     throw next;
   }
   return normalizeOrderDeltaBatch(data);
+}
+
+export async function fetchFinishedInventoryDeltas(productIds) {
+  const ids = [...new Set((Array.isArray(productIds) ? productIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))];
+  if (!ids.length || ids.length > 20) {
+    throw new Error("La conciliación dirigida de producto terminado requiere entre 1 y 20 productos.");
+  }
+  const { data, error } = await supabase.rpc("momos_finished_inventory_deltas_v1", { p_product_ids: ids });
+  if (error) {
+    const next = new Error(error.message || "No se pudo actualizar el producto terminado.");
+    if (error.code) next.code = error.code;
+    throw next;
+  }
+  return normalizeFinishedInventoryDeltaBatch(data);
 }
 
 export async function fetchUserProfile(authUserId) {
@@ -1788,6 +1805,7 @@ export async function fetchCatalogos(options = {}) {
 export async function fetchOperativo() {
   const syncManifest = await fetchSyncManifest();
   const orderDeltaReady = syncManifest?.capabilities?.pedidos_deltas_disponibles === true;
+  const finishedInventoryDeltaReady = syncManifest?.capabilities?.producto_terminado_deltas_disponibles === true;
   const operationalSnapshot = await optionalSnapshot("momos_operational_snapshot_v1");
   const operationalKeys = [
     "orders", "order_items", "order_item_adiciones", "customers", "deliveries", "evidences", "benefits",
@@ -2106,5 +2124,5 @@ export async function fetchOperativo() {
     gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, orderDeltaReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, orderDeltaReady, finishedInventoryDeltaReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
 }

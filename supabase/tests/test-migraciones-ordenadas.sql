@@ -40,7 +40,7 @@ begin
     '20260718_65_hechos_financieros','20260718_66_agency_snapshot_rendimiento',
     '20260718_67_agency_operational_facts','20260719_68_inventario_precision_lotes',
     '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia',
-    '20260719_71_pedidos_deltas'
+    '20260719_71_pedidos_deltas','20260719_72_producto_terminado_deltas'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -866,7 +866,33 @@ begin
       'public.momos_sync_manifest_v1()'::regprocedure
     ))>0,
     'el manifiesto de Data Sync no anuncia H71';
+  assert to_regclass('public.finished_inventory_sync_versions') is not null,
+    'H72 no instaló las versiones compactas por producto terminado';
+  assert has_function_privilege('authenticated','public.momos_finished_inventory_deltas_v1(text[])','EXECUTE')
+    and not has_function_privilege('anon','public.momos_finished_inventory_deltas_v1(text[])','EXECUTE'),
+    'H72 perdió la frontera RBAC del delta de Inventario terminado';
+  assert has_table_privilege('authenticated','public.finished_inventory_sync_versions','SELECT')
+    and not has_table_privilege('authenticated','public.finished_inventory_sync_versions','INSERT')
+    and not has_table_privilege('service_role','public.finished_inventory_sync_versions','SELECT'),
+    'H72 no dejó el outbox disponible para Realtime o permitió escritura directa';
+  assert exists(
+    select 1 from pg_policies
+    where schemaname='public' and tablename='finished_inventory_sync_versions'
+      and policyname='finished_inventory_sync_versions_staff_read'
+      and roles @> array['authenticated']::name[]
+  ), 'H72 perdió el RLS de personal del outbox compacto';
+  if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert exists(
+      select 1 from pg_publication_tables
+      where pubname='supabase_realtime' and schemaname='public'
+        and tablename='finished_inventory_sync_versions'
+    ), 'Realtime no incluye el outbox compacto de Inventario terminado';
+  end if;
+  assert position('producto_terminado_deltas_disponibles' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H72';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-71 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-72 PASS, rollback total' as resultado;
 rollback;

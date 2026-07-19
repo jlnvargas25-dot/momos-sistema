@@ -3,7 +3,7 @@ import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitiv
 import { supabase } from "./lib/supabase";
 import {
   fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos,
-  fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchUserProfile,
+  fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchUserProfile,
 } from "./lib/read-model";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion, normalizeSyncDomains,
@@ -33,6 +33,7 @@ import {
 } from "./lib/inventory-sync-policy";
 import { compareInventoryCursorTokens, normalizeInventoryCursorToken } from "./lib/inventory-cursor";
 import { applyOrderDeltaBatchToDb, compareOrderDeltaVersions } from "./lib/order-delta";
+import { applyFinishedInventoryDeltaBatchToDb, compareFinishedInventoryDeltaVersions } from "./lib/finished-inventory-delta";
 import { canOperateStage } from "./lib/operational-control";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
@@ -724,7 +725,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -742,7 +743,7 @@ const ATRIBUTO_LABEL = { sabor: "Sabor", salsa: "Salsa", figura: "Figura" };
 function normalizeDbShape(d) {
   const s = seedDb();
   const arrayTables = [
-    "orders", "order_items", "customers", "products", "production_batches",
+    "orders", "order_items", "customers", "products", "production_batches", "variantes", "variantesCuarentena",
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
     "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions", "distributionConnectorJobs",
@@ -763,6 +764,9 @@ function normalizeDbShape(d) {
   if (!d.orderDeltaVersions || typeof d.orderDeltaVersions !== "object" || Array.isArray(d.orderDeltaVersions)) {
     d.orderDeltaVersions = {};
   }
+  d.finishedInventoryDeltaReady = d.finishedInventoryDeltaReady === true;
+  if (!d.finishedInventoryDeltaVersions || typeof d.finishedInventoryDeltaVersions !== "object"
+      || Array.isArray(d.finishedInventoryDeltaVersions)) d.finishedInventoryDeltaVersions = {};
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
   d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
@@ -5851,6 +5855,9 @@ export default function MomosOps() {
   const orderSyncGenerationRef = useRef(0);
   const orderRealtimePendingRef = useRef(new Set());
   const orderReconcileRequestRef = useRef(null);
+  const finishedInventorySyncGenerationRef = useRef(0);
+  const finishedInventoryRealtimePendingRef = useRef(new Set());
+  const finishedInventoryReconcileRequestRef = useRef(null);
   const sessionOwnerRef = useRef(null);
   const activeStorageKeyRef = useRef(DB_KEY);
   const visibleSyncDomainsRef = useRef(new Set(syncDomainsForDbView(vista, db)));
@@ -5899,6 +5906,9 @@ export default function MomosOps() {
     orderSyncGenerationRef.current += 1;
     orderRealtimePendingRef.current.clear();
     orderReconcileRequestRef.current = null;
+    finishedInventorySyncGenerationRef.current += 1;
+    finishedInventoryRealtimePendingRef.current.clear();
+    finishedInventoryReconcileRequestRef.current = null;
     hidratadoRef.current = false;
     setCatalogosDe(null);
     activeStorageKeyRef.current = nextUserId ? `${DB_KEY}:${nextUserId}` : DB_KEY;
@@ -5940,6 +5950,7 @@ export default function MomosOps() {
     let timer = null;
     let inventoryTimer = null;
     let orderTimer = null;
+    let finishedInventoryTimer = null;
     let alive = true;
     const pendingDomains = new Set();
     let pendingAgencyVersion = "";
@@ -5955,8 +5966,11 @@ export default function MomosOps() {
       && db.inventoryMutationFullSnapshotRequired === false
       && inventoryFullSnapshotRequiredRef.current === false
       && (operationsRealtime || catalogsRealtime);
-    const orderDeltaRealtime = ["Pedidos", "Empaque"].includes(vista)
+    const orderDeltaRealtime = ["Pedidos", "Empaque", "Inventario terminado"].includes(vista)
       && db.orderDeltaReady === true
+      && operationsRealtime;
+    const finishedInventoryDeltaRealtime = vista === "Inventario terminado"
+      && db.finishedInventoryDeltaReady === true
       && operationsRealtime;
     const tables = [];
     if (operationsRealtime) {
@@ -5966,12 +5980,13 @@ export default function MomosOps() {
       );
       tables.push(
         ...(inventoryDeltaRealtime ? [] : ["inventory_movements"]),
-        "production_batches", "lote_figuras", "subreceta_producciones",
-        ...(inventoryDeltaRealtime || orderDeltaRealtime ? [] : ["audit_logs"]),
+        ...(finishedInventoryDeltaRealtime ? [] : ["production_batches", "lote_figuras"]),
+        "subreceta_producciones",
+        ...(inventoryDeltaRealtime || orderDeltaRealtime || finishedInventoryDeltaRealtime ? [] : ["audit_logs"]),
       );
     }
     if (catalogsRealtime) tables.push(
-      "products", "combo_components", ...(inventoryDeltaRealtime ? [] : ["inventory_items", "inventory_lots"]),
+      ...(finishedInventoryDeltaRealtime ? [] : ["products"]), "combo_components", ...(inventoryDeltaRealtime ? [] : ["inventory_items", "inventory_lots"]),
       "recipes", "users", "toppings", "figuras",
       "catalog_values", "zonas", "proveedores_domicilio", "brand_library", "app_settings", "subrecetas", "subreceta_ingredientes", "figura_relleno",
     );
@@ -5983,6 +5998,7 @@ export default function MomosOps() {
     if (agencyRealtime && db.agencySnapshotReady === true) tables.push("agency_snapshot_events");
     if (inventoryDeltaRealtime) tables.push("inventory_sync_events");
     if (orderDeltaRealtime) tables.push("order_sync_versions");
+    if (finishedInventoryDeltaRealtime) tables.push("finished_inventory_sync_versions");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
@@ -6232,6 +6248,60 @@ export default function MomosOps() {
 
     if (orderDeltaRealtime && orderRealtimePendingRef.current.size) flushOrderDeltas();
 
+    const finishedInventoryReconciliationState = { active: null };
+    const fallbackFinishedInventorySnapshot = () => {
+      if (!finishedInventoryReconciliationState.active) {
+        finishedInventoryReconciliationState.active = (refetchFocoRef.current?.(
+          [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS],
+          { reason: "finished-inventory-delta-fallback", afterActive: true },
+        ) || Promise.resolve()).then(() => true).catch(() => {
+          if (alive) setRealtimeStatus("reconectando");
+          return false;
+        }).finally(() => { finishedInventoryReconciliationState.active = null; });
+      }
+      return finishedInventoryReconciliationState.active;
+    };
+    finishedInventoryReconcileRequestRef.current = fallbackFinishedInventorySnapshot;
+
+    const flushFinishedInventoryDeltas = () => {
+      if (finishedInventoryTimer) clearTimeout(finishedInventoryTimer);
+      finishedInventoryTimer = setTimeout(async () => {
+        if (!alive || !hidratadoRef.current) return;
+        const productIds = [...finishedInventoryRealtimePendingRef.current].slice(0, 20);
+        if (!productIds.length) return;
+        const readGeneration = finishedInventorySyncGenerationRef.current;
+        try {
+          const envelope = await fetchFinishedInventoryDeltas(productIds);
+          if (!alive) return;
+          const result = aplicarDeltaProductoTerminado(envelope, readGeneration);
+          if (result?.status === "discarded") {
+            const reconciled = await fallbackFinishedInventorySnapshot();
+            if (reconciled) productIds.forEach((productId) => finishedInventoryRealtimePendingRef.current.delete(productId));
+          } else {
+            productIds.forEach((productId) => finishedInventoryRealtimePendingRef.current.delete(productId));
+          }
+        } catch {
+          if (alive) {
+            const reconciled = await fallbackFinishedInventorySnapshot();
+            if (reconciled) productIds.forEach((productId) => finishedInventoryRealtimePendingRef.current.delete(productId));
+          }
+        }
+        if (alive && finishedInventoryRealtimePendingRef.current.size) flushFinishedInventoryDeltas();
+      }, 180);
+    };
+
+    const queueFinishedInventoryDelta = (payload) => {
+      const productId = String(payload?.new?.product_id || payload?.old?.product_id || "").trim();
+      if (!productId) return;
+      const incomingVersion = payload?.new?.version;
+      const currentVersion = dbRef.current?.finishedInventoryDeltaVersions?.[productId];
+      if (currentVersion && compareFinishedInventoryDeltaVersions(incomingVersion, currentVersion) !== 1) return;
+      finishedInventoryRealtimePendingRef.current.add(productId);
+      flushFinishedInventoryDeltas();
+    };
+
+    if (finishedInventoryDeltaRealtime && finishedInventoryRealtimePendingRef.current.size) flushFinishedInventoryDeltas();
+
     tables.forEach((table) => {
       channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
         if (table === "inventory_sync_events") {
@@ -6240,6 +6310,10 @@ export default function MomosOps() {
         }
         if (table === "order_sync_versions") {
           queueOrderDelta(payload);
+          return;
+        }
+        if (table === "finished_inventory_sync_versions") {
+          queueFinishedInventoryDelta(payload);
           return;
         }
         const domain = syncDomainForTable(table);
@@ -6298,14 +6372,16 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       if (inventoryTimer) clearTimeout(inventoryTimer);
       if (orderTimer) clearTimeout(orderTimer);
+      if (finishedInventoryTimer) clearTimeout(finishedInventoryTimer);
       reconciliationState.requested = false;
       if (inventoryReconcileRequestRef.current === requestInventoryReconciliation) {
         inventoryReconcileRequestRef.current = null;
       }
       if (orderReconcileRequestRef.current === fallbackOrderSnapshot) orderReconcileRequestRef.current = null;
+      if (finishedInventoryReconcileRequestRef.current === fallbackFinishedInventorySnapshot) finishedInventoryReconcileRequestRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -6340,11 +6416,21 @@ export default function MomosOps() {
     let inventorySnapshotNeedsHandshake = false;
     let orderSnapshotApplied = false;
     let orderSnapshotDiscarded = false;
+    let finishedInventorySnapshotApplied = false;
+    let finishedInventorySnapshotDiscarded = false;
     update((d) => {
       if (catalogs) {
       const cat = catalogs;
-      d.products = cat.products;
-      d.productsServerReady = Boolean(cat.productsServerReady);
+      const capturedFinishedInventoryGeneration = Number(cat.__finishedInventoryReadGeneration);
+      const finishedInventoryCatalogIsCurrent = !Number.isFinite(capturedFinishedInventoryGeneration)
+        || capturedFinishedInventoryGeneration === finishedInventorySyncGenerationRef.current;
+      if (finishedInventoryCatalogIsCurrent) {
+        d.products = cat.products;
+        d.productsServerReady = Boolean(cat.productsServerReady);
+        finishedInventorySnapshotApplied = true;
+      } else {
+        finishedInventorySnapshotDiscarded = true;
+      }
       const capturedGeneration = Number(cat.__inventoryReadGeneration);
       const currentGeneration = generationBeforeApply;
       // H70 solo habilita el camino incremental si CATALOGS trae el boundary
@@ -6520,11 +6606,19 @@ export default function MomosOps() {
       if (cat.brand_library) d.brand_library = cat.brand_library;
       }
       if (op) {
-        const { __orderReadGeneration, ...operationData } = op;
+        const { __orderReadGeneration, __finishedInventoryReadGeneration, ...operationData } = op;
         const capturedOrderGeneration = Number(__orderReadGeneration);
         const orderSnapshotIsCurrent = !Number.isFinite(capturedOrderGeneration)
           || capturedOrderGeneration === orderSyncGenerationRef.current;
+        const capturedFinishedInventoryGeneration = Number(__finishedInventoryReadGeneration);
+        const finishedInventoryOperationsAreCurrent = !Number.isFinite(capturedFinishedInventoryGeneration)
+          || capturedFinishedInventoryGeneration === finishedInventorySyncGenerationRef.current;
         if (orderSnapshotIsCurrent) {
+          const currentProductionBatches = d.production_batches;
+          const currentVariants = d.variantes;
+          const currentQuarantinedVariants = d.variantesCuarentena;
+          const currentFinishedInventoryReady = d.finishedInventoryDeltaReady;
+          const currentFinishedInventoryVersions = d.finishedInventoryDeltaVersions;
           const protectedOperations = d.inventoryMutationDeltaReady === true;
           if (protectedOperations) {
             // Con H70, OPERATIONS nunca es dueño del historial de Inventario:
@@ -6539,6 +6633,18 @@ export default function MomosOps() {
           } else {
             Object.assign(d, operationData);
           }
+          if (finishedInventoryOperationsAreCurrent) {
+            d.finishedInventoryDeltaReady = operationData.finishedInventoryDeltaReady === true;
+            d.finishedInventoryDeltaVersions = {};
+            finishedInventorySnapshotApplied = true;
+          } else {
+            d.production_batches = currentProductionBatches;
+            d.variantes = currentVariants;
+            d.variantesCuarentena = currentQuarantinedVariants;
+            d.finishedInventoryDeltaReady = currentFinishedInventoryReady;
+            d.finishedInventoryDeltaVersions = currentFinishedInventoryVersions;
+            finishedInventorySnapshotDiscarded = true;
+          }
           d.orderDeltaVersions = {};
           orderSnapshotApplied = true;
         } else {
@@ -6552,6 +6658,7 @@ export default function MomosOps() {
       inventorySnapshotRevisionRef.current += 1;
     }
     if (orderSnapshotApplied) orderSyncGenerationRef.current += 1;
+    if (finishedInventorySnapshotApplied) finishedInventorySyncGenerationRef.current += 1;
     if (inventorySnapshotDiscarded) {
       solicitarConciliacionInventario();
     } else if (inventorySnapshotNeedsHandshake && typeof inventoryReconcileRequestRef.current === "function") {
@@ -6559,6 +6666,9 @@ export default function MomosOps() {
     }
     if (orderSnapshotDiscarded && typeof orderReconcileRequestRef.current === "function") {
       orderReconcileRequestRef.current();
+    }
+    if (finishedInventorySnapshotDiscarded && typeof finishedInventoryReconcileRequestRef.current === "function") {
+      finishedInventoryReconcileRequestRef.current();
     }
     // La telemetría de ruta debe cerrar cuando React ya tuvo oportunidad de
     // pintar la versión aplicada, no apenas cuando terminó la respuesta HTTP.
@@ -6571,6 +6681,7 @@ export default function MomosOps() {
         loaders: {
           [SYNC_DOMAINS.CATALOGS]: async () => {
             const inventoryReadGeneration = capturarGeneracionInventario();
+            const finishedInventoryReadGeneration = finishedInventorySyncGenerationRef.current;
             const catalogs = await measureSyncLoad(
               SYNC_DOMAINS.CATALOGS,
               () => fetchCatalogos({ includeAgency: false }),
@@ -6578,12 +6689,13 @@ export default function MomosOps() {
             // Metadato solo de coordinación local; nunca se persiste ni sale
             // del navegador. Permite descartar un snapshot que empezó antes
             // de un delta ya visible.
-            return { ...catalogs, __inventoryReadGeneration: inventoryReadGeneration };
+            return { ...catalogs, __inventoryReadGeneration: inventoryReadGeneration, __finishedInventoryReadGeneration: finishedInventoryReadGeneration };
           },
           [SYNC_DOMAINS.OPERATIONS]: async () => {
             const orderReadGeneration = orderSyncGenerationRef.current;
+            const finishedInventoryReadGeneration = finishedInventorySyncGenerationRef.current;
             const operations = await measureSyncLoad(SYNC_DOMAINS.OPERATIONS, fetchOperativo);
-            return { ...operations, __orderReadGeneration: orderReadGeneration };
+            return { ...operations, __orderReadGeneration: orderReadGeneration, __finishedInventoryReadGeneration: finishedInventoryReadGeneration };
           },
           [SYNC_DOMAINS.AGENCY]: () => measureSyncLoad(
             SYNC_DOMAINS.AGENCY,
@@ -6814,6 +6926,51 @@ export default function MomosOps() {
       [SYNC_DOMAINS.OPERATIONS],
       { reason: "order-delta-fallback", afterActive: true },
     ) || Promise.resolve();
+  }
+
+  function capturarGeneracionProductoTerminado() {
+    return finishedInventorySyncGenerationRef.current;
+  }
+
+  function aplicarDeltaProductoTerminado(envelope, readGeneration) {
+    if (Number(readGeneration) !== finishedInventorySyncGenerationRef.current) {
+      return { status: "discarded", applied: [], stale: [] };
+    }
+    let result;
+    update((draft) => {
+      result = applyFinishedInventoryDeltaBatchToDb(draft, envelope);
+      normalizeDbShape(draft);
+    }, { silencioso: true, persistir: false });
+    if (result?.applied?.length) finishedInventorySyncGenerationRef.current += 1;
+    return result;
+  }
+
+  function solicitarConciliacionProductoTerminado() {
+    const request = finishedInventoryReconcileRequestRef.current;
+    if (typeof request === "function") return request();
+    return refetchFocoRef.current?.(
+      [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS],
+      { reason: "finished-inventory-delta-fallback", afterActive: true },
+    ) || Promise.resolve();
+  }
+
+  async function sincronizarProductoTerminado(productIds) {
+    const ids = [...new Set((Array.isArray(productIds) ? productIds : [])
+      .map((value) => String(value || "").trim()).filter(Boolean))];
+    if (!ids.length || dbRef.current?.finishedInventoryDeltaReady !== true) {
+      await solicitarConciliacionProductoTerminado();
+      return { status: "snapshot" };
+    }
+    const generation = capturarGeneracionProductoTerminado();
+    try {
+      const envelope = await fetchFinishedInventoryDeltas(ids);
+      const result = aplicarDeltaProductoTerminado(envelope, generation);
+      if (result?.status === "discarded") await solicitarConciliacionProductoTerminado();
+      return result;
+    } catch (error) {
+      await solicitarConciliacionProductoTerminado();
+      throw error;
+    }
   }
 
   function solicitarConciliacionInventario() {
@@ -7131,6 +7288,8 @@ export default function MomosOps() {
       db, update, user, refrescar: refrescarVistaActual, aplicarDeltaInventario,
       capturarGeneracionInventario, solicitarConciliacionInventario,
       aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos,
+      aplicarDeltaProductoTerminado, capturarGeneracionProductoTerminado, solicitarConciliacionProductoTerminado,
+      sincronizarProductoTerminado,
       perfil, serverDataReady: Boolean(catalogosDe), performanceRouteId: performanceRouteRef.current,
     };
     switch (activa) {

@@ -271,7 +271,7 @@ export function createProductionPanel(shared) {
   ];
 
 
-  function Produccion({ db, update, user, refrescar, perfil, serverDataReady, focus }) {
+  function Produccion({ db, update, user, refrescar, sincronizarProductoTerminado, perfil, serverDataReady, focus }) {
     const [, setTick] = useState(0);
     useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
     const [nuevo, setNuevo] = useState(false);
@@ -377,6 +377,18 @@ export function createProductionPanel(shared) {
       try {
         await refrescar();
       } catch (e) {
+        onFail();
+      }
+    }
+
+    async function sincronizarLote(lote, onFail) {
+      try {
+        if (lote?.productId && typeof sincronizarProductoTerminado === "function") {
+          await sincronizarProductoTerminado([lote.productId]);
+        } else {
+          await refrescar();
+        }
+      } catch {
         onFail();
       }
     }
@@ -619,12 +631,13 @@ export function createProductionPanel(shared) {
         return;
       }
       toast("ok", `${l.id} · listo`);
-      await refrescarSilencioso(() => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
+      await sincronizarLote(l, () => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
       setEnviandoBatchId(null);
     }
 
     async function confirmarDesmolde() {
       const { batchId, perfectas, imperfectas, descartadas } = desmolde;
+      const lote = (db.production_batches || []).find((item) => item.id === batchId);
       setEnviandoDesmolde(true);
       try {
         if (desmolde.figuras) {
@@ -643,7 +656,7 @@ export function createProductionPanel(shared) {
       setEnviandoDesmolde(false);
       setDesmolde(null);
       toast("ok", `Lote desmoldado · stock actualizado · vence ${dISO(3)}`);
-      await refrescarSilencioso(() => setMsg("El lote se desmoldó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+      await sincronizarLote(lote, () => setMsg("El lote se desmoldó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
     }
 
     async function iniciarCongelacionLote(lote) {
@@ -656,7 +669,7 @@ export function createProductionPanel(shared) {
         return;
       }
       toast("ok", `${lote.id} · congelamiento iniciado`);
-      await refrescarSilencioso(() => toast("alert", "El lote empezó a congelar, pero no se pudo actualizar la vista. Recargá la página."));
+      await sincronizarLote(lote, () => toast("alert", "El lote empezó a congelar, pero no se pudo actualizar la vista. Recargá la página."));
       setEnviandoBatchId(null);
     }
 
@@ -685,7 +698,7 @@ export function createProductionPanel(shared) {
         return;
       }
       toast("ok", `${lote.id} → ${nuevoEstado}`);
-      await refrescarSilencioso(() => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
+      await sincronizarLote(lote, () => toast("alert", "El estado del lote cambió, pero no se pudo actualizar la vista. Recargá la página."));
       setEnviandoBatchId(null);
     }
 
