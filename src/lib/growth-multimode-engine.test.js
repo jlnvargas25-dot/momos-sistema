@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildGrowthMultimodeEngine, growthSnapshotPayload, GROWTH_MODE_IDS } from "./growth-multimode-engine.js";
+import { normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
+import { makeAgencyOperationalFacts } from "./agency-operational-facts.test-fixture.js";
 
 const product = { id: "P1", nombre: "Momo Gatito", tipo: "momo", activo: true };
 const base = {
@@ -73,6 +75,103 @@ test("el snapshot no inventa ventas ni atribución cuando no hay pedidos", () =>
   assert.equal(result.facts.paidOrders30d, 0);
   assert.equal(result.facts.attributedOrders30d, 0);
   result.modes.forEach((mode) => assert.equal(mode.recommendation.evidence.externalExecution, false));
+});
+
+test("H67 usa hechos operativos agregados sin leer órdenes, lotes ni producción cruda", () => {
+  const rawFacts = makeAgencyOperationalFacts({
+    product_catalog: [
+      { product_id: "P1", name: "Momo Gatito", active: true, available_stock: 7, customer_id: "PII-CUSTOMER" },
+      { product_id: "P2", name: "Momo Perrito", active: true, available_stock: 1 },
+    ],
+    product_sales_30d: [
+      { product_id: "P1", units: 6, orders: 4, revenue: 108000, order_id: "ORDER-SECRET" },
+      { product_id: "P2", units: 2, orders: 2, revenue: 36000 },
+    ],
+    paid_summary: { orders_30d: 6, revenue_30d: 144000, attributed_orders_30d: 3 },
+    published_post_attribution: [],
+    production: {
+      plan_units: 9,
+      plan_runs: 2,
+      queue_units: 5,
+      active_batch_units: 4,
+      critical_preparations: [{ name: "Mousse", flavor: "Durazno", recommended_amount: 0.35, unit: "kg", severity: "Crítica", batch_id: "BATCH-SECRET" }],
+    },
+  });
+  const db = {
+    ...base,
+    agencyOperationalFactsReady: true,
+    agencyOperationalFacts: rawFacts,
+    get orders() { throw new Error("H67 no debe leer orders"); },
+    get order_items() { throw new Error("H67 no debe leer order_items"); },
+    get variantes() { throw new Error("H67 no debe leer variantes"); },
+    get production_suggestions() { throw new Error("H67 no debe leer production_suggestions"); },
+    get production_batches() { throw new Error("H67 no debe leer production_batches"); },
+    get inventory_items() { throw new Error("H67 no debe leer inventory_items"); },
+  };
+
+  const result = buildGrowthMultimodeEngine(db, { today: "2026-07-17" });
+  const demandMode = result.modes.find((mode) => mode.id === "conquistar-demanda");
+  assert.equal(result.facts.source, "agency-operational-facts-v1");
+  assert.equal(result.facts.exactStockUnits, 8);
+  assert.equal(result.facts.paidOrders30d, 6);
+  assert.equal(result.facts.attributedOrders30d, 3);
+  assert.equal(result.facts.queueUnits, 5);
+  assert.equal(result.facts.productionUnits, 9);
+  assert.equal(result.facts.activeBatchUnits, 4);
+  assert.equal(result.facts.criticalPreparations, 1);
+  assert.deepEqual(demandMode.productionPlan, {
+    runs: 2,
+    units: 9,
+    preparations: [{ name: "Mousse Durazno", amount: 0.35, unit: "kg" }],
+  });
+  assert.doesNotMatch(JSON.stringify(result), /PII-CUSTOMER|ORDER-SECRET|BATCH-SECRET/);
+});
+
+test("H66 sigue siendo el fallback cuando los hechos H67 no están listos", () => {
+  const result = buildGrowthMultimodeEngine({
+    ...base,
+    agencyOperationalFactsReady: false,
+    agencyOperationalFacts: { contract_version: 1, paid_summary: { orders_30d: 999 } },
+  }, { today: "2026-07-17" });
+  assert.equal(result.facts.source, "h66-fallback");
+  assert.equal(result.facts.paidOrders30d, 1);
+});
+
+test("H67 consume también el corte ya normalizado por el read model", () => {
+  const db = {
+    ...base,
+    agencyOperationalFactsReady: true,
+    agencyOperationalFacts: normalizeAgencyOperationalFacts(makeAgencyOperationalFacts({
+      product_catalog: [{ product_id: "P1", name: "Momo Gatito", active: true, available_stock: 3 }],
+      product_sales_30d: [{ product_id: "P1", units: 5, orders: 4, revenue: 90000 }],
+      paid_summary: { orders_30d: 4, revenue_30d: 90000, orders_all: 4, revenue_all: 90000, attributed_orders_30d: 2 },
+      production: { plan_units: 2, plan_runs: 1, queue_units: 1, active_batch_units: 1, critical_preparations: [] },
+    })),
+    get orders() { throw new Error("el corte normalizado no debe volver a orders"); },
+  };
+  const result = buildGrowthMultimodeEngine(db, { today: "2026-07-17" });
+  assert.equal(result.facts.source, "agency-operational-facts-v1");
+  assert.equal(result.facts.paidOrders30d, 4);
+  assert.equal(result.facts.exactStockUnits, 3);
+});
+
+test("H67 bloquea venta, conquista y pauta cuando el stock del producto foco es desconocido", () => {
+  const unknownFacts = makeAgencyOperationalFacts({
+    product_catalog: [{ product_id: "P1", name: "Momo Gatito", active: true, available_stock: null, stock_source: "unverified" }],
+    product_sales_30d: [{ product_id: "P1", units: 5, orders: 4, revenue: 90000 }],
+    paid_summary: { orders_30d: 4, revenue_30d: 90000, orders_all: 4, revenue_all: 90000, attributed_orders_30d: 2 },
+    production: { plan_units: 6, plan_runs: 1, queue_units: 2, active_batch_units: 1, critical_preparations: [] },
+  });
+  const result = buildGrowthMultimodeEngine({
+    ...base, agencyOperationalFactsReady: true, agencyOperationalFacts: unknownFacts,
+  }, { today: "2026-07-17" });
+  assert.equal(result.facts.exactStockUnits, 0);
+  assert.equal(result.facts.stockCoverageVerified, false);
+  assert.equal(result.facts.unverifiedStockProducts, 1);
+  for (const id of ["venta-inmediata", "conquistar-demanda", "pauta-aprendizaje"]) {
+    assert.equal(result.modes.find((mode) => mode.id === id).status.value, "Bloqueado");
+  }
+  assert.equal(result.recommendedModeId, "marca-comunidad");
 });
 
 test("el payload sellable es estable, no incluye el brief y mantiene los cuatro modos", () => {

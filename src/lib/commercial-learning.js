@@ -1,3 +1,5 @@
+import { normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
+
 const PAID_STATES = new Set([
   "Pagado", "En producción", "Listo para empaque", "Empacado",
   "Listo para despacho", "En ruta", "Entregado", "Reclamo",
@@ -24,6 +26,11 @@ function daysBetween(from, to) {
 
 function isPaid(order) {
   return order?.estado !== "Cancelado" && Boolean(order?.pagadoEn || PAID_STATES.has(order?.estado));
+}
+
+function readyOperationalFacts(db) {
+  if (db?.agencyOperationalFactsReady !== true) return null;
+  return normalizeAgencyOperationalFacts(db.agencyOperationalFacts);
 }
 
 function orderRevenue(order, db) {
@@ -57,7 +64,7 @@ function postMetrics(post, db, posts) {
   });
 }
 
-function attributedOrders(post, db, posts) {
+function legacyAttributedOrders(post, db, posts) {
   const sameCreativeDay = posts.filter((candidate) => candidate.post.creativeId === post.creativeId && candidate.post.fecha === post.fecha);
   const paid = (db.orders || []).filter(isPaid);
   const exact = paid.filter((order) => order.postId && order.postId === post.id);
@@ -67,7 +74,23 @@ function attributedOrders(post, db, posts) {
   const ambiguous = sameCreativeDay.length > 1
     ? paid.filter((order) => !order.postId && order.creativeId === post.creativeId && order.fecha === post.fecha).length
     : 0;
-  return { orders: [...exact, ...inferred], ambiguous };
+  const orders = [...exact, ...inferred];
+  return {
+    orders: orders.length,
+    revenue: orders.reduce((sum, order) => sum + orderRevenue(order, db), 0),
+    ambiguous,
+    source: "h66-fallback",
+  };
+}
+
+function operationalAttributedOrders(post, facts) {
+  const row = (facts?.publishedPostAttribution || []).find((candidate) => candidate.postId === post.id);
+  return {
+    orders: number(row?.orders),
+    revenue: number(row?.revenue),
+    ambiguous: number(row?.ambiguousOrders),
+    source: "agency-operational-facts-v1",
+  };
 }
 
 function learningStage(metrics, thresholds, ageDays) {
@@ -146,11 +169,14 @@ function actionFor(stage, item) {
 
 export function buildCommercialLearning(db = {}, today = new Date().toISOString().slice(0, 10), rawThresholds = {}) {
   const thresholds = { ...DEFAULT_LEARNING_THRESHOLDS, ...rawThresholds };
+  const operationalFacts = readyOperationalFacts(db);
   const posts = publishedPosts(db);
   const items = posts.map(({ post, run }) => {
     const metricRows = postMetrics(post, db, posts);
-    const attribution = attributedOrders(post, db, posts);
-    const revenue = attribution.orders.reduce((sum, order) => sum + orderRevenue(order, db), 0);
+    const attribution = operationalFacts
+      ? operationalAttributedOrders(post, operationalFacts)
+      : legacyAttributedOrders(post, db, posts);
+    const revenue = attribution.revenue;
     const metrics = {
       hasMetrics: metricRows.length > 0,
       impressions: metricRows.reduce((sum, metric) => sum + number(metric.impresiones), 0),
@@ -158,7 +184,7 @@ export function buildCommercialLearning(db = {}, today = new Date().toISOString(
       clicks: metricRows.reduce((sum, metric) => sum + number(metric.clicks), 0),
       messages: metricRows.reduce((sum, metric) => sum + number(metric.mensajesWhatsApp), 0),
       spend: metricRows.reduce((sum, metric) => sum + number(metric.gasto), 0),
-      orders: attribution.orders.length,
+      orders: attribution.orders,
       revenue,
       ambiguousOrders: attribution.ambiguous,
     };
@@ -178,6 +204,7 @@ export function buildCommercialLearning(db = {}, today = new Date().toISOString(
     || `${right.post.fecha}${right.post.hora}`.localeCompare(`${left.post.fecha}${left.post.hora}`));
 
   return {
+    source: operationalFacts ? "agency-operational-facts-v1" : "h66-fallback",
     thresholds,
     items,
     recommendations: items.map((item) => item.recommendation).filter(Boolean),
@@ -189,6 +216,8 @@ export function buildCommercialLearning(db = {}, today = new Date().toISOString(
       winners: items.filter((item) => item.stage.key === "winner").length,
       actionable: items.filter((item) => item.stage.actionable).length,
       ambiguousAttribution: items.filter((item) => item.attribution.ambiguous > 0).length,
+      paidOrders30d: operationalFacts ? operationalFacts.paidSummary.orders30d : null,
+      paidRevenue30d: operationalFacts ? operationalFacts.paidSummary.revenue30d : null,
     },
   };
 }

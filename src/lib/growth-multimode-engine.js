@@ -1,4 +1,5 @@
 import { buildKitchenProductionPlan } from "./production-planner.js";
+import { normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
 
 const PAID_STATES = new Set([
   "Pagado", "En producción", "Listo para empaque", "Empacado",
@@ -51,6 +52,62 @@ function isPaidOrder(order) {
 
 function activeProduct(db, id) {
   return (db.products || []).find((product) => product.id === id && product.activo !== false) || null;
+}
+
+function readyOperationalFacts(db) {
+  if (db?.agencyOperationalFactsReady !== true) return null;
+  return normalizeAgencyOperationalFacts(db.agencyOperationalFacts);
+}
+
+function operationalProducts(facts) {
+  return (facts?.productCatalog || []).filter((product) => product.active !== false).map((product) => ({
+    id: product.productId,
+    nombre: product.name,
+    activo: product.active,
+    agencyAvailableStock: product.stockVerified === false ? null : number(product.availableStock),
+    stockSource: product.stockSource,
+    stockVerified: product.stockVerified !== false,
+  }));
+}
+
+function operationalDemand(facts, products) {
+  const byId = new Map(products.map((product) => [product.id, product]));
+  return (facts?.productSales30d || []).map((row) => ({
+    product: byId.get(row.productId),
+    units: number(row.units),
+    revenue: number(row.revenue),
+    orders: number(row.orders),
+  })).filter((row) => row.product)
+    .sort((left, right) => right.units - left.units
+      || right.revenue - left.revenue
+      || left.product.id.localeCompare(right.product.id));
+}
+
+function preparationDisplayName(preparation = {}) {
+  const name = text(preparation.name);
+  const flavor = text(preparation.flavor);
+  return flavor && !name.toLocaleLowerCase("es").includes(flavor.toLocaleLowerCase("es"))
+    ? `${name} ${flavor}`
+    : name;
+}
+
+function operationalProduction(facts) {
+  const source = facts?.production || {};
+  const preparationNeeds = (source.criticalPreparations || []).map((preparation) => ({
+    severity: preparation.severity || "Crítica",
+    subrecipeName: preparationDisplayName(preparation),
+    flavor: text(preparation.flavor),
+    recommendedAmount: number(preparation.recommendedAmount),
+    unit: text(preparation.unit),
+  }));
+  return {
+    summary: {
+      queueUnits: number(source.queueUnits),
+      units: number(source.planUnits),
+      runs: number(source.planRuns),
+    },
+    preparationNeeds,
+  };
 }
 
 function productDemand(db, today, windowDays = 30) {
@@ -121,23 +178,46 @@ function recommendation(mode, product, facts) {
 
 export function buildGrowthMultimodeEngine(db = {}, options = {}) {
   const today = options.today || new Date().toISOString().slice(0, 10);
-  const demand = productDemand(db, today);
-  const stockByProduct = exactStock(db, today);
-  const production = buildKitchenProductionPlan(db, { today, horizonDays: 3, historyDays: 28 });
-  const activeProducts = (db.products || []).filter((product) => product.activo !== false);
+  const operationalFacts = readyOperationalFacts(db);
+  const activeProducts = operationalFacts
+    ? operationalProducts(operationalFacts)
+    : (db.products || []).filter((product) => product.activo !== false);
+  const demand = operationalFacts
+    ? operationalDemand(operationalFacts, activeProducts)
+    : productDemand(db, today);
+  const stockByProduct = operationalFacts
+    ? new Map(activeProducts.filter((product) => product.stockVerified)
+      .map((product) => [product.id, number(product.agencyAvailableStock)]))
+    : exactStock(db, today);
+  const production = operationalFacts
+    ? operationalProduction(operationalFacts)
+    : buildKitchenProductionPlan(db, { today, horizonDays: 3, historyDays: 28 });
   const topDemand = demand[0]?.product || null;
   const topStock = [...stockByProduct.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
-  const stockProduct = topStock ? activeProduct(db, topStock[0]) : null;
+  const stockProduct = topStock
+    ? activeProducts.find((candidate) => candidate.id === topStock[0]) || null
+    : null;
   const product = topDemand || stockProduct || activeProducts[0] || null;
-  const paidOrders = (db.orders || []).filter((order) => {
+  const legacyPaidOrders = operationalFacts ? null : (db.orders || []).filter((order) => {
     if (!isPaidOrder(order)) return false;
     const age = daysBetween(order.fecha || order.pagadoEn, today);
     return age !== null && age >= 0 && age < 30;
   });
-  const attributedOrders = paidOrders.filter((order) => order.campaignId || order.creativeId);
-  const activeBatchUnits = (db.production_batches || []).filter((batch) => ACTIVE_BATCH_STATES.has(batch.estado))
-    .reduce((sum, batch) => sum + number(batch.prod), 0);
+  const paidOrders30d = operationalFacts
+    ? number(operationalFacts.paidSummary.orders30d)
+    : legacyPaidOrders.length;
+  const attributedOrders30d = operationalFacts
+    ? number(operationalFacts.paidSummary.attributedOrders30d)
+    : legacyPaidOrders.filter((order) => order.campaignId || order.creativeId).length;
+  const activeBatchUnits = operationalFacts
+    ? number(operationalFacts.production.activeBatchUnits)
+    : (db.production_batches || []).filter((batch) => ACTIVE_BATCH_STATES.has(batch.estado))
+      .reduce((sum, batch) => sum + number(batch.prod), 0);
   const exactStockUnits = [...stockByProduct.values()].reduce((sum, value) => sum + value, 0);
+  const unverifiedStockProducts = operationalFacts
+    ? activeProducts.filter((candidate) => candidate.stockVerified === false).length
+    : 0;
+  const selectedStockVerified = !operationalFacts || !product || product.stockVerified !== false;
   const approvedCreatives = (db.creatives || []).filter((creative) => ["Aprobado", "Publicado", "Ganador"].includes(creative.estado));
   const brandReady = Boolean(db.agencyBrandProfile?.status === "Activo"
     || (db.brand_library?.tono || []).length >= 2
@@ -148,11 +228,14 @@ export function buildGrowthMultimodeEngine(db = {}, options = {}) {
   const criticalPreparations = production.preparationNeeds.filter((need) => need.severity === "Crítica");
   const facts = {
     today,
+    source: operationalFacts ? "agency-operational-facts-v1" : "h66-fallback",
     activeProducts: activeProducts.length,
     exactStockUnits,
+    stockCoverageVerified: unverifiedStockProducts === 0,
+    unverifiedStockProducts,
     stockProductId: stockProduct?.id || "",
-    paidOrders30d: paidOrders.length,
-    attributedOrders30d: attributedOrders.length,
+    paidOrders30d,
+    attributedOrders30d,
     queueUnits: number(production.summary.queueUnits),
     productionUnits: number(production.summary.units),
     activeBatchUnits,
@@ -166,24 +249,30 @@ export function buildGrowthMultimodeEngine(db = {}, options = {}) {
 
   const immediateStatus = exactStockUnits > 0
     ? status("Listo", `${exactStockUnits} unidad(es) exactas pueden sostener una promesa inmediata.`)
-    : status("Preparar", "No hay producto terminado exacto; primero elegí una corrida verificable.");
-  const demandStatus = product && (production.summary.units > 0 || demand.length > 0)
-    ? status("Plan listo", criticalPreparations.length
-      ? `La demanda puede abrirse, pero ${criticalPreparations.length} preparación(es) deben quedar listas antes de escalar.`
-      : "Producción tiene una corrida o demanda concreta para adaptar la capacidad.")
-    : status("Preparar", "Falta elegir producto y una señal de demanda que Producción pueda convertir en corrida.");
+    : unverifiedStockProducts > 0
+      ? status("Bloqueado", `La disponibilidad de ${unverifiedStockProducts} producto(s) es desconocida; primero verificá su fuente de stock.`)
+      : status("Preparar", "No hay producto terminado exacto; primero elegí una corrida verificable.");
+  const demandStatus = !selectedStockVerified
+    ? status("Bloqueado", "El producto foco tiene stock desconocido. Verificá inventario o capacidad antes de conquistar demanda.")
+    : product && (production.summary.units > 0 || demand.length > 0)
+      ? status("Plan listo", criticalPreparations.length
+        ? `La demanda puede abrirse, pero ${criticalPreparations.length} preparación(es) deben quedar listas antes de escalar.`
+        : "Producción tiene una corrida o demanda concreta para adaptar la capacidad.")
+      : status("Preparar", "Falta elegir producto y una señal de demanda que Producción pueda convertir en corrida.");
   const brandStatus = brandReady
     ? status("Listo", "La identidad de MOMOS permite crear conexión sin depender del stock del día.")
     : status("Preparar", "Primero hay que activar una versión de marca o confirmar el lenguaje de MOMOS.");
-  const paidStatus = product && approvedCreatives.length > 0 && measurementReady
-    ? status("Listo", "Hay producto foco, creativo aprobado y una base de medición para comparar hipótesis.")
-    : status("Preparar", [!product && "producto foco", approvedCreatives.length === 0 && "creativo aprobado", !measurementReady && "medición"].filter(Boolean).join(", ") || "evidencia");
+  const paidStatus = !selectedStockVerified
+    ? status("Bloqueado", "La pauta no puede ampliarse con disponibilidad desconocida del producto foco.")
+    : product && approvedCreatives.length > 0 && measurementReady
+      ? status("Listo", "Hay producto foco, creativo aprobado y una base de medición para comparar hipótesis.")
+      : status("Preparar", [!product && "producto foco", approvedCreatives.length === 0 && "creativo aprobado", !measurementReady && "medición"].filter(Boolean).join(", ") || "evidencia");
 
   const modes = [
     {
       id: "venta-inmediata", icon: "🍨", label: "Vender lo que está listo", shortLabel: "Venta inmediata",
       channel: "Mixto", objective: "Convertir disponibilidad vigente en ventas sin crear faltantes.", status: immediateStatus,
-      score: Math.min(100, 30 + Math.min(45, exactStockUnits * 4) + Math.min(25, paidOrders.length * 2)),
+      score: Math.min(100, 30 + Math.min(45, exactStockUnits * 4) + Math.min(25, paidOrders30d * 2)),
       primaryMetric: "Margen vendido sin faltantes", supportingMetrics: ["Unidades exactas vendidas", "Tiempo hasta la venta", "Pedidos sin sustitución"],
       why: [facts.exactStockUnits ? `Hay ${facts.exactStockUnits} unidades exactas disponibles.` : "El stock exacto está en cero.", facts.paidOrders30d ? `${facts.paidOrders30d} pedidos pagados dan una referencia real.` : "Aún no hay compras recientes suficientes."],
       nextStep: facts.exactStockUnits ? `Preparar una oferta clara para ${stockProduct?.nombre || product?.nombre || "el producto disponible"}.` : "Abrir Producción y cubrir una variante exacta antes de prometerla.",
@@ -201,7 +290,15 @@ export function buildGrowthMultimodeEngine(db = {}, options = {}) {
       why: [demand.length ? `${demand[0].units} unidad(es) recientes del producto líder muestran demanda.` : "Todavía no existe una señal histórica fuerte.", production.summary.units ? `El plan de Cocina propone ${production.summary.units} unidad(es) en ${production.summary.runs} corrida(s).` : "Producción aún no tiene una corrida sugerida."],
       nextStep: criticalPreparations.length ? `Preparar ${criticalPreparations.map((need) => need.subrecipeName).slice(0, 2).join(" y ")} y confirmar capacidad antes de escalar.` : "Aprobar el producto foco y convertir la demanda en corrida antes de ampliar alcance.",
       safeguards: ["La campaña no salta los gates de Cocina", "Toda promesa crea cobertura de producción", "Si faltan insumos, la escala se detiene"],
-      productionPlan: { runs: production.summary.runs, units: production.summary.units, preparations: criticalPreparations.map((need) => ({ name: need.subrecipeName, grams: need.recommendedGrams })) },
+      productionPlan: {
+        runs: production.summary.runs,
+        units: production.summary.units,
+        preparations: criticalPreparations.map((need) => {
+          const amount = need.recommendedAmount ?? need.recommendedGrams;
+          const unit = need.unit || "g";
+          return { name: need.subrecipeName, amount, unit, ...(unit === "g" ? { grams: amount } : {}) };
+        }),
+      },
       angles: [
         angle("deseo", "El postre que no sabías que necesitabas", "Video vertical", "Provocar deseo antes de hablar de precio", "Textura, relleno y corte reales", "Pauta"),
         angle("regalo", "Regalar MOMOS cambia el momento", "UGC o testimonial", "Vender ocasión y emoción", "Entrega real y reacción humana", "Mixto"),
@@ -226,7 +323,7 @@ export function buildGrowthMultimodeEngine(db = {}, options = {}) {
     {
       id: "pauta-aprendizaje", icon: "🎯", label: "Probar y escalar con pauta", shortLabel: "Pauta con aprendizaje",
       channel: "Pauta", objective: "Comparar ángulos de venta y escalar solo el beneficio incremental demostrado.", status: paidStatus,
-      score: Math.min(100, 28 + (product ? 15 : 0) + (approvedCreatives.length ? 22 : 0) + (measurementReady ? 25 : 0) + Math.min(10, attributedOrders.length * 2)),
+      score: Math.min(100, 28 + (product ? 15 : 0) + (approvedCreatives.length ? 22 : 0) + (measurementReady ? 25 : 0) + Math.min(10, attributedOrders30d * 2)),
       primaryMetric: "Beneficio incremental", supportingMetrics: ["Conversión por ángulo", "Costo por pedido incremental", "Capacidad consumida"],
       why: [approvedCreatives.length ? `${approvedCreatives.length} creativo(s) aprobados pueden alimentar una prueba.` : "Falta un creativo aprobado.", measurementReady ? "Existe una base de medición para evitar confundir atribución con causalidad." : "Falta cerrar la medición antes de invertir."],
       nextStep: "Elegir una sola variable por prueba y preparar al menos tres ángulos de venta comparables.",

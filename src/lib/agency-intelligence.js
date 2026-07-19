@@ -1,3 +1,5 @@
+import { normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
+
 const PAID_STATES = new Set([
   "Pagado", "En producción", "Listo para empaque", "Empacado",
   "Listo para despacho", "En ruta", "Entregado", "Reclamo",
@@ -84,6 +86,9 @@ function usableIngredientStock(db, itemId, today) {
 function productStock(db, reference, today = new Date().toISOString().slice(0, 10), visited = new Set()) {
   const product = resolveProduct(db, reference);
   if (!product || product.activo === false || visited.has(product.id)) return null;
+  // H67 distingue explÃ­citamente "desconocido" de cero. Ninguna receta o
+  // valor legado puede rellenar silenciosamente una fuente no verificada.
+  if (product.stockVerified === false || product.stockSource === "unverified") return null;
   const nextVisited = new Set(visited); nextVisited.add(product.id);
   const exact = (db.variantes || []).filter((item) => item.productId === product.id && (!item.vence || item.vence >= today));
   if (exact.length) return exact.reduce((sum, item) => sum + number(item.disponibles), 0);
@@ -121,14 +126,15 @@ function platformMetrics(db) {
   ));
 }
 
-function campaignPerformance(campaign, db) {
-  const orders = (db.orders || []).filter((order) => order.campaignId === campaign.id && isPaidOrder(order));
+function campaignPerformance(campaign, db, facts = null) {
+  const attribution = facts?.campaignAttribution.find((row) => row.campaignId === campaign.id);
+  const orders = facts ? null : (db.orders || []).filter((order) => order.campaignId === campaign.id && isPaidOrder(order));
   const platform = platformMetrics(db).filter((metric) => metric.campaignId === campaign.id);
   const spend = platform.reduce((sum, metric) => sum + number(metric.gasto), 0) || number(campaign.gastoReal);
-  const revenue = orders.reduce((sum, order) => sum + orderRevenue(order, db), 0);
+  const revenue = facts ? number(attribution?.revenue) : orders.reduce((sum, order) => sum + orderRevenue(order, db), 0);
   return {
     campaignId: campaign.id,
-    orders: orders.length,
+    orders: facts ? number(attribution?.orders) : orders.length,
     revenue,
     spend,
     roas: spend > 0 ? revenue / spend : null,
@@ -137,14 +143,15 @@ function campaignPerformance(campaign, db) {
   };
 }
 
-function creativePerformance(creative, db) {
-  const orders = (db.orders || []).filter((order) => order.creativeId === creative.id && isPaidOrder(order));
+function creativePerformance(creative, db, facts = null) {
+  const attribution = facts?.creativeAttribution.find((row) => row.creativeId === creative.id);
+  const orders = facts ? null : (db.orders || []).filter((order) => order.creativeId === creative.id && isPaidOrder(order));
   const platform = platformMetrics(db).filter((metric) => metric.creativeId === creative.id);
   const spend = platform.reduce((sum, metric) => sum + number(metric.gasto), 0);
-  const revenue = orders.reduce((sum, order) => sum + orderRevenue(order, db), 0);
+  const revenue = facts ? number(attribution?.revenue) : orders.reduce((sum, order) => sum + orderRevenue(order, db), 0);
   return {
     creative,
-    orders: orders.length,
+    orders: facts ? number(attribution?.orders) : orders.length,
     revenue,
     spend,
     roas: spend > 0 ? revenue / spend : null,
@@ -178,7 +185,17 @@ function birthdayCustomers(db, today) {
     .filter(({ customer, days }) => days !== null && days <= 7 && profiles.get(customer.id)?.contactAllowed === true && (customer.telefono || customer.instagram));
 }
 
-function productSales(db, today, windowDays = 30) {
+function productSales(db, today, windowDays = 30, facts = null) {
+  if (facts) {
+    const products = new Map((db.products || []).map((product) => [product.id, product]));
+    return facts.productSales30d.map((entry) => ({
+      product: products.get(entry.productId),
+      units: entry.units,
+      revenue: entry.revenue,
+      orders: entry.orders,
+    })).filter((entry) => entry.product && entry.product.activo !== false)
+      .sort((left, right) => right.units - left.units || right.revenue - left.revenue || left.product.id.localeCompare(right.product.id));
+  }
   const eligibleOrders = new Map((db.orders || []).filter((order) => {
     if (!isPaidOrder(order)) return false;
     const age = daysBetween(order.fecha || order.pagadoEn, today);
@@ -196,6 +213,30 @@ function productSales(db, today, windowDays = 30) {
   });
   return [...stats.values()].map((entry) => ({ ...entry, orders: entry.orders.size }))
     .sort((left, right) => right.units - left.units || right.revenue - left.revenue || left.product.id.localeCompare(right.product.id));
+}
+
+function agencyFactsContext(db) {
+  if (db?.agencyOperationalFactsReady !== true) return null;
+  const facts = normalizeAgencyOperationalFacts(db.agencyOperationalFacts);
+  if (!facts) return null;
+  const products = facts.productCatalog.map((product) => ({
+    id: product.productId,
+    nombre: product.name,
+    activo: product.active,
+    stock: product.availableStock,
+    agencyAvailableStock: product.availableStock,
+    stockSource: product.stockSource,
+    stockVerified: product.stockVerified,
+  }));
+  return {
+    facts,
+    decisionDb: { products, creatives: db.creatives || [] },
+  };
+}
+
+function agencyFactsCalendar(facts) {
+  const today = number(facts.calendar.today);
+  return { today, next7d: today + number(facts.calendar.next7d) };
 }
 
 function signal(label, value) {
@@ -248,14 +289,30 @@ export function guardAgencyAction(action = {}, db = {}, rawSettings = {}) {
 
 export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new Date().toISOString().slice(0, 10)) {
   const settings = normalizeAgencySettings(rawSettings);
+  const factsContext = agencyFactsContext(db);
+  const facts = factsContext?.facts || null;
+  // Con H67 listo, las decisiones operativas se resuelven sobre agregados
+  // sin mezclar stock, pedidos ni clientes del estado legado.
+  const operationalDb = factsContext?.decisionDb || db;
+  const factCalendar = facts ? agencyFactsCalendar(facts) : null;
   const activeCampaigns = (db.campaigns || []).filter((campaign) => campaign.estado === "Activa");
-  const performance = activeCampaigns.map((campaign) => ({ ...campaignPerformance(campaign, db), campaign }));
+  const performance = activeCampaigns.map((campaign) => ({ ...campaignPerformance(campaign, db, facts), campaign }));
   const recommendations = [];
 
   performance.forEach((metric) => {
-    const product = campaignProduct(metric.campaign, db);
-    const stock = product ? productStock(db, product.id, today) : null;
-    if (product && stock !== null && stock <= 0) {
+    const product = campaignProduct(metric.campaign, operationalDb);
+    const stock = product ? productStock(operationalDb, product.id, today) : null;
+    if (product && stock === null) {
+      recommendations.push(recommendation({
+        id: `verify-stock-${metric.campaignId}`, type: "Revisar oferta", pillar: "Control interno", risk: "Alto", priority: 100, confidence: "Alta",
+        title: `VerificÃ¡ disponibilidad antes de mover ${metric.campaign.nombre}`,
+        rationale: "El producto foco no tiene una fuente de stock verificable; desconocido no significa agotado ni disponible.",
+        evidence: { stock: null, stockSource: product.stockSource || "unverified", campaignId: metric.campaignId, spend: metric.spend },
+        signals: ["Stock: por verificar", signal("Fuente", product.stockSource || "unverified"), signal("Gasto", metric.spend)],
+        campaignId: metric.campaignId, productId: product.id,
+        nextStep: "Verificar inventario terminado o capacidad exacta antes de pausar, escalar o ampliar la promesa.",
+      }));
+    } else if (product && stock <= 0) {
       recommendations.push(recommendation({
         id: `stock-${metric.campaignId}`, type: "Reponer stock", pillar: "Inventario", risk: "Alto", priority: 100, confidence: "Alta",
         title: `Protegé la pauta de ${metric.campaign.nombre}`,
@@ -286,24 +343,30 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
     }
   });
 
-  const birthdays = birthdayCustomers(db, today);
-  if (birthdays.length) {
+  const birthdays = facts ? [] : birthdayCustomers(db, today);
+  const birthdayCount = facts ? facts.crmSegments.birthdays7d : birthdays.length;
+  if (birthdayCount) {
     recommendations.push(recommendation({
       id: `birthdays-${today}`, type: "Activar cumpleaños", pillar: "CRM", risk: "Medio", priority: 82, confidence: "Alta",
-      title: `Acompañá ${birthdays.length} cumpleaños próximo(s)`, channel: "WhatsApp", crmSegment: "Cumpleaños en los próximos 7 días",
+      title: `Acompañá ${birthdayCount} cumpleaños próximo(s)`, channel: "WhatsApp", crmSegment: "Cumpleaños en los próximos 7 días",
       rationale: "Son clientes identificados, con cumpleaños cercano y permiso explícito de contacto.",
-      evidence: { customers: birthdays.map(({ customer, days }) => ({ id: customer.id, days })) },
-      signals: birthdays.slice(0, 3).map(({ customer, days }) => `${customer.nombre}: ${days === 0 ? "hoy" : `en ${days} día(s)`}`),
-      customerIds: birthdays.map(({ customer }) => customer.id), suggestedOffer: "Detalle de cumpleaños MOMOS con vigencia corta",
+      evidence: facts
+        ? { eligibleCustomers: birthdayCount, windowDays: 7, source: "agency-operational-facts-v1" }
+        : { customers: birthdays.map(({ customer, days }) => ({ id: customer.id, days })) },
+      signals: facts
+        ? [signal("Cumpleaños con permiso", birthdayCount), "Ventana: 7 días"]
+        : birthdays.slice(0, 3).map(({ customer, days }) => `${customer.nombre}: ${days === 0 ? "hoy" : `en ${days} día(s)`}`),
+      ...(facts ? {} : { customerIds: birthdays.map(({ customer }) => customer.id) }),
+      suggestedOffer: "Detalle de cumpleaños MOMOS con vigencia corta",
       nextStep: "Crear una activación individual, revisar el beneficio y aprobar el mensaje antes de enviarlo.",
     }));
   }
 
-  const sales = productSales(db, today, 30);
-  const activeProductIds = new Set(activeCampaigns.map((campaign) => campaignProduct(campaign, db)?.id).filter(Boolean));
-  const promotable = sales.find((entry) => entry.units >= 2 && !activeProductIds.has(entry.product.id) && number(productStock(db, entry.product.id, today)) > 0);
+  const sales = productSales(operationalDb, today, 30, facts);
+  const activeProductIds = new Set(activeCampaigns.map((campaign) => campaignProduct(campaign, operationalDb)?.id).filter(Boolean));
+  const promotable = sales.find((entry) => entry.units >= 2 && !activeProductIds.has(entry.product.id) && number(productStock(operationalDb, entry.product.id, today)) > 0);
   if (promotable) {
-    const stock = productStock(db, promotable.product.id, today);
+    const stock = productStock(operationalDb, promotable.product.id, today);
     recommendations.push(recommendation({
       id: `product-momentum-${promotable.product.id}-${today}`, type: "Impulsar producto", pillar: "Producto", risk: "Medio", priority: 74, confidence: "Alta",
       title: `Convertí la demanda de ${promotable.product.nombre} en campaña`,
@@ -315,8 +378,8 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
   }
 
   const soldProductIds = new Set(sales.map((entry) => entry.product.id));
-  const idleStock = (db.products || []).filter((product) => product.activo !== false && !soldProductIds.has(product.id) && !activeProductIds.has(product.id))
-    .map((product) => ({ product, stock: productStock(db, product.id, today) }))
+  const idleStock = (operationalDb.products || []).filter((product) => product.activo !== false && !soldProductIds.has(product.id) && !activeProductIds.has(product.id))
+    .map((product) => ({ product, stock: productStock(operationalDb, product.id, today) }))
     .filter((entry) => Number.isFinite(entry.stock) && entry.stock >= 5)
     .sort((left, right) => right.stock - left.stock || left.product.id.localeCompare(right.product.id))[0];
   if (idleStock) {
@@ -329,11 +392,11 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
     }));
   }
 
-  const creativeMetrics = (db.creatives || []).map((creative) => creativePerformance(creative, db));
+  const creativeMetrics = (db.creatives || []).map((creative) => creativePerformance(creative, db, facts));
   const winner = creativeMetrics.filter((metric) => metric.orders >= 2 && (metric.roas === null || metric.roas >= 1.5))
     .sort((left, right) => right.orders - left.orders || number(right.roas) - number(left.roas) || left.creative.id.localeCompare(right.creative.id))[0];
   if (winner) {
-    const product = creativeProduct(winner.creative, db);
+    const product = creativeProduct(winner.creative, operationalDb);
     recommendations.push(recommendation({
       id: `repeat-${winner.creative.id}-${today}`, type: "Repetir creativo", pillar: "Contenido", risk: "Bajo", priority: 66, confidence: "Alta",
       title: `Versioná el aprendizaje de ${winner.creative.titulo}`,
@@ -345,8 +408,10 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
     }));
   }
 
-  const todayPosts = (db.content_calendar || []).filter((post) => isoDate(post.fecha) === today && post.estado !== "No publicado");
-  if (!todayPosts.length) {
+  const todayPosts = facts
+    ? factCalendar.today
+    : (db.content_calendar || []).filter((post) => isoDate(post.fecha) === today && post.estado !== "No publicado").length;
+  if (!todayPosts) {
     recommendations.push(recommendation({
       id: `content-${today}`, type: "Crear contenido", pillar: "Contenido", risk: "Bajo", priority: 60, confidence: "Alta",
       title: "Prepará una pieza de contenido para hoy", rationale: "No hay ninguna publicación programada para hoy.",
@@ -355,14 +420,17 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
     }));
   }
 
-  const dormantCustomers = contactEligibleCustomers(db, today);
-  if (dormantCustomers.length) {
+  const dormantCustomers = facts ? [] : contactEligibleCustomers(db, today);
+  const dormantCount = facts ? facts.crmSegments.dormant30d : dormantCustomers.length;
+  if (dormantCount) {
     recommendations.push(recommendation({
       id: `reactivate-${today}`, type: "Contactar segmento", pillar: "CRM", risk: "Medio", priority: 55, confidence: "Alta",
-      title: `Reactivá ${dormantCustomers.length} cliente(s) con permiso`, channel: "WhatsApp", crmSegment: "Clientes inactivos con permiso",
+      title: `Reactivá ${dormantCount} cliente(s) con permiso`, channel: "WhatsApp", crmSegment: "Clientes inactivos con permiso",
       rationale: "Llevan más de 30 días sin comprar y tienen un canal de contacto disponible.",
-      evidence: { eligibleCustomers: dormantCustomers.length, inactivityDays: 30 }, signals: [signal("Contactables", dormantCustomers.length), "Inactividad: +30 días"],
-      customerIds: dormantCustomers.map((customer) => customer.id), nextStep: "Crear una activación medible y excluir a quien cambie su preferencia de contacto.",
+      evidence: { eligibleCustomers: dormantCount, inactivityDays: 30, ...(facts ? { source: "agency-operational-facts-v1" } : {}) },
+      signals: [signal("Contactables", dormantCount), "Inactividad: +30 días"],
+      ...(facts ? {} : { customerIds: dormantCustomers.map((customer) => customer.id) }),
+      nextStep: "Crear una activación medible y excluir a quien cambie su preferencia de contacto.",
     }));
   }
 
@@ -379,11 +447,13 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
 
   const unique = [...new Map(recommendations.map((item) => [item.id, item])).values()]
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
-  const guarded = unique.map((item) => ({ ...item, guard: guardAgencyAction({ ...item, today, execute: true }, db, settings) }));
-  const allPaidOrders = (db.orders || []).filter(isPaidOrder);
-  const revenue = allPaidOrders.reduce((sum, order) => sum + orderRevenue(order, db), 0);
+  const guarded = unique.map((item) => ({ ...item, guard: guardAgencyAction({ ...item, today, execute: true }, operationalDb, settings) }));
+  const allPaidOrders = facts ? null : (db.orders || []).filter(isPaidOrder);
+  const revenue = facts
+    ? facts.paidSummary.revenue30d
+    : allPaidOrders.reduce((sum, order) => sum + orderRevenue(order, db), 0);
   const spend = platformMetrics(db).reduce((sum, metric) => sum + number(metric.gasto), 0);
-  const scheduledNext7 = (db.content_calendar || []).filter((post) => {
+  const scheduledNext7 = facts ? factCalendar.next7d : (db.content_calendar || []).filter((post) => {
     const distance = daysBetween(today, post.fecha);
     return distance !== null && distance >= 0 && distance <= 7 && !["No publicado", "Cancelado"].includes(post.estado);
   }).length;
@@ -408,8 +478,8 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
       blocked: guarded.filter((item) => !item.guard.allowed).length,
       activeCampaigns: activeCampaigns.length,
       pendingCreatives: pendingCreatives.length,
-      eligibleCustomers: dormantCustomers.length + birthdays.length,
-      productsWithStock: (db.products || []).filter((product) => number(productStock(db, product.id, today)) > 0).length,
+      eligibleCustomers: dormantCount + birthdayCount,
+      productsWithStock: (operationalDb.products || []).filter((product) => number(productStock(operationalDb, product.id, today)) > 0).length,
       winners: winner ? 1 : 0,
       scheduledNext7,
     },

@@ -24,6 +24,7 @@ import { buildGrowthMultimodeEngine, growthSnapshotPayload } from "../../lib/gro
 import { brandIdentitySummary, buildBrandIdentityView } from "../../lib/brand-identity";
 import { fetchBrandIdentity } from "../../lib/brand-identity-api";
 import { buildCommercialLearning } from "../../lib/commercial-learning";
+import { projectAgencyDbWithOperationalFacts } from "../../lib/agency-operational-facts";
 import { buildCreativePackage } from "../../lib/creative-package";
 import { ANIMATION_ASSET_KINDS, ANIMATION_ASSET_ROLES, BRAND_ASSET_ROLES, BRAND_MEDIA_RIGHTS, BRAND_MEDIA_TYPES, BRAND_STUDIO_FORMATS, BRAND_STUDIO_OPERATIONS, brandAssetDeletionPolicy, brandAssetDeletionReadiness, buildBrandMediaLibrary, buildCreativeStudioDraft, isOfficialBrandLogo, searchBrandMediaAssets } from "../../lib/brand-studio";
 import { PRODUCTION_COMPONENT_TYPES, PRODUCTION_CONSENT_STATUSES, PRODUCTION_HAND_ASSIGNMENTS, PRODUCTION_INTERACTIONS, PRODUCTION_PACK_ROLES, PRODUCTION_PHYSICAL_STATES, PRODUCTION_QA_STATUSES, PRODUCTION_SOURCE_QUALITIES, PRODUCTION_VIEW_ANGLES, buildProductionLibrary, defaultProductionProfile, productionProfilePayload } from "../../lib/production-library";
@@ -2264,7 +2265,11 @@ function AgencyAdvancedModuleCard({ icon, eyebrow, title, description, metric, m
   </button>;
 }
 
-function AgenciaControl({ db, user, refrescar, go }) {
+function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
+  // H67 proyecta solo los productos y agregados operativos autorizados dentro
+  // de Agencia. El estado global conserva sus catálogos completos para las
+  // pantallas operativas y nunca es reemplazado por esta vista compacta.
+  const db = useMemo(() => projectAgencyDbWithOperationalFacts(sourceDb), [sourceDb]);
   const serverReady = Boolean(db.agencyServerReady);
   const settings = db.agencySettings || DEFAULT_AGENCY_SETTINGS;
   const intelligence = useMemo(() => buildAgencyIntelligence(db, settings, hoyISO()), [db, settings]);

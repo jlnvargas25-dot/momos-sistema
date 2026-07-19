@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { makeAgencyOperationalFacts } from "./agency-operational-facts.test-fixture.js";
 import { agencyDecisionType, buildAgencyIntelligence, guardAgencyAction, normalizeAgencySettings } from "./agency-intelligence.js";
 
 test("traduce tipos amigables al contrato cerrado del servidor", () => {
@@ -164,4 +165,99 @@ test("prioriza de forma determinista y expone la cadena comercial completa", () 
   assert.equal(new Set(first.recommendations.map((item) => item.id)).size, first.recommendations.length);
   assert.equal(first.recommendations[0].priority, 100);
   assert.deepEqual(first.pipeline, { opportunities: 2, briefs: 1, approvals: 1, creativeReview: 1, scheduled: 0, learning: 1 });
+});
+
+function h67FactsDb() {
+  return {
+    agencyOperationalFactsReady: true,
+    agencyOperationalFacts: makeAgencyOperationalFacts({
+      product_catalog: [
+        { id: "P-CAM", name: "Momo campaña", active: true, available_stock: 8 },
+        { id: "P-HIT", name: "Momo favorito", active: true, available_stock: 9 },
+        { id: "P-IDLE", name: "Momo por mover", active: true, available_stock: 7 },
+      ],
+      product_sales_30d: [{ product_id: "P-HIT", units: 4, orders: 2, revenue: 80000 }],
+      paid_summary: { orders_30d: 5, revenue_30d: 220000, attributed_orders_30d: 2 },
+      campaign_attribution: [{ campaign_id: "CMP-1", orders: 2, revenue: 120000 }],
+      creative_attribution: [{ creative_id: "CR-1", orders: 2, revenue: 100000 }],
+      crm_segments: { birthdays_7d: 2, dormant_30d: 3, contains_customer_ids: false },
+      calendar: {
+        today: { posts: 0, published: 0, pending: 0 },
+        next_7d: [{ date: "2026-07-15", posts: 1 }, { date: "2026-07-16", posts: 2 }],
+      },
+      production: { plan_units: 0, plan_runs: 0, queue_units: 0, active_batch_units: 0, critical_preparations: [] },
+    }),
+    campaigns: [{ id: "CMP-1", nombre: "Campaña segura", estado: "Activa", productoFocoId: "P-CAM", presupuesto: 100000 }],
+    creatives: [{ id: "CR-1", titulo: "Hook aprobado", estado: "Aprobado", productoFocoId: "P-HIT", canal: "Instagram" }],
+    creative_results: [{ campaignId: "CMP-1", creativeId: "CR-1", gasto: 40000, clicks: 12, mensajesWhatsApp: 4 }],
+    agencyBriefs: [], agencyDecisions: [], agencyCreativeVersions: [],
+  };
+}
+
+test("H67 calcula recomendaciones únicamente con hechos agregados y no lee operación cruda", () => {
+  const db = h67FactsDb();
+  for (const key of ["products", "orders", "order_items", "customers", "customer_crm_profiles", "content_calendar"]) {
+    Object.defineProperty(db, key, {
+      configurable: true,
+      get() { throw new Error(`H67 intentó leer ${key}`); },
+    });
+  }
+
+  const result = buildAgencyIntelligence(db, {}, "2026-07-14");
+  const scale = result.recommendations.find((item) => item.type === "Escalar presupuesto");
+  const product = result.recommendations.find((item) => item.type === "Impulsar producto");
+  const creative = result.recommendations.find((item) => item.type === "Repetir creativo");
+  const birthdays = result.recommendations.find((item) => item.type === "Activar cumpleaños");
+  const dormant = result.recommendations.find((item) => item.type === "Contactar segmento");
+
+  assert.deepEqual(scale.evidence, { roas: 3, orders: 2, revenue: 120000, spend: 40000 });
+  assert.deepEqual(product.evidence, { units30d: 4, orders30d: 2, revenue30d: 80000, stock: 9 });
+  assert.deepEqual(creative.evidence, { orders: 2, revenue: 100000, spend: 40000, roas: 2.5 });
+  assert.equal(Object.hasOwn(birthdays, "customerIds"), false);
+  assert.equal(Object.hasOwn(dormant, "customerIds"), false);
+  assert.equal(result.summary.revenue, 220000);
+  assert.equal(result.summary.eligibleCustomers, 5);
+  assert.equal(result.summary.scheduledNext7, 3);
+  assert.equal(result.pipeline.scheduled, 3);
+});
+
+test("H67 es invariante ante órdenes y PII locales y conserva el fallback H66 sin facts", () => {
+  const factsOnly = h67FactsDb();
+  const poisoned = {
+    ...h67FactsDb(),
+    products: [{ id: "P-PII", nombre: "NO-USAR", stock: 999 }],
+    orders: [{ id: "O-PII", estado: "Pagado", total: 999999999, campaignId: "CMP-1", creativeId: "CR-1" }],
+    order_items: [{ orderId: "O-PII", productId: "P-PII", cant: 999, precio: 999999 }],
+    customers: [{ id: "C-PII", nombre: "PII-NOMBRE-SECRETO", telefono: "300-PII-SECRETO", cumple: "07-14", ultima: "2020-01-01" }],
+    customer_crm_profiles: [{ customerId: "C-PII", contactAllowed: true }],
+    content_calendar: [{ fecha: "2026-07-14", estado: "Programado", notas: "PII-NOTA-SECRETA" }],
+  };
+
+  const expected = buildAgencyIntelligence(factsOnly, {}, "2026-07-14");
+  const actual = buildAgencyIntelligence(poisoned, {}, "2026-07-14");
+  assert.deepEqual(actual, expected);
+  assert.doesNotMatch(JSON.stringify(actual), /PII-|300-PII|NO-USAR/);
+
+  const legacy = buildAgencyIntelligence({
+    products: [{ id: "P-LEGACY", nombre: "Legado", stock: 6, activo: true }],
+    orders: [], order_items: [], customers: [], content_calendar: [], campaigns: [], creatives: [], creative_results: [],
+  }, {}, "2026-07-14");
+  assert.equal(legacy.recommendations.some((item) => item.type === "Mover inventario"), true);
+});
+
+test("H67 no escala una campaña cuando su stock es desconocido", () => {
+  const db = h67FactsDb();
+  db.agencyOperationalFacts = makeAgencyOperationalFacts({
+    product_catalog: [{ product_id: "P-CAM", name: "Momo campaña", active: true, available_stock: null, stock_source: "unverified" }],
+    product_sales_30d: [],
+    paid_summary: { orders_30d: 2, revenue_30d: 120000, orders_all: 2, revenue_all: 120000, attributed_orders_30d: 2 },
+    campaign_attribution: [{ campaign_id: "CMP-1", orders: 2, revenue: 120000 }],
+  });
+  const result = buildAgencyIntelligence(db, {}, "2026-07-14");
+  assert.equal(result.recommendations.some((item) => item.type === "Escalar presupuesto"), false);
+  const verify = result.recommendations.find((item) => item.id === "verify-stock-CMP-1");
+  assert.equal(verify.evidence.stock, null);
+  assert.equal(verify.evidence.stockSource, "unverified");
+  assert.equal(verify.guard.allowed, false);
+  assert.match(verify.guard.reasons.join(" "), /disponibilidad verificable/i);
 });

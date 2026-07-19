@@ -37,7 +37,8 @@ begin
     '20260718_59_mundo_animado','20260718_60_eliminacion_logo_oficial',
     '20260718_61_biblioteca_produccion','20260718_62_mcp_aprobacion_humana',
     '20260718_63_mcp_aprobacion_humana_rbac','20260718_64_integridad_snapshot_realtime',
-    '20260718_65_hechos_financieros','20260718_66_agency_snapshot_rendimiento'
+    '20260718_65_hechos_financieros','20260718_66_agency_snapshot_rendimiento',
+    '20260718_67_agency_operational_facts','20260719_68_inventario_precision_lotes'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -468,7 +469,55 @@ begin
   end if;
   assert not has_table_privilege('authenticated','public.products','UPDATE'), 'products conserva escritura directa';
   assert not has_table_privilege('authenticated','public.recipes','INSERT'), 'recipes conserva escritura directa';
-  assert not exists(select 1 from public.v_inventory_lot_reconciliation where difference<>0), 'stock agregado y lotes no cuadran';
+  assert public.inventory_lot_precision_disponible(), 'falta precisión canónica H68 de inventario por lotes';
+  assert not has_function_privilege('authenticated','public._sync_inventory_stock_from_lots(text)','EXECUTE'), 'helper H68 expuesto';
+  assert not has_function_privilege('authenticated','public._assert_inventory_lot_reconciliation()','EXECUTE'), 'guarda privada H68 expuesta';
+  assert not has_function_privilege('authenticated','public._guard_inventory_finite_values()','EXECUTE'), 'guarda finita H68 expuesta';
+  assert exists(
+    select 1 from pg_trigger t
+    where t.tgrelid='public.inventory_items'::regclass
+      and t.tgname='inventory_items_stock_guard'
+      and t.tgdeferrable and t.tginitdeferred and t.tgenabled in ('O','A')
+      and t.tgfoid=to_regprocedure('public._assert_inventory_lot_reconciliation()')
+  ) and exists(
+    select 1 from pg_trigger t
+    where t.tgrelid='public.inventory_lots'::regclass
+      and t.tgname='inventory_lots_stock_guard'
+      and t.tgdeferrable and t.tginitdeferred and t.tgenabled in ('O','A')
+      and t.tgfoid=to_regprocedure('public._assert_inventory_lot_reconciliation()')
+  ) and exists(
+    select 1 from pg_trigger t
+    where t.tgrelid='public.inventory_lot_allocations'::regclass
+      and t.tgname='inventory_lot_allocations_stock_guard'
+      and t.tgdeferrable and t.tginitdeferred and t.tgenabled in ('O','A')
+      and t.tgfoid=to_regprocedure('public._assert_inventory_lot_reconciliation()')
+  ) and exists(
+    select 1 from pg_trigger t
+    where t.tgrelid='public.inventory_movements'::regclass
+      and t.tgname='inventory_movements_stock_guard'
+      and t.tgdeferrable and t.tginitdeferred and t.tgenabled in ('O','A')
+      and t.tgfoid=to_regprocedure('public._assert_inventory_lot_reconciliation()')
+  ), 'faltan guardas diferidas de inventario y ledger';
+  assert not has_table_privilege('authenticated','public.inventory_items','INSERT')
+    and not has_table_privilege('authenticated','public.inventory_items','UPDATE')
+    and not has_table_privilege('authenticated','public.inventory_items','DELETE')
+    and not has_table_privilege('authenticated','public.inventory_items','TRUNCATE')
+    and not has_table_privilege('authenticated','public.inventory_items','TRIGGER'),
+    'stock agregado conserva escritura directa';
+  assert not has_table_privilege('authenticated','public.inventory_lots','INSERT')
+    and not has_table_privilege('authenticated','public.inventory_lots','UPDATE')
+    and not has_table_privilege('authenticated','public.inventory_lots','DELETE')
+    and not has_table_privilege('authenticated','public.inventory_lot_allocations','INSERT')
+    and not has_table_privilege('authenticated','public.inventory_lot_allocations','UPDATE')
+    and not has_table_privilege('authenticated','public.inventory_lot_allocations','DELETE')
+    and not has_table_privilege('authenticated','public.inventory_movements','INSERT')
+    and not has_table_privilege('authenticated','public.inventory_movements','UPDATE')
+    and not has_table_privilege('authenticated','public.inventory_movements','DELETE'),
+    'lotes, asignaciones o movimientos conservan escritura directa';
+  assert not exists(
+    select 1 from public.v_inventory_lot_reconciliation
+    where official_stock<>lot_stock or difference<>0
+  ), 'stock agregado y lotes no cuadran';
   assert not exists(select 1 from public.v_variantes_disponibles where vencimiento_proximo<current_date), 'FIFO terminado expone vencidos';
   assert not exists(
     select 1 from public.production_batches
@@ -488,7 +537,15 @@ begin
     select 1 from public.production_suggestions ps join public.orders o on o.id=ps.order_id
     where ps.estado='Pendiente' and o.estado in ('Cancelado','Entregado')
   ), 'hay tareas pendientes de pedidos terminales';
+  assert to_regprocedure('public.momos_agency_snapshots_v2()') is not null,
+    'falta bundle H67 de hechos operativos';
+  assert has_function_privilege('authenticated','public.momos_agency_snapshots_v2()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_agency_snapshots_v2()','EXECUTE'),
+    'H67 perdio su frontera authenticated';
+  assert to_regprocedure('public._momos_agency_operational_facts_payload_v1()') is not null
+    and not has_function_privilege('authenticated','public._momos_agency_operational_facts_payload_v1()','EXECUTE'),
+    'falta payload privado H67';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-66 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-68 PASS, rollback total' as resultado;
 rollback;

@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { supabase } from "./supabase.js";
 import {
-  adaptAgencySnapshotEnvelope, adaptAgencySnapshotsBundle, AGENCY_SNAPSHOT_SCOPES,
+  adaptAgencyOperationalFactsEnvelope, adaptAgencySnapshotEnvelope, adaptAgencySnapshotsBundle, AGENCY_SNAPSHOT_SCOPES,
   fetchAgencyCatalogos, fetchAgencyCatalogosConFallback,
 } from "./read-model.js";
+import { makeAgencyOperationalFacts } from "./agency-operational-facts.test-fixture.js";
 
 const envelope = (scope, payload, overrides = {}) => ({
   version: 1,
@@ -27,6 +28,44 @@ const envelope = (scope, payload, overrides = {}) => ({
     allowed_roles: ["Administrador", "Marketing/CRM"],
   },
   payload,
+  ...overrides,
+});
+
+const operationalFacts = makeAgencyOperationalFacts({
+  product_catalog: [{
+    product_id: "P01", name: "Momo Perrito", active: true, available_stock: 4,
+    category: "Momos Signature", type: "simple", species: "perro", price: 18000,
+    queue_units: 0, in_process_units: 0, production_buffer: 2, stock_source: "exact-variants",
+  }],
+  product_sales_30d: [{ product_id: "P01", units: 3, orders: 2, revenue: 54000 }],
+  paid_summary: { orders_30d: 2, revenue_30d: 54000, orders_all: 2, revenue_all: 54000, attributed_orders_30d: 1 },
+  crm_segments: { birthdays_7d: 1, dormant_30d: 2, contains_customer_ids: false },
+  calendar: { today: { posts: 0 }, next_7d: [{ date: "2026-07-19", posts: 1 }] },
+  production: { plan_units: 2, plan_runs: 1, queue_units: 1, active_batch_units: 0, critical_preparations: [] },
+});
+
+const factsEnvelope = (overrides = {}) => ({
+  version: 1,
+  contract: "momos-agency-operational-facts/v1",
+  source_version: 7,
+  server_time: "2026-07-18T15:00:00Z",
+  event_id: "event-facts",
+  privacy: {
+    projection: "agency-operational-facts-v1",
+    customer_records_projected: false,
+    order_records_projected: false,
+    catalog_labels_projected: true,
+    free_text_projected: false,
+    secrets_projected: false,
+    storage_references_projected: false,
+  },
+  authority: {
+    read_only: true,
+    external_execution: false,
+    human_approval_required: true,
+    allowed_roles: ["Administrador", "Marketing/CRM"],
+  },
+  payload: { agency_operational_facts: operationalFacts },
   ...overrides,
 });
 
@@ -56,6 +95,33 @@ test("H66 exige una version comun y contrato estricto en el bundle atomico", () 
   assert.throws(() => adaptAgencySnapshotEnvelope(envelope("production", {}, {
     privacy: { ...envelope("production", {}).privacy, storage_references_projected: false },
   })), /privacidad/i);
+});
+
+test("H67 agrega hechos operativos al mismo corte atómico y falla cerrado", () => {
+  const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {}));
+  const bundle = adaptAgencySnapshotsBundle({
+    version: 2,
+    contract: "momos-agency-snapshots/v2",
+    source_version: 7,
+    server_time: "2026-07-18T15:00:00Z",
+    snapshots,
+    agency_operational_facts: factsEnvelope(),
+  });
+  assert.equal(bundle.version, 2);
+  assert.equal(bundle.agencyOperationalFacts.productCatalog[0].availableStock, 4);
+  assert.equal(bundle.agencyOperationalFacts.calendar.next7d, 1);
+  assert.equal(adaptAgencyOperationalFactsEnvelope(factsEnvelope()).sourceVersion, "7");
+  assert.throws(() => adaptAgencyOperationalFactsEnvelope(factsEnvelope({
+    privacy: { ...factsEnvelope().privacy, customer_records_projected: true },
+  })), /privacidad/i);
+  assert.throws(() => adaptAgencySnapshotsBundle({
+    version: 2,
+    contract: "momos-agency-snapshots/v2",
+    source_version: 8,
+    server_time: "2026-07-18T15:00:00Z",
+    snapshots,
+    agency_operational_facts: factsEnvelope(),
+  }), /misma versión|corte atómico/i);
 });
 
 test("H66 adapta el snapshot al shape legado sin transformar JSON sellado", () => {
@@ -214,21 +280,29 @@ test("H66 rechaza snapshots sin frontera de privacidad o solo lectura", () => {
   assert.throws(() => adaptAgencySnapshotEnvelope(envelope("secrets", {})), /alcance/i);
 });
 
-test("H66 carga Agencia en un bundle RPC y no rehidrata catalogos core", async () => {
+test("H67 carga Agencia y hechos operativos en un RPC sin rehidratar catálogos core", async () => {
   const originalRpc = supabase.rpc;
   const calls = [];
   supabase.rpc = async (name, args) => {
     calls.push([name, args]);
     const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, { [`scope_${scope}`]: true }));
-    return { data: { version: 1, source_version: 7, server_time: "2026-07-18T15:00:00Z", snapshots }, error: null };
+    return { data: {
+      version: 2,
+      contract: "momos-agency-snapshots/v2",
+      source_version: 7,
+      server_time: "2026-07-18T15:00:00Z",
+      snapshots,
+      agency_operational_facts: factsEnvelope(),
+    }, error: null };
   };
   try {
     const result = await fetchAgencyCatalogos();
     assert.equal(result.agencySnapshotReady, true);
-    assert.equal(result.syncSource, "agency-snapshots-v1");
+    assert.equal(result.agencyOperationalFactsReady, true);
+    assert.equal(result.syncSource, "snapshot-agency-v1");
     assert.equal(result.agencySnapshotVersion, "7");
     assert.equal(result.syncServerTime, "2026-07-18T15:00:00Z");
-    assert.deepEqual(calls, [["momos_agency_snapshots_v1", undefined]]);
+    assert.deepEqual(calls, [["momos_agency_snapshots_v2", undefined]]);
     assert.equal(result.scopeOverview, true);
     assert.equal(result.scopeMeasurement, true);
     assert.equal(Object.keys(result.agencySnapshotScopes).length, 4);
@@ -237,7 +311,7 @@ test("H66 carga Agencia en un bundle RPC y no rehidrata catalogos core", async (
   }
 });
 
-test("H66 ausente hace un solo probe y entrega el control al fallback", async () => {
+test("H66 y H67 ausentes entregan el control al fallback tras sus probes de despliegue", async () => {
   const originalRpc = supabase.rpc;
   let calls = 0;
   supabase.rpc = async () => {
@@ -246,13 +320,34 @@ test("H66 ausente hace un solo probe y entrega el control al fallback", async ()
   };
   try {
     assert.equal(await fetchAgencyCatalogos(), null);
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
   } finally {
     supabase.rpc = originalRpc;
   }
 });
 
-test("H66 ausente ejecuta el fallback legado sin repetir el probe", async () => {
+test("H67 ausente conserva el bundle H66 sin hechos operativos", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  supabase.rpc = async (name) => {
+    calls.push(name);
+    if (name === "momos_agency_snapshots_v2") {
+      return { data: null, error: { code: "PGRST202", message: "Function is not in schema cache" } };
+    }
+    const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {}));
+    return { data: { version: 1, source_version: 7, server_time: "2026-07-18T15:00:00Z", snapshots }, error: null };
+  };
+  try {
+    const result = await fetchAgencyCatalogos();
+    assert.equal(result.agencySnapshotReady, true);
+    assert.equal(result.agencyOperationalFactsReady, false);
+    assert.deepEqual(calls, ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1"]);
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H66 y H67 ausentes ejecutan una sola vez el fallback legado", async () => {
   const originalRpc = supabase.rpc;
   const calls = [];
   let legacyCalls = 0;
@@ -268,7 +363,135 @@ test("H66 ausente ejecuta el fallback legado sin repetir el probe", async () => 
     });
     assert.equal(result, legacy);
     assert.equal(legacyCalls, 1);
-    assert.deepEqual(calls, ["momos_agency_snapshots_v1"]);
+    assert.deepEqual(calls, ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1"]);
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H67 usa un solo respaldo H66 ante timeout, 5xx o PGRST transitorio", async () => {
+  const originalRpc = supabase.rpc;
+  const transientCases = [
+    { error: Object.assign(new Error("Request timed out"), { name: "TimeoutError" }), thrown: true },
+    { error: { code: "PGRST000", message: "Database connection failed" }, status: 503 },
+    { error: { code: "PGRST003", message: "Timed out acquiring connection" }, status: 504 },
+  ];
+  try {
+    for (const transient of transientCases) {
+      const calls = [];
+      let legacyCalls = 0;
+      supabase.rpc = async (name) => {
+        calls.push(name);
+        if (name === "momos_agency_snapshots_v2") {
+          if (transient.thrown) throw transient.error;
+          return { data: null, error: transient.error, status: transient.status };
+        }
+        const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {}));
+        return { data: { version: 1, source_version: 7, server_time: "2026-07-18T15:00:00Z", snapshots }, error: null };
+      };
+      const result = await fetchAgencyCatalogosConFallback(async () => {
+        legacyCalls += 1;
+        return { rawLegacy: true };
+      });
+      assert.equal(result.agencySnapshotReady, true);
+      assert.equal(result.agencyOperationalFactsReady, false);
+      assert.equal(result.agencySnapshotFallback, "h67-transient");
+      assert.equal(legacyCalls, 0);
+      assert.deepEqual(calls, ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1"]);
+    }
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H67 transitorio sin H66 falla cerrado y no ejecuta el loader crudo", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  let legacyCalls = 0;
+  supabase.rpc = async (name) => {
+    calls.push(name);
+    if (name === "momos_agency_snapshots_v2") {
+      return { data: null, error: { code: "PGRST000", message: "Upstream unavailable" }, status: 503 };
+    }
+    return { data: null, error: { code: "PGRST202", message: "Could not find the function" }, status: 404 };
+  };
+  try {
+    await assert.rejects(
+      fetchAgencyCatalogosConFallback(async () => {
+        legacyCalls += 1;
+        return { rawLegacy: true };
+      }),
+      /upstream unavailable/i,
+    );
+    assert.equal(legacyCalls, 0);
+    assert.deepEqual(calls, ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1"]);
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H67 no oculta denegaciones RBAC con H66 ni con datos legados", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  let legacyCalls = 0;
+  supabase.rpc = async (name) => {
+    calls.push(name);
+    return { data: null, error: { code: "42501", message: "permission denied for function" }, status: 403 };
+  };
+  try {
+    await assert.rejects(
+      fetchAgencyCatalogosConFallback(async () => {
+        legacyCalls += 1;
+        return { rawLegacy: true };
+      }),
+      /permission denied/i,
+    );
+    assert.equal(legacyCalls, 0);
+    assert.deepEqual(calls, ["momos_agency_snapshots_v2"]);
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H67 no oculta contrato o privacidad invalidos con un fallback", async () => {
+  const originalRpc = supabase.rpc;
+  try {
+    for (const invalidBundle of [
+      {
+        version: 2,
+        contract: "momos-agency-snapshots/v0",
+        source_version: 7,
+        server_time: "2026-07-18T15:00:00Z",
+        snapshots: AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {})),
+        agency_operational_facts: factsEnvelope(),
+      },
+      {
+        version: 2,
+        contract: "momos-agency-snapshots/v2",
+        source_version: 7,
+        server_time: "2026-07-18T15:00:00Z",
+        snapshots: AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {})),
+        agency_operational_facts: factsEnvelope({
+          privacy: { ...factsEnvelope().privacy, customer_records_projected: true },
+        }),
+      },
+    ]) {
+      const calls = [];
+      let legacyCalls = 0;
+      supabase.rpc = async (name) => {
+        calls.push(name);
+        return { data: invalidBundle, error: null };
+      };
+      await assert.rejects(
+        fetchAgencyCatalogosConFallback(async () => {
+          legacyCalls += 1;
+          return { rawLegacy: true };
+        }),
+        /contrato|privacidad/i,
+      );
+      assert.equal(legacyCalls, 0);
+      assert.deepEqual(calls, ["momos_agency_snapshots_v2"]);
+    }
   } finally {
     supabase.rpc = originalRpc;
   }

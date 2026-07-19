@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion,
-  shouldQueueAgencySnapshotVersion, shouldQueueRealtimeDomain, shouldSyncRealtimeEvent,
+  shouldFlushAgencyRealtimeRefresh, shouldQueueAgencySnapshotVersion, shouldQueueRealtimeDomain, shouldSyncRealtimeEvent,
   syncDomainForTable, syncDomainsForView, SYNC_DOMAINS,
 } from "./sync-coordinator.js";
 
@@ -84,12 +84,14 @@ test("calcula TTL por dominio sin refrescar catálogos vigentes", async () => {
   assert.deepEqual(coordinator.staleDomains({ catalogos: 15 * 60_000, operativo: 60_000, agencia: 5 * 60_000 }), [SYNC_DOMAINS.OPERATIONS]);
 });
 
-test("una vista operativa no consulta Agencia y una vista comercial no consulta operacion", () => {
+test("una vista operativa no consulta Agencia y una vista comercial usa solo su contrato cerrado", () => {
   assert.deepEqual(syncDomainsForView("Produccion"), [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS]);
   assert.deepEqual(syncDomainsForView("Pedidos"), [SYNC_DOMAINS.OPERATIONS]);
   assert.deepEqual(syncDomainsForView("Productos"), [SYNC_DOMAINS.CATALOGS]);
-  assert.deepEqual(syncDomainsForView("Creativos"), [SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.OPERATIONS]);
-  assert.deepEqual(syncDomainsForView("Agencia MOMOS"), [SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.OPERATIONS]);
+  assert.deepEqual(syncDomainsForView("Creativos"), [SYNC_DOMAINS.AGENCY]);
+  assert.deepEqual(syncDomainsForView("Agencia MOMOS"), [SYNC_DOMAINS.AGENCY]);
+  assert.deepEqual(syncDomainsForView("Agencia MOMOS", { agencyOperationalFactsReady: true }), [SYNC_DOMAINS.AGENCY]);
+  assert.deepEqual(syncDomainsForView("Creativos", { agencyOperationalFactsReady: true }), [SYNC_DOMAINS.AGENCY]);
 });
 
 test("Realtime clasifica ordenes, catalogos y Agencia por separado", () => {
@@ -134,6 +136,13 @@ test("Realtime de Agencia deduplica bigint por versión y nunca por reloj", () =
     appliedVersion: "9007199254740992",
     seenVersion: "9007199254740992",
   }), false);
+});
+
+test("Realtime de Agencia descarta el refresco si la lectura explícita ya aplicó esa versión", () => {
+  assert.equal(shouldFlushAgencyRealtimeRefresh({ queuedVersion: "43", appliedVersion: "42" }), true);
+  assert.equal(shouldFlushAgencyRealtimeRefresh({ queuedVersion: "43", appliedVersion: "43" }), false);
+  assert.equal(shouldFlushAgencyRealtimeRefresh({ queuedVersion: "42", appliedVersion: "43" }), false);
+  assert.equal(shouldFlushAgencyRealtimeRefresh({ queuedVersion: "", appliedVersion: "43" }), true);
 });
 
 test("Realtime ignora dominios fuera de vista y conserva commits durante una lectura", () => {
@@ -182,6 +191,69 @@ test("un commit durante una lectura conserva un unico refresco posterior", async
 
   assert.equal(calls, 2);
   assert.deepEqual(applied, [1, 2]);
+});
+
+test("un evento Realtime no crea trailing si el snapshot activo ya incorporo su version", async () => {
+  const first = deferred();
+  let calls = 0;
+  let appliedVersion = "42";
+  const coordinator = createSyncCoordinator({
+    loaders: {
+      [SYNC_DOMAINS.AGENCY]: async () => {
+        calls += 1;
+        if (calls === 1) return first.promise;
+        return { agencySnapshotVersion: "44" };
+      },
+    },
+    apply: async (payload) => {
+      appliedVersion = payload.agencia.agencySnapshotVersion;
+    },
+  });
+
+  const initial = coordinator.request(SYNC_DOMAINS.AGENCY);
+  coordinator.request(SYNC_DOMAINS.AGENCY, {
+    reason: "realtime",
+    afterActive: true,
+    shouldRunAfterActive: () => shouldFlushAgencyRealtimeRefresh({
+      queuedVersion: "43",
+      appliedVersion,
+    }),
+  });
+  first.resolve({ agencySnapshotVersion: "43" });
+  await initial;
+
+  assert.equal(calls, 1, "la version 43 aplicada invalida su propia lectura posterior");
+  assert.equal(coordinator.snapshot().counters.batches, 1);
+});
+
+test("guardas Realtime acumuladas conservan una version mas nueva que el snapshot activo", async () => {
+  const first = deferred();
+  let calls = 0;
+  let appliedVersion = "42";
+  const coordinator = createSyncCoordinator({
+    loaders: {
+      [SYNC_DOMAINS.AGENCY]: async () => {
+        calls += 1;
+        if (calls === 1) return first.promise;
+        return { agencySnapshotVersion: "44" };
+      },
+    },
+    apply: async (payload) => {
+      appliedVersion = payload.agencia.agencySnapshotVersion;
+    },
+  });
+
+  const initial = coordinator.request(SYNC_DOMAINS.AGENCY);
+  ["43", "44"].forEach((queuedVersion) => coordinator.request(SYNC_DOMAINS.AGENCY, {
+    reason: "realtime",
+    afterActive: true,
+    shouldRunAfterActive: () => shouldFlushAgencyRealtimeRefresh({ queuedVersion, appliedVersion }),
+  }));
+  first.resolve({ agencySnapshotVersion: "43" });
+  await initial;
+
+  assert.equal(calls, 2, "la version 44 sigue necesitando exactamente una lectura posterior");
+  assert.equal(appliedVersion, "44");
 });
 
 test("un fallo al aplicar no bloquea reintentos posteriores del dominio", async () => {

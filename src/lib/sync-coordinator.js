@@ -42,12 +42,15 @@ function normalizedKey(value) {
     .toLowerCase();
 }
 
-export function syncDomainsForView(view) {
+export function syncDomainsForView(view, _options = {}) {
   const key = normalizedKey(view);
   if (OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.OPERATIONS];
   if (CATALOG_VIEWS.has(key)) return [SYNC_DOMAINS.CATALOGS];
   if (MIXED_OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS];
-  if (AGENCY_VIEWS.has(key)) return [SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.OPERATIONS];
+  // H66 y H67 son contratos cerrados de Agencia. Incluso durante un fallback
+  // funcional degradado, esta vista nunca cruza ni vuelve a cargar el dominio
+  // operativo: la proyección segura del snapshot es su única fuente de lectura.
+  if (AGENCY_VIEWS.has(key)) return [SYNC_DOMAINS.AGENCY];
   return [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS];
 }
 
@@ -94,6 +97,16 @@ export function shouldQueueAgencySnapshotVersion({ incomingVersion, appliedVersi
   return newerThanApplied && newerThanSeen;
 }
 
+export function shouldFlushAgencyRealtimeRefresh({ queuedVersion, appliedVersion }) {
+  const queued = normalizeAgencySnapshotVersion(queuedVersion);
+  // Los eventos operativos legados no incluyen versión y deben conservar el
+  // comportamiento anterior. Para el outbox H66/H67, solo refrescamos si la
+  // versión observada sigue siendo posterior a la ya aplicada.
+  if (!queued) return true;
+  const comparison = compareAgencySnapshotVersions(queued, appliedVersion);
+  return comparison === null || comparison > 0;
+}
+
 export function shouldSyncRealtimeEvent(lastServerAt, commitTimestamp) {
   const commitAt = Date.parse(String(commitTimestamp || ""));
   const snapshotAt = Date.parse(String(lastServerAt || ""));
@@ -105,7 +118,8 @@ export function shouldQueueRealtimeDomain({ domain, visibleDomains, activeDomain
   const visible = visibleDomains instanceof Set ? visibleDomains : new Set(normalizeSyncDomains(visibleDomains));
   if (!visible.has(domain)) return false;
   const activeSet = activeDomains instanceof Set ? activeDomains : new Set(normalizeSyncDomains(activeDomains));
-  // Un commit que llega durante una lectura siempre deja una lectura posterior.
+  // Un commit que llega durante una lectura queda pendiente. El coordinador
+  // decidirá después de apply si la versión ya venía dentro de ese snapshot.
   // No se compara por reloj porque el snapshot en vuelo pudo empezar antes.
   if (activeSet.has(domain)) return true;
   return shouldSyncRealtimeEvent(lastServerAt, commitTimestamp);
@@ -114,6 +128,10 @@ export function shouldQueueRealtimeDomain({ domain, visibleDomains, activeDomain
 export function createSyncCoordinator({ loaders, apply, onState = () => {}, now = () => Date.now() }) {
   if (!loaders || typeof apply !== "function") throw new Error("El coordinador necesita loaders y apply.");
   let pending = new Set();
+  // Una solicitud Realtime que llega mientras su dominio está activo puede
+  // quedar obsoleta si el snapshot en vuelo ya incorporó ese mismo evento. La
+  // guarda se evalúa justo antes de iniciar el lote posterior, después de apply.
+  const pendingAfterActiveGuards = new Map();
   let activeDomains = new Set();
   let active = null;
   let epoch = 0;
@@ -146,8 +164,18 @@ export function createSyncCoordinator({ loaders, apply, onState = () => {}, now 
     emit("syncing");
     const failures = [];
     while (!disposed && currentEpoch === epoch && pending.size) {
-      const domains = [...pending];
+      const queuedDomains = [...pending];
       pending = new Set();
+      const domains = queuedDomains.filter((domain) => {
+        const guard = pendingAfterActiveGuards.get(domain);
+        pendingAfterActiveGuards.delete(domain);
+        if (typeof guard !== "function") return true;
+        // Ante un error de la guarda preferimos reconciliar una vez: omitir la
+        // lectura podría dejar el cliente permanentemente atrasado.
+        try { return guard(domain) !== false; }
+        catch { return true; }
+      });
+      if (!domains.length) continue;
       activeDomains = new Set(domains);
       const batchId = ++batchSequence;
       const startedAt = now();
@@ -203,14 +231,33 @@ export function createSyncCoordinator({ loaders, apply, onState = () => {}, now 
     if (!normalized.length) return Promise.resolve();
     counters.requests += 1;
     normalized.forEach((domain) => {
-      if (pending.has(domain)) counters.deduplicated += 1;
+      if (pending.has(domain)) {
+        counters.deduplicated += 1;
+        const previousGuard = pendingAfterActiveGuards.get(domain);
+        const nextGuard = context.afterActive && typeof context.shouldRunAfterActive === "function"
+          ? context.shouldRunAfterActive
+          : null;
+        // Una solicitud incondicional ya pendiente siempre prevalece. Si ambas
+        // son condicionales usamos OR para no perder una versión más reciente.
+        if (previousGuard && nextGuard) {
+          pendingAfterActiveGuards.set(domain, (queuedDomain) => previousGuard(queuedDomain) !== false || nextGuard(queuedDomain) !== false);
+        } else if (!context.afterActive) pendingAfterActiveGuards.delete(domain);
+      }
       else if (activeDomains.has(domain)) {
         // Un evento Realtime puede llegar despues de que el snapshot en vuelo
         // ya fue tomado. Conservamos una sola lectura posterior; las solicitudes
         // concurrentes normales siguen deduplicadas.
-        if (context.afterActive) pending.add(domain);
+        if (context.afterActive) {
+          pending.add(domain);
+          if (typeof context.shouldRunAfterActive === "function") {
+            pendingAfterActiveGuards.set(domain, context.shouldRunAfterActive);
+          }
+        }
         else counters.deduplicated += 1;
-      } else pending.add(domain);
+      } else {
+        pending.add(domain);
+        pendingAfterActiveGuards.delete(domain);
+      }
     });
     if (!active) {
       const currentEpoch = epoch;
@@ -233,6 +280,7 @@ export function createSyncCoordinator({ loaders, apply, onState = () => {}, now 
   function cancel() {
     epoch += 1;
     pending.clear();
+    pendingAfterActiveGuards.clear();
     disposed = true;
     emit("cancelled");
   }

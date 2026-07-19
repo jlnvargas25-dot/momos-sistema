@@ -1,5 +1,6 @@
 import { supabase } from "./supabase.js";
 import { normalizeAgencySnapshotVersion } from "./sync-coordinator.js";
+import { agencyOperationalFactsReady as hasAgencyOperationalFacts, normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -54,6 +55,49 @@ async function optionalSnapshot(name) {
 export const AGENCY_SNAPSHOT_SCOPES = Object.freeze([
   "overview", "workflow", "production", "measurement",
 ]);
+
+function agencySnapshotRpcFailure(result) {
+  const error = result?.error || result?.thrown || null;
+  if (!error) return { kind: "none", error: null, status: Number(result?.status || 0) };
+  const code = String(error.code || "").trim().toUpperCase();
+  const name = String(error.name || "").trim();
+  const message = String(error.message || error || "").trim();
+  const status = Number(result?.status || error.status || error.statusCode || 0);
+  const missing = code === "PGRST202"
+    || /could not find (?:the )?function\b/i.test(message)
+    || /function\b.+\bdoes not exist\b/i.test(message);
+  if (missing) return { kind: "missing", error, status };
+
+  // Autenticacion, RLS y privilegios nunca se degradan a otro contrato.
+  const forbidden = status === 401 || status === 403
+    || code === "42501"
+    || /^PGRST30[1-3]$/.test(code)
+    || /permission denied|insufficient privilege|unauthori[sz]ed|forbidden|jwt/i.test(message);
+  if (forbidden) return { kind: "forbidden", error, status };
+
+  const transient = status === 408 || status === 429 || status >= 500
+    || /^PGRST00[0-3]$/.test(code)
+    || /^(?:08\w{3}|53\w{3}|57P01|57014|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_CONNECT_TIMEOUT)$/i.test(code)
+    || /^(?:AbortError|TimeoutError)$/i.test(name)
+    || /failed to fetch|fetch failed|network(?: request)? (?:error|failed)|timed?\s*out|timeout|connection (?:reset|refused|closed)|service unavailable|bad gateway|gateway timeout/i.test(message);
+  return { kind: transient ? "transient" : "fatal", error, status };
+}
+
+async function callAgencySnapshotRpc(name) {
+  try {
+    return await supabase.rpc(name);
+  } catch (error) {
+    return { data: null, error, thrown: error, status: Number(error?.status || error?.statusCode || 0) };
+  }
+}
+
+function throwAgencySnapshotRpcFailure(name, failure) {
+  const error = new Error(failure?.error?.message || `No se pudo leer ${name}.`);
+  if (failure?.error?.code) error.code = failure.error.code;
+  if (failure?.status) error.status = failure.status;
+  error.cause = failure?.error;
+  throw error;
+}
 
 const AGENCY_LEGACY_TOP_LEVEL_KEYS = Object.freeze({
   content_calendar: "content_calendar",
@@ -110,7 +154,12 @@ export function adaptAgencySnapshotEnvelope(snapshot) {
   const data = {};
   Object.entries(snapshot.payload).forEach(([key, value]) => {
     const legacyKey = AGENCY_LEGACY_TOP_LEVEL_KEYS[key] || agencyCamelKey(key);
-    if (key === "agency_action_queue" || key === "agency_brand_identity") data[legacyKey] = value;
+    if (key === "agency_operational_facts") {
+      const facts = normalizeAgencyOperationalFacts(value);
+      if (!facts) throw new Error("El snapshot de Agencia contiene hechos operativos incompatibles.");
+      data[legacyKey] = facts;
+    }
+    else if (key === "agency_action_queue" || key === "agency_brand_identity") data[legacyKey] = value;
     else if (Array.isArray(value)) data[legacyKey] = value.map(adaptAgencyRow);
     else if (value && typeof value === "object") data[legacyKey] = adaptAgencyRow(value);
     else data[legacyKey] = value;
@@ -171,13 +220,53 @@ export function adaptAgencySnapshotEnvelope(snapshot) {
   };
 }
 
+export function adaptAgencyOperationalFactsEnvelope(snapshot) {
+  if (!snapshot || typeof snapshot !== "object"
+      || Number(snapshot.version) !== 1
+      || snapshot.contract !== "momos-agency-operational-facts/v1") {
+    throw new Error("Los hechos operativos de Agencia no tienen una versión compatible.");
+  }
+  const sourceVersion = normalizeAgencySnapshotVersion(snapshot.source_version);
+  const allowedRoles = snapshot.authority?.allowed_roles;
+  const privacy = snapshot.privacy || {};
+  if (!sourceVersion
+      || snapshot.authority?.read_only !== true
+      || snapshot.authority?.external_execution !== false
+      || snapshot.authority?.human_approval_required !== true
+      || !Array.isArray(allowedRoles)
+      || allowedRoles.join("|") !== "Administrador|Marketing/CRM"
+      || privacy.projection !== "agency-operational-facts-v1"
+      || privacy.customer_records_projected !== false
+      || privacy.order_records_projected !== false
+      || privacy.free_text_projected !== false
+      || privacy.secrets_projected !== false
+      || privacy.storage_references_projected !== false) {
+    throw new Error("Los hechos operativos de Agencia perdieron privacidad o autoridad de solo lectura.");
+  }
+  const payloadKeys = Object.keys(snapshot.payload || {});
+  const facts = normalizeAgencyOperationalFacts(snapshot.payload?.agency_operational_facts);
+  if (payloadKeys.length !== 1 || payloadKeys[0] !== "agency_operational_facts" || !facts) {
+    throw new Error("Los hechos operativos de Agencia son incompatibles o incompletos.");
+  }
+  return {
+    sourceVersion,
+    serverTime: String(snapshot.server_time || ""),
+    eventId: String(snapshot.event_id || ""),
+    data: { agencyOperationalFacts: facts },
+  };
+}
+
 export function adaptAgencySnapshotsBundle(bundle) {
+  const bundleVersion = Number(bundle?.version);
   const sourceVersion = normalizeAgencySnapshotVersion(bundle?.source_version);
   const rawSnapshots = bundle?.snapshots;
-  if (!bundle || Number(bundle.version) !== 1
+  if (!bundle || ![1, 2].includes(bundleVersion)
       || !sourceVersion || !Array.isArray(rawSnapshots)
       || rawSnapshots.length !== AGENCY_SNAPSHOT_SCOPES.length) {
     throw new Error("El bundle de Agencia no tiene una versión compatible.");
+  }
+  if (bundleVersion === 2 && bundle.contract !== "momos-agency-snapshots/v2") {
+    throw new Error("El bundle H67 de Agencia no tiene el contrato esperado.");
   }
   const adapted = rawSnapshots.map(adaptAgencySnapshotEnvelope);
   const byScope = new Map();
@@ -196,7 +285,22 @@ export function adaptAgencySnapshotsBundle(bundle) {
     }
     return snapshot;
   });
-  return { sourceVersion, serverTime: String(bundle.server_time || ""), snapshots };
+  let agencyOperationalFacts = null;
+  if (bundleVersion === 2) {
+    const adaptedFacts = adaptAgencyOperationalFactsEnvelope(bundle.agency_operational_facts);
+    if (adaptedFacts.sourceVersion !== sourceVersion
+        || adaptedFacts.serverTime !== String(bundle.server_time || "")) {
+      throw new Error("Los hechos operativos no comparten el corte atómico de Agencia.");
+    }
+    agencyOperationalFacts = adaptedFacts.data.agencyOperationalFacts;
+  }
+  return {
+    version: bundleVersion,
+    sourceVersion,
+    serverTime: String(bundle.server_time || ""),
+    snapshots,
+    agencyOperationalFacts,
+  };
 }
 
 export async function fetchAgencySnapshot(scope = "overview") {
@@ -211,12 +315,35 @@ export async function fetchAgencySnapshot(scope = "overview") {
 }
 
 export async function fetchAgencySnapshotBundle() {
-  const result = await supabase.rpc("momos_agency_snapshots_v1");
-  const missing = result.error && (result.error.code === "PGRST202"
-    || /could not find the function|schema cache/i.test(result.error.message || ""));
-  if (missing) return null;
-  if (result.error) throw new Error(result.error.message);
-  return adaptAgencySnapshotsBundle(result.data);
+  const preferred = await callAgencySnapshotRpc("momos_agency_snapshots_v2");
+  const v2Failure = agencySnapshotRpcFailure(preferred);
+  if (v2Failure.kind === "none") {
+    const bundle = adaptAgencySnapshotsBundle(preferred.data);
+    if (bundle.version !== 2) throw new Error("El endpoint H67 de Agencia no devolvio el contrato V2 esperado.");
+    return bundle;
+  }
+  if (!["missing", "transient"].includes(v2Failure.kind)) {
+    throwAgencySnapshotRpcFailure("momos_agency_snapshots_v2", v2Failure);
+  }
+
+  // Ventana de despliegue: el frontend H67 puede convivir con H66 hasta que
+  // la migración sea aplicada. Una vez instalada V2, la ruta normal vuelve a
+  // ser exactamente un RPC.
+  const fallback = await callAgencySnapshotRpc("momos_agency_snapshots_v1");
+  const v1Failure = agencySnapshotRpcFailure(fallback);
+  if (v1Failure.kind === "none") {
+    const bundle = adaptAgencySnapshotsBundle(fallback.data);
+    if (bundle.version !== 1) throw new Error("El endpoint H66 de Agencia no devolvio el contrato V1 esperado.");
+    return {
+      ...bundle,
+      fallbackReason: v2Failure.kind === "transient" ? "h67-transient" : "h67-not-installed",
+    };
+  }
+  if (v1Failure.kind === "missing" && v2Failure.kind === "missing") return null;
+  if (v2Failure.kind === "transient" && v1Failure.kind === "missing") {
+    throwAgencySnapshotRpcFailure("momos_agency_snapshots_v2", v2Failure);
+  }
+  throwAgencySnapshotRpcFailure("momos_agency_snapshots_v1", v1Failure);
 }
 
 export async function fetchAgencySnapshots(scopes = AGENCY_SNAPSHOT_SCOPES) {
@@ -225,14 +352,16 @@ export async function fetchAgencySnapshots(scopes = AGENCY_SNAPSHOT_SCOPES) {
     throw new Error("Los alcances de Agencia no son válidos.");
   }
 
-  // Un RPC entrega una fotografía transaccional de los cuatro scopes. Si H66
-  // aún no existe, esta misma llamada es el único probe del rollout.
+  // Un RPC H67 entrega una fotografía transaccional de los cuatro scopes y
+  // los hechos compactos. Durante el despliegue conserva el bundle H66.
   const bundle = await fetchAgencySnapshotBundle();
   if (!bundle) return null;
   const snapshots = bundle.snapshots.filter((snapshot) => requested.includes(snapshot.scope));
   return {
     ...Object.assign({}, ...snapshots.map((snapshot) => snapshot.data)),
+    ...(bundle.agencyOperationalFacts ? { agencyOperationalFacts: bundle.agencyOperationalFacts } : {}),
     agencySnapshotVersion: bundle.sourceVersion,
+    agencySnapshotFallback: String(bundle.fallbackReason || ""),
     agencySnapshotScopes: Object.fromEntries(snapshots.map((snapshot) => [snapshot.scope, {
       sourceVersion: snapshot.sourceVersion,
       eventId: snapshot.eventId,
@@ -245,9 +374,8 @@ export async function fetchAgencySnapshots(scopes = AGENCY_SNAPSHOT_SCOPES) {
 
 // Loader exclusivo del dominio Agency. No vuelve a leer products, inventario,
 // usuarios ni recetas: el coordinador ya mantiene esos maestros en CATALOGS.
-// Con H66 instalado hace exactamente un RPC atómico; durante el
-// rollout devuelve null tras el primer probe para que el caller conserve su
-// fallback legado sin vaciar el estado vigente.
+// Con H67 instalado hace exactamente un RPC atómico; durante el rollout usa
+// H66 y, si tampoco existe, conserva el fallback legado sin vaciar el estado.
 export async function fetchAgencyCatalogos() {
   const agency = await fetchAgencySnapshots();
   if (!agency) return null;
@@ -256,15 +384,18 @@ export async function fetchAgencyCatalogos() {
   return {
     ...agency,
     agencySnapshotReady: true,
-    syncSource: "agency-snapshots-v1",
+    agencyOperationalFactsReady: hasAgencyOperationalFacts(agency.agencyOperationalFacts),
+    // runtime-telemetry clasifica por prefijo para no acoplarse a cada
+    // versión del contrato. Mantener `snapshot-` primero evita reportar una
+    // lectura atómica H66 como fuente desconocida.
+    syncSource: "snapshot-agency-v1",
     syncSourceVersion: agency.agencySnapshotVersion,
     syncServerTime: serverTimes.at(-1) || "",
   };
 }
 
-// Cierre de rollout: la RPC H66 es también el único probe. Si aún no
-// existe, el loader legado se invoca con skipAgencySnapshot para impedir un
-// segundo probe encubierto dentro de fetchCatalogos.
+// Cierre de rollout: si H67 y H66 aún no existen, el loader legado se invoca
+// con skipAgencySnapshot para impedir un probe adicional dentro de fetchCatalogos.
 export async function fetchAgencyCatalogosConFallback(
   legacyLoader = () => fetchCatalogos({ includeAgency: true, skipAgencySnapshot: true }),
 ) {

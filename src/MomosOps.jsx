@@ -4,7 +4,8 @@ import { supabase } from "./lib/supabase";
 import { fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile } from "./lib/read-model";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion, normalizeSyncDomains,
-  shouldQueueAgencySnapshotVersion, shouldQueueRealtimeDomain, syncDomainForTable, syncDomainsForView, SYNC_DOMAINS,
+  shouldFlushAgencyRealtimeRefresh, shouldQueueAgencySnapshotVersion, shouldQueueRealtimeDomain,
+  syncDomainForTable, syncDomainsForView, SYNC_DOMAINS,
 } from "./lib/sync-coordinator";
 import {
   setOrderStatusRemoto, setReclamoEstado,
@@ -18,6 +19,7 @@ import {
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderStateEvents, kitchenReadyOrderCommands, normalizeKitchenDelaySettings } from "./lib/kitchen-voice";
 import { deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
+import { agencyOperationalFactsReady as hasAgencyOperationalFacts } from "./lib/agency-operational-facts";
 import { measureSyncLoad, runtimePerformance } from "./performance/runtime-telemetry";
 import { canOperateStage } from "./lib/operational-control";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
@@ -710,7 +712,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, agencySnapshotReady: false, agencySnapshotVersion: "", agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -742,6 +744,9 @@ function normalizeDbShape(d) {
   });
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
+  d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
+    && hasAgencyOperationalFacts(d.agencyOperationalFacts);
+  if (!d.agencyOperationalFactsReady) d.agencyOperationalFacts = null;
   if (!d.agencyBrandIdentity || typeof d.agencyBrandIdentity !== "object" || Array.isArray(d.agencyBrandIdentity)) d.agencyBrandIdentity = null;
   d.products.forEach((p) => { p.atributos = atributosDeTipo(p.tipo); }); // siempre derivado del tipo; sin override manual
   // Combos reales: cada momo tiene especie (gato/perro). El stock vive a nivel especie; backfill por nombre.
@@ -5673,6 +5678,20 @@ const PERFORMANCE_FRESHNESS_TTL = Object.freeze({
 });
 const LAZY_PERFORMANCE_VIEWS = new Set(["Pedidos", "Empaque", "Producción", "Inventario terminado", "Inventario", "Crecimiento", "Finanzas"]);
 
+function syncDomainsForDbView(view, data) {
+  return syncDomainsForView(view, {
+    agencyOperationalFactsReady: data?.agencyOperationalFactsReady === true,
+  });
+}
+
+function waitForUiCommitFrame() {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (document.visibilityState === "visible" && typeof window.requestAnimationFrame === "function") {
+    return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+  }
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
 function BannerMigracion({ modulo }) {
   const configuracion = modulo === "Configuración";
   return (
@@ -5789,10 +5808,13 @@ export default function MomosOps() {
   const dbRef = useRef(null);
   const agencySnapshotVersionRef = useRef("");
   const agencyRealtimeSeenVersionRef = useRef("");
+  // Persiste fuera del efecto de suscripción: un cambio de vista/flag durante
+  // los 350 ms de debounce no puede borrar una versión Realtime ya observada.
+  const agencyRealtimePendingVersionRef = useRef("");
   const sessionOwnerRef = useRef(null);
   const activeStorageKeyRef = useRef(DB_KEY);
-  const visibleSyncDomainsRef = useRef(new Set(syncDomainsForView(vista)));
-  visibleSyncDomainsRef.current = new Set(syncDomainsForView(vista));
+  const visibleSyncDomainsRef = useRef(new Set(syncDomainsForDbView(vista, db)));
+  visibleSyncDomainsRef.current = new Set(syncDomainsForDbView(vista, db));
   useEffect(() => { syncRef.current = sync; }, [sync]);
   useEffect(() => { realtimeStatusRef.current = realtimeStatus; }, [realtimeStatus]);
   useEffect(() => {
@@ -5803,6 +5825,13 @@ export default function MomosOps() {
         || !agencyRealtimeSeenVersionRef.current) {
       agencyRealtimeSeenVersionRef.current = version;
     }
+    if (agencyRealtimePendingVersionRef.current
+        && !shouldFlushAgencyRealtimeRefresh({
+          queuedVersion: agencyRealtimePendingVersionRef.current,
+          appliedVersion: version,
+        })) {
+      agencyRealtimePendingVersionRef.current = "";
+    }
   }, [db]);
   useEffect(() => {
     const nextUserId = session?.user?.id || null;
@@ -5811,6 +5840,7 @@ export default function MomosOps() {
     syncCoordinatorRef.current = null;
     agencySnapshotVersionRef.current = "";
     agencyRealtimeSeenVersionRef.current = "";
+    agencyRealtimePendingVersionRef.current = "";
     hidratadoRef.current = false;
     setCatalogosDe(null);
     activeStorageKeyRef.current = nextUserId ? `${DB_KEY}:${nextUserId}` : DB_KEY;
@@ -5852,7 +5882,8 @@ export default function MomosOps() {
     let timer = null;
     let alive = true;
     const pendingDomains = new Set();
-    const realtimeDomains = new Set(syncDomainsForView(vista));
+    let pendingAgencyVersion = "";
+    const realtimeDomains = new Set(syncDomainsForDbView(vista, db));
     const operationsRealtime = realtimeDomains.has(SYNC_DOMAINS.OPERATIONS);
     const catalogsRealtime = realtimeDomains.has(SYNC_DOMAINS.CATALOGS);
     const agencyRealtime = realtimeDomains.has(SYNC_DOMAINS.AGENCY);
@@ -5873,16 +5904,55 @@ export default function MomosOps() {
     // tocar una tabla inexistente durante el rollout; pre-H66 conserva polling.
     if (agencyRealtime && db.agencySnapshotReady === true) tables.push("agency_snapshot_events");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
-    const refresh = (domain) => {
+    const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
+      if (domain === SYNC_DOMAINS.AGENCY) {
+        const incoming = normalizeAgencySnapshotVersion(agencyVersion);
+        if (incoming && (compareAgencySnapshotVersions(incoming, pendingAgencyVersion) === 1 || !pendingAgencyVersion)) {
+          pendingAgencyVersion = incoming;
+        }
+        if (incoming && (compareAgencySnapshotVersions(incoming, agencyRealtimePendingVersionRef.current) === 1
+            || !agencyRealtimePendingVersionRef.current)) {
+          agencyRealtimePendingVersionRef.current = incoming;
+        }
+      }
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         if (!alive || !hidratadoRef.current) return;
-        const domains = [...pendingDomains];
+        const carriedAgencyVersion = agencyRealtimePendingVersionRef.current;
+        const queuedAgencyVersion = compareAgencySnapshotVersions(carriedAgencyVersion, pendingAgencyVersion) === 1
+          ? carriedAgencyVersion
+          : pendingAgencyVersion || carriedAgencyVersion;
+        pendingAgencyVersion = "";
+        const domains = [...pendingDomains].filter((domain) => domain !== SYNC_DOMAINS.AGENCY
+          || shouldFlushAgencyRealtimeRefresh({
+            queuedVersion: queuedAgencyVersion,
+            appliedVersion: agencySnapshotVersionRef.current,
+          }));
         pendingDomains.clear();
-        refetchFocoRef.current?.(domains, { reason: "realtime", afterActive: true }).catch(() => setRealtimeStatus("reconectando"));
+        if (!domains.length) return;
+        refetchFocoRef.current?.(domains, {
+          reason: "realtime",
+          afterActive: true,
+          // Se evalúa después del apply del snapshot que esté en vuelo. Si ese
+          // snapshot ya trae la versión observada, no se dispara otra RPC.
+          shouldRunAfterActive: (domain) => domain !== SYNC_DOMAINS.AGENCY
+            || shouldFlushAgencyRealtimeRefresh({
+              queuedVersion: queuedAgencyVersion,
+              appliedVersion: agencySnapshotVersionRef.current,
+            }),
+        }).catch(() => setRealtimeStatus("reconectando"));
       }, 350);
     };
+    // Si el efecto anterior se limpió durante el debounce, retomamos su versión
+    // sin depender de un segundo evento del servidor. El ref solo se vacía al
+    // comprobar que un snapshot aplicado ya la contiene.
+    if (agencyRealtime && agencyRealtimePendingVersionRef.current && shouldFlushAgencyRealtimeRefresh({
+      queuedVersion: agencyRealtimePendingVersionRef.current,
+      appliedVersion: agencySnapshotVersionRef.current,
+    })) {
+      refresh(SYNC_DOMAINS.AGENCY, agencyRealtimePendingVersionRef.current);
+    }
     tables.forEach((table) => {
       channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
         const domain = syncDomainForTable(table);
@@ -5894,7 +5964,7 @@ export default function MomosOps() {
             seenVersion: agencyRealtimeSeenVersionRef.current,
           })) {
             agencyRealtimeSeenVersionRef.current = incomingVersion;
-            refresh(SYNC_DOMAINS.AGENCY);
+            refresh(SYNC_DOMAINS.AGENCY, incomingVersion);
           }
           return;
         }
@@ -5924,7 +5994,7 @@ export default function MomosOps() {
               seenVersion: agencyRealtimeSeenVersionRef.current,
             })) {
               agencyRealtimeSeenVersionRef.current = incomingVersion;
-              refresh(SYNC_DOMAINS.AGENCY);
+              refresh(SYNC_DOMAINS.AGENCY, incomingVersion);
             }
           }).catch(() => {
             if (alive) setRealtimeStatus("reconectando");
@@ -5938,7 +6008,7 @@ export default function MomosOps() {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -5963,7 +6033,7 @@ export default function MomosOps() {
 
   // ── Fase 3: hidratar desde Supabase (una vez por carga; re-usable tras cada escritura remota) ──
   // Maestros/catálogos + operativo + campaigns/creatives/content_posts/metrics_daily.
-  function aplicarDominiosServidor(payload) {
+  async function aplicarDominiosServidor(payload, context = {}) {
     const catalogs = payload?.[SYNC_DOMAINS.CATALOGS];
     const agency = payload?.[SYNC_DOMAINS.AGENCY];
     const op = payload?.[SYNC_DOMAINS.OPERATIONS];
@@ -5990,10 +6060,19 @@ export default function MomosOps() {
       // legado carga datos, pero nunca intenta suscribirse a una tabla ausente.
       d.agencySnapshotReady = cat.agencySnapshotReady === true;
       d.agencySnapshotVersion = normalizeAgencySnapshotVersion(cat.agencySnapshotVersion);
+      d.agencyOperationalFactsReady = cat.agencyOperationalFactsReady === true;
+      d.agencyOperationalFacts = d.agencyOperationalFactsReady ? cat.agencyOperationalFacts : null;
       agencySnapshotVersionRef.current = d.agencySnapshotVersion;
       if (compareAgencySnapshotVersions(d.agencySnapshotVersion, agencyRealtimeSeenVersionRef.current) === 1
           || !agencyRealtimeSeenVersionRef.current) {
         agencyRealtimeSeenVersionRef.current = d.agencySnapshotVersion;
+      }
+      if (agencyRealtimePendingVersionRef.current
+          && !shouldFlushAgencyRealtimeRefresh({
+            queuedVersion: agencyRealtimePendingVersionRef.current,
+            appliedVersion: d.agencySnapshotVersion,
+          })) {
+        agencyRealtimePendingVersionRef.current = "";
       }
       d.campaigns = cat.campaigns || []; // Marketing Hito 2: campañas server-side (las demo locales se van al hidratar, decisión aprobada)
       d.creatives = cat.creatives || []; // Marketing contenido v1: Creativos server-side
@@ -6098,6 +6177,9 @@ export default function MomosOps() {
       if (op) Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
     }, { silencioso: true, persistir: false });
+    // La telemetría de ruta debe cerrar cuando React ya tuvo oportunidad de
+    // pintar la versión aplicada, no apenas cuando terminó la respuesta HTTP.
+    await waitForUiCommitFrame();
   }
 
   function hidratarDesdeServidor(dominios, context = {}) {
@@ -6145,7 +6227,7 @@ export default function MomosOps() {
       const ahora = Date.now();
       if (ahora - ultimoRefetchFocoRef.current < 60000) return;
       ultimoRefetchFocoRef.current = ahora;
-      const visibles = new Set(syncDomainsForView(vista));
+      const visibles = new Set(syncDomainsForDbView(vista, dbRef.current));
       let vencidos = syncCoordinatorRef.current?.staleDomains({
         [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
         [SYNC_DOMAINS.OPERATIONS]: 60_000,
@@ -6175,18 +6257,20 @@ export default function MomosOps() {
     hidratadoRef.current = true;
     (async () => {
       try {
-        await hidratarDesdeServidor(syncDomainsForView(vista), { reason: "initial" });
+        await hidratarDesdeServidor(syncDomainsForDbView(vista, dbRef.current), { reason: "initial" });
         setCatalogosDe("servidor");
+        if (syncRef.current === "cargando") setSync("guardado");
       } catch (e) {
         console.warn("Hidratación: no se pudo leer de Supabase; se usa la caché local.", e);
         setCatalogosDe("cache");
+        if (syncRef.current === "cargando") setSync("local");
       }
     })();
   }, [perfil, db]);
 
   useEffect(() => {
     if (!hidratadoRef.current || !syncCoordinatorRef.current) return;
-    const visibles = new Set(syncDomainsForView(vista));
+    const visibles = new Set(syncDomainsForDbView(vista, dbRef.current));
     const vencidos = syncCoordinatorRef.current.staleDomains({
       [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
       [SYNC_DOMAINS.OPERATIONS]: 30_000,
@@ -6221,7 +6305,7 @@ export default function MomosOps() {
     const cambiaVista = v !== vista;
     if (cambiaVista) {
       vibrar("tap");
-      const requiredDomains = syncDomainsForView(v);
+      const requiredDomains = syncDomainsForDbView(v, dbRef.current);
       const staleDomains = new Set(
         syncCoordinatorRef.current?.staleDomains(PERFORMANCE_FRESHNESS_TTL)
           || requiredDomains,
@@ -6489,7 +6573,7 @@ export default function MomosOps() {
   const moduloActivo = visibles.find((m) => m.id === activa) || visibles[0];
 
   function refrescarVistaActual(context = {}) {
-    return hidratarDesdeServidor(syncDomainsForView(activa), { reason: "action", ...context });
+    return hidratarDesdeServidor(syncDomainsForDbView(activa, dbRef.current), { reason: "action", ...context });
   }
 
   function render() {
