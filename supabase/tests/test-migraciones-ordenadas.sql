@@ -38,7 +38,8 @@ begin
     '20260718_61_biblioteca_produccion','20260718_62_mcp_aprobacion_humana',
     '20260718_63_mcp_aprobacion_humana_rbac','20260718_64_integridad_snapshot_realtime',
     '20260718_65_hechos_financieros','20260718_66_agency_snapshot_rendimiento',
-    '20260718_67_agency_operational_facts','20260719_68_inventario_precision_lotes'
+    '20260718_67_agency_operational_facts','20260719_68_inventario_precision_lotes',
+    '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -545,7 +546,302 @@ begin
   assert to_regprocedure('public._momos_agency_operational_facts_payload_v1()') is not null
     and not has_function_privilege('authenticated','public._momos_agency_operational_facts_payload_v1()','EXECUTE'),
     'falta payload privado H67';
+  assert to_regclass('public.inventory_delta_receipts') is not null
+    and to_regclass('public.inventory_sync_events') is not null,
+    'faltan recibos idempotentes o outbox H69';
+  assert to_regprocedure('public.entrada_insumo_lote_delta(jsonb)') is not null
+    and to_regprocedure('public.movimiento_insumo_delta(jsonb)') is not null
+    and to_regprocedure('public.desechar_lote_insumo_delta(jsonb)') is not null
+    and to_regprocedure('public.momos_inventory_deltas_v1(text[])') is not null
+    and to_regprocedure('public.momos_inventory_deltas_since_v1(bigint,integer)') is not null,
+    'falta una RPC de mutación o conciliación H69';
+  assert has_function_privilege('authenticated','public.entrada_insumo_lote_delta(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.movimiento_insumo_delta(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.desechar_lote_insumo_delta(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.momos_inventory_deltas_v1(text[])','EXECUTE')
+    and has_function_privilege('authenticated','public.momos_inventory_deltas_since_v1(bigint,integer)','EXECUTE')
+    and not has_function_privilege('anon','public.entrada_insumo_lote_delta(jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_inventory_delta_v1(text,bigint)','EXECUTE'),
+    'H69 perdió su frontera RBAC';
+  assert not has_table_privilege('authenticated','public.inventory_delta_receipts','SELECT')
+    and has_table_privilege('authenticated','public.inventory_sync_events','SELECT')
+    and not has_table_privilege('authenticated','public.inventory_sync_events','INSERT'),
+    'H69 expuso recibos o permitió inyectar eventos';
+  assert to_regprocedure('public._momos_compact_inventory_delta_receipt_v1()') is not null
+    and not has_function_privilege(
+      'authenticated','public._momos_compact_inventory_delta_receipt_v1()','EXECUTE'
+    )
+    and not has_function_privilege(
+      'anon','public._momos_compact_inventory_delta_receipt_v1()','EXECUTE'
+    )
+    and not has_function_privilege(
+      'service_role','public._momos_compact_inventory_delta_receipt_v1()','EXECUTE'
+    ),'H70 expuso el compactador privado de recibos';
+  assert exists(
+    select 1 from pg_trigger t
+    where t.tgrelid='public.inventory_delta_receipts'::regclass
+      and t.tgname='inventory_delta_receipts_compact_v1'
+      and not t.tgisinternal
+      and t.tgfoid='public._momos_compact_inventory_delta_receipt_v1()'::regprocedure
+  ) and exists(
+    select 1 from pg_constraint c
+    where c.conrelid='public.inventory_delta_receipts'::regclass
+      and c.conname='inventory_delta_receipts_response_compact'
+      and c.convalidated
+  ) and not exists(
+    select 1 from public.inventory_delta_receipts r where r.response ? 'delta'
+  ) and not exists(
+    select 1
+    from public.inventory_delta_receipts r
+    where jsonb_typeof(r.response) is distinct from 'object'
+      or not (r.response ?& array[
+        'contract','operation','idempotency_key','duplicate','result'
+      ])
+      or r.response-array[
+        'contract','operation','idempotency_key','duplicate','result'
+      ]<>'{}'::jsonb
+      or r.response->>'contract' is distinct from 'momos.inventory-mutation.v1'
+      or r.response->>'operation' is distinct from r.operation
+      or r.response->>'idempotency_key' is distinct from r.idempotency_key::text
+      or jsonb_typeof(r.response->'duplicate') is distinct from 'boolean'
+  ) and position(
+    'IS TRUE' in upper(pg_get_constraintdef((
+      select c.oid from pg_constraint c
+      where c.conrelid='public.inventory_delta_receipts'::regclass
+        and c.conname='inventory_delta_receipts_response_compact'
+    )))
+  )>0 and position(
+    'jsonb_build_object' in lower(pg_get_functiondef(
+      'public._momos_compact_inventory_delta_receipt_v1()'::regprocedure
+    ))
+  )>0,'H70 no garantiza recibos O(1), cerrados y sin delta/PII';
+  assert (
+    select array_agg(c.column_name::text order by c.ordinal_position)
+    from information_schema.columns c
+    where c.table_schema='public' and c.table_name='inventory_sync_events'
+  )=array['event_id','item_id','changed_at']::text[]
+    and to_regclass('public.inventory_sync_event_xids') is not null
+    and (
+      select array_agg(c.column_name::text order by c.ordinal_position)
+      from information_schema.columns c
+      where c.table_schema='public'
+        and c.table_name='inventory_sync_event_xids'
+    )=array['event_id','producer_xid']::text[]
+    and exists(
+      select 1 from pg_class c
+      where c.oid='public.inventory_sync_event_xids'::regclass
+        and c.relrowsecurity
+    )
+    and exists(
+      select 1 from pg_indexes i
+      where i.schemaname='public' and i.tablename='inventory_sync_event_xids'
+        and i.indexname='inventory_sync_event_xids_producer_idx'
+    )
+    and exists(
+      select 1 from pg_constraint c
+      where c.conrelid='public.inventory_sync_event_xids'::regclass
+        and c.contype='p'
+    )
+    and exists(
+      select 1 from pg_constraint c
+      where c.conrelid='public.inventory_sync_event_xids'::regclass
+        and c.contype='f'
+        and c.confrelid='public.inventory_sync_events'::regclass
+        and c.confdeltype='c'
+    )
+    and not exists(
+      select 1 from pg_publication_tables p
+      where p.schemaname='public' and p.tablename='inventory_sync_event_xids'
+    )
+    and not exists(select 1 from pg_catalog.pg_publication where puballtables)
+    and not has_table_privilege(
+      'authenticated','public.inventory_sync_event_xids','SELECT'
+    )
+    and not has_table_privilege(
+      'anon','public.inventory_sync_event_xids','SELECT'
+    )
+    and not has_table_privilege(
+      'service_role','public.inventory_sync_event_xids','SELECT'
+    )
+    and not exists(
+      select 1
+      from public.inventory_sync_events e
+      left join public.inventory_sync_event_xids x on x.event_id=e.event_id
+      where x.event_id is null
+    )
+    and to_regprocedure(
+    'public._momos_inventory_events_page_v1(bigint,bigint,integer)'
+  ) is not null
+    and not has_function_privilege(
+      'authenticated',
+      'public._momos_inventory_events_page_v1(bigint,bigint,integer)',
+      'EXECUTE'
+    )
+    and not has_function_privilege(
+      'anon',
+      'public._momos_inventory_events_page_v1(bigint,bigint,integer)',
+      'EXECUTE'
+    )
+    and not has_function_privilege(
+      'service_role',
+      'public._momos_inventory_events_page_v1(bigint,bigint,integer)',
+      'EXECUTE'
+    )
+    and not has_function_privilege(
+      'authenticated','public._momos_touch_inventory_sync_event_v1()','EXECUTE'
+    )
+    and position(
+      'insert into public.inventory_sync_event_xids' in lower(pg_get_functiondef(
+        'public._momos_touch_inventory_sync_event_v1()'::regprocedure
+      ))
+    )>0
+    and position(
+      'pg_current_xact_id' in lower(pg_get_functiondef(
+        'public._momos_touch_inventory_sync_event_v1()'::regprocedure
+      ))
+    )>0,'H70 no sella el xid privado o expuso su paginador/trigger';
+  assert exists(
+    select 1 from pg_indexes i
+    where i.schemaname='public' and i.tablename='inventory_lots'
+      and i.indexname='inventory_lots_item_history_idx'
+  ) and exists(
+    select 1 from pg_indexes i
+    where i.schemaname='public' and i.tablename='inventory_movements'
+      and i.indexname='inventory_movements_item_recent_idx'
+  ) and exists(
+    select 1 from pg_indexes i
+    where i.schemaname='public' and i.tablename='audit_logs'
+      and i.indexname='audit_logs_inventory_item_recent_idx'
+  ) and exists(
+    select 1 from pg_indexes i
+    where i.schemaname='public' and i.tablename='audit_logs'
+      and i.indexname='audit_logs_inventory_recent_idx'
+  ),'H70 no instala los indices completos de lotes e historial';
+  assert exists(
+    select 1 from pg_trigger t
+    where t.tgrelid='public.inventory_items'::regclass
+      and t.tgname='inventory_items_sync_event_v1'
+      and not t.tgisinternal
+      and t.tgfoid=to_regprocedure('public._momos_touch_inventory_sync_event_v1()')
+  ), 'falta trigger de outbox H69';
+  assert position('inventario_deltas_disponibles' in pg_get_functiondef('public.momos_sync_manifest_v1()'::regprocedure))>0
+    and position('inventory_latest_event_id' in pg_get_functiondef('public.momos_sync_manifest_v1()'::regprocedure))>0,
+    'el manifiesto Data Sync no anuncia H69';
+  assert pg_get_functiondef(
+      'public._momos_inventory_delta_v1(text,bigint)'::regprocedure
+    ) !~* 'for[[:space:]]+(share|update)'
+    and pg_get_functiondef(
+      'public.momos_inventory_deltas_v1(text[])'::regprocedure
+    ) !~* 'for[[:space:]]+(share|update)',
+    'H70 conserva locks de fila en el delta o batch';
+  assert position(
+      '_momos_inventory_delta_v1' in lower(pg_get_functiondef(
+        'public.momos_inventory_deltas_v1(text[])'::regprocedure
+      ))
+    )=0
+    and position(
+      'with requested as materialized' in lower(pg_get_functiondef(
+        'public.momos_inventory_deltas_v1(text[])'::regprocedure
+      ))
+    )>0,
+    'H70 no arma el batch completo en un statement MVCC';
+  assert regexp_count(lower(pg_get_functiondef(
+      'public._momos_inventory_delta_v1(text,bigint)'::regprocedure
+    )),'limit[[:space:]]+50')=2
+    and regexp_count(lower(pg_get_functiondef(
+      'public.momos_inventory_deltas_v1(text[])'::regprocedure
+    )),'limit[[:space:]]+50')=2,
+    'H70 no conserva 50 movimientos y auditorias por item';
+  assert position(
+      'with snapshot_payload as materialized' in lower(pg_get_functiondef(
+        'public.momos_core_snapshot_v1()'::regprocedure
+      ))
+    )>0
+    and position(
+      'inventory_latest_event_id' in lower(pg_get_functiondef(
+        'public.momos_core_snapshot_v1()'::regprocedure
+      ))
+    )>0
+    and position(
+      'pg_snapshot_xmin' in lower(pg_get_functiondef(
+        'public.momos_core_snapshot_v1()'::regprocedure
+      ))
+    )>0
+    and position(
+      '4611686018427387904' in lower(pg_get_functiondef(
+        'public.momos_core_snapshot_v1()'::regprocedure
+      ))
+    )>0
+    and position(
+      'inventory_movements' in lower(pg_get_functiondef(
+        'public.momos_core_snapshot_v1()'::regprocedure
+      ))
+    )>0
+    and position(
+      'inventory_audit_logs' in lower(pg_get_functiondef(
+        'public.momos_core_snapshot_v1()'::regprocedure
+      ))
+    )>0,
+    'H70 no captura safe xmin e historial sanitario dentro del core snapshot';
+  assert position(
+      'pg_snapshot_xmin' in lower(pg_get_functiondef(
+        'public.momos_inventory_deltas_since_v1(bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      '_momos_inventory_events_page_v1' in lower(pg_get_functiondef(
+        'public.momos_inventory_deltas_since_v1(bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      'x.producer_xid>=p_after_xid' in lower(pg_get_functiondef(
+        'public._momos_inventory_events_page_v1(bigint,bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      'x.producer_xid<p_target_xid' in lower(pg_get_functiondef(
+        'public._momos_inventory_events_page_v1(bigint,bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      'group by x.producer_xid' in lower(pg_get_functiondef(
+        'public._momos_inventory_events_page_v1(bigint,bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      'limit p_limit+1' in lower(pg_get_functiondef(
+        'public._momos_inventory_events_page_v1(bigint,bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      'v_group_count>=p_limit' in lower(pg_get_functiondef(
+        'public._momos_inventory_events_page_v1(bigint,bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      '4611686018427387904' in lower(pg_get_functiondef(
+        'public.momos_inventory_deltas_since_v1(bigint,integer)'::regprocedure
+      ))
+    )>0
+    and position(
+      'pg_snapshot_xmin' in lower(pg_get_functiondef(
+        'public.momos_sync_manifest_v1()'::regprocedure
+      ))
+    )>0,
+    'H70 vuelve a depender de identity como orden global de commit';
+  if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert not (select puballtables from pg_publication where pubname='supabase_realtime')
+      and exists(
+        select 1 from pg_publication_tables
+        where pubname='supabase_realtime' and schemaname='public'
+          and tablename='inventory_sync_events'
+      ) and not exists(
+        select 1 from pg_publication_tables
+        where pubname='supabase_realtime' and schemaname='public'
+          and tablename='inventory_sync_event_xids'
+      ), 'Realtime no conserva el outbox sanitario y el mapping privado';
+  end if;
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-68 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-70 PASS, rollback total' as resultado;
 rollback;

@@ -69,6 +69,21 @@ test("el historial de Inventario une movimientos y reservas cerradas en orden re
   assert.equal(rows[0].quantityLabel, "-0.5 L");
 });
 
+test("el historial ordena cronologicamente formatos snapshot local e ISO sin cambiar su presentacion", () => {
+  const snapshotDate = "2026-07-19 23:00";
+  const deltaDate = "2026-07-19T08:00:00.000Z";
+  const rows = buildInventoryHistory({
+    inventory_movements: [
+      { id: "snapshot", fecha: snapshotDate, tipo: "Entrada", item: "Crema", cant: "+1 L" },
+      { id: "delta", fecha: deltaDate, tipo: "Ajuste", item: "Crema", cant: "-1 L" },
+    ],
+  });
+
+  assert.deepEqual(rows.map((row) => row.id), ["movement:snapshot", "movement:delta"]);
+  assert.deepEqual(rows.map((row) => row.at), [snapshotDate, deltaDate],
+    "la normalizacion no debe alterar el texto mostrado");
+});
+
 test("las bandejas activas y los historiales no pierden ni duplican registros", () => {
   const orders = [
     { id: "P-1", estado: "Pagado" },

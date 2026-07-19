@@ -1,3 +1,5 @@
+import { compareOperationalDatesDesc, parseOperationalTimestamp } from "./operational-time.js";
+
 const ORDER_TERMINAL = new Set(["Entregado", "Cancelado"]);
 const PRODUCTION_ACTIVE = new Set(["En preparación", "Congelando"]);
 const PACKING_ACTIVE = new Set(["Listo para empaque", "Empacado"]);
@@ -76,30 +78,20 @@ export function buildInventoryHistory(db = {}) {
     }));
 
   return [...movements, ...reservations]
-    .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
-}
-
-function operationalTimestamp(value) {
-  const raw = clean(value);
-  if (!raw) return null;
-  const normalized = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(raw)
-    ? raw.replace(" ", "T") + (/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) ? "" : "-05:00")
-    : raw;
-  const timestamp = new Date(normalized).getTime();
-  return Number.isFinite(timestamp) ? timestamp : null;
+    .sort((a, b) => compareOperationalDatesDesc(a.at, b.at) || b.id.localeCompare(a.id));
 }
 
 export function buildActiveReservationDashboard(db = {}, now = new Date()) {
   const orders = new Map((db.orders || []).map((order) => [order.id, order]));
   const customers = new Map((db.customers || []).map((customer) => [customer.id, customer]));
-  const nowTimestamp = now instanceof Date ? now.getTime() : operationalTimestamp(now);
+  const nowTimestamp = now instanceof Date ? now.getTime() : parseOperationalTimestamp(now);
   const terminalStates = new Set(["Entregado", "Cancelado", "Reclamo"]);
   const reservations = (db.inventory_reservations || [])
     .filter(isActiveInventoryReservation)
     .map((reservation) => {
       const order = orders.get(reservation.orderId) || null;
       const customer = order ? customers.get(order.customerId) : null;
-      const createdAt = operationalTimestamp(reservation.fecha);
+      const createdAt = parseOperationalTimestamp(reservation.fecha);
       const ageHours = createdAt != null && nowTimestamp != null
         ? Math.max(0, Math.floor((nowTimestamp - createdAt) / 3600000))
         : null;
@@ -124,7 +116,7 @@ export function buildActiveReservationDashboard(db = {}, now = new Date()) {
     })
     .sort((a, b) => Number(b.attention) - Number(a.attention)
       || (b.ageHours ?? -1) - (a.ageHours ?? -1)
-      || String(b.fecha || "").localeCompare(String(a.fecha || "")));
+      || compareOperationalDatesDesc(a.fecha, b.fecha));
 
   const grouped = [...reservations.reduce((groups, reservation) => {
     const key = reservation.orderId || `missing:${reservation.id}`;
@@ -208,7 +200,7 @@ export function buildOperationalHistory(db = {}) {
       to: clean(log.a),
       actor: clean(log.user) || "Sistema",
     }))
-    .sort((a, b) => b.at.localeCompare(a.at) || String(b.id).localeCompare(String(a.id)));
+    .sort((a, b) => compareOperationalDatesDesc(a.at, b.at) || String(b.id).localeCompare(String(a.id)));
 }
 
 export {

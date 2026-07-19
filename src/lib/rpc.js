@@ -1,5 +1,41 @@
 import { supabase } from "./supabase";
 
+function rpcError(error, fallbackMessage = "No se pudo completar la operación.") {
+  const next = new Error(error?.message || fallbackMessage);
+  if (error?.code) next.code = error.code;
+  if (error?.status) next.status = error.status;
+  next.cause = error;
+  return next;
+}
+
+export function isMissingRpcError(error) {
+  return error?.code === "PGRST202"
+    || /could not find (?:the )?function|schema cache|function\b.+\bdoes not exist/i.test(error?.message || "");
+}
+
+export function createInventoryIdempotencyKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  // Los navegadores soportados exponen randomUUID. Este fallback conserva el
+  // formato UUID para una WebView antigua, sin usar el valor como secreto.
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (token) => {
+    const value = Math.floor(Math.random() * 16);
+    return (token === "x" ? value : (value & 0x3) | 0x8).toString(16);
+  });
+}
+
+async function inventoryMutationRpc(name, payload, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+    throw new Error("La operación de Inventario no tiene una llave idempotente válida.");
+  }
+  const { data, error } = await supabase.rpc(name, { p: { ...payload, idempotency_key: key } });
+  if (error) throw rpcError(error);
+  // Una respuesta HTTP exitosa puede corresponder a una mutación ya
+  // confirmada. La frontera cerrada se valida al aplicar el sobre; si viene
+  // corrupto, la UI reconcilia por lectura y jamás repite la escritura.
+  return data;
+}
+
 /* ── Fase 3 · slice 3b: escrituras del ciclo de pedido ──
    El server es el árbitro (RPCs security definer de Fase 2, gate is_staff()).
    Los mensajes de error del server ya vienen en español listos para mostrar (error.message).
@@ -999,6 +1035,37 @@ export async function desecharLoteInsumo(lotId, motivo) {
   const { data, error } = await supabase.rpc("desechar_lote_insumo", { p_lot_id: lotId, p_motivo: motivo });
   if (error) throw new Error(error.message);
   return data;
+}
+
+// H69: las variantes *_delta son aditivas y conservan las RPC anteriores como
+// fallback durante el rollout. La respuesta incluye el estado autoritativo
+// posterior a H68; el navegador nunca calcula el stock por su cuenta.
+export function entradaInsumoLoteDelta({ itemId, cant, costoTotal, vence, proveedor = "", ubicacion = "", nota = "" }, idempotencyKey) {
+  return inventoryMutationRpc("entrada_insumo_lote_delta", {
+    item_id: itemId,
+    cant,
+    costo_total: costoTotal,
+    vence: vence || null,
+    proveedor,
+    ubicacion,
+    nota,
+  }, idempotencyKey);
+}
+
+export function movimientoInsumoDelta(itemId, tipo, cant, nota = "", idempotencyKey) {
+  return inventoryMutationRpc("movimiento_insumo_delta", {
+    item_id: itemId,
+    tipo,
+    cant,
+    nota,
+  }, idempotencyKey);
+}
+
+export function desecharLoteInsumoDelta(lotId, motivo, idempotencyKey) {
+  return inventoryMutationRpc("desechar_lote_insumo_delta", {
+    lot_id: lotId,
+    motivo,
+  }, idempotencyKey);
 }
 
 export async function movimientoInsumo(itemId, tipo, cant, nota = "") {

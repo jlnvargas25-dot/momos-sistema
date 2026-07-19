@@ -1,5 +1,7 @@
 import { supabase } from "./supabase.js";
 import { normalizeAgencySnapshotVersion } from "./sync-coordinator.js";
+import { normalizeInventoryCursorToken } from "./inventory-cursor.js";
+import { inventoryCoreSnapshotBlockIsComplete } from "./inventory-sync-policy.js";
 import { agencyOperationalFactsReady as hasAgencyOperationalFacts, normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
@@ -421,6 +423,37 @@ async function multipleRolesCapability() {
   return !missing && result.data === true;
 }
 
+async function inventoryDeltasCapability() {
+  const manifest = await fetchSyncManifest();
+  const advertised = manifest?.capabilities?.inventario_deltas_disponibles === true;
+  return {
+    ready: advertised,
+    latestEventId: advertised
+      ? normalizeInventoryCursorToken(manifest?.inventory_latest_event_id)
+      : "",
+  };
+}
+
+export async function fetchInventoryDeltas(itemIds) {
+  const ids = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))];
+  if (!ids.length || ids.length > 50) throw new Error("La conciliación dirigida de Inventario requiere entre 1 y 50 insumos.");
+  const { data, error } = await supabase.rpc("momos_inventory_deltas_v1", { p_item_ids: ids });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function fetchInventoryDeltasSince(afterEventId = "", limit = 100) {
+  const version = normalizeInventoryCursorToken(afterEventId);
+  const { data, error } = await supabase.rpc("momos_inventory_deltas_since_v1", {
+    p_after_event_id: version || "0",
+    p_limit: Math.min(100, Math.max(1, Number(limit) || 100)),
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function fetchUserProfile(authUserId) {
   const multipleRolesReady = await multipleRolesCapability();
   const columns = multipleRolesReady ? "id,nombre,rol,roles,activo" : "id,nombre,rol,activo";
@@ -481,7 +514,9 @@ export async function fetchFinancialFacts(from, to) {
 export async function fetchCatalogos(options = {}) {
   const includeAgency = options.includeAgency !== false;
   const skipAgencySnapshot = options.skipAgencySnapshot === true;
-  const multipleRolesReady = await multipleRolesCapability();
+  const [multipleRolesReady, inventoryDeltaCapability] = await Promise.all([
+    multipleRolesCapability(), inventoryDeltasCapability(),
+  ]);
   const userColumns = multipleRolesReady ? "id,nombre,email,rol,roles,activo" : "id,nombre,email,rol,activo";
   const coreSnapshot = includeAgency ? null : await optionalSnapshot("momos_core_snapshot_v1");
   const coreKeys = [
@@ -583,6 +618,30 @@ export async function fetchCatalogos(options = {}) {
     unitCost: Number(lot.unit_cost), supplier: nz(lot.supplier), location: nz(lot.location),
     origin: lot.origin, status: lot.status,
   }));
+  const inventoryCoreSnapshotReady = inventoryCoreSnapshotBlockIsComplete(coreSnapshot);
+  const inventorySnapshotHistoryReady = inventoryCoreSnapshotReady;
+  const inventorySnapshotMovements = inventorySnapshotHistoryReady
+    ? coreSnapshot.inventory_movements.map((movement) => {
+      const item = inventory_items.find((candidate) => candidate.id === movement.item_id);
+      const quantity = Number(movement.cant);
+      return {
+        id: String(movement.id),
+        fecha: tsBogota(movement.fecha),
+        tipo: movement.tipo,
+        item: item?.nombre || "",
+        cant: `${quantity > 0 ? "+" : ""}${quantity} ${item?.unidad || ""}`.trim(),
+      };
+    })
+    : [];
+  const inventorySnapshotAudits = inventorySnapshotHistoryReady
+    ? coreSnapshot.inventory_audit_logs.map((audit) => ({
+      id: String(audit.id),
+      fecha: tsBogota(audit.fecha),
+      entidad: audit.entidad,
+      entidadId: nz(audit.entidad_id),
+      accion: audit.accion,
+    }))
+    : [];
 
   const recipes = recs.map((r) => ({ id: r.id, productId: r.product_id, itemId: r.item_id, cantidad: r.cantidad }));
 
@@ -676,9 +735,21 @@ export async function fetchCatalogos(options = {}) {
     mensajesWhatsApp: Number(m.mensajes_wa), gasto: Number(m.gasto), notas: nz(m.notas),
   }));
 
+  const atomicInventoryBoundary = normalizeInventoryCursorToken(coreSnapshot?.inventory_latest_event_id);
+  const inventoryDeltaReady = inventoryDeltaCapability.ready
+    && inventoryCoreSnapshotReady;
   const coreCatalogs = {
     products, productsServerReady, inventory_items, inventory_lots,
     inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady,
+    inventoryMutationDeltaReady: inventoryDeltaReady,
+    inventoryCoreSnapshotReady,
+    inventorySnapshotHistoryReady,
+    inventorySnapshotMovements,
+    inventorySnapshotAudits,
+    // H70: items, lotes, histories sanitizados y cursor pertenecen al mismo
+    // snapshot MVCC. Una base H69 sin el bloque completo degrada al refresco
+    // legacy; el manifiesto nunca puede sellar colecciones leidas aparte.
+    inventoryMutationEventVersion: inventoryDeltaReady ? atomicInventoryBoundary : "",
     settingsCatalogos, brand_library, figuras, subrecetas,
     subreceta_ingredientes, figura_relleno,
     syncSource: coreSnapshot ? "snapshot-v1" : "legacy-queries",

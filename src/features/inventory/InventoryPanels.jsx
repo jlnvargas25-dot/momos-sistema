@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SegmentedTabs } from "../../components/ui/OperationalPrimitives.jsx";
 import {
-  crearInsumo, desecharLoteInsumo, entradaInsumo, entradaInsumoLote, movimientoInsumo,
-  setSugerenciaEstado,
+  createInventoryIdempotencyKey, crearInsumo, desecharLoteInsumo, desecharLoteInsumoDelta,
+  entradaInsumo, entradaInsumoLote, entradaInsumoLoteDelta, isMissingRpcError,
+  movimientoInsumo, movimientoInsumoDelta, setSugerenciaEstado,
 } from "../../lib/rpc";
 import { buildFinishedInventory } from "../../lib/finished-inventory";
 import { buildIngredientLotSummary } from "../../lib/ingredient-lots";
@@ -515,7 +516,10 @@ export function createInventoryPanels(shared) {
     );
   }
 
-  function Inventario({ db, update, user, focus, refrescar, go }) {
+  function Inventario({
+    db, update, user, focus, refrescar, aplicarDeltaInventario,
+    capturarGeneracionInventario, solicitarConciliacionInventario, go,
+  }) {
     const [scope, setScope] = useState("active");
     const [asistenteComprasAbierto, setAsistenteComprasAbierto] = useState(false);
     const [detalleInsumoId, setDetalleInsumoId] = useState(null);
@@ -532,6 +536,7 @@ export function createInventoryPanels(shared) {
     const [enviandoSugId, setEnviandoSugId] = useState(null);
     const highlightId = focus && focus.itemId;
     const highlightRef = useRef(null);
+    const mutationIntentKeysRef = useRef(new Map());
     useEffect(() => {
       if (highlightRef.current) highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }, [highlightId]);
@@ -644,6 +649,38 @@ export function createInventoryPanels(shared) {
       const proximoVence = lotesListos ? lotSummary.nextExpiry : item.vence;
       const diasProximo = proximoVence ? diasEntre(hoyISO(), proximoVence) : null;
       return { supply, lotesListos, lotSummary, vencido, todoVencido, venceHoy, proximoVence, vencePronto: diasProximo != null && diasProximo > 0 && diasProximo <= 5, bajo: Number(item.min) > 0 && Number(item.stock) <= Number(item.min) };
+    }
+
+    function mutationIntent(kind, payload) {
+      const fingerprint = `${kind}:${JSON.stringify(payload)}`;
+      let key = mutationIntentKeysRef.current.get(fingerprint);
+      if (!key) {
+        key = createInventoryIdempotencyKey();
+        mutationIntentKeysRef.current.set(fingerprint, key);
+        if (mutationIntentKeysRef.current.size > 20) {
+          const oldest = mutationIntentKeysRef.current.keys().next().value;
+          mutationIntentKeysRef.current.delete(oldest);
+        }
+      }
+      return { fingerprint, key };
+    }
+
+    async function applyInventoryMutationOrReconcile(response, fallbackMessage, mutationGeneration) {
+      try {
+        const result = aplicarDeltaInventario(response, mutationGeneration);
+        if (result?.status === "discarded") {
+          await solicitarConciliacionInventario();
+          return "reconciled";
+        }
+        return "applied";
+      } catch (error) {
+        if (typeof solicitarConciliacionInventario === "function") {
+          await solicitarConciliacionInventario();
+        } else {
+          await refrescarSilencioso(() => toast("alert", fallbackMessage));
+        }
+        return "reconciled";
+      }
     }
 
     const detalleEstado = detalleInsumo ? estadoInsumo(detalleInsumo) : null;
@@ -989,16 +1026,53 @@ export function createInventoryPanels(shared) {
                 if (itemVencido && ["Salida", "Uso en producción"].includes(form.tipo)) { setAvisoInv({ titulo: "Insumo vencido", texto: `${it.nombre} venció el ${it.vence}. Registrá una Merma para retirarlo; no puede usarse ni salir como inventario válido.` }); return; }
                 const tipoMov = form.tipo, nombreMov = it.nombre;
                 const suggestionIds = Array.isArray(form.suggestionIds) ? form.suggestionIds : [];
+                let inventoryUpdateMode = "legacy";
                 setEnviando(true);
                 try {
                   if (form.tipo === "Entrada") {
-                    if (db.inventoryLotsReady) {
-                      await entradaInsumoLote({ itemId: it.id, cant: +form.cant, costoTotal: +form.precio || 0, vence: form.vence || null, proveedor: form.proveedor, ubicacion: form.ubicacion, nota: form.nota });
+                    const payload = { itemId: it.id, cant: +form.cant, costoTotal: +form.precio || 0, vence: form.vence || null, proveedor: form.proveedor, ubicacion: form.ubicacion, nota: form.nota };
+                    if (db.inventoryMutationDeltaReady && db.inventoryLotsReady) {
+                      const intent = mutationIntent("entrada", payload);
+                      try {
+                        const mutationGeneration = capturarGeneracionInventario();
+                        const response = await entradaInsumoLoteDelta(payload, intent.key);
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        inventoryUpdateMode = await applyInventoryMutationOrReconcile(
+                          response,
+                          "La compra se registró, pero no se pudo conciliar el insumo. Recargá la página.",
+                          mutationGeneration,
+                        );
+                      } catch (error) {
+                        if (!isMissingRpcError(error)) throw error;
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        await entradaInsumoLote(payload);
+                      }
+                    } else if (db.inventoryLotsReady) {
+                      await entradaInsumoLote(payload);
                     } else {
                       await entradaInsumo(it.id, +form.cant, +form.precio || 0, form.nota);
                     }
                   } else {
-                    await movimientoInsumo(it.id, form.tipo, cantidadMovimiento, form.nota);
+                    const payload = { itemId: it.id, tipo: form.tipo, cant: cantidadMovimiento, nota: form.nota };
+                    if (db.inventoryMutationDeltaReady) {
+                      const intent = mutationIntent("movimiento", payload);
+                      try {
+                        const mutationGeneration = capturarGeneracionInventario();
+                        const response = await movimientoInsumoDelta(it.id, form.tipo, cantidadMovimiento, form.nota, intent.key);
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        inventoryUpdateMode = await applyInventoryMutationOrReconcile(
+                          response,
+                          "El movimiento se registró, pero no se pudo conciliar el insumo. Recargá la página.",
+                          mutationGeneration,
+                        );
+                      } catch (error) {
+                        if (!isMissingRpcError(error)) throw error;
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        await movimientoInsumo(it.id, form.tipo, cantidadMovimiento, form.nota);
+                      }
+                    } else {
+                      await movimientoInsumo(it.id, form.tipo, cantidadMovimiento, form.nota);
+                    }
                   }
                 } catch (e) {
                   toast("error", "No se pudo registrar el movimiento: " + e.message);
@@ -1015,7 +1089,9 @@ export function createInventoryPanels(shared) {
                 setEnviando(false);
                 setMov(false); setForm({ tipo: "Entrada", item: "", cant: "", precio: "", vence: "", proveedor: "", ubicacion: "", nota: "", suggestionIds: [] });
                 toast("ok", `✓ ${tipoMov} registrada · ${nombreMov}`);
-                await refrescarSilencioso(() => toast("alert", "El movimiento se registró, pero no se pudo actualizar la vista. Recargá la página."));
+                if (inventoryUpdateMode === "legacy") {
+                  await refrescarSilencioso(() => toast("alert", "El movimiento se registró, pero no se pudo actualizar la vista. Recargá la página."));
+                }
               }}>Guardar</BtnAsync>
               <Btn kind="ghost" disabled={enviando} onClick={() => setMov(false)}>Cancelar</Btn>
             </div>
@@ -1035,7 +1111,7 @@ export function createInventoryPanels(shared) {
             <div className="flex gap-2 mt-2">
               <BtnAsync kind="danger" textoEnVuelo="Desechando…" disabled={enviando} onClick={async () => {
                 const stockActual = Number(desecharVencido.available);
-                const nombreDesecho = desecharVencido.nombre;
+                const nombreDesecho = desecharVencido.itemName;
                 if (!(stockActual > 0)) {
                   setDesecharVencido(null);
                   setAvisoInv({ titulo: "Sin stock para desechar", texto: "Este insumo ya está en cero." });
@@ -1045,17 +1121,52 @@ export function createInventoryPanels(shared) {
                   setAvisoInv({ titulo: "Falta el motivo", texto: "Indicá por qué se desecha para conservar la trazabilidad de la merma." });
                   return;
                 }
+                let inventoryUpdateMode = "legacy";
                 setEnviando(true);
                 try {
                   if (desecharVencido.id && db.inventoryLotsReady) {
-                    await desecharLoteInsumo(desecharVencido.id, motivoDesecho.trim());
+                    const payload = { lotId: desecharVencido.id, motivo: motivoDesecho.trim() };
+                    if (db.inventoryMutationDeltaReady) {
+                      const intent = mutationIntent("desecho", payload);
+                      try {
+                        const mutationGeneration = capturarGeneracionInventario();
+                        const response = await desecharLoteInsumoDelta(payload.lotId, payload.motivo, intent.key);
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        inventoryUpdateMode = await applyInventoryMutationOrReconcile(
+                          response,
+                          "El desecho se registró, pero no se pudo conciliar el insumo. Recargá la página.",
+                          mutationGeneration,
+                        );
+                      } catch (error) {
+                        if (!isMissingRpcError(error)) throw error;
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        await desecharLoteInsumo(payload.lotId, payload.motivo);
+                      }
+                    } else {
+                      await desecharLoteInsumo(payload.lotId, payload.motivo);
+                    }
                   } else {
-                    await movimientoInsumo(
-                      desecharVencido.itemId,
-                      "Merma",
-                      -stockActual,
-                      `Desecho por vencimiento ${desecharVencido.expiresAt} · ${motivoDesecho.trim()}`,
-                    );
+                    const note = `Desecho por vencimiento ${desecharVencido.expiresAt} · ${motivoDesecho.trim()}`;
+                    if (db.inventoryMutationDeltaReady) {
+                      const payload = { itemId: desecharVencido.itemId, tipo: "Merma", cant: -stockActual, nota: note };
+                      const intent = mutationIntent("movimiento", payload);
+                      try {
+                        const mutationGeneration = capturarGeneracionInventario();
+                        const response = await movimientoInsumoDelta(payload.itemId, payload.tipo, payload.cant, payload.nota, intent.key);
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        inventoryUpdateMode = await applyInventoryMutationOrReconcile(
+                          response,
+                          "La merma se registró, pero no se pudo conciliar el insumo. Recargá la página.",
+                          mutationGeneration,
+                        );
+                      } catch (error) {
+                        if (!isMissingRpcError(error)) throw error;
+                        mutationIntentKeysRef.current.delete(intent.fingerprint);
+                        await movimientoInsumo(payload.itemId, payload.tipo, payload.cant, payload.nota);
+                      }
+                    } else {
+                      await movimientoInsumo(desecharVencido.itemId, "Merma", -stockActual, note);
+                    }
                   }
                 } catch (e) {
                   toast("error", "No se pudo desechar el insumo: " + e.message);
@@ -1066,7 +1177,9 @@ export function createInventoryPanels(shared) {
                 setDesecharVencido(null);
                 setMotivoDesecho("");
                 toast("ok", `✓ Merma registrada · ${nombreDesecho}`);
-                await refrescarSilencioso(() => toast("alert", "El stock quedó retirado, pero no se pudo actualizar la vista. Recargá la página."));
+                if (inventoryUpdateMode === "legacy") {
+                  await refrescarSilencioso(() => toast("alert", "El stock quedó retirado, pero no se pudo actualizar la vista. Recargá la página."));
+                }
               }}>Confirmar desecho</BtnAsync>
               <Btn kind="ghost" disabled={enviando} onClick={() => setDesecharVencido(null)}>Conservar insumo</Btn>
             </div>

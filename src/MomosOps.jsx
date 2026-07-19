@@ -1,7 +1,10 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitives.jsx";
 import { supabase } from "./lib/supabase";
-import { fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile } from "./lib/read-model";
+import {
+  fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos,
+  fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchUserProfile,
+} from "./lib/read-model";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion, normalizeSyncDomains,
   shouldFlushAgencyRealtimeRefresh, shouldQueueAgencySnapshotVersion, shouldQueueRealtimeDomain,
@@ -21,6 +24,14 @@ import { deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES } fr
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
 import { agencyOperationalFactsReady as hasAgencyOperationalFacts } from "./lib/agency-operational-facts";
 import { measureSyncLoad, runtimePerformance } from "./performance/runtime-telemetry";
+import {
+  applyInventoryMutationEnvelope, mergeInventoryAuditSnapshot, normalizeInventoryDeltaBatch, normalizeInventoryEventsEnvelope,
+} from "./lib/mutation-envelope";
+import {
+  acknowledgeInventoryRealtimePending, enqueueInventoryRealtimeItem,
+  inventoryDeltaCanApply, inventoryProtectedCatalogCanApply,
+} from "./lib/inventory-sync-policy";
+import { compareInventoryCursorTokens, normalizeInventoryCursorToken } from "./lib/inventory-cursor";
 import { canOperateStage } from "./lib/operational-control";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
@@ -712,7 +723,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -742,6 +753,11 @@ function normalizeDbShape(d) {
   arrayTables.forEach((k) => {
     if (!Array.isArray(d[k])) d[k] = s[k] || [];
   });
+  d.inventoryMutationDeltaReady = d.inventoryMutationDeltaReady === true;
+  const inventoryCursor = normalizeInventoryCursorToken(d.inventoryMutationEventVersion);
+  d.inventoryMutationFullSnapshotRequired = d.inventoryMutationFullSnapshotRequired !== false
+    || !inventoryCursor;
+  d.inventoryMutationEventVersion = d.inventoryMutationFullSnapshotRequired ? "" : inventoryCursor;
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
   d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
@@ -5811,6 +5827,22 @@ export default function MomosOps() {
   // Persiste fuera del efecto de suscripción: un cambio de vista/flag durante
   // los 350 ms de debounce no puede borrar una versión Realtime ya observada.
   const agencyRealtimePendingVersionRef = useRef("");
+  const inventoryMutationVersionsRef = useRef({});
+  const inventoryMutationLatestEventRef = useRef("");
+  const inventoryRealtimePendingRef = useRef(new Map());
+  // H70: toda lectura asíncrona de Inventario captura esta generación antes
+  // de salir a red. Cada snapshot o delta aceptado la incrementa. Así una
+  // respuesta anterior nunca puede reemplazar un estado aplicado después.
+  const inventorySyncGenerationRef = useRef(0);
+  // Revisión exclusiva de snapshots CATALOGS aceptados. Permite saber si un
+  // fallback realmente reconcilió el inventario, sin confundirlo con un delta
+  // concurrente que también incrementa la generación general.
+  const inventorySnapshotRevisionRef = useRef(0);
+  // Un reset de base o una hidratacion inicial incompleta exige el bloque core
+  // atomico de Catalogos. El flag vive fuera del efecto Realtime para que
+  // cambiar de vista o reconstruir el canal no lo borre.
+  const inventoryFullSnapshotRequiredRef = useRef(true);
+  const inventoryReconcileRequestRef = useRef(null);
   const sessionOwnerRef = useRef(null);
   const activeStorageKeyRef = useRef(DB_KEY);
   const visibleSyncDomainsRef = useRef(new Set(syncDomainsForDbView(vista, db)));
@@ -5832,6 +5864,13 @@ export default function MomosOps() {
         })) {
       agencyRealtimePendingVersionRef.current = "";
     }
+    const inventoryVersion = normalizeInventoryCursorToken(db?.inventoryMutationEventVersion);
+    if (inventoryVersion && (compareInventoryCursorTokens(
+      inventoryVersion,
+      inventoryMutationLatestEventRef.current,
+    ) === 1 || !inventoryMutationLatestEventRef.current)) {
+      inventoryMutationLatestEventRef.current = inventoryVersion;
+    }
   }, [db]);
   useEffect(() => {
     const nextUserId = session?.user?.id || null;
@@ -5841,6 +5880,14 @@ export default function MomosOps() {
     agencySnapshotVersionRef.current = "";
     agencyRealtimeSeenVersionRef.current = "";
     agencyRealtimePendingVersionRef.current = "";
+    inventoryMutationVersionsRef.current = {};
+    inventoryMutationLatestEventRef.current = "";
+    inventoryRealtimePendingRef.current.clear();
+    // No volver a cero: una respuesta pendiente de la sesión anterior podría
+    // haber capturado precisamente cero. Incrementar invalida todos los reads.
+    inventorySyncGenerationRef.current += 1;
+    inventoryFullSnapshotRequiredRef.current = true;
+    inventoryReconcileRequestRef.current = null;
     hidratadoRef.current = false;
     setCatalogosDe(null);
     activeStorageKeyRef.current = nextUserId ? `${DB_KEY}:${nextUserId}` : DB_KEY;
@@ -5880,6 +5927,7 @@ export default function MomosOps() {
   useEffect(() => {
     if (!session || !perfil || !db) return undefined;
     let timer = null;
+    let inventoryTimer = null;
     let alive = true;
     const pendingDomains = new Set();
     let pendingAgencyVersion = "";
@@ -5887,14 +5935,24 @@ export default function MomosOps() {
     const operationsRealtime = realtimeDomains.has(SYNC_DOMAINS.OPERATIONS);
     const catalogsRealtime = realtimeDomains.has(SYNC_DOMAINS.CATALOGS);
     const agencyRealtime = realtimeDomains.has(SYNC_DOMAINS.AGENCY);
+    // H69 se activa primero en la pantalla de Inventario. Allí el outbox
+    // versionado sustituye cuatro tablas crudas que antes disparaban dos
+    // snapshots completos por una sola compra o ajuste.
+    const inventoryDeltaRealtime = vista === "Inventario"
+      && db.inventoryMutationDeltaReady === true
+      && db.inventoryMutationFullSnapshotRequired === false
+      && inventoryFullSnapshotRequiredRef.current === false
+      && (operationsRealtime || catalogsRealtime);
     const tables = [];
     if (operationsRealtime) tables.push(
       "orders", "order_items", "order_item_adiciones", "packing_verifications", "evidences", "deliveries",
-      "customers", "benefits", "claims", "inventory_movements", "inventory_reservations", "production_suggestions",
-      "production_batches", "lote_figuras", "subreceta_producciones", "audit_logs",
+      "customers", "benefits", "claims", ...(inventoryDeltaRealtime ? [] : ["inventory_movements"]),
+      "inventory_reservations", "production_suggestions", "production_batches", "lote_figuras",
+      "subreceta_producciones", ...(inventoryDeltaRealtime ? [] : ["audit_logs"]),
     );
     if (catalogsRealtime) tables.push(
-      "products", "combo_components", "inventory_items", "inventory_lots", "recipes", "users", "toppings", "figuras",
+      "products", "combo_components", ...(inventoryDeltaRealtime ? [] : ["inventory_items", "inventory_lots"]),
+      "recipes", "users", "toppings", "figuras",
       "catalog_values", "zonas", "proveedores_domicilio", "brand_library", "app_settings", "subrecetas", "subreceta_ingredientes", "figura_relleno",
     );
     if (operationsRealtime && db.operationalControlReady) tables.push("order_stage_assignments", "order_line_progress", "order_incidents", "order_dispatch_handoffs");
@@ -5903,6 +5961,7 @@ export default function MomosOps() {
     // duplicaba decenas de eventos y revelaba el esquema interno. El flag evita
     // tocar una tabla inexistente durante el rollout; pre-H66 conserva polling.
     if (agencyRealtime && db.agencySnapshotReady === true) tables.push("agency_snapshot_events");
+    if (inventoryDeltaRealtime) tables.push("inventory_sync_events");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
@@ -5953,8 +6012,157 @@ export default function MomosOps() {
     })) {
       refresh(SYNC_DOMAINS.AGENCY, agencyRealtimePendingVersionRef.current);
     }
+
+    const fallbackInventorySnapshots = async () => {
+      const refetch = refetchFocoRef.current;
+      if (typeof refetch !== "function") return false;
+      const snapshotRevision = inventorySnapshotRevisionRef.current;
+      try {
+        await refetch(
+          [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS],
+          { reason: "inventory-delta-fallback", afterActive: true },
+        );
+        return inventorySnapshotRevisionRef.current > snapshotRevision;
+      } catch {
+        if (alive) setRealtimeStatus("reconectando");
+        return false;
+      }
+    };
+
+    const fetchAndApplyInventoryItems = async (itemIds) => {
+      for (let offset = 0; offset < itemIds.length; offset += 50) {
+        const readGeneration = capturarGeneracionInventario();
+        const envelope = await fetchInventoryDeltas(itemIds.slice(offset, offset + 50));
+        if (!alive) return { ok: false, generation: capturarGeneracionInventario() };
+        const result = aplicarBatchInventario(envelope, readGeneration);
+        if (result?.status === "discarded") {
+          requestInventoryReconciliation();
+          return { ok: false, generation: capturarGeneracionInventario() };
+        }
+      }
+      return { ok: true, generation: capturarGeneracionInventario() };
+    };
+
+    const flushInventoryDeltas = () => {
+      if (inventoryTimer) clearTimeout(inventoryTimer);
+      inventoryTimer = setTimeout(async () => {
+        if (!alive || !hidratadoRef.current) return;
+        const queued = [...inventoryRealtimePendingRef.current.entries()];
+        const itemIds = queued.map(([itemId]) => itemId);
+        if (!itemIds.length) return;
+        try {
+          const applied = await fetchAndApplyInventoryItems(itemIds);
+          if (!alive) return;
+          const reconciled = applied.ok || await fallbackInventorySnapshots();
+          if (reconciled) {
+            acknowledgeInventoryRealtimePending(inventoryRealtimePendingRef.current, queued);
+          }
+        } catch {
+          if (alive && await fallbackInventorySnapshots()) {
+            acknowledgeInventoryRealtimePending(inventoryRealtimePendingRef.current, queued);
+          }
+        }
+      }, 180);
+    };
+
+    const queueInventoryDelta = (payload) => {
+      const itemId = String(payload?.new?.item_id || "").trim();
+      if (!itemId) return;
+      // El event_id del outbox solo despierta la lectura dirigida. No es el
+      // cursor global H70 ni se compara con source_version del item.
+      enqueueInventoryRealtimeItem(inventoryRealtimePendingRef.current, itemId);
+      flushInventoryDeltas();
+    };
+
+    const reconcileInventoryGap = async () => {
+      if (inventoryFullSnapshotRequiredRef.current) {
+        const refreshed = await fallbackInventorySnapshots();
+        return refreshed && !inventoryFullSnapshotRequiredRef.current;
+      }
+      let cursor = inventoryMutationLatestEventRef.current || "";
+      for (let page = 0; page < 5 && alive; page += 1) {
+        const eventsReadGeneration = capturarGeneracionInventario();
+        const rawEvents = await fetchInventoryDeltasSince(cursor, 100);
+        if (!alive) return false;
+        if (eventsReadGeneration !== capturarGeneracionInventario()) {
+          requestInventoryReconciliation();
+          return false;
+        }
+        const events = normalizeInventoryEventsEnvelope(rawEvents);
+        if (events.resetRequired) {
+          exigirSnapshotCompletoInventario("inventory_cursor_reset");
+          throw new Error("El cursor local de Inventario requiere un snapshot nuevo.");
+        }
+        let applied = { ok: true, generation: capturarGeneracionInventario() };
+        if (events.itemIds.length) {
+          applied = await fetchAndApplyInventoryItems(events.itemIds);
+          if (!applied.ok) return false;
+        }
+        // Entre la última lectura dirigida y este commit del cursor no puede
+        // haberse aplicado otro snapshot/delta. Si ocurrió, repetimos el
+        // handshake y nunca declaramos como contigua una página dudosa.
+        if (applied.generation !== capturarGeneracionInventario()) {
+          requestInventoryReconciliation();
+          return false;
+        }
+        avanzarCursorInventario(events.nextEventId || events.latestEventId);
+        if (!events.overflow) {
+          avanzarCursorInventario(events.latestEventId);
+          return true;
+        }
+        if (!events.nextEventId || events.nextEventId === cursor) break;
+        cursor = events.nextEventId;
+      }
+      throw new Error("La brecha de Inventario excede el límite de conciliación dirigida.");
+    };
+
+    // Dedupe de reconciliación: una respuesta descartada solo programa otra
+    // lectura; jamás repite la RPC de escritura. Si se descarta algo durante
+    // el propio handshake, requested queda activo y el bucle vuelve a cerrar
+    // la brecha desde el cursor todavía confirmado.
+    const reconciliationState = { requested: false, active: null };
+    const requestInventoryReconciliation = () => {
+      reconciliationState.requested = true;
+      if (!reconciliationState.active) {
+        reconciliationState.active = (async () => {
+          while (alive && reconciliationState.requested) {
+            reconciliationState.requested = false;
+            try {
+              await reconcileInventoryGap();
+            } catch {
+              if (alive) await fallbackInventorySnapshots();
+            }
+          }
+        })().finally(() => {
+          reconciliationState.active = null;
+          if (alive && reconciliationState.requested) requestInventoryReconciliation();
+        });
+      }
+      return reconciliationState.active;
+    };
+    inventoryReconcileRequestRef.current = requestInventoryReconciliation;
+
+    // Los pendientes sobreviven al teardown del canal. En Inventario vuelven
+    // al batch dirigido; al salir de la vista se cierran con un snapshot
+    // completo porque el nuevo canal de tablas crudas no puede reemitir el
+    // commit que ya ocurrio.
+    if (inventoryDeltaRealtime && inventoryRealtimePendingRef.current.size) {
+      flushInventoryDeltas();
+    } else if (dbRef.current?.inventoryMutationDeltaReady === true
+        && (inventoryFullSnapshotRequiredRef.current || inventoryRealtimePendingRef.current.size)) {
+      const carried = [...inventoryRealtimePendingRef.current.entries()];
+      fallbackInventorySnapshots().then((refreshed) => {
+        if (!alive || !refreshed) return;
+        acknowledgeInventoryRealtimePending(inventoryRealtimePendingRef.current, carried);
+      });
+    }
+
     tables.forEach((table) => {
       channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+        if (table === "inventory_sync_events") {
+          queueInventoryDelta(payload);
+          return;
+        }
         const domain = syncDomainForTable(table);
         if (table === "agency_snapshot_events") {
           const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
@@ -6000,15 +6208,23 @@ export default function MomosOps() {
             if (alive) setRealtimeStatus("reconectando");
           });
         }
+        if (inventoryDeltaRealtime && dbRef.current?.inventoryMutationDeltaReady === true) {
+          requestInventoryReconciliation();
+        }
       }
       else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) setRealtimeStatus("reconectando");
     });
     return () => {
       alive = false;
       if (timer) clearTimeout(timer);
+      if (inventoryTimer) clearTimeout(inventoryTimer);
+      reconciliationState.requested = false;
+      if (inventoryReconcileRequestRef.current === requestInventoryReconciliation) {
+        inventoryReconcileRequestRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -6037,14 +6253,60 @@ export default function MomosOps() {
     const catalogs = payload?.[SYNC_DOMAINS.CATALOGS];
     const agency = payload?.[SYNC_DOMAINS.AGENCY];
     const op = payload?.[SYNC_DOMAINS.OPERATIONS];
+    const generationBeforeApply = capturarGeneracionInventario();
+    let inventorySnapshotApplied = false;
+    let inventorySnapshotDiscarded = false;
+    let inventorySnapshotNeedsHandshake = false;
     update((d) => {
       if (catalogs) {
       const cat = catalogs;
       d.products = cat.products;
       d.productsServerReady = Boolean(cat.productsServerReady);
-      d.inventory_items = cat.inventory_items;
-      d.inventory_lots = cat.inventory_lots || [];
-      d.inventoryLotsReady = Boolean(cat.inventoryLotsReady);
+      const capturedGeneration = Number(cat.__inventoryReadGeneration);
+      const currentGeneration = generationBeforeApply;
+      // H70 solo habilita el camino incremental si CATALOGS trae el boundary
+      // MVCC y la generación capturada al iniciar la lectura sigue vigente.
+      const protectedInventorySnapshot = cat.inventoryMutationDeltaReady === true;
+      const protectedSnapshotCursor = normalizeInventoryCursorToken(cat.inventoryMutationEventVersion);
+      const snapshotIsCurrent = !protectedInventorySnapshot
+        || inventoryProtectedCatalogCanApply(cat, currentGeneration);
+      if (snapshotIsCurrent) {
+        d.inventory_items = cat.inventory_items;
+        d.inventory_lots = cat.inventory_lots || [];
+        d.inventoryLotsReady = Boolean(cat.inventoryLotsReady);
+        d.inventoryMutationDeltaReady = Boolean(cat.inventoryMutationDeltaReady);
+        // Items, lotes, historial y boundary pertenecen al mismo
+        // momos_core_snapshot_v1.
+        // El snapshot aceptado reinicia exactamente cursor y versiones por
+        // ítem; el handshake continuará desde ese límite atómico.
+        if (protectedInventorySnapshot) {
+          d.inventory_movements = cat.inventorySnapshotMovements;
+          d.audit_logs = mergeInventoryAuditSnapshot(d.audit_logs, cat.inventorySnapshotAudits);
+          d.inventoryMutationEventVersion = protectedSnapshotCursor;
+          d.inventoryMutationFullSnapshotRequired = false;
+          inventoryMutationVersionsRef.current = {};
+          inventoryMutationLatestEventRef.current = protectedSnapshotCursor;
+          inventoryFullSnapshotRequiredRef.current = false;
+          inventorySnapshotNeedsHandshake = true;
+        } else {
+          // Rollout/rollback legacy: se puede usar la lectura completa cruda,
+          // pero nunca conservar un boundary H70 asociado a otro bloque. Si el
+          // core ya trae histories sanitizados, se aprovechan sin habilitar el
+          // camino incremental.
+          if (cat.inventoryCoreSnapshotReady === true) {
+            d.inventory_movements = cat.inventorySnapshotMovements;
+            d.audit_logs = mergeInventoryAuditSnapshot(d.audit_logs, cat.inventorySnapshotAudits);
+          }
+          d.inventoryMutationEventVersion = "";
+          d.inventoryMutationFullSnapshotRequired = true;
+          inventoryMutationVersionsRef.current = {};
+          inventoryMutationLatestEventRef.current = "";
+          inventoryFullSnapshotRequiredRef.current = true;
+        }
+        inventorySnapshotApplied = true;
+      } else {
+        inventorySnapshotDiscarded = true;
+      }
       d.recipes = cat.recipes;
       d.users = cat.users;
       d.multipleRolesReady = Boolean(cat.multipleRolesReady);
@@ -6174,9 +6436,34 @@ export default function MomosOps() {
       if (cat.marketingTasks) d.marketing_tasks = cat.marketingTasks;
       if (cat.brand_library) d.brand_library = cat.brand_library;
       }
-      if (op) Object.assign(d, op); // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
+      if (op) {
+        const operationData = op;
+        const protectedOperations = d.inventoryMutationDeltaReady === true;
+        if (protectedOperations) {
+          // Con H70, OPERATIONS nunca es dueño del historial de Inventario:
+          // puede llegar solo o después de un delta y no tiene el safe-xmin
+          // atómico del core. Conserva su auditoría no-Inventario y omite
+          // exactamente las dos colecciones protegidas.
+          const { inventory_movements, audit_logs, ...safeOperations } = operationData;
+          const currentInventoryAudits = (d.audit_logs || [])
+            .filter((row) => row?.entidad === "Inventario");
+          Object.assign(d, safeOperations);
+          d.audit_logs = mergeInventoryAuditSnapshot(audit_logs, currentInventoryAudits);
+        } else {
+          Object.assign(d, operationData);
+        }
+      } // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
     }, { silencioso: true, persistir: false });
+    if (inventorySnapshotApplied) {
+      inventorySyncGenerationRef.current += 1;
+      inventorySnapshotRevisionRef.current += 1;
+    }
+    if (inventorySnapshotDiscarded) {
+      solicitarConciliacionInventario();
+    } else if (inventorySnapshotNeedsHandshake && typeof inventoryReconcileRequestRef.current === "function") {
+      inventoryReconcileRequestRef.current();
+    }
     // La telemetría de ruta debe cerrar cuando React ya tuvo oportunidad de
     // pintar la versión aplicada, no apenas cuando terminó la respuesta HTTP.
     await waitForUiCommitFrame();
@@ -6186,11 +6473,20 @@ export default function MomosOps() {
     if (!syncCoordinatorRef.current) {
       syncCoordinatorRef.current = createSyncCoordinator({
         loaders: {
-          [SYNC_DOMAINS.CATALOGS]: () => measureSyncLoad(
-            SYNC_DOMAINS.CATALOGS,
-            () => fetchCatalogos({ includeAgency: false }),
-          ),
-          [SYNC_DOMAINS.OPERATIONS]: () => measureSyncLoad(SYNC_DOMAINS.OPERATIONS, fetchOperativo),
+          [SYNC_DOMAINS.CATALOGS]: async () => {
+            const inventoryReadGeneration = capturarGeneracionInventario();
+            const catalogs = await measureSyncLoad(
+              SYNC_DOMAINS.CATALOGS,
+              () => fetchCatalogos({ includeAgency: false }),
+            );
+            // Metadato solo de coordinación local; nunca se persiste ni sale
+            // del navegador. Permite descartar un snapshot que empezó antes
+            // de un delta ya visible.
+            return { ...catalogs, __inventoryReadGeneration: inventoryReadGeneration };
+          },
+          [SYNC_DOMAINS.OPERATIONS]: async () => {
+            return measureSyncLoad(SYNC_DOMAINS.OPERATIONS, fetchOperativo);
+          },
           [SYNC_DOMAINS.AGENCY]: () => measureSyncLoad(
             SYNC_DOMAINS.AGENCY,
             fetchAgencyCatalogosConFallback,
@@ -6392,12 +6688,138 @@ export default function MomosOps() {
     return result;
   }
 
+  function capturarGeneracionInventario() {
+    return inventorySyncGenerationRef.current;
+  }
+
+  function solicitarConciliacionInventario() {
+    const request = inventoryReconcileRequestRef.current;
+    if (typeof request === "function") return request();
+    // Durante el breve relevo de una suscripción, degradamos a lecturas y no a
+    // otra escritura. El snapshot trae boundary atómico y luego Realtime hará
+    // su handshake normal.
+    return refetchFocoRef.current?.(
+      [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS],
+      { reason: "inventory-generation-discard", afterActive: true },
+    ) || Promise.resolve();
+  }
+
+  function mayorCursorInventario(left, right) {
+    const a = normalizeInventoryCursorToken(left);
+    const b = normalizeInventoryCursorToken(right);
+    if (!a) return b;
+    if (!b) return a;
+    return compareInventoryCursorTokens(a, b) === 1 ? a : b;
+  }
+
+  function aplicarSobresInventario(
+    envelopes,
+    expectedGeneration = capturarGeneracionInventario(),
+    options = {},
+  ) {
+    const currentGeneration = capturarGeneracionInventario();
+    if (!inventoryDeltaCanApply({
+      fullSnapshotRequired: inventoryFullSnapshotRequiredRef.current,
+      expectedGeneration,
+      currentGeneration,
+    })) {
+      solicitarConciliacionInventario();
+      return {
+        status: "discarded",
+        reason: inventoryFullSnapshotRequiredRef.current
+          ? "inventory_full_snapshot_required"
+          : "inventory_generation_changed",
+        generation: currentGeneration,
+      };
+    }
+    let nextDb = dbRef.current;
+    let nextVersions = inventoryMutationVersionsRef.current;
+    let changed = false;
+    let lastResult = null;
+    // La validación y la aplicación ocurren primero sobre variables locales.
+    // Si un sobre está corrupto, no se publica ni una actualización parcial.
+    for (const envelope of envelopes) {
+      const result = applyInventoryMutationEnvelope(nextDb, envelope, nextVersions, options);
+      if (result.status === "applied") {
+        nextDb = result.db;
+        nextVersions = result.versions;
+        changed = true;
+      }
+      lastResult = result;
+    }
+    inventoryMutationVersionsRef.current = nextVersions;
+    if (changed) {
+      dbRef.current = nextDb;
+      setDb(nextDb);
+      inventorySyncGenerationRef.current += 1;
+    }
+    return lastResult;
+  }
+
+  function aplicarDeltaInventario(envelope, expectedGeneration = capturarGeneracionInventario()) {
+    return aplicarSobresInventario([envelope], expectedGeneration);
+  }
+
+  function aplicarBatchInventario(envelope, expectedGeneration = capturarGeneracionInventario()) {
+    normalizeInventoryDeltaBatch(envelope);
+    // Un batch por IDs no demuestra que los eventos intermedios de otros
+    // insumos hayan sido aplicados. Por eso nunca adelanta el cursor global:
+    // solo actualiza las versiones monotónicas de los ítems que realmente
+    // contiene. El handshake paginado avanza el cursor con next_event_id una
+    // vez que ya recorrió la página completa del outbox.
+    // La lectura dirigida es un snapshot autoritativo actual del item. Si dos
+    // commits del mismo item cierran fuera de orden, el estado combinado puede
+    // conservar el mismo sourceVersion maximo ya visto; en igualdad debe
+    // reemplazar el item/lotes y fusionar historial. Una version menor no pasa.
+    return aplicarSobresInventario(envelope.items, expectedGeneration, {
+      authoritativeOnEqual: true,
+    });
+  }
+
+  function avanzarCursorInventario(version) {
+    if (inventoryFullSnapshotRequiredRef.current) return inventoryMutationLatestEventRef.current;
+    const latest = mayorCursorInventario(inventoryMutationLatestEventRef.current, version);
+    if (!latest || latest === inventoryMutationLatestEventRef.current) return latest;
+    inventoryMutationLatestEventRef.current = latest;
+    const current = dbRef.current;
+    if (current && normalizeInventoryCursorToken(current.inventoryMutationEventVersion) !== latest) {
+      const next = { ...current, inventoryMutationEventVersion: latest };
+      dbRef.current = next;
+      setDb(next);
+    }
+    return latest;
+  }
+
+  function exigirSnapshotCompletoInventario(reason = "inventory_full_snapshot_required") {
+    inventoryFullSnapshotRequiredRef.current = true;
+    inventoryMutationVersionsRef.current = {};
+    inventoryMutationLatestEventRef.current = "";
+    inventorySyncGenerationRef.current += 1;
+    const current = dbRef.current;
+    if (current && (current.inventoryMutationEventVersion
+        || current.inventoryMutationFullSnapshotRequired !== true)) {
+      const next = {
+        ...current,
+        inventoryMutationEventVersion: "",
+        inventoryMutationFullSnapshotRequired: true,
+      };
+      dbRef.current = next;
+      setDb(next);
+    }
+    return reason;
+  }
+
   async function resetear() {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
+    exigirSnapshotCompletoInventario("inventory_local_reset");
+    inventoryRealtimePendingRef.current.clear();
     await dbReset(activeStorageKeyRef.current);
+    // dbReset cede el control: reafirmar el bloqueo por si un snapshot que ya
+    // estaba en vuelo alcanzo a cerrar durante ese intervalo.
+    exigirSnapshotCompletoInventario("inventory_local_reset");
     const semilla = seedDb();
     dbRef.current = semilla;
     setDb(semilla);
@@ -6426,6 +6848,10 @@ export default function MomosOps() {
     if (next.version < DB_VERSION) next = migrate(next);
     if (next._migrated) delete next._migrated;
     next = normalizeDbShape(next);
+    exigirSnapshotCompletoInventario("inventory_backup_restore");
+    inventoryRealtimePendingRef.current.clear();
+    next.inventoryMutationEventVersion = "";
+    next.inventoryMutationFullSnapshotRequired = true;
     dbRef.current = next;
     setDb(next);
     hidratadoRef.current = false; // el backup pisó los catálogos: re-hidratar del servidor
@@ -6577,7 +7003,11 @@ export default function MomosOps() {
   }
 
   function render() {
-    const p = { db, update, user, refrescar: refrescarVistaActual, perfil, serverDataReady: Boolean(catalogosDe), performanceRouteId: performanceRouteRef.current };
+    const p = {
+      db, update, user, refrescar: refrescarVistaActual, aplicarDeltaInventario,
+      capturarGeneracionInventario, solicitarConciliacionInventario,
+      perfil, serverDataReady: Boolean(catalogosDe), performanceRouteId: performanceRouteRef.current,
+    };
     switch (activa) {
       case "Dashboard": return <Dashboard db={db} go={go} user={user} />;
       case "Pedidos": return <OrdersPanel section="Pedidos" {...p} focus={focus} />;
