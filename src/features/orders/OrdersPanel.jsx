@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchEvidenceSignedUrl } from "../../lib/read-model";
+import { fetchEvidenceSignedUrl, fetchOrderDeltas } from "../../lib/read-model";
 import {
   crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo,
   crearDomicilio, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido,
@@ -36,7 +36,30 @@ export function createOrdersPanel(shared) {
   } = shared;
   const CompactQueueOrderCard = createCompactQueueOrderCard({ T, Badge, Card, customerOf });
 
-function Empaque({ db, update, user, refrescar, perfil }) {
+  async function sincronizarPedidoDirigido(orderId, context) {
+    const { db, refrescar, aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos } = context;
+    if (db?.orderDeltaReady !== true || typeof aplicarDeltaPedido !== "function" || typeof capturarGeneracionPedidos !== "function") {
+      await refrescar();
+      return { status: "snapshot" };
+    }
+    const generation = capturarGeneracionPedidos();
+    try {
+      const envelope = await fetchOrderDeltas([orderId]);
+      const result = aplicarDeltaPedido(envelope, generation);
+      if (result?.status === "discarded") {
+        await solicitarConciliacionPedidos?.();
+        return { status: "reconciled" };
+      }
+      return result;
+    } catch (error) {
+      // La escritura ya quedó confirmada: nunca se repite. Una lectura
+      // dirigida incompatible degrada a una conciliación completa y segura.
+      await refrescar({ reason: "order-delta-fallback" });
+      return { status: "snapshot", cause: error };
+    }
+  }
+
+function Empaque({ db, update, user, refrescar, perfil, aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos }) {
   const [selId, setSelId] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [scope, setScope] = useState("active");
@@ -48,6 +71,9 @@ function Empaque({ db, update, user, refrescar, perfil }) {
     .sort((a, b) => `${b.fecha} ${b.hora}`.localeCompare(`${a.fecha} ${a.hora}`));
   const verifiedPending = pending.filter((order) => findPackingVerification(order.id, verifications)).length;
   const selected = selId ? db.orders.find((order) => order.id === selId) : null;
+  const sincronizarPedido = (orderId) => sincronizarPedidoDirigido(orderId, {
+    db, refrescar, aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos,
+  });
 
   async function cambiar(orderId, estado, opts) {
     const actual = db.orders.find((order) => order.id === orderId);
@@ -58,7 +84,7 @@ function Empaque({ db, update, user, refrescar, perfil }) {
     }
     try {
       await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
-      await refrescar();
+      await sincronizarPedido(orderId);
       toast("ok", `${orderId} → ${estado}`);
       if (estado !== "Empacado") setSelId(null);
       return true;
@@ -145,7 +171,7 @@ function Empaque({ db, update, user, refrescar, perfil }) {
         </div>
       </>}
 
-      {selected && <DetallePedido db={db} o={selected} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
+      {selected && <DetallePedido db={db} o={selected} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} sincronizarPedido={sincronizarPedido} perfil={perfil} />}
       {aviso && <Modal title={aviso.titulo} onClose={() => setAviso(null)}><p className="text-sm m-0">{aviso.texto}</p><div className="mt-4"><Btn onClick={() => setAviso(null)}>Entendido</Btn></div></Modal>}
     </div>
   );
@@ -306,7 +332,7 @@ function PanelTrazabilidadPedidos({ db, orders, onOpen }) {
   );
 }
 
-function Pedidos({ db, update, user, focus, refrescar, perfil }) {
+function Pedidos({ db, update, user, focus, refrescar, perfil, aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos }) {
   const [modo, setModo] = useState("kanban");
   const [asistenteVentasAbierto, setAsistenteVentasAbierto] = useState(false);
   const orderBuckets = useMemo(() => partitionByActivity(db.orders, isActiveOrder), [db.orders]);
@@ -318,6 +344,9 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   const [pendPago, setPendPago] = useState(!!(focus && focus.pendientesPago));
   const [f, setF] = useState({ q: "", canal: "", estado: (focus && focus.estado) || "", barrio: "", producto: "", cliente: "", desde: (focus && focus.desde) || "", hasta: (focus && focus.hasta) || "" });
   const puedeCrearPedido = canCreateOrder(perfil);
+  const sincronizarPedido = (orderId) => sincronizarPedidoDirigido(orderId, {
+    db, refrescar, aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos,
+  });
   const salesAssistant = useMemo(() => buildSalesReceptionAssistant(db, { today: hoyISO() }), [db.orders, db.order_items, db.customers, db.evidences, db.benefits, db.products, db.variantes]);
 
   const barrios = [...new Set(db.orders.map((o) => o.barrio))];
@@ -362,7 +391,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
     }
     const faltantes = (res && res.faltantes) || [];
     try {
-      await refrescar();
+      await sincronizarPedido(orderId);
     } catch (e) {
       setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El cambio se aplicó correctamente, pero no se pudo actualizar la vista. Recargá la página para ver el estado actual." + (faltantes.length ? " Ojo: había alertas de inventario, revisá Producción." : "") });
       return true;
@@ -574,8 +603,8 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
         </Modal>
       )}
 
-      {sel && <DetallePedido db={db} o={sel} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} refrescar={refrescar} perfil={perfil} />}
-      {nuevo && puedeCrearPedido && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} refrescar={refrescar} />}
+      {sel && <DetallePedido db={db} o={sel} update={update} user={user} onClose={() => setSelId(null)} cambiar={cambiar} setAviso={setAviso} sincronizarPedido={sincronizarPedido} perfil={perfil} />}
+      {nuevo && puedeCrearPedido && <NuevoPedido db={db} update={update} user={user} onClose={() => setNuevo(false)} setAviso={setAviso} sincronizarPedido={sincronizarPedido} />}
       {aviso && (
         <Modal title={aviso.titulo} onClose={() => setAviso(null)}>
           <p className="text-sm m-0">{aviso.texto}</p>
@@ -586,7 +615,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil }) {
   );
 }
 
-function ControlOperativoPedido({ db, order, perfil, refrescar, setAviso }) {
+function ControlOperativoPedido({ db, order, perfil, sincronizarPedido, setAviso }) {
   const stage = operationalStageForOrder(order);
   const assignment = stage ? activeStageAssignment(order.id, stage, db.order_stage_assignments) : null;
   const lines = stage && stage !== "Logística" ? lineProgressFor(order.id, stage, db.order_items, db.order_line_progress) : [];
@@ -605,7 +634,7 @@ function ControlOperativoPedido({ db, order, perfil, refrescar, setAviso }) {
     setBusy(key);
     try {
       await action();
-      await refrescar();
+      await sincronizarPedido(order.id);
       toast("ok", success);
     } catch (error) {
       setAviso({ titulo: "No se pudo completar el control operativo", texto: error.message });
@@ -748,7 +777,7 @@ function PackingCopilot({ order, progress, handoff }) {
   );
 }
 
-function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refrescar, perfil, contextActions = null }) {
+function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, sincronizarPedido, perfil, contextActions = null }) {
   const fileRef = useRef(null);
   const tipoSubidaRef = useRef("Comprobante de pago"); // tipo fijo de la subida en curso
   const [tipoEv, setTipoEv] = useState(o.pagadoEn ? "Entrega" : "Comprobante de pago"); // solo para el modo libre (＋ otra foto)
@@ -830,7 +859,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
     setVerificandoEmpaque(true);
     try {
       await confirmarVerificacionEmpaque(o.id, packingLines.map((line) => line.id));
-      await refrescar();
+      await sincronizarPedido(o.id);
       toast("ok", `${o.id} · comanda verificada contra la orden`);
     } catch (error) {
       setAviso({ titulo: "No se pudo verificar la comanda", texto: error.message });
@@ -844,7 +873,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
     setCreandoDomicilio(true);
     try {
       await crearDomicilio(o.id, formDomicilio.proveedor, formDomicilio.zona, Math.max(0, +formDomicilio.costoReal || 0), formDomicilio.obs);
-      await refrescar();
+      await sincronizarPedido(o.id);
       setSolicitudDomicilio(false);
       toast("ok", `${o.id} · domicilio solicitado`);
     } catch (error) {
@@ -884,7 +913,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
       }
     }
     try {
-      await refrescar();
+      await sincronizarPedido(o.id);
     } catch (err) {
       setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "La evidencia se guardó correctamente, pero no se pudo actualizar la vista. Recargá la página para verla." });
     }
@@ -921,7 +950,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
 
       {["Listo para empaque", "Empacado", "Listo para despacho"].includes(o.estado) && <PackingCopilot order={o} progress={packingProgress} handoff={packingHandoff} />}
 
-      <ControlOperativoPedido db={db} order={o} perfil={perfil} refrescar={refrescar} setAviso={setAviso} />
+      <ControlOperativoPedido db={db} order={o} perfil={perfil} sincronizarPedido={sincronizarPedido} setAviso={setAviso} />
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Card className="p-4">
@@ -1200,7 +1229,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
               return;
             }
             try {
-              await refrescar();
+              await sincronizarPedido(o.id);
             } catch (e) {
               setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El reclamo se creó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
               setEnviando(false);
@@ -1254,7 +1283,7 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, refres
   );
 }
 
-function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
+function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido }) {
   const s = db.settings;
   const idemKeyRef = useRef("ui-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36)); // 1 por apertura del form: tolera retries de red
   const enviandoRef = useRef(false);
@@ -1395,7 +1424,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, refrescar }) {
     onClose();
     toast("ok", `Pedido ${res.order_id} creado`);
     try {
-      await refrescar();
+      await sincronizarPedido(res.order_id);
       if (faltaStock.length) setAviso({ titulo: "Pedido creado con alerta", texto: `${res.order_id} creado. Ojo: disponibilidad insuficiente en ${faltaStock.map((l) => l.nombre).join(", ")}. Al marcar pagado se creará la sugerencia de producción.` });
     } catch (e) {
       setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: `${res.order_id} se creó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo.` });

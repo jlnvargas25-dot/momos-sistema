@@ -3,6 +3,7 @@ import { normalizeAgencySnapshotVersion } from "./sync-coordinator.js";
 import { normalizeInventoryCursorToken } from "./inventory-cursor.js";
 import { inventoryCoreSnapshotBlockIsComplete } from "./inventory-sync-policy.js";
 import { agencyOperationalFactsReady as hasAgencyOperationalFacts, normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
+import { normalizeOrderDeltaBatch } from "./order-delta.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -452,6 +453,22 @@ export async function fetchInventoryDeltasSince(afterEventId = "", limit = 100) 
   });
   if (error) throw new Error(error.message);
   return data;
+}
+
+export async function fetchOrderDeltas(orderIds) {
+  const ids = [...new Set((Array.isArray(orderIds) ? orderIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))];
+  if (!ids.length || ids.length > 50) {
+    throw new Error("La conciliación dirigida de Pedidos requiere entre 1 y 50 órdenes.");
+  }
+  const { data, error } = await supabase.rpc("momos_order_deltas_v1", { p_order_ids: ids });
+  if (error) {
+    const next = new Error(error.message || "No se pudo actualizar la comanda.");
+    if (error.code) next.code = error.code;
+    throw next;
+  }
+  return normalizeOrderDeltaBatch(data);
 }
 
 export async function fetchUserProfile(authUserId) {
@@ -1769,6 +1786,8 @@ export async function fetchCatalogos(options = {}) {
    Vacío es LEGÍTIMO acá (la operación real arranca en 0). */
 
 export async function fetchOperativo() {
+  const syncManifest = await fetchSyncManifest();
+  const orderDeltaReady = syncManifest?.capabilities?.pedidos_deltas_disponibles === true;
   const operationalSnapshot = await optionalSnapshot("momos_operational_snapshot_v1");
   const operationalKeys = [
     "orders", "order_items", "order_item_adiciones", "customers", "deliveries", "evidences", "benefits",
@@ -2087,5 +2106,5 @@ export async function fetchOperativo() {
     gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, orderDeltaReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
 }

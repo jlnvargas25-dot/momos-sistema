@@ -39,7 +39,8 @@ begin
     '20260718_63_mcp_aprobacion_humana_rbac','20260718_64_integridad_snapshot_realtime',
     '20260718_65_hechos_financieros','20260718_66_agency_snapshot_rendimiento',
     '20260718_67_agency_operational_facts','20260719_68_inventario_precision_lotes',
-    '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia'
+    '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia',
+    '20260719_71_pedidos_deltas'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -840,8 +841,32 @@ begin
         where pubname='supabase_realtime' and schemaname='public'
           and tablename='inventory_sync_event_xids'
       ), 'Realtime no conserva el outbox sanitario y el mapping privado';
+    assert exists(
+      select 1 from pg_publication_tables
+      where pubname='supabase_realtime' and schemaname='public'
+        and tablename='order_sync_versions'
+    ), 'Realtime no incluye el outbox compacto de Pedidos';
   end if;
+  assert to_regclass('public.order_sync_versions') is not null,
+    'H71 no instaló las versiones compactas por pedido';
+  assert has_function_privilege('authenticated','public.momos_order_deltas_v1(text[])','EXECUTE')
+    and not has_function_privilege('anon','public.momos_order_deltas_v1(text[])','EXECUTE'),
+    'H71 perdió la frontera RBAC del delta de Pedidos';
+  assert has_table_privilege('authenticated','public.order_sync_versions','SELECT')
+    and not has_table_privilege('authenticated','public.order_sync_versions','INSERT')
+    and not has_table_privilege('service_role','public.order_sync_versions','SELECT'),
+    'H71 no dejó el outbox disponible para Realtime o permitió escritura directa';
+  assert exists(
+    select 1 from pg_policies
+    where schemaname='public' and tablename='order_sync_versions'
+      and policyname='order_sync_versions_staff_read'
+      and roles @> array['authenticated']::name[]
+  ), 'H71 perdió el RLS de personal del outbox compacto';
+  assert position('pedidos_deltas_disponibles' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H71';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-70 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-71 PASS, rollback total' as resultado;
 rollback;

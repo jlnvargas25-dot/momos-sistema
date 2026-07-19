@@ -208,11 +208,17 @@ test("Realtime H69 usa su outbox y excluye las cuatro tablas crudas", () => {
     [...match[1].matchAll(/"([a-z][a-z0-9_]+)"/g)].map((name) => name[1])
   ));
   assert.deepEqual(new Set(legacyOnlyTables), new Set([
-    "inventory_items", "inventory_lots", "inventory_movements", "audit_logs",
-  ]), "las fuentes crudas de Inventario deben existir únicamente en la rama pre-H69");
+    "inventory_items", "inventory_lots", "inventory_movements",
+  ]), "las fuentes crudas exclusivas de Inventario deben existir únicamente en la rama pre-H69");
+  assert.match(tableSetup,
+    /\.\.\.\(inventoryDeltaRealtime \|\| orderDeltaRealtime \? \[\] : \["audit_logs"\]\)/,
+    "audit_logs debe quedar fuera tanto del camino H69 como del camino H71");
 
   const h69TableSetup = tableSetup.replace(
     /\.\.\.\(inventoryDeltaRealtime \? \[\] : \[[^\]]+\]\)/g,
+    "",
+  ).replace(
+    /\.\.\.\(inventoryDeltaRealtime \|\| orderDeltaRealtime \? \[\] : \[[^\]]+\]\)/g,
     "",
   );
   for (const table of ["inventory_items", "inventory_lots", "inventory_movements", "audit_logs"]) {
