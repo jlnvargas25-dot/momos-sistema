@@ -3,7 +3,7 @@ import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitiv
 import { supabase } from "./lib/supabase";
 import {
   fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos,
-  fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchUserProfile,
+  fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductionActivityDelta, fetchUserProfile,
 } from "./lib/read-model";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion, normalizeSyncDomains,
@@ -34,6 +34,10 @@ import {
 import { compareInventoryCursorTokens, normalizeInventoryCursorToken } from "./lib/inventory-cursor";
 import { applyOrderDeltaBatchToDb, compareOrderDeltaVersions } from "./lib/order-delta";
 import { applyFinishedInventoryDeltaBatchToDb, compareFinishedInventoryDeltaVersions } from "./lib/finished-inventory-delta";
+import {
+  applyProductionActivityDeltaToDb, compareProductionDeltaVersions,
+  normalizeProductionMutationEnvelope,
+} from "./lib/production-delta";
 import { canOperateStage } from "./lib/operational-control";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
@@ -725,7 +729,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -743,7 +747,7 @@ const ATRIBUTO_LABEL = { sabor: "Sabor", salsa: "Salsa", figura: "Figura" };
 function normalizeDbShape(d) {
   const s = seedDb();
   const arrayTables = [
-    "orders", "order_items", "customers", "products", "production_batches", "variantes", "variantesCuarentena",
+    "orders", "order_items", "customers", "products", "production_batches", "subreceta_producciones", "variantes", "variantesCuarentena",
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
     "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions", "distributionConnectorJobs",
@@ -767,6 +771,9 @@ function normalizeDbShape(d) {
   d.finishedInventoryDeltaReady = d.finishedInventoryDeltaReady === true;
   if (!d.finishedInventoryDeltaVersions || typeof d.finishedInventoryDeltaVersions !== "object"
       || Array.isArray(d.finishedInventoryDeltaVersions)) d.finishedInventoryDeltaVersions = {};
+  d.productionMutationDeltaReady = d.productionMutationDeltaReady === true;
+  d.productionActivityDeltaVersion = /^\d+$/.test(String(d.productionActivityDeltaVersion || ""))
+    ? String(d.productionActivityDeltaVersion) : "";
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
   d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
@@ -5951,6 +5958,7 @@ export default function MomosOps() {
     let inventoryTimer = null;
     let orderTimer = null;
     let finishedInventoryTimer = null;
+    let productionActivityTimer = null;
     let alive = true;
     const pendingDomains = new Set();
     let pendingAgencyVersion = "";
@@ -5961,27 +5969,31 @@ export default function MomosOps() {
     // H69 se activa primero en la pantalla de Inventario. Allí el outbox
     // versionado sustituye cuatro tablas crudas que antes disparaban dos
     // snapshots completos por una sola compra o ajuste.
-    const inventoryDeltaRealtime = vista === "Inventario"
+    const productionMutationRealtime = vista === "Producción"
+      && db.productionMutationDeltaReady === true;
+    const inventoryDeltaRealtime = (vista === "Inventario" || productionMutationRealtime)
       && db.inventoryMutationDeltaReady === true
       && db.inventoryMutationFullSnapshotRequired === false
       && inventoryFullSnapshotRequiredRef.current === false
       && (operationsRealtime || catalogsRealtime);
-    const orderDeltaRealtime = ["Pedidos", "Empaque", "Inventario terminado"].includes(vista)
+    const orderDeltaRealtime = ["Pedidos", "Empaque", "Inventario terminado", "Producción"].includes(vista)
       && db.orderDeltaReady === true
       && operationsRealtime;
-    const finishedInventoryDeltaRealtime = vista === "Inventario terminado"
+    const finishedInventoryDeltaRealtime = (vista === "Inventario terminado" || productionMutationRealtime)
       && db.finishedInventoryDeltaReady === true
       && operationsRealtime;
+    const productionActivityDeltaRealtime = productionMutationRealtime && operationsRealtime;
     const tables = [];
     if (operationsRealtime) {
       if (!orderDeltaRealtime) tables.push(
         "orders", "order_items", "order_item_adiciones", "packing_verifications", "evidences", "deliveries",
-        "customers", "benefits", "claims", "inventory_reservations", "production_suggestions",
+        "customers", "benefits", "claims", "inventory_reservations",
+        ...(productionActivityDeltaRealtime ? [] : ["production_suggestions"]),
       );
       tables.push(
         ...(inventoryDeltaRealtime ? [] : ["inventory_movements"]),
         ...(finishedInventoryDeltaRealtime ? [] : ["production_batches", "lote_figuras"]),
-        "subreceta_producciones",
+        ...(productionActivityDeltaRealtime ? [] : ["subreceta_producciones"]),
         ...(inventoryDeltaRealtime || orderDeltaRealtime || finishedInventoryDeltaRealtime ? [] : ["audit_logs"]),
       );
     }
@@ -5999,6 +6011,7 @@ export default function MomosOps() {
     if (inventoryDeltaRealtime) tables.push("inventory_sync_events");
     if (orderDeltaRealtime) tables.push("order_sync_versions");
     if (finishedInventoryDeltaRealtime) tables.push("finished_inventory_sync_versions");
+    if (productionActivityDeltaRealtime) tables.push("production_activity_sync_versions");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
@@ -6302,6 +6315,40 @@ export default function MomosOps() {
 
     if (finishedInventoryDeltaRealtime && finishedInventoryRealtimePendingRef.current.size) flushFinishedInventoryDeltas();
 
+    const fallbackProductionActivitySnapshot = () => refetchFocoRef.current?.(
+      [SYNC_DOMAINS.OPERATIONS],
+      { reason: "production-activity-delta-fallback", afterActive: true },
+    ) || Promise.resolve();
+
+    const flushProductionActivityDelta = (delay = 160) => {
+      if (productionActivityTimer) clearTimeout(productionActivityTimer);
+      productionActivityTimer = setTimeout(async () => {
+        if (!alive || !hidratadoRef.current) return;
+        try {
+          const envelope = await fetchProductionActivityDelta();
+          if (!alive) return;
+          aplicarActividadProduccion(envelope);
+        } catch {
+          if (!alive) return;
+          try { await fallbackProductionActivitySnapshot(); }
+          catch { if (alive) setRealtimeStatus("reconectando"); }
+        }
+      }, delay);
+    };
+
+    const queueProductionActivityDelta = (payload) => {
+      const incomingVersion = String(payload?.new?.version || "").trim();
+      const currentVersion = String(dbRef.current?.productionActivityDeltaVersion || "").trim();
+      if (currentVersion && incomingVersion) {
+        try {
+          if (compareProductionDeltaVersions(incomingVersion, currentVersion) !== 1) return;
+        } catch {
+          // Una versiÃ³n malformada nunca se aplica; el fetch cerrado decidirÃ¡.
+        }
+      }
+      flushProductionActivityDelta();
+    };
+
     tables.forEach((table) => {
       channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
         if (table === "inventory_sync_events") {
@@ -6314,6 +6361,10 @@ export default function MomosOps() {
         }
         if (table === "finished_inventory_sync_versions") {
           queueFinishedInventoryDelta(payload);
+          return;
+        }
+        if (table === "production_activity_sync_versions") {
+          queueProductionActivityDelta(payload);
           return;
         }
         const domain = syncDomainForTable(table);
@@ -6364,6 +6415,9 @@ export default function MomosOps() {
         if (inventoryDeltaRealtime && dbRef.current?.inventoryMutationDeltaReady === true) {
           requestInventoryReconciliation();
         }
+        if (productionActivityDeltaRealtime && dbRef.current?.productionMutationDeltaReady === true) {
+          flushProductionActivityDelta(0);
+        }
       }
       else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) setRealtimeStatus("reconectando");
     });
@@ -6373,6 +6427,7 @@ export default function MomosOps() {
       if (inventoryTimer) clearTimeout(inventoryTimer);
       if (orderTimer) clearTimeout(orderTimer);
       if (finishedInventoryTimer) clearTimeout(finishedInventoryTimer);
+      if (productionActivityTimer) clearTimeout(productionActivityTimer);
       reconciliationState.requested = false;
       if (inventoryReconcileRequestRef.current === requestInventoryReconciliation) {
         inventoryReconcileRequestRef.current = null;
@@ -6381,7 +6436,7 @@ export default function MomosOps() {
       if (finishedInventoryReconcileRequestRef.current === fallbackFinishedInventorySnapshot) finishedInventoryReconcileRequestRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -6973,6 +7028,55 @@ export default function MomosOps() {
     }
   }
 
+  function aplicarActividadProduccion(envelope) {
+    let result;
+    update((draft) => {
+      result = applyProductionActivityDeltaToDb(draft, envelope);
+      normalizeDbShape(draft);
+    }, { silencioso: true, persistir: false });
+    return result;
+  }
+
+  function capturarContextoMutacionProduccion() {
+    return {
+      inventoryGeneration: capturarGeneracionInventario(),
+      finishedInventoryGeneration: capturarGeneracionProductoTerminado(),
+    };
+  }
+
+  function aplicarMutacionProduccion(envelope, context = {}) {
+    const normalized = normalizeProductionMutationEnvelope(envelope);
+    if (dbRef.current?.productionMutationDeltaReady !== true) {
+      return { status: "discarded", reason: "production_delta_not_ready", result: normalized.result };
+    }
+    if (normalized.inventory && !inventoryDeltaCanApply({
+      fullSnapshotRequired: inventoryFullSnapshotRequiredRef.current,
+      expectedGeneration: Number(context.inventoryGeneration),
+      currentGeneration: capturarGeneracionInventario(),
+    })) {
+      return { status: "discarded", reason: "inventory_generation_changed", result: normalized.result };
+    }
+    if (normalized.finishedInventory
+        && Number(context.finishedInventoryGeneration) !== capturarGeneracionProductoTerminado()) {
+      return { status: "discarded", reason: "finished_inventory_generation_changed", result: normalized.result };
+    }
+    const applied = {};
+    if (normalized.inventory) {
+      applied.inventory = aplicarBatchInventario(
+        normalized.inventory,
+        Number(context.inventoryGeneration),
+      );
+    }
+    if (normalized.finishedInventory) {
+      applied.finishedInventory = aplicarDeltaProductoTerminado(
+        normalized.finishedInventory,
+        Number(context.finishedInventoryGeneration),
+      );
+    }
+    if (normalized.activity) applied.activity = aplicarActividadProduccion(normalized.activity);
+    return { status: "applied", duplicate: normalized.duplicate, result: normalized.result, applied };
+  }
+
   function solicitarConciliacionInventario() {
     const request = inventoryReconcileRequestRef.current;
     if (typeof request === "function") return request();
@@ -7289,7 +7393,7 @@ export default function MomosOps() {
       capturarGeneracionInventario, solicitarConciliacionInventario,
       aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos,
       aplicarDeltaProductoTerminado, capturarGeneracionProductoTerminado, solicitarConciliacionProductoTerminado,
-      sincronizarProductoTerminado,
+      sincronizarProductoTerminado, aplicarMutacionProduccion, capturarContextoMutacionProduccion,
       perfil, serverDataReady: Boolean(catalogosDe), performanceRouteId: performanceRouteRef.current,
     };
     switch (activa) {

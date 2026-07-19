@@ -224,6 +224,12 @@ export async function crearCorrida(payload) {
   return data; // {corrida_id, lotes:[{batch_id,product_id,prod,gramaje_g}], faltantes:[{item_id,insumo,faltan,unidad}], idempotente?}
 }
 
+export async function crearCorridaDelta(payload) {
+  const { data, error } = await supabase.rpc("crear_corrida_delta", { p: payload });
+  if (error) throw rpcError(error);
+  return data;
+}
+
 export async function desmoldarLote(batchId, perfectas, imperfectas, descartadas, figuras = null) {
   // figuras (variantes-v1): lote MIXTO exige conteos por figura [{figura,perfectas,imperfectas,descartadas}];
   // en lote de 1 figura se omite y el server auto-deriva (firma retrocompatible, p_figuras default null).
@@ -250,6 +256,14 @@ export async function convertirImperfectas(batchId) {
   const { data, error } = await supabase.rpc("convertir_imperfectas", { p_batch_id: batchId });
   if (error) throw new Error(error.message);
   return data; // {ok}
+}
+
+export async function convertirImperfectasDelta(batchId, idempotencyKey) {
+  const { data, error } = await supabase.rpc("convertir_imperfectas_delta", {
+    p: { batch_id: batchId, idempotency_key: idempotencyKey },
+  });
+  if (error) throw rpcError(error);
+  return data;
 }
 
 export async function crearInsumo(payload) {
@@ -1082,6 +1096,12 @@ export async function producirSubreceta(payload) {
   const { data, error } = await supabase.rpc("producir_subreceta", { p: payload });
   if (error) throw new Error(error.message);
   return data; // {ok, id, costo_batch, gramos_obtenidos, faltantes:[{item_id,insumo,faltan,unidad}], idempotente?}
+}
+
+export async function producirSubrecetaDelta(payload) {
+  const { data, error } = await supabase.rpc("producir_subreceta_delta", { p: payload });
+  if (error) throw rpcError(error);
+  return data;
 }
 
 export async function setSugerenciaEstado(sugId, estado) {

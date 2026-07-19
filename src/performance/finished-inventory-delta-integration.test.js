@@ -23,7 +23,7 @@ test("H72 instala outbox sanitario y contrato cerrado por producto", () => {
 test("H72 lee y aplica deltas dirigidos sin recargar colecciones crudas", () => {
   assert.match(readModel, /fetchFinishedInventoryDeltas[\s\S]+momos_finished_inventory_deltas_v1/);
   assert.match(readModel, /producto_terminado_deltas_disponibles/);
-  assert.match(app, /finishedInventoryDeltaRealtime = vista === "Inventario terminado"/);
+  assert.match(app, /finishedInventoryDeltaRealtime = \(vista === "Inventario terminado" \|\| productionMutationRealtime\)/);
   assert.match(app, /table === "finished_inventory_sync_versions"/);
   assert.match(app, /fetchFinishedInventoryDeltas\(productIds\)/);
   assert.match(app, /finishedInventoryOperationsAreCurrent/);
@@ -39,5 +39,5 @@ test("H72 usa lectura dirigida tras cambiar un lote y conserva fallback", () => 
 
 test("la cadena ordenada incluye H72 después de H71", () => {
   assert.ok(ordered.indexOf("20260719_72_producto_terminado_deltas") > ordered.indexOf("20260719_71_pedidos_deltas"));
-  assert.match(ordered, /migraciones ordenadas 01-72 PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-(?:72|73) PASS/);
 });

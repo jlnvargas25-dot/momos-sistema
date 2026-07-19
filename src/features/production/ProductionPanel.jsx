@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createCompactQueueOrderCard } from "../operations/CompactQueueOrderCard.jsx";
 import {
-  completarEtapaPedido, convertirImperfectas, crearCorrida, crearIncidentePedido, desmoldarLote,
-  empezarCongelamiento, producirSubreceta, resolverIncidentePedido, setLoteEstado,
+  completarEtapaPedido, convertirImperfectas, convertirImperfectasDelta, crearCorrida, crearCorridaDelta,
+  crearIncidentePedido, createInventoryIdempotencyKey, desmoldarLote,
+  empezarCongelamiento, producirSubreceta, producirSubrecetaDelta, resolverIncidentePedido, setLoteEstado,
   setOrderStatusRemoto, setSugerenciaEstado,
 } from "../../lib/rpc";
 import {
@@ -271,13 +272,18 @@ export function createProductionPanel(shared) {
   ];
 
 
-  function Produccion({ db, update, user, refrescar, sincronizarProductoTerminado, perfil, serverDataReady, focus }) {
+  function Produccion({
+    db, update, user, refrescar, sincronizarProductoTerminado,
+    aplicarMutacionProduccion, capturarContextoMutacionProduccion,
+    perfil, serverDataReady, focus,
+  }) {
     const [, setTick] = useState(0);
     useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
     const [nuevo, setNuevo] = useState(false);
     const [pre, setPre] = useState(null); // sugerencia que origina la corrida
     const [queueRequest, setQueueRequest] = useState(null);
     const corridaIdemKeyRef = useRef(null); // 1 por apertura del form: tolera retries de red sin duplicar la corrida
+    const imperfectasIdemKeysRef = useRef(new Map());
     const s = db.settings;
     const sabores = useMemo(
       () => [...(s.saboresFrutales || []), ...(s.saboresCremosos || [])],
@@ -379,6 +385,26 @@ export function createProductionPanel(shared) {
       } catch (e) {
         onFail();
       }
+    }
+
+    function puedeUsarMutacionProduccionDelta() {
+      return db.productionMutationDeltaReady === true
+        && typeof aplicarMutacionProduccion === "function"
+        && typeof capturarContextoMutacionProduccion === "function";
+    }
+
+    async function aplicarMutacionProduccionORefrescar(envelope, context, onFail) {
+      if (envelope && context && puedeUsarMutacionProduccionDelta()) {
+        try {
+          const applied = aplicarMutacionProduccion(envelope, context);
+          if (applied?.status === "applied") return applied;
+        } catch {
+          // El servidor ya confirmo la escritura: reconciliar por lectura,
+          // nunca repetir una mutacion ambigua.
+        }
+      }
+      await refrescarSilencioso(onFail);
+      return { status: "snapshot" };
     }
 
     async function sincronizarLote(lote, onFail) {
@@ -520,8 +546,20 @@ export function createProductionPanel(shared) {
       };
       setEnviando(true);
       let resultado;
+      let mutationEnvelope = null;
+      const mutationContext = puedeUsarMutacionProduccionDelta()
+        ? capturarContextoMutacionProduccion() : null;
       try {
-        resultado = await crearCorrida(payload);
+        if (mutationContext) {
+          mutationEnvelope = await crearCorridaDelta(payload);
+          const applied = await aplicarMutacionProduccionORefrescar(
+            mutationEnvelope, mutationContext,
+            () => setMsg("La producción se registró, pero la vista necesita recargarse."),
+          );
+          resultado = applied?.result || mutationEnvelope?.result;
+        } else {
+          resultado = await crearCorrida(payload);
+        }
       } catch (e) {
         const friendlyError = explainOperationalError(e, {
           inventory: db.inventory_items || [],
@@ -537,12 +575,24 @@ export function createProductionPanel(shared) {
         try { await setSugerenciaEstado(suggestionId, "Atendida"); }
         catch { suggestionUpdateFailures.push(suggestionId); }
       }
+      const suggestionUpdates = suggestionIds.filter((suggestionId, index) => (
+        index === 0 || !suggestionUpdateFailures.includes(suggestionId)
+      ));
+      if (mutationContext && suggestionUpdates.length) {
+        update((draft) => {
+          draft.production_suggestions = (draft.production_suggestions || []).map((suggestion) => (
+            suggestionUpdates.includes(suggestion.id) ? { ...suggestion, estado: "Atendida" } : suggestion
+          ));
+        }, { silencioso: true, persistir: false });
+      }
       setRegistroError("");
       setEnviando(false);
       setNuevo(false); setPre(null);
       corridaIdemKeyRef.current = null; // fuerza una key nueva en la próxima apertura (abrirNuevaCorrida)
       toast("ok", `Producción registrada${resultado && resultado.corrida_id ? ` (${resultado.corrida_id})` : ""}`);
-      await refrescarSilencioso(() => setMsg("La producción se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+      if (!mutationContext) {
+        await refrescarSilencioso(() => setMsg("La producción se registró correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo."));
+      }
       if (suggestionUpdateFailures.length) {
         setMsg(`La corrida quedó registrada, pero MOMOS OPS no pudo cerrar ${suggestionUpdateFailures.join(", ")}. No crees otro lote: recarga y revisa esas recomendaciones.`);
       }
@@ -581,8 +631,19 @@ export function createProductionPanel(shared) {
       };
       setEnviandoPrep(true);
       let resultado;
+      const mutationContext = puedeUsarMutacionProduccionDelta()
+        ? capturarContextoMutacionProduccion() : null;
       try {
-        resultado = await producirSubreceta(payload);
+        if (mutationContext) {
+          const envelope = await producirSubrecetaDelta(payload);
+          const applied = await aplicarMutacionProduccionORefrescar(
+            envelope, mutationContext,
+            () => setMsg("La base se preparó, pero la vista necesita recargarse."),
+          );
+          resultado = applied?.result || envelope?.result;
+        } else {
+          resultado = await producirSubreceta(payload);
+        }
       } catch (e) {
         toast("error", "No se pudo registrar la preparación: " + e.message);
         setEnviandoPrep(false);
@@ -592,7 +653,9 @@ export function createProductionPanel(shared) {
       setPrepBase(false);
       prepIdemKeyRef.current = null; // fuerza key nueva en la próxima apertura
       toast("ok", `${prepSel.nombre} preparado · inventario actualizado`);
-      await refrescarSilencioso(() => setMsg("La base se preparó correctamente, pero no se pudo actualizar la vista. Recargá la página para verla."));
+      if (!mutationContext) {
+        await refrescarSilencioso(() => setMsg("La base se preparó correctamente, pero no se pudo actualizar la vista. Recargá la página para verla."));
+      }
       const faltantesPrep = resultado && resultado.faltantes;
       if (Array.isArray(faltantesPrep) && faltantesPrep.length) {
         setMsg(`Base preparada, pero el inventario no alcanzó para: ${faltantesPrep.map((f) => `${f.insumo} (faltan ${f.faltan} ${f.unidad})`).join(", ")}. Registra la compra en Inventario.`);
@@ -675,15 +738,34 @@ export function createProductionPanel(shared) {
 
     async function convertirImperfectasLote(lote) {
       setEnviandoBatchId(lote.id);
+      const mutationContext = puedeUsarMutacionProduccionDelta()
+        ? capturarContextoMutacionProduccion() : null;
+      let envelope = null;
       try {
-        await convertirImperfectas(lote.id);
+        if (mutationContext) {
+          let idempotencyKey = imperfectasIdemKeysRef.current.get(lote.id);
+          if (!idempotencyKey) {
+            idempotencyKey = createInventoryIdempotencyKey();
+            imperfectasIdemKeysRef.current.set(lote.id, idempotencyKey);
+          }
+          envelope = await convertirImperfectasDelta(lote.id, idempotencyKey);
+          await aplicarMutacionProduccionORefrescar(
+            envelope, mutationContext,
+            () => toast("alert", "Las imperfectas se convirtieron, pero la vista necesita recargarse."),
+          );
+          imperfectasIdemKeysRef.current.delete(lote.id);
+        } else {
+          await convertirImperfectas(lote.id);
+        }
       } catch (error) {
         toast("error", "No se pudieron convertir las imperfectas: " + error.message);
         setEnviandoBatchId(null);
         return;
       }
       toast("ok", `${lote.imperfectas} imperfectas del lote ${lote.id} → insumo`);
-      await refrescarSilencioso(() => toast("alert", "Las imperfectas se convirtieron, pero no se pudo actualizar la vista. Recargá la página."));
+      if (!mutationContext) {
+        await refrescarSilencioso(() => toast("alert", "Las imperfectas se convirtieron, pero no se pudo actualizar la vista. Recargá la página."));
+      }
       setEnviandoBatchId(null);
     }
 
