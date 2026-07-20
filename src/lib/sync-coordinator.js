@@ -3,6 +3,7 @@ export const SYNC_DOMAINS = Object.freeze({
   OPERATIONS: "operativo",
   AGENCY: "agencia",
   FINANCE: "finanzas",
+  CONFIGURATION: "configuracion",
 });
 
 const KNOWN_DOMAINS = new Set(Object.values(SYNC_DOMAINS));
@@ -13,9 +14,10 @@ const OPERATIONAL_VIEWS = new Set([
 ]);
 
 const FINANCE_VIEWS = new Set(["finanzas"]);
+const CONFIGURATION_VIEWS = new Set(["configuracion"]);
 
 const CATALOG_VIEWS = new Set([
-  "productos", "configuracion",
+  "productos",
 ]);
 
 const MIXED_OPERATIONAL_VIEWS = new Set(["dashboard", "produccion", "inventario", "reportes"]);
@@ -38,6 +40,7 @@ const AGENCY_TABLES = new Set([
 ]);
 
 const FINANCE_TABLES = new Set(["finance_sync_state"]);
+const CONFIGURATION_TABLES = new Set(["configuration_sync_state"]);
 
 function normalizedKey(value) {
   return String(value || "")
@@ -51,6 +54,7 @@ export function syncDomainsForView(view, _options = {}) {
   const key = normalizedKey(view);
   if (OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.OPERATIONS];
   if (FINANCE_VIEWS.has(key)) return [SYNC_DOMAINS.FINANCE];
+  if (CONFIGURATION_VIEWS.has(key)) return [SYNC_DOMAINS.CONFIGURATION];
   if (CATALOG_VIEWS.has(key)) return [SYNC_DOMAINS.CATALOGS];
   if (MIXED_OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS];
   // H66 y H67 son contratos cerrados de Agencia. Incluso durante un fallback
@@ -63,6 +67,7 @@ export function syncDomainsForView(view, _options = {}) {
 export function syncDomainForTable(table) {
   const key = normalizedKey(table);
   if (FINANCE_TABLES.has(key)) return SYNC_DOMAINS.FINANCE;
+  if (CONFIGURATION_TABLES.has(key)) return SYNC_DOMAINS.CONFIGURATION;
   if (OPERATIONAL_TABLES.has(key)) return SYNC_DOMAINS.OPERATIONS;
   if (AGENCY_TABLES.has(key) || key.startsWith("agency_")) return SYNC_DOMAINS.AGENCY;
   return SYNC_DOMAINS.CATALOGS;

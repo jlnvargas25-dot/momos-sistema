@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
 
 function rpcError(error, fallbackMessage = "No se pudo completar la operación.") {
   const next = new Error(error?.message || fallbackMessage);
@@ -37,6 +37,21 @@ export async function actualizarPautaFinanciera({ monthlyBudget, from, to }, ide
     },
   });
   if (error) throw rpcError(error, "No se pudo guardar la pauta mensual.");
+  return data;
+}
+
+export async function guardarConfiguracionServidor(payload, expectedVersion, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+    throw new Error("La actualización de Configuración no tiene una llave idempotente válida.");
+  }
+  if (!/^\d+$/.test(String(expectedVersion || "")) || String(expectedVersion) === "0") {
+    throw new Error("Configuración no tiene una versión autoritativa para guardar.");
+  }
+  const { data, error } = await supabase.rpc("guardar_configuracion_v1", {
+    p: { idempotency_key: key, expected_version: String(expectedVersion), payload },
+  });
+  if (error) throw rpcError(error, "No se pudo guardar Configuración.");
   return data;
 }
 
@@ -353,19 +368,6 @@ export async function setUserActivo(userId, activo) {
   const { data, error } = await supabase.rpc("set_user_activo", { p_user_id: userId, p_activo: activo });
   if (error) throw new Error(error.message);
   return data; // {ok, activo, cambio}
-}
-
-export async function guardarConfiguracionDemoras(settings) {
-  const rows = [
-    { clave: "demora_cocina_min", valor: settings.demoraCocinaMin },
-    { clave: "demora_cocina_urgente_min", valor: settings.demoraCocinaUrgenteMin },
-    { clave: "demora_empaque_min", valor: settings.demoraEmpaqueMin },
-    { clave: "demora_empaque_urgente_min", valor: settings.demoraEmpaqueUrgenteMin },
-    { clave: "demora_repeticion_min", valor: settings.demoraRepeticionMin },
-  ];
-  const { error } = await supabase.from("app_settings").upsert(rows, { onConflict: "clave" });
-  if (error) throw new Error(error.message);
-  return settings;
 }
 
 // Marketing Hito 2: gate is_staff() is not true (server). productoFocoId → id crudo.

@@ -42,7 +42,7 @@ begin
     '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia',
     '20260719_71_pedidos_deltas','20260719_72_producto_terminado_deltas',
     '20260719_73_produccion_deltas','20260719_74_catalogo_crm_deltas',
-    '20260719_75_finanzas_operativas'
+    '20260719_75_finanzas_operativas','20260719_76_configuracion_servidor'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -969,7 +969,28 @@ begin
       'public.momos_sync_manifest_v1()'::regprocedure
     ))>0,
     'el manifiesto de Data Sync no anuncia H75';
+  assert to_regclass('public.configuration_sync_state') is not null
+    and to_regclass('public.configuration_mutation_receipts') is not null,
+    'H76 no instaló el outbox y los recibos privados de Configuración';
+  assert has_function_privilege('authenticated','public.momos_configuration_snapshot_v1()','EXECUTE')
+    and has_function_privilege('authenticated','public.guardar_configuracion_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_configuration_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('service_role','public.guardar_configuracion_v1(jsonb)','EXECUTE'),
+    'H76 perdió la frontera RBAC de Configuración';
+  assert has_table_privilege('authenticated','public.configuration_sync_state','SELECT')
+    and not has_table_privilege('authenticated','public.configuration_sync_state','UPDATE')
+    and not has_table_privilege('authenticated','public.configuration_mutation_receipts','SELECT'),
+    'H76 expuso escritura del outbox o lectura de recibos de Configuración';
+  if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert exists(select 1 from pg_publication_tables
+      where pubname='supabase_realtime' and schemaname='public' and tablename='configuration_sync_state'),
+      'Realtime no incluye el outbox compacto de Configuración';
+  end if;
+  assert position('configuracion_servidor_disponible' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H76';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-75 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-76 PASS, rollback total' as resultado;
 rollback;

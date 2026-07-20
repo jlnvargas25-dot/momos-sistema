@@ -1,6 +1,6 @@
 const DEFAULT_MAX_SAMPLES = 100;
 
-const KNOWN_DOMAINS = new Set(["catalogos", "operativo", "agencia", "finanzas", "unknown"]);
+const KNOWN_DOMAINS = new Set(["catalogos", "operativo", "agencia", "finanzas", "configuracion", "unknown"]);
 const KNOWN_KINDS = new Set(["rest", "rpc", "storage", "auth", "realtime", "other"]);
 const KNOWN_SYNC_SOURCES = new Set(["snapshot", "legacy", "cache", "realtime", "unknown"]);
 const KNOWN_VIEWS = new Set([
@@ -21,6 +21,11 @@ const FINANCE_RESOURCES = new Set([
   "finance_summary", "financial_summary", "finance_movements", "payment_reconciliations",
   "finance_sync_state", "momos_finance_snapshot_v1", "momos_financial_facts_v1",
   "actualizar_pauta_financiera_v1", "obtener_resumen_financiero",
+]);
+
+const CONFIGURATION_RESOURCES = new Set([
+  "configuration_sync_state", "momos_configuration_snapshot_v1",
+  "guardar_configuracion_v1", "configuracion_servidor_disponible",
 ]);
 
 function normalizedToken(value) {
@@ -296,6 +301,7 @@ function requestUrl(input) {
 
 function resourceDomain(resource) {
   const key = normalizedToken(resource).replaceAll("-", "_");
+  if (CONFIGURATION_RESOURCES.has(key) || key.startsWith("configuration_")) return "configuracion";
   if (FINANCE_RESOURCES.has(key) || key.startsWith("finance_") || key.startsWith("financial_")) return "finanzas";
   if (OPERATIONAL_RESOURCES.has(key) || key.startsWith("momos_operational_") || key.startsWith("operational_")) return "operativo";
   if (key === "obtener_identidad_marca" || key.startsWith("momos_agency_") || key.startsWith("agency_") || key.startsWith("brand_") || key.startsWith("creative_") || key.startsWith("content_")) return "agencia";

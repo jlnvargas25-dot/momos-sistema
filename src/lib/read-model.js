@@ -609,6 +609,18 @@ export async function fetchFinanceSyncVersion() {
   return normalizeAgencySnapshotVersion(data?.version);
 }
 
+export async function fetchConfigurationSnapshot() {
+  const { data, error } = await supabase.rpc("momos_configuration_snapshot_v1");
+  if (error) throw new Error(error.message);
+  return { sourceKind: "server-configuration-snapshot-v1", payload: data };
+}
+
+export async function fetchConfigurationSyncVersion() {
+  const { data, error } = await supabase.from("configuration_sync_state").select("version").eq("id", 1).maybeSingle();
+  if (error) throw new Error(error.message);
+  return normalizeAgencySnapshotVersion(data?.version);
+}
+
 export async function fetchCatalogos(options = {}) {
   const includeAgency = options.includeAgency !== false;
   const skipAgencySnapshot = options.skipAgencySnapshot === true;

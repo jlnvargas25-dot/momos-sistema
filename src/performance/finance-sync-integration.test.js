@@ -33,5 +33,5 @@ test("H75 separa Finanzas del snapshot operativo y deja el detalle bajo demanda"
 
 test("la cadena ordenada incluye H75 después de H74", () => {
   assert.ok(ordered.indexOf("20260719_75_finanzas_operativas") > ordered.indexOf("20260719_74_catalogo_crm_deltas"));
-  assert.match(ordered, /migraciones ordenadas 01-75 PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-\d+ PASS/);
 });

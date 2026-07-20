@@ -76,13 +76,17 @@ test("calcula TTL por dominio sin refrescar catálogos vigentes", async () => {
       [SYNC_DOMAINS.CATALOGS]: async () => ({}),
       [SYNC_DOMAINS.AGENCY]: async () => ({}),
       [SYNC_DOMAINS.FINANCE]: async () => ({}),
+      [SYNC_DOMAINS.CONFIGURATION]: async () => ({}),
     },
     apply: async () => {},
     now: () => clock,
   });
-  await coordinator.request([SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS, SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.FINANCE]);
+  await coordinator.request([SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS, SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.FINANCE, SYNC_DOMAINS.CONFIGURATION]);
   clock += 70_000;
-  assert.deepEqual(coordinator.staleDomains({ catalogos: 15 * 60_000, operativo: 60_000, agencia: 5 * 60_000, finanzas: 5 * 60_000 }), [SYNC_DOMAINS.OPERATIONS]);
+  assert.deepEqual(coordinator.staleDomains({
+    catalogos: 15 * 60_000, operativo: 60_000, agencia: 5 * 60_000,
+    finanzas: 5 * 60_000, configuracion: 5 * 60_000,
+  }), [SYNC_DOMAINS.OPERATIONS]);
 });
 
 test("una vista operativa no consulta Agencia y una vista comercial usa solo su contrato cerrado", () => {
@@ -90,6 +94,7 @@ test("una vista operativa no consulta Agencia y una vista comercial usa solo su 
   assert.deepEqual(syncDomainsForView("Pedidos"), [SYNC_DOMAINS.OPERATIONS]);
   assert.deepEqual(syncDomainsForView("Productos"), [SYNC_DOMAINS.CATALOGS]);
   assert.deepEqual(syncDomainsForView("Finanzas"), [SYNC_DOMAINS.FINANCE]);
+  assert.deepEqual(syncDomainsForView("Configuración"), [SYNC_DOMAINS.CONFIGURATION]);
   assert.deepEqual(syncDomainsForView("Creativos"), [SYNC_DOMAINS.AGENCY]);
   assert.deepEqual(syncDomainsForView("Agencia MOMOS"), [SYNC_DOMAINS.AGENCY]);
   assert.deepEqual(syncDomainsForView("Agencia MOMOS", { agencyOperationalFactsReady: true }), [SYNC_DOMAINS.AGENCY]);
@@ -109,6 +114,7 @@ test("Realtime clasifica ordenes, catalogos y Agencia por separado", () => {
   assert.equal(syncDomainForTable("agency_snapshot_events"), SYNC_DOMAINS.AGENCY);
   assert.equal(syncDomainForTable("agency_storyboards"), SYNC_DOMAINS.AGENCY);
   assert.equal(syncDomainForTable("finance_sync_state"), SYNC_DOMAINS.FINANCE);
+  assert.equal(syncDomainForTable("configuration_sync_state"), SYNC_DOMAINS.CONFIGURATION);
 });
 
 test("Realtime no repite un commit ya incluido en la ultima lectura", () => {

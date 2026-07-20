@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitives.jsx";
 import { supabase } from "./lib/supabase";
 import {
-  fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos,
+  fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos, fetchConfigurationSnapshot, fetchConfigurationSyncVersion,
   fetchCustomerCrmDeltas, fetchFinanceSnapshot, fetchFinanceSyncVersion, fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductCatalogDeltas, fetchProductionActivityDelta, fetchUserProfile,
 } from "./lib/read-model";
 import {
@@ -15,10 +15,11 @@ import {
   editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente,
   registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente,
   crearProducto, editarProducto, setProductoActivo,
-  guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras,
+  guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor,
   crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado,
   registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion
 } from "./lib/rpc";
+import { buildConfigurationSavePayload, normalizeConfigurationSnapshot } from "./lib/configuration-sync";
 import { canReceiveKitchenDelayReminders, canReceiveKitchenOrderAlerts, kitchenDelayedOrderReminders, kitchenOrderAlert, kitchenOrderStateEvents, kitchenReadyOrderCommands, normalizeKitchenDelaySettings } from "./lib/kitchen-voice";
 import { deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES } from "./lib/order-workflow";
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
@@ -733,7 +734,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, financeSnapshotReady: false, financeSnapshot: null, financeSnapshotKey: "", financeSnapshotVersion: "", agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, financeSnapshotReady: false, financeSnapshot: null, financeSnapshotKey: "", financeSnapshotVersion: "", configurationSnapshotReady: false, configurationSnapshotVersion: "", configurationInventoryChoices: [], configurationFigureProductChoices: [], agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -787,6 +788,10 @@ function normalizeDbShape(d) {
   if (!d.financeSnapshot || typeof d.financeSnapshot !== "object" || Array.isArray(d.financeSnapshot)) d.financeSnapshot = null;
   d.financeSnapshotKey = typeof d.financeSnapshotKey === "string" ? d.financeSnapshotKey : "";
   d.financeSnapshotVersion = normalizeAgencySnapshotVersion(d.financeSnapshotVersion);
+  d.configurationSnapshotReady = d.configurationSnapshotReady === true;
+  d.configurationSnapshotVersion = normalizeAgencySnapshotVersion(d.configurationSnapshotVersion);
+  if (!Array.isArray(d.configurationInventoryChoices)) d.configurationInventoryChoices = [];
+  if (!Array.isArray(d.configurationFigureProductChoices)) d.configurationFigureProductChoices = [];
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
   d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
@@ -4260,12 +4265,14 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
   const [userMsg, setUserMsg] = useState("");
   const [enviandoUser, setEnviandoUser] = useState(false);
   const [backupMsg, setBackupMsg] = useState("");
-  const [nuevaFig, setNuevaFig] = useState({ nombre: "", especie: "gato", gramaje: "150 g" });
+  const [nuevaFig, setNuevaFig] = useState({ nombre: "", especie: "gato", gramaje: "150 g", productId: "" });
   const [nuevoTop, setNuevoTop] = useState({ nombre: "", precio: "", insumoId: "" });
   const s = db.settings;
   const [delayDraft, setDelayDraft] = useState(() => normalizeKitchenDelaySettings(s));
   const [delayMsg, setDelayMsg] = useState("");
   const [guardandoDemoras, setGuardandoDemoras] = useState(false);
+  const [configDirty, setConfigDirty] = useState(false);
+  const [configMsg, setConfigMsg] = useState("");
   const listas = [
     ["saboresFrutales", "Sabores frutales"], ["saboresCremosos", "Sabores cremosos"],
     ["rellenos", "Rellenos"], ["salsas", "Salsas"],
@@ -4275,6 +4282,66 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
   useEffect(() => {
     setDelayDraft(normalizeKitchenDelaySettings(s));
   }, [s.demoraCocinaMin, s.demoraCocinaUrgenteMin, s.demoraEmpaqueMin, s.demoraEmpaqueUrgenteMin, s.demoraRepeticionMin]);
+
+  function editarBorrador(mutator) {
+    update(mutator);
+    setConfigDirty(true);
+    setConfigMsg("");
+  }
+
+  function editarDemoras(mutator) {
+    setDelayDraft((current) => mutator(current));
+    setConfigDirty(true);
+    setDelayMsg("");
+  }
+
+  function aplicarSnapshotConfiguracion(snapshot) {
+    const normalized = normalizeConfigurationSnapshot(snapshot);
+    update((d) => {
+      d.configurationSnapshotReady = true;
+      d.configurationSnapshotVersion = normalized.snapshotVersion;
+      d.configurationInventoryChoices = normalized.inventoryChoices;
+      d.configurationFigureProductChoices = normalized.figureProductChoices;
+      d.users = normalized.users;
+      d.multipleRolesReady = true;
+      d.figuras = normalized.figures.map((figure) => ({
+        nombre: figure.nombre, especie: figure.especie, gramajeG: Number.parseInt(figure.gramaje, 10),
+        productId: figure.productId, activo: figure.activo,
+      }));
+      Object.assign(d.settings, normalized.settingsCatalogos);
+      const byId = new Map((d.audit_logs || []).map((row) => [String(row.id), row]));
+      normalized.auditLogs.forEach((row) => byId.set(String(row.id), row));
+      d.audit_logs = [...byId.values()].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 100);
+    }, { silencioso: true, persistir: false });
+    setDelayDraft(normalizeKitchenDelaySettings(normalized.settingsCatalogos));
+    return normalized;
+  }
+
+  async function guardarCambiosConfiguracion(delayValues = delayDraft) {
+    if (guardandoDemoras || !db.configurationSnapshotReady) return false;
+    setGuardandoDemoras(true);
+    setConfigMsg("");
+    try {
+      const response = await guardarConfiguracionServidor(
+        buildConfigurationSavePayload(db, delayValues),
+        db.configurationSnapshotVersion,
+        createInventoryIdempotencyKey(),
+      );
+      if (response?.contract !== "momos.configuration-mutation.v1" || !response?.snapshot) {
+        throw new Error("El servidor devolvió una confirmación incompleta.");
+      }
+      aplicarSnapshotConfiguracion(response.snapshot);
+      setConfigDirty(false);
+      setConfigMsg("✓ Configuración guardada y compartida con todos los equipos.");
+      toast("ok", "Configuración actualizada");
+      return true;
+    } catch (error) {
+      setConfigMsg("⚠️ " + (error?.message || "No se pudo guardar Configuración."));
+      return false;
+    } finally {
+      setGuardandoDemoras(false);
+    }
+  }
 
   async function guardarTiemposDemora() {
     if (guardandoDemoras) return;
@@ -4288,23 +4355,9 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
       return;
     }
     const next = normalizeKitchenDelaySettings(values);
-    setGuardandoDemoras(true);
     setDelayMsg("");
-    try {
-      await guardarConfiguracionDemoras(next);
-      update((d) => {
-        Object.assign(d.settings, next);
-        addAudit(d, { user, entidad: "Configuración", entidadId: "demoras_pedidos", accion: "Tiempos actualizados", a: `Cocina ${next.demoraCocinaMin}/${next.demoraCocinaUrgenteMin} · Empaque ${next.demoraEmpaqueMin}/${next.demoraEmpaqueUrgenteMin} · cada ${next.demoraRepeticionMin} min` });
-      });
-      setDelayDraft(next);
-      setDelayMsg("✓ Tiempos guardados para todos los equipos.");
-      toast("ok", "Tiempos de pedidos demorados actualizados");
-      try { await refrescar?.(); } catch { /* la copia local ya refleja el cambio guardado */ }
-    } catch (error) {
-      setDelayMsg("⚠️ No se pudieron guardar los tiempos: " + error.message);
-    } finally {
-      setGuardandoDemoras(false);
-    }
+    const saved = await guardarCambiosConfiguracion(next);
+    if (saved) setDelayMsg("✓ Tiempos guardados para todos los equipos.");
   }
 
   function agregar(k) {
@@ -4315,33 +4368,35 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
       setNuevoItem((prev) => ({ ...prev, [k]: "" }));
       return;
     }
-    update((d) => {
+    editarBorrador((d) => {
       if (d.settings[k].includes(v)) return;
-      d.settings[k] = [...d.settings[k], v];
-      addAudit(d, { user, entidad: "Configuración", entidadId: k, accion: "Ítem agregado", a: v });
+      d.settings[k] = k === "rellenos" ? [v] : [...d.settings[k], v];
     });
     setNuevoItem((prev) => ({ ...prev, [k]: "" }));
   }
 
   function agregarFigura() {
     const nombre = (nuevaFig.nombre || "").trim();
-    if (!nombre) return;
-    update((d) => {
+    if (!nombre || !nuevaFig.productId) {
+      setConfigMsg("⚠️ La figura necesita nombre y un producto compatible.");
+      return;
+    }
+    editarBorrador((d) => {
       if (d.settings.figuras.some((f) => f.nombre.toLowerCase() === nombre.toLowerCase())) return;
       d.settings.figuras = [...d.settings.figuras, {
         nombre,
         especie: nuevaFig.especie === "perro" ? "perro" : "gato",
         gramaje: (nuevaFig.gramaje || "150 g").trim(),
+        productId: nuevaFig.productId,
       }];
-      addAudit(d, { user, entidad: "Configuración", entidadId: "figuras", accion: "Figura agregada", a: nombre });
     });
-    setNuevaFig({ nombre: "", especie: "gato", gramaje: "150 g" });
+    setNuevaFig({ nombre: "", especie: "gato", gramaje: "150 g", productId: "" });
   }
 
   function agregarTopping() {
     const nombre = (nuevoTop.nombre || "").trim();
     if (!nombre) return;
-    update((d) => {
+    editarBorrador((d) => {
       if (d.settings.toppings.some((t) => t.nombre.toLowerCase() === nombre.toLowerCase())) return;
       d.settings.toppings = [...d.settings.toppings, {
         nombre,
@@ -4349,13 +4404,31 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
         insumoId: nuevoTop.insumoId || "",
         insumoCant: 1,
       }];
-      addAudit(d, { user, entidad: "Configuración", entidadId: "toppings", accion: "Topping agregado", a: nombre });
     });
     setNuevoTop({ nombre: "", precio: "", insumoId: "" });
   }
 
   return (
     <div>
+      <Card className="p-4 mb-5" style={{ background: "linear-gradient(145deg, #fff, #FFF8EF)", borderColor: configDirty ? T.coral : T.border }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold">Configuración central de MOMOS</div>
+            <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>
+              {db.configurationSnapshotReady
+                ? `Versión ${db.configurationSnapshotVersion} · editá lo necesario y guardá una sola vez.`
+                : "Cargando la configuración protegida del servidor…"}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {configDirty && <span className="text-[10px] font-extrabold rounded-full px-3 py-1.5" style={{ background: "#FFF0D5", color: "#8A5D08" }}>Cambios sin guardar</span>}
+            <Btn onClick={() => guardarCambiosConfiguracion()} disabled={!db.configurationSnapshotReady || !configDirty || guardandoDemoras}>
+              {guardandoDemoras ? "Guardando…" : "Guardar configuración"}
+            </Btn>
+          </div>
+        </div>
+        {configMsg && <div className="text-xs font-bold mt-3" role="status" style={{ color: configMsg.startsWith("⚠️") ? "#A03B2A" : "#3F6B42" }}>{configMsg}</div>}
+      </Card>
       <SectionTitle>Zonas y tarifas de domicilio</SectionTitle>
       <Card className="p-4">
         {s.zonas.map((z, i) => (
@@ -4363,7 +4436,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
             <span className="text-sm font-semibold">{z.nombre}</span>
             <div className="flex items-center gap-1">
               <span className="text-xs font-bold" style={{ color: T.choco2 }}>$</span>
-              <input type="number" value={z.tarifa} onChange={(e) => update((d) => { d.settings.zonas[i].tarifa = +e.target.value; })}
+              <input type="number" value={z.tarifa} onChange={(e) => editarBorrador((d) => { d.settings.zonas[i].tarifa = +e.target.value; })}
                 className="w-24 rounded-xl px-2 py-1.5 text-sm border text-right font-bold" style={inputStyle} />
             </div>
           </div>
@@ -4372,14 +4445,14 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
           <span className="text-sm font-semibold">Pedido mínimo (sin domicilio)</span>
           <div className="flex items-center gap-1">
             <span className="text-xs font-bold" style={{ color: T.choco2 }}>$</span>
-            <input type="number" value={s.pedidoMinimo} onChange={(e) => update((d) => { d.settings.pedidoMinimo = +e.target.value; })}
+            <input type="number" value={s.pedidoMinimo} onChange={(e) => editarBorrador((d) => { d.settings.pedidoMinimo = +e.target.value; })}
               className="w-24 rounded-xl px-2 py-1.5 text-sm border text-right font-bold" style={inputStyle} />
           </div>
         </div>
         <div className="flex items-center justify-between gap-3 pt-3 mt-1 border-t" style={{ borderColor: T.border }}>
           <span className="text-sm font-semibold">Horas de congelación objetivo (por defecto)</span>
           <div className="flex items-center gap-1">
-            <input type="number" min="1" value={s.horasCongelacion || 10} onChange={(e) => update((d) => { d.settings.horasCongelacion = +e.target.value; })}
+            <input type="number" min="1" value={s.horasCongelacion || 10} onChange={(e) => editarBorrador((d) => { d.settings.horasCongelacion = +e.target.value; })}
               className="w-24 rounded-xl px-2 py-1.5 text-sm border text-right font-bold" style={inputStyle} />
             <span className="text-xs font-bold" style={{ color: T.choco2 }}>h</span>
           </div>
@@ -4402,10 +4475,10 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
             <div className="flex items-center gap-2 mb-3"><span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: T.rosa }} aria-hidden="true">👩‍🍳</span><div><div className="text-sm font-bold">Cocina</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Preparación del pedido</div></div></div>
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Primer aviso">
-                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraCocinaMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraCocinaMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraCocinaMin} onChange={(e) => editarDemoras((current) => ({ ...current, demoraCocinaMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
               </Field>
               <Field label="Urgente desde">
-                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraCocinaUrgenteMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraCocinaUrgenteMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraCocinaUrgenteMin} onChange={(e) => editarDemoras((current) => ({ ...current, demoraCocinaUrgenteMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
               </Field>
             </div>
             <div className="text-[10px] font-bold rounded-xl px-2.5 py-2" style={{ background: T.rosa, color: "#7C3F4B" }}>Aviso a los {delayDraft.demoraCocinaMin} min → urgente a los {delayDraft.demoraCocinaUrgenteMin} min</div>
@@ -4414,10 +4487,10 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
             <div className="flex items-center gap-2 mb-3"><span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#DCE7F2" }} aria-hidden="true">📦</span><div><div className="text-sm font-bold">Empaque</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Alistamiento y sello</div></div></div>
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Primer aviso">
-                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraEmpaqueMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraEmpaqueMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraEmpaqueMin} onChange={(e) => editarDemoras((current) => ({ ...current, demoraEmpaqueMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
               </Field>
               <Field label="Urgente desde">
-                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraEmpaqueUrgenteMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraEmpaqueUrgenteMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+                <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraEmpaqueUrgenteMin} onChange={(e) => editarDemoras((current) => ({ ...current, demoraEmpaqueUrgenteMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
               </Field>
             </div>
             <div className="text-[10px] font-bold rounded-xl px-2.5 py-2" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>Aviso a los {delayDraft.demoraEmpaqueMin} min → urgente a los {delayDraft.demoraEmpaqueUrgenteMin} min</div>
@@ -4425,7 +4498,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
           <div className="rounded-2xl border p-3 flex flex-col" style={{ background: T.vainilla, borderColor: T.border }}>
             <div className="flex items-center gap-2 mb-3"><span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fff" }} aria-hidden="true">🔔</span><div><div className="text-sm font-bold">Repetición</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Mientras siga detenido</div></div></div>
             <Field label="Recordar cada">
-              <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraRepeticionMin} onChange={(e) => setDelayDraft((current) => ({ ...current, demoraRepeticionMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
+              <div className="flex items-center gap-2"><Input type="number" min="1" step="1" value={delayDraft.demoraRepeticionMin} onChange={(e) => editarDemoras((current) => ({ ...current, demoraRepeticionMin: e.target.value }))} /><span className="text-xs font-bold">min</span></div>
             </Field>
             <div className="text-[10px] font-semibold mt-auto" style={{ color: T.choco2 }}>Evita que una orden urgente quede olvidada.</div>
           </div>
@@ -4446,7 +4519,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
               {s[k].map((v) => (
                 <span key={v} className="text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5" style={{ background: T.rosa, color: "#8E4B5A" }}>
                   {v}
-                  <button aria-label={`Quitar ${v}`} onClick={() => update((d) => { d.settings[k] = d.settings[k].filter((x) => x !== v); })} className="font-bold opacity-70">✕</button>
+                  {k !== "rellenos" && <button aria-label={`Quitar ${v}`} onClick={() => editarBorrador((d) => { d.settings[k] = d.settings[k].filter((x) => x !== v); })} className="font-bold opacity-70">✕</button>}
                 </span>
               ))}
             </div>
@@ -4472,11 +4545,10 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
               <Badge label={f.especie === "perro" ? "🐶 perro" : "🐱 gato"} />
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <input value={f.gramaje} onChange={(e) => update((d) => { d.settings.figuras[i].gramaje = e.target.value; })}
+              <input value={f.gramaje} onChange={(e) => editarBorrador((d) => { d.settings.figuras[i].gramaje = e.target.value; })}
                 className="w-20 rounded-xl px-2 py-1.5 text-sm border text-right font-semibold" style={inputStyle} />
-              <button aria-label={`Quitar ${f.nombre}`} onClick={() => update((d) => {
+              <button aria-label={`Quitar ${f.nombre}`} onClick={() => editarBorrador((d) => {
                 d.settings.figuras = d.settings.figuras.filter((x) => x.nombre !== f.nombre);
-                addAudit(d, { user, entidad: "Configuración", entidadId: "figuras", accion: "Figura eliminada", a: f.nombre });
               })} className="font-bold opacity-60 text-sm">✕</button>
             </div>
           </div>
@@ -4485,10 +4557,15 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
           <input value={nuevaFig.nombre} onChange={(e) => setNuevaFig({ ...nuevaFig, nombre: e.target.value })}
             onKeyDown={(e) => e.key === "Enter" && agregarFigura()} placeholder="Nombre (ej. Lizi)"
             className="flex-1 min-w-[120px] rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
-          <div className="w-28"><Select options={["gato", "perro"]} value={nuevaFig.especie} onChange={(e) => setNuevaFig({ ...nuevaFig, especie: e.target.value })} /></div>
+          <div className="w-28"><Select options={["gato", "perro"]} value={nuevaFig.especie} onChange={(e) => setNuevaFig({ ...nuevaFig, especie: e.target.value, productId: "" })} /></div>
           <input value={nuevaFig.gramaje} onChange={(e) => setNuevaFig({ ...nuevaFig, gramaje: e.target.value })}
             onKeyDown={(e) => e.key === "Enter" && agregarFigura()} placeholder="150 g"
             className="w-24 rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
+          <select value={nuevaFig.productId} onChange={(e) => setNuevaFig({ ...nuevaFig, productId: e.target.value })}
+            className="rounded-xl px-3 py-2 text-xs border font-semibold min-w-[170px]" style={inputStyle}>
+            <option value="">— producto compatible —</option>
+            {(db.configurationFigureProductChoices || []).filter((product) => product.especie === nuevaFig.especie).map((product) => <option key={product.id} value={product.id}>{product.nombre}</option>)}
+          </select>
           <Btn small kind="rosa" onClick={agregarFigura}>＋ Figura</Btn>
         </div>
       </Card>
@@ -4509,16 +4586,15 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="text-xs font-bold" style={{ color: T.choco2 }}>$</span>
-              <input type="number" min="0" value={t.precio} onChange={(e) => update((d) => { d.settings.toppings[i].precio = +e.target.value || 0; })}
+              <input type="number" min="0" value={t.precio} onChange={(e) => editarBorrador((d) => { d.settings.toppings[i].precio = +e.target.value || 0; })}
                 className="w-20 rounded-xl px-2 py-1.5 text-sm border text-right font-semibold" style={inputStyle} />
-              <select value={t.insumoId || ""} onChange={(e) => update((d) => { d.settings.toppings[i].insumoId = e.target.value; })}
+              <select value={t.insumoId || ""} onChange={(e) => editarBorrador((d) => { d.settings.toppings[i].insumoId = e.target.value; })}
                 className="rounded-xl px-2 py-1.5 text-xs border font-semibold max-w-[130px]" style={inputStyle}>
                 <option value="">— sin insumo —</option>
-                {db.inventory_items.map((it) => <option key={it.id} value={it.id}>{it.nombre}</option>)}
+                {(db.configurationInventoryChoices || []).map((it) => <option key={it.id} value={it.id}>{it.nombre}</option>)}
               </select>
-              <button aria-label={`Quitar ${t.nombre}`} onClick={() => update((d) => {
+              <button aria-label={`Quitar ${t.nombre}`} onClick={() => editarBorrador((d) => {
                 d.settings.toppings = d.settings.toppings.filter((x) => x.nombre !== t.nombre);
-                addAudit(d, { user, entidad: "Configuración", entidadId: "toppings", accion: "Topping eliminado", a: t.nombre });
               })} className="font-bold opacity-60 text-sm">✕</button>
             </div>
           </div>
@@ -4536,7 +4612,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
           <select value={nuevoTop.insumoId} onChange={(e) => setNuevoTop({ ...nuevoTop, insumoId: e.target.value })}
             className="rounded-xl px-2 py-2 text-xs border font-semibold" style={inputStyle}>
             <option value="">— sin insumo —</option>
-            {db.inventory_items.map((it) => <option key={it.id} value={it.id}>{it.nombre}</option>)}
+            {(db.configurationInventoryChoices || []).map((it) => <option key={it.id} value={it.id}>{it.nombre}</option>)}
           </select>
           <Btn small kind="rosa" onClick={agregarTopping}>＋ Topping</Btn>
         </div>
@@ -4630,7 +4706,7 @@ function Configuracion({ db, update, user, resetear, restaurarBackup, refrescar 
 
       <SectionTitle>Políticas comerciales</SectionTitle>
       <Card className="p-4">
-        <textarea rows={3} value={s.politicas} onChange={(e) => update((d) => { d.settings.politicas = e.target.value; })}
+        <textarea rows={3} value={s.politicas} onChange={(e) => editarBorrador((d) => { d.settings.politicas = e.target.value; })}
           className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none resize-y" style={{ ...inputStyle, fontFamily: "inherit" }} />
       </Card>
 
@@ -5798,14 +5874,15 @@ function Crecimiento({ performanceRouteId, ...props }) {
 
 // Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
 // sus cambios no llegan al servidor y la próxima hidratación los pisa.
-const MODULOS_EN_MIGRACION = ["Configuración"];
+const MODULOS_EN_MIGRACION = [];
 const PERFORMANCE_FRESHNESS_TTL = Object.freeze({
   [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
   [SYNC_DOMAINS.OPERATIONS]: 30_000,
   [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
   [SYNC_DOMAINS.FINANCE]: 60_000,
+  [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
 });
-const LAZY_PERFORMANCE_VIEWS = new Set(["Pedidos", "Empaque", "Producción", "Inventario terminado", "Inventario", "Crecimiento", "Finanzas"]);
+const LAZY_PERFORMANCE_VIEWS = new Set(["Pedidos", "Empaque", "Producción", "Inventario terminado", "Inventario", "Crecimiento", "Finanzas", "Configuración"]);
 
 function syncDomainsForDbView(view, data) {
   return syncDomainsForView(view, {
@@ -5937,6 +6014,7 @@ export default function MomosOps() {
   const dbRef = useRef(null);
   const agencySnapshotVersionRef = useRef("");
   const financeSnapshotVersionRef = useRef("");
+  const configurationSnapshotVersionRef = useRef("");
   const agencyRealtimeSeenVersionRef = useRef("");
   // Persiste fuera del efecto de suscripción: un cambio de vista/flag durante
   // los 350 ms de debounce no puede borrar una versión Realtime ya observada.
@@ -5991,6 +6069,7 @@ export default function MomosOps() {
       agencyRealtimePendingVersionRef.current = "";
     }
     financeSnapshotVersionRef.current = normalizeAgencySnapshotVersion(db?.financeSnapshotVersion);
+    configurationSnapshotVersionRef.current = normalizeAgencySnapshotVersion(db?.configurationSnapshotVersion);
     const inventoryVersion = normalizeInventoryCursorToken(db?.inventoryMutationEventVersion);
     if (inventoryVersion && (compareInventoryCursorTokens(
       inventoryVersion,
@@ -6008,6 +6087,7 @@ export default function MomosOps() {
     agencyRealtimeSeenVersionRef.current = "";
     agencyRealtimePendingVersionRef.current = "";
     financeSnapshotVersionRef.current = "";
+    configurationSnapshotVersionRef.current = "";
     inventoryMutationVersionsRef.current = {};
     inventoryMutationLatestEventRef.current = "";
     inventoryRealtimePendingRef.current.clear();
@@ -6082,6 +6162,8 @@ export default function MomosOps() {
     const agencyRealtime = realtimeDomains.has(SYNC_DOMAINS.AGENCY);
     const financeRealtime = realtimeDomains.has(SYNC_DOMAINS.FINANCE)
       && db.financeSnapshot?.sourceKind === "server-finance-snapshot-v1";
+    const configurationRealtime = realtimeDomains.has(SYNC_DOMAINS.CONFIGURATION)
+      && db.configurationSnapshotReady === true;
     // H69 se activa primero en la pantalla de Inventario. Allí el outbox
     // versionado sustituye cuatro tablas crudas que antes disparaban dos
     // snapshots completos por una sola compra o ajuste.
@@ -6139,6 +6221,7 @@ export default function MomosOps() {
     if (productCatalogDeltaRealtime) tables.push("product_catalog_sync_versions");
     if (customerCrmDeltaRealtime) tables.push("customer_crm_sync_versions");
     if (financeRealtime) tables.push("finance_sync_state");
+    if (configurationRealtime) tables.push("configuration_sync_state");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
@@ -6620,6 +6703,14 @@ export default function MomosOps() {
           }
           return;
         }
+        if (table === "configuration_sync_state") {
+          const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
+          if (!configurationSnapshotVersionRef.current
+              || compareAgencySnapshotVersions(incomingVersion, configurationSnapshotVersionRef.current) === 1) {
+            refresh(SYNC_DOMAINS.CONFIGURATION);
+          }
+          return;
+        }
         const domain = syncDomainForTable(table);
         if (table === "agency_snapshot_events") {
           const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
@@ -6676,6 +6767,17 @@ export default function MomosOps() {
             if (alive) setRealtimeStatus("reconectando");
           });
         }
+        if (configurationRealtime) {
+          fetchConfigurationSyncVersion().then((incomingVersion) => {
+            if (!alive) return;
+            if (incomingVersion && (!configurationSnapshotVersionRef.current
+                || compareAgencySnapshotVersions(incomingVersion, configurationSnapshotVersionRef.current) === 1)) {
+              refresh(SYNC_DOMAINS.CONFIGURATION);
+            }
+          }).catch(() => {
+            if (alive) setRealtimeStatus("reconectando");
+          });
+        }
         if (inventoryDeltaRealtime && dbRef.current?.inventoryMutationDeltaReady === true) {
           requestInventoryReconciliation();
         }
@@ -6704,7 +6806,7 @@ export default function MomosOps() {
       if (customerCrmReconcileRequestRef.current === fallbackCustomerCrmSnapshot) customerCrmReconcileRequestRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.financeSnapshotReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.financeSnapshotReady), Boolean(db?.configurationSnapshotReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -6734,6 +6836,7 @@ export default function MomosOps() {
     const agency = payload?.[SYNC_DOMAINS.AGENCY];
     const op = payload?.[SYNC_DOMAINS.OPERATIONS];
     const finance = payload?.[SYNC_DOMAINS.FINANCE];
+    const configuration = payload?.[SYNC_DOMAINS.CONFIGURATION];
     const generationBeforeApply = capturarGeneracionInventario();
     let inventorySnapshotApplied = false;
     let inventorySnapshotDiscarded = false;
@@ -7020,6 +7123,24 @@ export default function MomosOps() {
         const budget = Number.isFinite(compactBudget) ? compactBudget : legacyBudget;
         if (Number.isFinite(budget) && budget >= 0) d.settings.pautaMensual = budget;
       }
+      if (configuration) {
+        const normalizedConfiguration = normalizeConfigurationSnapshot(configuration.payload);
+        d.configurationSnapshotReady = true;
+        d.configurationSnapshotVersion = normalizedConfiguration.snapshotVersion;
+        configurationSnapshotVersionRef.current = normalizedConfiguration.snapshotVersion;
+        d.configurationInventoryChoices = normalizedConfiguration.inventoryChoices;
+        d.configurationFigureProductChoices = normalizedConfiguration.figureProductChoices;
+        d.users = normalizedConfiguration.users;
+        d.multipleRolesReady = true;
+        d.figuras = normalizedConfiguration.figures.map((figure) => ({
+          nombre: figure.nombre, especie: figure.especie,
+          gramajeG: Number.parseInt(figure.gramaje, 10), productId: figure.productId, activo: figure.activo,
+        }));
+        Object.assign(d.settings, normalizedConfiguration.settingsCatalogos);
+        const byId = new Map((d.audit_logs || []).map((row) => [String(row.id), row]));
+        normalizedConfiguration.auditLogs.forEach((row) => byId.set(String(row.id), row));
+        d.audit_logs = [...byId.values()].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 100);
+      }
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
     }, { silencioso: true, persistir: false });
     if (inventorySnapshotApplied) {
@@ -7084,6 +7205,10 @@ export default function MomosOps() {
             SYNC_DOMAINS.FINANCE,
             () => fetchFinanceSnapshot(dISO(-30), hoyISO()),
           ),
+          [SYNC_DOMAINS.CONFIGURATION]: () => measureSyncLoad(
+            SYNC_DOMAINS.CONFIGURATION,
+            fetchConfigurationSnapshot,
+          ),
         },
         apply: aplicarDominiosServidor,
         onState: (state) => {
@@ -7122,6 +7247,7 @@ export default function MomosOps() {
         [SYNC_DOMAINS.OPERATIONS]: 60_000,
         [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
         [SYNC_DOMAINS.FINANCE]: 60_000,
+        [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
       }).filter((domain) => visibles.has(domain)) || [];
       if (agencyFallbackOnly) vencidos = vencidos.filter((domain) => domain === SYNC_DOMAINS.AGENCY);
       if (vencidos.length) refetchFocoRef.current?.(vencidos, { reason: "focus" }).catch(() => {}); // si falla, sigue la caché
@@ -7166,6 +7292,7 @@ export default function MomosOps() {
       [SYNC_DOMAINS.OPERATIONS]: 30_000,
       [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
       [SYNC_DOMAINS.FINANCE]: 60_000,
+      [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
     }).filter((domain) => visibles.has(domain));
     if (vencidos.length) hidratarDesdeServidor(vencidos, { reason: "view-enter" }).catch(() => {});
   }, [vista, catalogosDe]);

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { supabase } from "./supabase.js";
 import {
   adaptAgencyOperationalFactsEnvelope, adaptAgencySnapshotEnvelope, adaptAgencySnapshotsBundle, AGENCY_SNAPSHOT_SCOPES,
-  fetchAgencyCatalogos, fetchAgencyCatalogosConFallback, fetchFinanceSnapshot,
+  fetchAgencyCatalogos, fetchAgencyCatalogosConFallback, fetchConfigurationSnapshot, fetchFinanceSnapshot,
 } from "./read-model.js";
 import { makeAgencyOperationalFacts } from "./agency-operational-facts.test-fixture.js";
 
@@ -104,6 +104,33 @@ test("H75 solo usa H65 como compatibilidad cuando la RPC compacta aún no existe
     const result = await fetchFinanceSnapshot("2026-07-01", "2026-07-19");
     assert.equal(result.sourceKind, "legacy-financial-facts-v1");
     assert.deepEqual(calls.map(([name]) => name), ["momos_finance_snapshot_v1", "momos_financial_facts_v1"]);
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H76 consulta Configuración con una sola RPC compacta y sin fallback masivo", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  const payload = { contract: "momos.configuration-snapshot.v1", version: 1, snapshotVersion: "8" };
+  supabase.rpc = async (name, args) => {
+    calls.push([name, args]);
+    return { data: payload, error: null };
+  };
+  try {
+    const result = await fetchConfigurationSnapshot();
+    assert.deepEqual(calls, [["momos_configuration_snapshot_v1", undefined]]);
+    assert.deepEqual(result, { sourceKind: "server-configuration-snapshot-v1", payload });
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H76 falla cerrado si el snapshot protegido no está desplegado", async () => {
+  const originalRpc = supabase.rpc;
+  supabase.rpc = async () => ({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
+  try {
+    await assert.rejects(fetchConfigurationSnapshot(), /could not find the function/i);
   } finally {
     supabase.rpc = originalRpc;
   }
