@@ -35,5 +35,5 @@ test("H76 separa Configuración de catálogos y evita la hidratación completa",
 
 test("la cadena ordenada incluye H76 después de H75", () => {
   assert.ok(ordered.indexOf("20260719_76_configuracion_servidor") > ordered.indexOf("20260719_75_finanzas_operativas"));
-  assert.match(ordered, /migraciones ordenadas 01-76 PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-\d+ PASS/);
 });

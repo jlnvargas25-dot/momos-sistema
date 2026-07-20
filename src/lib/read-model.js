@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { normalizeDashboardSnapshot } from "./dashboard-sync.js";
 import { normalizeAgencySnapshotVersion } from "./sync-coordinator.js";
 import { normalizeInventoryCursorToken } from "./inventory-cursor.js";
 import { inventoryCoreSnapshotBlockIsComplete } from "./inventory-sync-policy.js";
@@ -617,6 +618,21 @@ export async function fetchConfigurationSnapshot() {
 
 export async function fetchConfigurationSyncVersion() {
   const { data, error } = await supabase.from("configuration_sync_state").select("version").eq("id", 1).maybeSingle();
+  if (error) throw new Error(error.message);
+  return normalizeAgencySnapshotVersion(data?.version);
+}
+
+export async function fetchDashboardSnapshot() {
+  const { data, error } = await supabase.rpc("momos_dashboard_snapshot_v1");
+  if (error) throw new Error(error.message);
+  return {
+    sourceKind: "server-dashboard-snapshot-v1",
+    payload: normalizeDashboardSnapshot(data),
+  };
+}
+
+export async function fetchDashboardSyncVersion() {
+  const { data, error } = await supabase.from("dashboard_sync_state").select("version").eq("id", 1).maybeSingle();
   if (error) throw new Error(error.message);
   return normalizeAgencySnapshotVersion(data?.version);
 }

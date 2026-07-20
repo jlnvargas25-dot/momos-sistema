@@ -42,7 +42,8 @@ begin
     '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia',
     '20260719_71_pedidos_deltas','20260719_72_producto_terminado_deltas',
     '20260719_73_produccion_deltas','20260719_74_catalogo_crm_deltas',
-    '20260719_75_finanzas_operativas','20260719_76_configuracion_servidor'
+    '20260719_75_finanzas_operativas','20260719_76_configuracion_servidor',
+    '20260719_77_dashboard_operativo'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -990,7 +991,27 @@ begin
       'public.momos_sync_manifest_v1()'::regprocedure
     ))>0,
     'el manifiesto de Data Sync no anuncia H76';
+  assert to_regclass('public.dashboard_sync_state') is not null
+    and to_regprocedure('public.momos_dashboard_snapshot_v1()') is not null,
+    'H77 no instaló el outbox y el snapshot compacto de Dashboard';
+  assert has_function_privilege('authenticated','public.momos_dashboard_snapshot_v1()','EXECUTE')
+    and has_function_privilege('authenticated','public.dashboard_operativo_disponible()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_dashboard_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_dashboard_snapshot_v1()','EXECUTE'),
+    'H77 perdió la frontera RBAC del Dashboard';
+  assert has_table_privilege('authenticated','public.dashboard_sync_state','SELECT')
+    and not has_table_privilege('authenticated','public.dashboard_sync_state','UPDATE'),
+    'H77 expuso escritura del outbox de Dashboard';
+  if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert exists(select 1 from pg_publication_tables
+      where pubname='supabase_realtime' and schemaname='public' and tablename='dashboard_sync_state'),
+      'Realtime no incluye el outbox compacto de Dashboard';
+  end if;
+  assert position('dashboard_operativo_disponible' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H77';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-76 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-77 PASS, rollback total' as resultado;
 rollback;

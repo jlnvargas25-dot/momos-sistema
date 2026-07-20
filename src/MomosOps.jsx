@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitives.jsx";
 import { supabase } from "./lib/supabase";
 import {
-  fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos, fetchConfigurationSnapshot, fetchConfigurationSyncVersion,
+  fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos, fetchConfigurationSnapshot, fetchConfigurationSyncVersion, fetchDashboardSnapshot, fetchDashboardSyncVersion,
   fetchCustomerCrmDeltas, fetchFinanceSnapshot, fetchFinanceSyncVersion, fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductCatalogDeltas, fetchProductionActivityDelta, fetchUserProfile,
 } from "./lib/read-model";
 import {
@@ -792,6 +792,9 @@ function normalizeDbShape(d) {
   d.configurationSnapshotVersion = normalizeAgencySnapshotVersion(d.configurationSnapshotVersion);
   if (!Array.isArray(d.configurationInventoryChoices)) d.configurationInventoryChoices = [];
   if (!Array.isArray(d.configurationFigureProductChoices)) d.configurationFigureProductChoices = [];
+  d.dashboardSnapshotReady = d.dashboardSnapshotReady === true;
+  d.dashboardSnapshotVersion = normalizeAgencySnapshotVersion(d.dashboardSnapshotVersion);
+  if (!d.dashboardSnapshot || typeof d.dashboardSnapshot !== "object" || Array.isArray(d.dashboardSnapshot)) d.dashboardSnapshot = null;
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
   d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
@@ -2432,79 +2435,47 @@ function Bars({ data, money }) {
 /* ================= DASHBOARD ================= */
 
 function Dashboard({ db, go, user }) {
-  const [tick, setTick] = useState(0);
   const [assistantCenterOpen, setAssistantCenterOpen] = useState(false);
-  const [assistantCenterRuntime, setAssistantCenterRuntime] = useState(null);
-  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
-  useEffect(() => {
-    let active = true;
-    import("./lib/assistant-control-center.js").then((runtime) => {
-      if (active) setAssistantCenterRuntime(runtime);
-    }).catch(() => {
-      if (active) setAssistantCenterRuntime({ error: true });
-    });
-    return () => { active = false; };
-  }, []);
-  const hoy = hoyISO();
-  const assistantCenter = useMemo(() => assistantCenterRuntime?.buildAssistantControlCenter
-    ? assistantCenterRuntime.buildAssistantControlCenter(db, {
-      today: hoy,
-      now: new Date().toISOString(),
-      financeFrom: hoy,
-      financeTo: hoy,
-    })
-    : {
-      primary: { title: assistantCenterRuntime?.error ? "No se pudo preparar el centro de asistentes" : "Preparando prioridades operativas", detail: "El resto del Dashboard ya está disponible.", ownerRoles: ["MOMOS OPS"], nextAction: assistantCenterRuntime?.error ? "Recargar la aplicación." : "Esperar un instante." },
-      assistants: [], tasks: [], policy: "Las acciones sensibles siempre requieren confirmación humana.",
-      summary: { health: assistantCenterRuntime?.error ? "Atención" : "Preparando", tasks: 0, critical: 0, blocking: 0 },
-    }, [assistantCenterRuntime, db, hoy, tick]);
-  const deHoy = db.orders.filter((o) => o.fecha === hoy && o.estado !== "Cancelado");
-  const ventasHoy = deHoy.filter(esPedidoCobrado).reduce((s, o) => s + orderTotal(db, o), 0);
-  const activos = db.orders.filter((o) => !["Entregado","Cancelado"].includes(o.estado));
-  const pendPago = db.orders.filter((o) => ["Nuevo","Confirmado","Pendiente de pago"].includes(o.estado) && !o.pagadoEn);
-  const stockBajo = db.inventory_items.filter((i) => i.stock < i.min);
-  const porVencer = db.inventory_items.filter((i) => i.vence && diasEntre(hoy, i.vence) <= 5 && diasEntre(hoy, i.vence) >= 0);
-  const reclamosAbiertos = db.claims.filter((c) => ["Abierto","En revisión"].includes(c.estado));
-  const sugerencias = db.production_suggestions.filter((s) => s.estado === "Pendiente" && s.area !== "Inventario");
-  const lotesListos = db.production_batches.filter((l) => { const c = estadoCongelacion(l); return c && c.listo; });
-
-  // Marketing en el dashboard
-  const campActivasSinPedidos = (db.campaigns || []).filter((c) => c.estado === "Activa" && ordersDeCampaign(db, c.id).length === 0);
-  const creativosPorAprobar = (db.creatives || []).filter((c) => c.estado === "En revisión");
-  const pubsHoy = (db.content_calendar || []).filter((p) => p.fecha === hoy);
-  const campConMetrics = (db.campaigns || []).map((c) => ({ c, m: campaignMetrics(db, c) }));
-  const mejorCampana = [...campConMetrics].filter((x) => x.m.roas !== null).sort((a, b) => b.m.roas - a.m.roas)[0];
-  const creativoGanador = (db.creatives || []).find((c) => c.estado === "Ganador");
-  const benefsPorCampana = (db.benefits || []).filter((b) => b.estado === "Activo" && /historia|malteada|granizado/i.test(b.condicion + b.beneficio)).length;
-  const trafficRecs = trafficRecomendaciones(db);
-
-  // Asistente de marca MOMOS (lenguaje simple)
-  const hoyStr = hoy;
-  const asistente = (() => {
-    const ideas = db.marketing_ideas || [];
-    const ideaHoy = [...ideas].sort((a, b) => { const r = { Ganadora: 0, Repetir: 1, Nueva: 2, Usada: 3, Descartada: 4 }; return (r[a.estado] ?? 5) - (r[b.estado] ?? 5); })[0];
-    // cliente por contactar: beneficio por vencer, luego inactivo
-    let clienteContacto = null;
-    const benVence = (db.benefits || []).filter((b) => b.estado === "Activo" && diasEntre(hoyStr, b.vence) <= 3 && b.vence >= hoyStr)[0];
-    if (benVence) { const c = db.customers.find((x) => x.id === benVence.customerId); if (c) clienteContacto = { nombre: c.nombre, motivo: "tiene un beneficio por vencer" }; }
-    if (!clienteContacto) {
-      const inact = db.customers.filter((c) => c.ultima && diasEntre(c.ultima, hoyStr) >= 15).sort((a, b) => diasEntre(b.ultima, hoyStr) - diasEntre(a.ultima, hoyStr))[0];
-      if (inact) clienteContacto = { nombre: inact.nombre, motivo: `no compra hace ${diasEntre(inact.ultima, hoyStr)} días` };
-    }
-    const campRevisar = (db.campaigns || []).map((c) => ({ c, m: campaignMetrics(db, c) })).filter((x) => x.c.estado === "Activa")[0];
-    const contenidoRepetir = ideas.find((i) => i.estado === "Ganadora");
-    const benefVence = (db.benefits || []).filter((b) => b.estado === "Activo" && b.vence >= hoyStr).sort((a, b) => diasEntre(hoyStr, a.vence) - diasEntre(hoyStr, b.vence))[0];
-    const tareaFalta = (db.marketing_tasks || []).filter((t) => t.estado === "Pendiente" && t.fecha === hoyStr)[0];
-    return { ideaHoy, clienteContacto, campRevisar, contenidoRepetir, benefVence, tareaFalta };
-  })();
-  const nuevos = db.customers.filter((c) => c.estado === "Nuevo").length;
-  const recurrentes = db.customers.filter((c) => ["Recurrente","VIP"].includes(c.estado)).length;
-
-  const porEstado = ORDER_STATES.map((e) => ({ label: e, value: db.orders.filter((o) => o.estado === e).length })).filter((d) => d.value > 0);
-  const porCanal = CANALES.map((c) => ({
-    label: c, color: CANAL_STYLE[c].fg,
-    value: db.orders.filter((o) => o.canal === c && esPedidoCobrado(o)).reduce((s, o) => s + orderTotal(db, o), 0),
-  }));
+  const snapshot = db.dashboardSnapshotReady ? db.dashboardSnapshot : null;
+  if (!snapshot) return (
+    <div>
+      <SectionTitle>Hoy en la cocina</SectionTitle>
+      <Card className="p-8 text-center">
+        <div className="text-3xl" aria-hidden="true">✦</div>
+        <div className="display text-xl font-semibold mt-2">Preparando tu resumen operativo</div>
+        <div className="text-sm mt-1" style={{ color: T.choco2 }}>MOMOS OPS está reuniendo únicamente los datos necesarios para Inicio.</div>
+      </Card>
+    </div>
+  );
+  const hoy = snapshot.businessDate;
+  const assistantCenter = snapshot.assistantCenter;
+  const ventasHoy = snapshot.summary.salesToday;
+  const pedidosHoy = snapshot.summary.ordersToday;
+  const activos = snapshot.summary.activeOrders;
+  const pendPago = snapshot.summary.pendingPayments;
+  const montoPendiente = snapshot.summary.pendingPaymentAmount;
+  const reclamosAbiertos = snapshot.summary.openClaims;
+  const stockBajo = snapshot.inventoryAlerts.lowStock.map((i) => ({ id: i.id, nombre: i.name, stock: i.stock, min: i.minimum, unidad: i.unit }));
+  const porVencer = snapshot.inventoryAlerts.expiringSoon.map((i) => ({ id: i.id, nombre: i.name, vence: i.expires }));
+  const sugerencias = snapshot.notices.productionSuggestions.map((s) => ({ id: s.id, cantidad: s.quantity, producto: s.product }));
+  const lotesListos = snapshot.notices.freezingReady.map((l) => ({ id: l.id, producto: l.product, gramaje: l.grams ? `${l.grams} g` : "", sabor: l.flavor }));
+  const pubsHoy = snapshot.notices.publicationsToday.map((p) => ({ ...p, hora: p.time, canal: p.channel }));
+  const creativosPorAprobar = snapshot.notices.creativeReviews.map((c) => ({ ...c, titulo: c.label }));
+  const campActivasSinPedidos = snapshot.notices.campaignsWithoutOrders.map((c) => ({ ...c, nombre: c.label }));
+  const winner = snapshot.notices.winner;
+  const asistente = {
+    ideaHoy: snapshot.brandAssistant.ideaToday ? { titulo: snapshot.brandAssistant.ideaToday.label } : null,
+    clienteContacto: snapshot.brandAssistant.customerContact ? { nombre: snapshot.brandAssistant.customerContact.label, motivo: snapshot.brandAssistant.customerContact.reason } : null,
+    campRevisar: snapshot.brandAssistant.campaignReview ? { c: { nombre: snapshot.brandAssistant.campaignReview.label } } : null,
+    contenidoRepetir: snapshot.brandAssistant.contentRepeat ? { titulo: snapshot.brandAssistant.contentRepeat.label } : null,
+    benefVence: snapshot.brandAssistant.benefitExpiring ? { beneficio: snapshot.brandAssistant.benefitExpiring.label, vence: snapshot.brandAssistant.benefitExpiring.expires } : null,
+    tareaFalta: snapshot.brandAssistant.taskMissing ? { tarea: snapshot.brandAssistant.taskMissing.label } : null,
+  };
+  const nuevos = snapshot.customerSummary.new;
+  const recurrentes = snapshot.customerSummary.recurrent;
+  const porEstado = snapshot.ordersByState;
+  const porCanal = snapshot.salesByChannel.map((row) => ({ ...row, color: CANAL_STYLE[row.label]?.fg || T.coral }));
+  const disponibilidad = snapshot.productAvailability;
   const assistantSeverityStyle = {
     critical: { label: "Crítica", bg: "#F6D4CD", fg: "#8F3528" },
     high: { label: "Alta", bg: "#FFF1D6", fg: "#7A5510" },
@@ -2516,10 +2487,10 @@ function Dashboard({ db, go, user }) {
     <div>
       <SectionTitle>Hoy en la cocina</SectionTitle>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat icon="🧁" label="Ventas del día" value={fmt(ventasHoy)} sub={deHoy.length + " pedidos hoy · toca para ver"} tone={T.coral} onClick={() => go("Pedidos", { desde: hoy, hasta: hoy })} />
-        <Stat icon="📦" label="Pedidos activos" value={activos.length} sub="en flujo operativo · toca para ver" onClick={() => go("Pedidos")} />
-        <Stat icon="💳" label="Pendientes de pago" value={pendPago.length} sub={fmt(pendPago.reduce((s, o) => s + orderTotal(db, o), 0)) + " · toca para ver"} tone="#96690F" onClick={() => go("Pedidos", { pendientesPago: true })} />
-        <Stat icon="⚠️" label="Reclamos abiertos" value={reclamosAbiertos.length} sub="requieren decisión · toca para ver" tone="#A03B2A" onClick={() => go("Reclamos", { claimId: reclamosAbiertos[0] ? reclamosAbiertos[0].id : "" })} />
+        <Stat icon="🧁" label="Ventas del día" value={fmt(ventasHoy)} sub={pedidosHoy + " pedidos hoy · toca para ver"} tone={T.coral} onClick={() => go("Pedidos", { desde: hoy, hasta: hoy })} />
+        <Stat icon="📦" label="Pedidos activos" value={activos} sub="en flujo operativo · toca para ver" onClick={() => go("Pedidos")} />
+        <Stat icon="💳" label="Pendientes de pago" value={pendPago} sub={fmt(montoPendiente) + " · toca para ver"} tone="#96690F" onClick={() => go("Pedidos", { pendientesPago: true })} />
+        <Stat icon="⚠️" label="Reclamos abiertos" value={reclamosAbiertos} sub="requieren decisión · toca para ver" tone="#A03B2A" onClick={() => go("Reclamos")} />
       </div>
 
       <Card className="mt-3 overflow-hidden" onClick={() => setAssistantCenterOpen(true)}
@@ -2589,9 +2560,9 @@ function Dashboard({ db, go, user }) {
           <button className="underline" onClick={() => go("Marketing")}>Ver Marketing</button>
         </div>
       )}
-      {(mejorCampana || creativoGanador) && (
+      {winner && (
         <div className="mt-3 text-xs font-bold p-3 rounded-xl" style={{ background: "#DDEBD9", color: "#3F6B42" }}>
-          🏆 {mejorCampana ? `Mejor campaña: ${mejorCampana.c.nombre} (ROAS ${mejorCampana.m.roas.toFixed(1)}x)` : ""}{mejorCampana && creativoGanador ? " · " : ""}{creativoGanador ? `Creativo ganador: ${creativoGanador.titulo}` : ""}{benefsPorCampana > 0 ? ` · ${benefsPorCampana} beneficio(s) por campaña activos` : ""}
+          🏆 Mejor resultado atribuido: campaña {winner.campaignId} · ROAS {Number(winner.roas || 0).toFixed(1)}x{winner.creativeId ? ` · creativo ${winner.creativeId}` : ""}
         </div>
       )}
 
@@ -2626,12 +2597,6 @@ function Dashboard({ db, go, user }) {
               <div className="text-sm font-semibold leading-tight">{asistente.tareaFalta ? asistente.tareaFalta.tarea : "¡Todo al día! 🎉"}</div>
             </Card>
           </div>
-          {trafficRecs.length > 0 && (
-            <div className="mt-3 text-xs font-bold p-3 rounded-xl" style={{ background: trafficRecs[0].bg, color: trafficRecs[0].color }}>
-              {trafficRecs[0].icon} {trafficRecs[0].titulo}: {trafficRecs[0].texto}{" "}
-              <button className="underline" onClick={() => go("Crecimiento")}>Ver recomendaciones</button>
-            </div>
-          )}
         </>
       )}
 
@@ -2676,15 +2641,15 @@ function Dashboard({ db, go, user }) {
 
       <SectionTitle>Disponibilidad real de momos y cajas</SectionTitle>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {db.products.filter((p) => p.activo && p.tipo !== "pedido").map((p) => {
-          const disp = availability(db, p);
+        {disponibilidad.map((p) => {
+          const disp = p.available;
           return (
             <Card key={p.id} className="p-3" onClick={() => go("Producción")}>
-              <div className="text-sm font-bold leading-tight">{p.nombre}</div>
+              <div className="text-sm font-bold leading-tight">{p.name}</div>
               <div className="display text-xl mt-1" style={{ color: disp <= 2 ? "#A03B2A" : T.choco }}>
                 {disp} <span className="text-xs font-sans font-semibold" style={{ color: T.choco2 }}>disp.</span>
               </div>
-              {p.tipo === "combo" && <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>calculado por momos + cajas</div>}
+              {p.type === "combo" && <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>calculado por momos + cajas</div>}
               {disp <= 2 && <div className="text-xs font-bold mt-0.5" style={{ color: "#A03B2A" }}>Producir / comprar pronto</div>}
             </Card>
           );
@@ -5881,8 +5846,9 @@ const PERFORMANCE_FRESHNESS_TTL = Object.freeze({
   [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
   [SYNC_DOMAINS.FINANCE]: 60_000,
   [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
+  [SYNC_DOMAINS.DASHBOARD]: 30_000,
 });
-const LAZY_PERFORMANCE_VIEWS = new Set(["Pedidos", "Empaque", "Producción", "Inventario terminado", "Inventario", "Crecimiento", "Finanzas", "Configuración"]);
+const LAZY_PERFORMANCE_VIEWS = new Set(["Dashboard", "Pedidos", "Empaque", "Producción", "Inventario terminado", "Inventario", "Crecimiento", "Finanzas", "Configuración"]);
 
 function syncDomainsForDbView(view, data) {
   return syncDomainsForView(view, {
@@ -6015,6 +5981,7 @@ export default function MomosOps() {
   const agencySnapshotVersionRef = useRef("");
   const financeSnapshotVersionRef = useRef("");
   const configurationSnapshotVersionRef = useRef("");
+  const dashboardSnapshotVersionRef = useRef("");
   const agencyRealtimeSeenVersionRef = useRef("");
   // Persiste fuera del efecto de suscripción: un cambio de vista/flag durante
   // los 350 ms de debounce no puede borrar una versión Realtime ya observada.
@@ -6070,6 +6037,7 @@ export default function MomosOps() {
     }
     financeSnapshotVersionRef.current = normalizeAgencySnapshotVersion(db?.financeSnapshotVersion);
     configurationSnapshotVersionRef.current = normalizeAgencySnapshotVersion(db?.configurationSnapshotVersion);
+    dashboardSnapshotVersionRef.current = normalizeAgencySnapshotVersion(db?.dashboardSnapshotVersion);
     const inventoryVersion = normalizeInventoryCursorToken(db?.inventoryMutationEventVersion);
     if (inventoryVersion && (compareInventoryCursorTokens(
       inventoryVersion,
@@ -6088,6 +6056,7 @@ export default function MomosOps() {
     agencyRealtimePendingVersionRef.current = "";
     financeSnapshotVersionRef.current = "";
     configurationSnapshotVersionRef.current = "";
+    dashboardSnapshotVersionRef.current = "";
     inventoryMutationVersionsRef.current = {};
     inventoryMutationLatestEventRef.current = "";
     inventoryRealtimePendingRef.current.clear();
@@ -6164,6 +6133,8 @@ export default function MomosOps() {
       && db.financeSnapshot?.sourceKind === "server-finance-snapshot-v1";
     const configurationRealtime = realtimeDomains.has(SYNC_DOMAINS.CONFIGURATION)
       && db.configurationSnapshotReady === true;
+    const dashboardRealtime = realtimeDomains.has(SYNC_DOMAINS.DASHBOARD)
+      && db.dashboardSnapshotReady === true;
     // H69 se activa primero en la pantalla de Inventario. Allí el outbox
     // versionado sustituye cuatro tablas crudas que antes disparaban dos
     // snapshots completos por una sola compra o ajuste.
@@ -6222,6 +6193,7 @@ export default function MomosOps() {
     if (customerCrmDeltaRealtime) tables.push("customer_crm_sync_versions");
     if (financeRealtime) tables.push("finance_sync_state");
     if (configurationRealtime) tables.push("configuration_sync_state");
+    if (dashboardRealtime) tables.push("dashboard_sync_state");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
@@ -6711,6 +6683,14 @@ export default function MomosOps() {
           }
           return;
         }
+        if (table === "dashboard_sync_state") {
+          const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
+          if (!dashboardSnapshotVersionRef.current
+              || compareAgencySnapshotVersions(incomingVersion, dashboardSnapshotVersionRef.current) === 1) {
+            refresh(SYNC_DOMAINS.DASHBOARD);
+          }
+          return;
+        }
         const domain = syncDomainForTable(table);
         if (table === "agency_snapshot_events") {
           const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
@@ -6778,6 +6758,17 @@ export default function MomosOps() {
             if (alive) setRealtimeStatus("reconectando");
           });
         }
+        if (dashboardRealtime) {
+          fetchDashboardSyncVersion().then((incomingVersion) => {
+            if (!alive) return;
+            if (incomingVersion && (!dashboardSnapshotVersionRef.current
+                || compareAgencySnapshotVersions(incomingVersion, dashboardSnapshotVersionRef.current) === 1)) {
+              refresh(SYNC_DOMAINS.DASHBOARD);
+            }
+          }).catch(() => {
+            if (alive) setRealtimeStatus("reconectando");
+          });
+        }
         if (inventoryDeltaRealtime && dbRef.current?.inventoryMutationDeltaReady === true) {
           requestInventoryReconciliation();
         }
@@ -6806,7 +6797,7 @@ export default function MomosOps() {
       if (customerCrmReconcileRequestRef.current === fallbackCustomerCrmSnapshot) customerCrmReconcileRequestRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.financeSnapshotReady), Boolean(db?.configurationSnapshotReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.financeSnapshotReady), Boolean(db?.configurationSnapshotReady), Boolean(db?.dashboardSnapshotReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -6837,6 +6828,7 @@ export default function MomosOps() {
     const op = payload?.[SYNC_DOMAINS.OPERATIONS];
     const finance = payload?.[SYNC_DOMAINS.FINANCE];
     const configuration = payload?.[SYNC_DOMAINS.CONFIGURATION];
+    const dashboard = payload?.[SYNC_DOMAINS.DASHBOARD];
     const generationBeforeApply = capturarGeneracionInventario();
     let inventorySnapshotApplied = false;
     let inventorySnapshotDiscarded = false;
@@ -7141,6 +7133,12 @@ export default function MomosOps() {
         normalizedConfiguration.auditLogs.forEach((row) => byId.set(String(row.id), row));
         d.audit_logs = [...byId.values()].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 100);
       }
+      if (dashboard) {
+        d.dashboardSnapshotReady = true;
+        d.dashboardSnapshot = dashboard.payload;
+        d.dashboardSnapshotVersion = normalizeAgencySnapshotVersion(dashboard.payload?.snapshotVersion);
+        dashboardSnapshotVersionRef.current = d.dashboardSnapshotVersion;
+      }
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
     }, { silencioso: true, persistir: false });
     if (inventorySnapshotApplied) {
@@ -7209,6 +7207,10 @@ export default function MomosOps() {
             SYNC_DOMAINS.CONFIGURATION,
             fetchConfigurationSnapshot,
           ),
+          [SYNC_DOMAINS.DASHBOARD]: () => measureSyncLoad(
+            SYNC_DOMAINS.DASHBOARD,
+            fetchDashboardSnapshot,
+          ),
         },
         apply: aplicarDominiosServidor,
         onState: (state) => {
@@ -7248,6 +7250,7 @@ export default function MomosOps() {
         [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
         [SYNC_DOMAINS.FINANCE]: 60_000,
         [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
+        [SYNC_DOMAINS.DASHBOARD]: 30_000,
       }).filter((domain) => visibles.has(domain)) || [];
       if (agencyFallbackOnly) vencidos = vencidos.filter((domain) => domain === SYNC_DOMAINS.AGENCY);
       if (vencidos.length) refetchFocoRef.current?.(vencidos, { reason: "focus" }).catch(() => {}); // si falla, sigue la caché
@@ -7293,6 +7296,7 @@ export default function MomosOps() {
       [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
       [SYNC_DOMAINS.FINANCE]: 60_000,
       [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
+      [SYNC_DOMAINS.DASHBOARD]: 30_000,
     }).filter((domain) => visibles.has(domain));
     if (vencidos.length) hidratarDesdeServidor(vencidos, { reason: "view-enter" }).catch(() => {});
   }, [vista, catalogosDe]);

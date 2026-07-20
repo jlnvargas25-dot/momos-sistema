@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { supabase } from "./supabase.js";
 import {
   adaptAgencyOperationalFactsEnvelope, adaptAgencySnapshotEnvelope, adaptAgencySnapshotsBundle, AGENCY_SNAPSHOT_SCOPES,
-  fetchAgencyCatalogos, fetchAgencyCatalogosConFallback, fetchConfigurationSnapshot, fetchFinanceSnapshot,
+  fetchAgencyCatalogos, fetchAgencyCatalogosConFallback, fetchConfigurationSnapshot, fetchDashboardSnapshot, fetchFinanceSnapshot,
 } from "./read-model.js";
 import { makeAgencyOperationalFacts } from "./agency-operational-facts.test-fixture.js";
 
@@ -134,6 +134,37 @@ test("H76 falla cerrado si el snapshot protegido no está desplegado", async () 
   } finally {
     supabase.rpc = originalRpc;
   }
+});
+
+test("H77 consulta Inicio con una sola RPC compacta y valida antes de aplicar", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  const payload = {
+    contract: "momos.dashboard-snapshot.v1", version: 1, snapshotVersion: "77", serverTime: "2026-07-19T15:00:00Z", businessDate: "2026-07-19",
+    summary: { salesToday: 0, ordersToday: 0, activeOrders: 0, pendingPayments: 0, pendingPaymentAmount: 0, openClaims: 0 },
+    assistantCenter: { primary: null, assistants: [], tasks: [], summary: { health: "Al día", tasks: 0, critical: 0, blocking: 0 }, policy: "Toda acción sensible requiere confirmación humana." },
+    notices: { productionSuggestions: [], freezingReady: [], publicationsToday: [], creativeReviews: [], campaignsWithoutOrders: [], winner: null },
+    brandAssistant: { ideaToday: null, customerContact: null, campaignReview: null, contentRepeat: null, benefitExpiring: null, taskMissing: null },
+    inventoryAlerts: { lowStock: [], expiringSoon: [] }, customerSummary: { new: 0, recurrent: 0 }, ordersByState: [], salesByChannel: [], productAvailability: [],
+    privacy: { containsCustomerPii: false, containsStaffPii: false, containsFreeText: false, containsStorageReferences: false, containsSecrets: false, externalExecution: false },
+  };
+  supabase.rpc = async (name, args) => { calls.push([name, args]); return { data: payload, error: null }; };
+  try {
+    const result = await fetchDashboardSnapshot();
+    assert.deepEqual(calls, [["momos_dashboard_snapshot_v1", undefined]]);
+    assert.equal(result.sourceKind, "server-dashboard-snapshot-v1");
+    assert.equal(result.payload.snapshotVersion, "77");
+  } finally { supabase.rpc = originalRpc; }
+});
+
+test("H77 no intenta hidratar dominios masivos cuando la RPC falla", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  supabase.rpc = async (name) => { calls.push(name); return { data: null, error: { code: "PGRST202", message: "Could not find the function" } }; };
+  try {
+    await assert.rejects(fetchDashboardSnapshot(), /could not find the function/i);
+    assert.deepEqual(calls, ["momos_dashboard_snapshot_v1"]);
+  } finally { supabase.rpc = originalRpc; }
 });
 
 test("H66 declara exactamente los cuatro scopes de Agencia", () => {

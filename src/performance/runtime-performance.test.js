@@ -91,6 +91,8 @@ test("clasifica Supabase sin devolver URL, query, tabla cruda ni RPC cruda", () 
     ["https://x.supabase.co/rest/v1/rpc/momos_configuration_snapshot_v1", { domain: "configuracion", kind: "rpc" }],
     ["https://x.supabase.co/rest/v1/rpc/guardar_configuracion_v1", { domain: "configuracion", kind: "rpc" }],
     ["https://x.supabase.co/rest/v1/configuration_sync_state?select=version", { domain: "configuracion", kind: "rest" }],
+    ["https://x.supabase.co/rest/v1/rpc/momos_dashboard_snapshot_v1", { domain: "dashboard", kind: "rpc" }],
+    ["https://x.supabase.co/rest/v1/dashboard_sync_state?select=version", { domain: "dashboard", kind: "rest" }],
     ["https://x.supabase.co/rest/v1/rpc/agency_context_snapshot", { domain: "agencia", kind: "rpc" }],
     ["https://x.supabase.co/rest/v1/rpc/momos_agency_snapshot", { domain: "agencia", kind: "rpc" }],
     ["https://x.supabase.co/rest/v1/momos_agency_assets?select=id", { domain: "agencia", kind: "rest" }],
