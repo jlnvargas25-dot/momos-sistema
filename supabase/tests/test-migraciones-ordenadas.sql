@@ -41,7 +41,7 @@ begin
     '20260718_67_agency_operational_facts','20260719_68_inventario_precision_lotes',
     '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia',
     '20260719_71_pedidos_deltas','20260719_72_producto_terminado_deltas',
-    '20260719_73_produccion_deltas'
+    '20260719_73_produccion_deltas','20260719_74_catalogo_crm_deltas'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -923,7 +923,31 @@ begin
       'public.momos_sync_manifest_v1()'::regprocedure
     ))>0,
     'el manifiesto de Data Sync no anuncia H73';
+  assert to_regclass('public.product_catalog_sync_versions') is not null
+    and to_regclass('public.customer_crm_sync_versions') is not null
+    and to_regclass('public.catalog_crm_delta_receipts') is not null,
+    'H74 no instaló outboxes y recibos de Catálogo/CRM';
+  assert has_function_privilege('authenticated','public.momos_product_catalog_deltas_v1(text[])','EXECUTE')
+    and has_function_privilege('authenticated','public.momos_customer_crm_deltas_v1(text[])','EXECUTE')
+    and has_function_privilege('authenticated','public.mutar_catalogo_crm_delta(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.mutar_catalogo_crm_delta(jsonb)','EXECUTE'),
+    'H74 perdió la frontera RBAC de Catálogo/CRM';
+  assert has_table_privilege('authenticated','public.product_catalog_sync_versions','SELECT')
+    and has_table_privilege('authenticated','public.customer_crm_sync_versions','SELECT')
+    and not has_table_privilege('authenticated','public.product_catalog_sync_versions','INSERT')
+    and not has_table_privilege('authenticated','public.customer_crm_sync_versions','INSERT')
+    and not has_table_privilege('authenticated','public.catalog_crm_delta_receipts','SELECT'),
+    'H74 expuso escritura de outboxes o lectura de recibos';
+  if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='product_catalog_sync_versions')
+      and exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='customer_crm_sync_versions'),
+      'Realtime no incluye los outboxes compactos de Catálogo/CRM';
+  end if;
+  assert position('catalogo_crm_deltas_disponibles' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H74';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-73 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-74 PASS, rollback total' as resultado;
 rollback;

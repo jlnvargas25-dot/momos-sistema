@@ -6,6 +6,7 @@ import { agencyOperationalFactsReady as hasAgencyOperationalFacts, normalizeAgen
 import { normalizeOrderDeltaBatch } from "./order-delta.js";
 import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta.js";
 import { normalizeProductionActivityDelta } from "./production-delta.js";
+import { normalizeCustomerCrmDeltaBatch, normalizeProductCatalogDeltaBatch } from "./catalog-crm-delta.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -502,6 +503,24 @@ export async function fetchProductionActivityDelta() {
   return data;
 }
 
+export async function fetchProductCatalogDeltas(productIds) {
+  const ids = [...new Set((Array.isArray(productIds) ? productIds : [])
+    .map((value) => String(value || "").trim()).filter(Boolean))];
+  if (!ids.length || ids.length > 20) throw new Error("Solicita entre 1 y 20 productos.");
+  const { data, error } = await supabase.rpc("momos_product_catalog_deltas_v1", { p_product_ids: ids });
+  if (error) throw new Error(error.message);
+  return normalizeProductCatalogDeltaBatch(data);
+}
+
+export async function fetchCustomerCrmDeltas(customerIds) {
+  const ids = [...new Set((Array.isArray(customerIds) ? customerIds : [])
+    .map((value) => String(value || "").trim()).filter(Boolean))];
+  if (!ids.length || ids.length > 20) throw new Error("Solicita entre 1 y 20 clientes.");
+  const { data, error } = await supabase.rpc("momos_customer_crm_deltas_v1", { p_customer_ids: ids });
+  if (error) throw new Error(error.message);
+  return normalizeCustomerCrmDeltaBatch(data);
+}
+
 export async function fetchUserProfile(authUserId) {
   const multipleRolesReady = await multipleRolesCapability();
   const columns = multipleRolesReady ? "id,nombre,rol,roles,activo" : "id,nombre,rol,activo";
@@ -600,11 +619,18 @@ export async function fetchCatalogos(options = {}) {
   if (conError) throw new Error(conError.error.message);
   const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, camps, creativeRows, postRows, metricRows] = q.map((r) => r.data);
 
-  const productReadyResult = await capabilityResult("productos_servidor_disponible");
+  const [productReadyResult, catalogCrmDeltaResult] = await Promise.all([
+    capabilityResult("productos_servidor_disponible"),
+    capabilityResult("catalogo_crm_deltas_disponibles"),
+  ]);
   const productProbeMissing = productReadyResult.error &&
     (productReadyResult.error.code === "PGRST202" || /could not find the function|schema cache/i.test(productReadyResult.error.message || ""));
   if (productReadyResult.error && !productProbeMissing) throw new Error(productReadyResult.error.message);
   const productsServerReady = !productProbeMissing && productReadyResult.data === true;
+  const catalogCrmDeltaMissing = catalogCrmDeltaResult.error &&
+    (catalogCrmDeltaResult.error.code === "PGRST202" || /could not find the function|schema cache/i.test(catalogCrmDeltaResult.error.message || ""));
+  if (catalogCrmDeltaResult.error && !catalogCrmDeltaMissing) throw new Error(catalogCrmDeltaResult.error.message);
+  const catalogCrmDeltaReady = !catalogCrmDeltaMissing && catalogCrmDeltaResult.data === true;
 
   const lotsResult = coreSnapshot
     ? { data: coreSnapshot.inventory_lots || [], error: null }
@@ -787,7 +813,7 @@ export async function fetchCatalogos(options = {}) {
   const inventoryDeltaReady = inventoryDeltaCapability.ready
     && inventoryCoreSnapshotReady;
   const coreCatalogs = {
-    products, productsServerReady, inventory_items, inventory_lots,
+    products, productsServerReady, catalogCrmDeltaReady, inventory_items, inventory_lots,
     inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady,
     inventoryMutationDeltaReady: inventoryDeltaReady,
     inventoryCoreSnapshotReady,
@@ -1783,7 +1809,7 @@ export async function fetchCatalogos(options = {}) {
     }));
   }
 
-  return { products, productsServerReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
+  return { products, productsServerReady, catalogCrmDeltaReady, inventory_items, inventory_lots, inventoryLotsReady: !lotsMissing, recipes, users, multipleRolesReady, settingsCatalogos, brand_library, figuras, subrecetas, subreceta_ingredientes, figura_relleno, campaigns, creatives, content_calendar, creative_results,
     agencyServerReady, agencySettings, agencyBriefs, agencyDecisions, agencyCreativeVersions, marketingIdeas, marketingGuiones, marketingMensajes, marketingTasks,
     agencyOrchestratorReady, agencyAgentRuns, agencyAgentProposals, agencyActionQueueReady, agencyActionQueue,
     agencyActionOutcomesReady, agencyActionOutcomes,
@@ -1821,6 +1847,7 @@ export async function fetchOperativo() {
   const orderDeltaReady = syncManifest?.capabilities?.pedidos_deltas_disponibles === true;
   const finishedInventoryDeltaReady = syncManifest?.capabilities?.producto_terminado_deltas_disponibles === true;
   const productionMutationDeltaReady = syncManifest?.capabilities?.produccion_deltas_disponibles === true;
+  const catalogCrmDeltaReady = syncManifest?.capabilities?.catalogo_crm_deltas_disponibles === true;
   const operationalSnapshot = await optionalSnapshot("momos_operational_snapshot_v1");
   const operationalKeys = [
     "orders", "order_items", "order_item_adiciones", "customers", "deliveries", "evidences", "benefits",
@@ -2139,5 +2166,5 @@ export async function fetchOperativo() {
     gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, orderDeltaReady, finishedInventoryDeltaReady, productionMutationDeltaReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, orderDeltaReady, finishedInventoryDeltaReady, productionMutationDeltaReady, catalogCrmDeltaReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
 }

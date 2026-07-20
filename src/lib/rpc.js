@@ -312,6 +312,14 @@ export async function sincronizarCostoProducto(productId) {
   return data;
 }
 
+export async function mutarCatalogoCrmDelta(operation, payload, idempotencyKey) {
+  const { data, error } = await supabase.rpc("mutar_catalogo_crm_delta", {
+    p: { operation, payload, idempotency_key: idempotencyKey },
+  });
+  if (error) throw rpcError(error);
+  return data;
+}
+
 export async function crearUsuarioStaff(nombre, email, rol) {
   const { data, error } = await supabase.rpc("crear_usuario_staff", { p_nombre: nombre, p_email: email, p_rol: rol });
   if (error) throw new Error(error.message);

@@ -3,7 +3,7 @@ import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitiv
 import { supabase } from "./lib/supabase";
 import {
   fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos,
-  fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductionActivityDelta, fetchUserProfile,
+  fetchCustomerCrmDeltas, fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductCatalogDeltas, fetchProductionActivityDelta, fetchUserProfile,
 } from "./lib/read-model";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion, normalizeSyncDomains,
@@ -15,7 +15,7 @@ import {
   editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente,
   registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente,
   crearProducto, editarProducto, setProductoActivo,
-  guardarRecetaProducto, sincronizarCostoProducto, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras,
+  guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionDemoras,
   crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado,
   registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion
 } from "./lib/rpc";
@@ -38,6 +38,10 @@ import {
   applyProductionActivityDeltaToDb, compareProductionDeltaVersions,
   normalizeProductionMutationEnvelope,
 } from "./lib/production-delta";
+import {
+  applyCustomerCrmDeltaBatchToDb, applyProductCatalogDeltaBatchToDb,
+  compareCatalogCrmVersions, normalizeCatalogCrmMutationEnvelope,
+} from "./lib/catalog-crm-delta";
 import { canOperateStage } from "./lib/operational-control";
 import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
 import { DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
@@ -729,7 +733,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -774,6 +778,11 @@ function normalizeDbShape(d) {
   d.productionMutationDeltaReady = d.productionMutationDeltaReady === true;
   d.productionActivityDeltaVersion = /^\d+$/.test(String(d.productionActivityDeltaVersion || ""))
     ? String(d.productionActivityDeltaVersion) : "";
+  d.catalogCrmDeltaReady = d.catalogCrmDeltaReady === true;
+  if (!d.productCatalogDeltaVersions || typeof d.productCatalogDeltaVersions !== "object"
+      || Array.isArray(d.productCatalogDeltaVersions)) d.productCatalogDeltaVersions = {};
+  if (!d.customerCrmDeltaVersions || typeof d.customerCrmDeltaVersions !== "object"
+      || Array.isArray(d.customerCrmDeltaVersions)) d.customerCrmDeltaVersions = {};
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
   d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
@@ -2886,7 +2895,7 @@ function nuevoProductoVacio() {
   return { nombre: "", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: "", precioRappi: "", costo: "", prep: "", frio: true, lejano: false, desc: "", comboSize: "", componentProductIds: [], empaqueItem: "", colchonProduccion: 0 };
 }
 
-function Productos({ db, user, refrescar, serverDataReady }) {
+function Productos({ db, user, refrescar, serverDataReady, aplicarMutacionCatalogoCrm, capturarContextoMutacionCatalogoCrm }) {
   const cats = ["Momos Signature","Cajas y Combos","Momos Cuchara","Momos Antojos","Momos Bebidas"];
   const [detalleProductoId, setDetalleProductoId] = useState(null);
   const [recetaDe, setRecetaDe] = useState(null); // productId con receta abierta
@@ -2900,6 +2909,7 @@ function Productos({ db, user, refrescar, serverDataReady }) {
   const [errReceta, setErrReceta] = useState("");
   const [guardandoReceta, setGuardandoReceta] = useState(false);
   const [fCatProd, setFCatProd] = useState("");
+  const mutationKeyRef = useRef(createInventoryIdempotencyKey());
 
   const prodReceta = recetaDe ? db.products.find((p) => p.id === recetaDe) : null;
   const detalleProducto = detalleProductoId ? db.products.find((p) => p.id === detalleProductoId) : null;
@@ -2924,11 +2934,32 @@ function Productos({ db, user, refrescar, serverDataReady }) {
     setAbrirForm(true);
   }
 
+  async function ejecutarProductoDelta(operation, payload, legacyAction) {
+    if (db.catalogCrmDeltaReady === true
+        && typeof aplicarMutacionCatalogoCrm === "function"
+        && typeof capturarContextoMutacionCatalogoCrm === "function") {
+      const key = mutationKeyRef.current;
+      const context = capturarContextoMutacionCatalogoCrm();
+      const envelope = await mutarCatalogoCrmDelta(operation, payload, key);
+      const applied = aplicarMutacionCatalogoCrm(envelope, operation, context);
+      mutationKeyRef.current = createInventoryIdempotencyKey();
+      if (applied?.status === "discarded") await refrescar({ reason: "catalog-delta-discard" });
+      return applied?.result;
+    }
+    const result = await legacyAction();
+    await refrescar({ reason: "catalog-legacy-mutation" });
+    return result;
+  }
+
   async function cambiarProductoActivo(product) {
-    try { await setProductoActivo(product.id, !product.activo); toast("ok", product.activo ? "Producto desactivado del menú." : "Producto activado en el menú."); }
-    catch (error) { toast("error", error.message); return; }
-    try { await refrescar(); }
-    catch { toast("error", "Se actualizó, pero no se pudo refrescar la lista."); }
+    try {
+      await ejecutarProductoDelta(
+        "set_producto_activo",
+        { product_id: product.id, activo: !product.activo },
+        () => setProductoActivo(product.id, !product.activo),
+      );
+      toast("ok", product.activo ? "Producto desactivado del menú." : "Producto activado en el menú.");
+    } catch (error) { toast("error", error.message); }
   }
 
   function payloadProducto() {
@@ -2957,13 +2988,12 @@ function Productos({ db, user, refrescar, serverDataReady }) {
       if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
     }
     try {
-      await crearProducto(payloadProducto());
+      const payload = payloadProducto();
+      await ejecutarProductoDelta("crear_producto", payload, () => crearProducto(payload));
       setAbrirForm(false);
       setErrProd("");
       toast("ok", "Producto creado.");
     } catch (error) { toast("error", error.message); return; }
-    try { await refrescar(); }
-    catch { toast("error", "Producto creado, pero no se pudo refrescar el catálogo."); }
   }
 
   async function guardarEdicion() {
@@ -2978,13 +3008,12 @@ function Productos({ db, user, refrescar, serverDataReady }) {
       if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
     }
     try {
-      await editarProducto(editandoProd.id, payloadProducto());
+      const payload = payloadProducto();
+      await ejecutarProductoDelta("editar_producto", { product_id: editandoProd.id, ...payload }, () => editarProducto(editandoProd.id, payload));
       setAbrirForm(false);
       setErrProd("");
       toast("ok", "Producto actualizado.");
     } catch (error) { toast("error", error.message); return; }
-    try { await refrescar(); }
-    catch { toast("error", "Producto actualizado, pero no se pudo refrescar el catálogo."); }
   }
 
   const totalProductos = db.products.length;
@@ -3227,12 +3256,15 @@ function Productos({ db, user, refrescar, serverDataReady }) {
               if (recetaDraft.some((line) => !(Number(line.cantidad)>0))) { setErrReceta("Todas las cantidades deben ser mayores que cero."); return; }
               setGuardandoReceta(true); setErrReceta("");
               try {
-                await guardarRecetaProducto(prodReceta.id, recetaDraft);
+                const lineas = recetaDraft.map((line) => ({ item_id: line.itemId, cantidad: Number(line.cantidad) }));
+                await ejecutarProductoDelta(
+                  "guardar_receta_producto",
+                  { product_id: prodReceta.id, lineas },
+                  () => guardarRecetaProducto(prodReceta.id, recetaDraft),
+                );
                 setRecetaSucia(false);
                 toast("ok", "Receta guardada.");
               } catch (error) { toast("error", error.message); setGuardandoReceta(false); return; }
-              try { await refrescar(); }
-              catch { toast("error", "Receta guardada, pero no se pudo refrescar."); }
               finally { setGuardandoReceta(false); }
             }}>{recetaSucia ? "Guardar receta" : "Receta guardada ✓"}</BtnAsync>
           </div>}
@@ -3249,10 +3281,15 @@ function Productos({ db, user, refrescar, serverDataReady }) {
               <div className="mt-3">
                 <BtnAsync small kind="soft" disabled={recetaSucia || guardandoReceta} textoEnVuelo="Actualizando costo…" onClick={async () => {
                   setGuardandoReceta(true); setErrReceta("");
-                  try { await sincronizarCostoProducto(prodReceta.id); toast("ok", "Costo del producto actualizado."); }
+                  try {
+                    await ejecutarProductoDelta(
+                      "sincronizar_costo_producto",
+                      { product_id: prodReceta.id },
+                      () => sincronizarCostoProducto(prodReceta.id),
+                    );
+                    toast("ok", "Costo del producto actualizado.");
+                  }
                   catch (error) { toast("error", error.message); setGuardandoReceta(false); return; }
-                  try { await refrescar(); }
-                  catch { toast("error", "Costo actualizado, pero no se pudo refrescar."); }
                   finally { setGuardandoReceta(false); }
                 }}>Actualizar costo del producto con la receta</BtnAsync>
               </div>
@@ -3577,7 +3614,7 @@ function Reclamos({ db, update, user, focus, refrescar }) {
 
 const ESTADOS_CLIENTE = ["Nuevo", "Recurrente", "VIP", "Inactivo", "Riesgo por reclamos"];
 
-function Clientes({ db, update, user, refrescar }) {
+function Clientes({ db, update, user, refrescar, aplicarMutacionCatalogoCrm, capturarContextoMutacionCatalogoCrm }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [detalleVista, setDetalleVista] = useState("resumen");
@@ -3586,7 +3623,32 @@ function Clientes({ db, update, user, refrescar }) {
   const [aviso, setAviso] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [crmForm, setCrmForm] = useState(null);
+  const mutationKeyRef = useRef(createInventoryIdempotencyKey());
   const hoy = hoyISO();
+
+  useEffect(() => {
+    if (!sel?.id) return;
+    const current = db.customers.find((customer) => customer.id === sel.id);
+    if (!current) setSel(null);
+    else if (current !== sel) setSel(current);
+  }, [db.customers, sel?.id]);
+
+  async function ejecutarClienteDelta(operation, payload, legacyAction) {
+    if (db.catalogCrmDeltaReady === true
+        && typeof aplicarMutacionCatalogoCrm === "function"
+        && typeof capturarContextoMutacionCatalogoCrm === "function") {
+      const key = mutationKeyRef.current;
+      const context = capturarContextoMutacionCatalogoCrm();
+      const envelope = await mutarCatalogoCrmDelta(operation, payload, key);
+      const applied = aplicarMutacionCatalogoCrm(envelope, operation, context);
+      mutationKeyRef.current = createInventoryIdempotencyKey();
+      if (applied?.status === "discarded") await refrescar({ reason: "crm-delta-discard" });
+      return applied?.result;
+    }
+    const result = await legacyAction();
+    await refrescar({ reason: "crm-legacy-mutation" });
+    return result;
+  }
 
   function abrirNuevo() {
     setErr(""); setSel(null);
@@ -3603,18 +3665,14 @@ function Clientes({ db, update, user, refrescar }) {
     const campos = { nombre, telefono, instagram: form.instagram.trim(), canal: form.canal, barrio: form.barrio.trim(), direccion: form.direccion.trim(), cumple: form.cumple, favoritos: form.favoritos.trim(), estado: form.estado, notas: form.notas.trim() };
     setEnviando(true);
     try {
-      await upsertCliente(form.id || null, campos);
+      await ejecutarClienteDelta(
+        "upsert_cliente",
+        { customer_id: form.id || "", ...campos },
+        () => upsertCliente(form.id || null, campos),
+      );
     } catch (e) {
       setErr(e.message);
       setEnviando(false);
-      return;
-    }
-    try {
-      await refrescar();
-    } catch (e) {
-      setAviso({ titulo: "Acción aplicada, vista desactualizada", texto: "El cliente se guardó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
-      setEnviando(false);
-      setForm(null);
       return;
     }
     setEnviando(false);
@@ -3631,9 +3689,9 @@ function Clientes({ db, update, user, refrescar }) {
     setSel(cliente);
   }
 
-  async function ejecutarCrm(action) {
+  async function ejecutarCrm(operation, payload, legacyAction) {
     setEnviando(true); setErr("");
-    try { await action(); await refrescar(); setCrmForm(null); }
+    try { await ejecutarClienteDelta(operation, payload, legacyAction); setCrmForm(null); }
     catch (e) { setErr(e.message); }
     finally { setEnviando(false); }
   }
@@ -3809,7 +3867,13 @@ function Clientes({ db, update, user, refrescar }) {
           <Field label="Cómo llegó"><Input value={crmForm.acquisitionSource} onChange={(e) => setCrmForm({ ...crmForm, acquisitionSource: e.target.value })} placeholder="Instagram, referido, Rappi…" /></Field>
           {!crmForm.contactAllowed && <Field label="Motivo de no contacto"><Input value={crmForm.contactReason} onChange={(e) => setCrmForm({ ...crmForm, contactReason: e.target.value })} /></Field>}
           {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
-          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando} onClick={() => ejecutarCrm(() => guardarPreferenciasCliente(sel.id, { contact_allowed: crmForm.contactAllowed, preferred_channel: crmForm.preferredChannel, acquisition_source: crmForm.acquisitionSource, contact_reason: crmForm.contactReason }))}>Guardar</Btn></div>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando} onClick={() => {
+            const payload = { customer_id: sel.id, contact_allowed: crmForm.contactAllowed, preferred_channel: crmForm.preferredChannel, acquisition_source: crmForm.acquisitionSource, contact_reason: crmForm.contactReason };
+            return ejecutarCrm("guardar_preferencias_cliente", payload, () => guardarPreferenciasCliente(sel.id, {
+              contact_allowed: crmForm.contactAllowed, preferred_channel: crmForm.preferredChannel,
+              acquisition_source: crmForm.acquisitionSource, contact_reason: crmForm.contactReason,
+            }));
+          }}>Guardar</Btn></div>
         </Modal>
       )}
       {sel && crmForm?.type === "contact" && (
@@ -3820,7 +3884,10 @@ function Clientes({ db, update, user, refrescar }) {
           <Field label="Próximo seguimiento"><Input type="date" value={crmForm.followUpOn} onChange={(e) => setCrmForm({ ...crmForm, followUpOn: e.target.value })} /></Field>
           <Field label="Notas"><Input value={crmForm.notes} onChange={(e) => setCrmForm({ ...crmForm, notes: e.target.value })} /></Field>
           {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
-          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || crmForm.reason.trim().length < 3} onClick={() => ejecutarCrm(() => registrarContactoCliente({ customer_id: sel.id, channel: crmForm.channel, reason: crmForm.reason, outcome: crmForm.outcome, notes: crmForm.notes, follow_up_on: crmForm.followUpOn }))}>Registrar</Btn></div>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || crmForm.reason.trim().length < 3} onClick={() => {
+            const payload = { customer_id: sel.id, channel: crmForm.channel, reason: crmForm.reason, outcome: crmForm.outcome, notes: crmForm.notes, follow_up_on: crmForm.followUpOn };
+            return ejecutarCrm("registrar_contacto_cliente", payload, () => registrarContactoCliente(payload));
+          }}>Registrar</Btn></div>
         </Modal>
       )}
       {sel && crmForm?.type === "activation" && (
@@ -3830,7 +3897,10 @@ function Clientes({ db, update, user, refrescar }) {
           <Field label="Mensaje sugerido"><textarea value={crmForm.message} onChange={(e) => setCrmForm({ ...crmForm, message: e.target.value })} className={`${inputCls} min-h-24`} style={inputStyle} /></Field>
           <Field label="Vence"><Input type="date" value={crmForm.expiresOn} onChange={(e) => setCrmForm({ ...crmForm, expiresOn: e.target.value })} /></Field>
           {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
-          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || crmForm.title.trim().length < 3} onClick={() => ejecutarCrm(() => crearActivacionCliente({ customer_id: sel.id, type: crmForm.activationType, title: crmForm.title, message: crmForm.message, expires_on: crmForm.expiresOn }))}>Crear activación</Btn></div>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || crmForm.title.trim().length < 3} onClick={() => {
+            const payload = { customer_id: sel.id, type: crmForm.activationType, title: crmForm.title, message: crmForm.message, expires_on: crmForm.expiresOn };
+            return ejecutarCrm("crear_activacion_cliente", payload, () => crearActivacionCliente(payload));
+          }}>Crear activación</Btn></div>
         </Modal>
       )}
       {sel && crmForm?.type === "conversion" && (
@@ -3843,7 +3913,11 @@ function Clientes({ db, update, user, refrescar }) {
             </select>
           </Field>
           {err && <div className="text-sm font-bold mb-2" style={{ color: T.coral }}>{err}</div>}
-          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || !crmForm.orderId} onClick={() => ejecutarCrm(() => convertirActivacionCliente(crmForm.activationId, crmForm.orderId))}>Confirmar conversión</Btn></div>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setCrmForm(null)}>Cancelar</Btn><Btn disabled={enviando || !crmForm.orderId} onClick={() => ejecutarCrm(
+            "convertir_activacion_cliente",
+            { activation_id: crmForm.activationId, order_id: crmForm.orderId },
+            () => convertirActivacionCliente(crmForm.activationId, crmForm.orderId),
+          )}>Confirmar conversión</Btn></div>
         </Modal>
       )}
 
@@ -3904,11 +3978,29 @@ function labelBeneficio(b, db) {
   return (p ? p.nombre : "Producto") + " gratis";
 }
 
-function Beneficios({ db, update, user, refrescar }) {
+function Beneficios({ db, update, user, refrescar, aplicarMutacionCatalogoCrm, capturarContextoMutacionCatalogoCrm }) {
   const [nuevo, setNuevo] = useState(false);
   const [form, setForm] = useState({ customerId: "", tipoBeneficio: "descuento_porcentaje", valor: 20, productoGratisId: "PR11", condicion: "Historia en Instagram", minimo: 30000, vence: dISO(15), obs: "" });
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const mutationKeyRef = useRef(createInventoryIdempotencyKey());
+
+  async function activarBeneficioConDelta(payload) {
+    if (db.catalogCrmDeltaReady === true
+        && typeof aplicarMutacionCatalogoCrm === "function"
+        && typeof capturarContextoMutacionCatalogoCrm === "function") {
+      const key = mutationKeyRef.current;
+      const context = capturarContextoMutacionCatalogoCrm();
+      const envelope = await mutarCatalogoCrmDelta("activar_beneficio_cliente", payload, key);
+      const applied = aplicarMutacionCatalogoCrm(envelope, "activar_beneficio_cliente", context);
+      mutationKeyRef.current = createInventoryIdempotencyKey();
+      if (applied?.status === "discarded") await refrescar({ reason: "benefit-delta-discard" });
+      return applied?.result;
+    }
+    const result = await activarBeneficioCliente(payload);
+    await refrescar({ reason: "benefit-legacy-mutation" });
+    return result;
+  }
 
   return (
     <div>
@@ -3979,8 +4071,8 @@ function Beneficios({ db, update, user, refrescar }) {
             <Btn disabled={!db.crmServerReady || enviando || !form.customerId} onClick={async () => {
               setError(""); setEnviando(true);
               try {
-                await activarBeneficioCliente({ customer_id: form.customerId, tipo_beneficio: form.tipoBeneficio, valor: form.valor, producto_gratis_id: form.tipoBeneficio === "producto_gratis" ? form.productoGratisId : "", condicion: form.condicion, minimo: form.minimo, vence: form.vence, obs: form.obs });
-                await refrescar(); setNuevo(false);
+                await activarBeneficioConDelta({ customer_id: form.customerId, tipo_beneficio: form.tipoBeneficio, valor: form.valor, producto_gratis_id: form.tipoBeneficio === "producto_gratis" ? form.productoGratisId : "", condicion: form.condicion, minimo: form.minimo, vence: form.vence, obs: form.obs });
+                setNuevo(false);
               } catch (e) { setError(e.message); }
               finally { setEnviando(false); }
             }}>Activar</Btn>
@@ -5865,6 +5957,12 @@ export default function MomosOps() {
   const finishedInventorySyncGenerationRef = useRef(0);
   const finishedInventoryRealtimePendingRef = useRef(new Set());
   const finishedInventoryReconcileRequestRef = useRef(null);
+  const productCatalogSyncGenerationRef = useRef(0);
+  const productCatalogRealtimePendingRef = useRef(new Set());
+  const productCatalogReconcileRequestRef = useRef(null);
+  const customerCrmSyncGenerationRef = useRef(0);
+  const customerCrmRealtimePendingRef = useRef(new Set());
+  const customerCrmReconcileRequestRef = useRef(null);
   const sessionOwnerRef = useRef(null);
   const activeStorageKeyRef = useRef(DB_KEY);
   const visibleSyncDomainsRef = useRef(new Set(syncDomainsForDbView(vista, db)));
@@ -5916,6 +6014,12 @@ export default function MomosOps() {
     finishedInventorySyncGenerationRef.current += 1;
     finishedInventoryRealtimePendingRef.current.clear();
     finishedInventoryReconcileRequestRef.current = null;
+    productCatalogSyncGenerationRef.current += 1;
+    productCatalogRealtimePendingRef.current.clear();
+    productCatalogReconcileRequestRef.current = null;
+    customerCrmSyncGenerationRef.current += 1;
+    customerCrmRealtimePendingRef.current.clear();
+    customerCrmReconcileRequestRef.current = null;
     hidratadoRef.current = false;
     setCatalogosDe(null);
     activeStorageKeyRef.current = nextUserId ? `${DB_KEY}:${nextUserId}` : DB_KEY;
@@ -5959,6 +6063,8 @@ export default function MomosOps() {
     let orderTimer = null;
     let finishedInventoryTimer = null;
     let productionActivityTimer = null;
+    let productCatalogTimer = null;
+    let customerCrmTimer = null;
     let alive = true;
     const pendingDomains = new Set();
     let pendingAgencyVersion = "";
@@ -5983,11 +6089,17 @@ export default function MomosOps() {
       && db.finishedInventoryDeltaReady === true
       && operationsRealtime;
     const productionActivityDeltaRealtime = productionMutationRealtime && operationsRealtime;
+    const productCatalogDeltaRealtime = vista === "Productos"
+      && db.catalogCrmDeltaReady === true
+      && catalogsRealtime;
+    const customerCrmDeltaRealtime = ["Clientes", "Beneficios"].includes(vista)
+      && db.catalogCrmDeltaReady === true
+      && operationsRealtime;
     const tables = [];
     if (operationsRealtime) {
       if (!orderDeltaRealtime) tables.push(
         "orders", "order_items", "order_item_adiciones", "packing_verifications", "evidences", "deliveries",
-        "customers", "benefits", "claims", "inventory_reservations",
+        ...(customerCrmDeltaRealtime ? [] : ["customers", "benefits"]), "claims", "inventory_reservations",
         ...(productionActivityDeltaRealtime ? [] : ["production_suggestions"]),
       );
       tables.push(
@@ -5998,12 +6110,14 @@ export default function MomosOps() {
       );
     }
     if (catalogsRealtime) tables.push(
-      ...(finishedInventoryDeltaRealtime ? [] : ["products"]), "combo_components", ...(inventoryDeltaRealtime ? [] : ["inventory_items", "inventory_lots"]),
-      "recipes", "users", "toppings", "figuras",
+      ...(finishedInventoryDeltaRealtime || productCatalogDeltaRealtime ? [] : ["products"]),
+      ...(productCatalogDeltaRealtime ? [] : ["combo_components", "recipes"]),
+      ...(inventoryDeltaRealtime ? [] : ["inventory_items", "inventory_lots"]),
+      "users", "toppings", "figuras",
       "catalog_values", "zonas", "proveedores_domicilio", "brand_library", "app_settings", "subrecetas", "subreceta_ingredientes", "figura_relleno",
     );
     if (operationsRealtime && db.operationalControlReady && !orderDeltaRealtime) tables.push("order_stage_assignments", "order_line_progress", "order_incidents", "order_dispatch_handoffs");
-    if (operationsRealtime && db.crmServerReady) tables.push("customer_crm_profiles", "customer_contacts", "customer_activations");
+    if (operationsRealtime && db.crmServerReady && !customerCrmDeltaRealtime) tables.push("customer_crm_profiles", "customer_contacts", "customer_activations");
     // H66 publica un único outbox autorizado. Suscribirse a las tablas crudas
     // duplicaba decenas de eventos y revelaba el esquema interno. El flag evita
     // tocar una tabla inexistente durante el rollout; pre-H66 conserva polling.
@@ -6012,6 +6126,8 @@ export default function MomosOps() {
     if (orderDeltaRealtime) tables.push("order_sync_versions");
     if (finishedInventoryDeltaRealtime) tables.push("finished_inventory_sync_versions");
     if (productionActivityDeltaRealtime) tables.push("production_activity_sync_versions");
+    if (productCatalogDeltaRealtime) tables.push("product_catalog_sync_versions");
+    if (customerCrmDeltaRealtime) tables.push("customer_crm_sync_versions");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
@@ -6315,6 +6431,116 @@ export default function MomosOps() {
 
     if (finishedInventoryDeltaRealtime && finishedInventoryRealtimePendingRef.current.size) flushFinishedInventoryDeltas();
 
+    const productCatalogReconciliationState = { active: null };
+    const fallbackProductCatalogSnapshot = () => {
+      if (!productCatalogReconciliationState.active) {
+        productCatalogReconciliationState.active = (refetchFocoRef.current?.(
+          [SYNC_DOMAINS.CATALOGS],
+          { reason: "product-catalog-delta-fallback", afterActive: true },
+        ) || Promise.resolve()).then(() => true).catch(() => {
+          if (alive) setRealtimeStatus("reconectando");
+          return false;
+        }).finally(() => { productCatalogReconciliationState.active = null; });
+      }
+      return productCatalogReconciliationState.active;
+    };
+    productCatalogReconcileRequestRef.current = fallbackProductCatalogSnapshot;
+
+    const flushProductCatalogDeltas = () => {
+      if (productCatalogTimer) clearTimeout(productCatalogTimer);
+      productCatalogTimer = setTimeout(async () => {
+        if (!alive || !hidratadoRef.current) return;
+        const productIds = [...productCatalogRealtimePendingRef.current].slice(0, 20);
+        if (!productIds.length) return;
+        const readGeneration = productCatalogSyncGenerationRef.current;
+        const finishedInventoryGeneration = finishedInventorySyncGenerationRef.current;
+        try {
+          const envelope = await fetchProductCatalogDeltas(productIds);
+          if (!alive) return;
+          const result = aplicarDeltaCatalogoProductos(envelope, readGeneration, finishedInventoryGeneration);
+          if (result?.status === "discarded") {
+            const reconciled = await fallbackProductCatalogSnapshot();
+            if (reconciled) productIds.forEach((productId) => productCatalogRealtimePendingRef.current.delete(productId));
+          } else {
+            productIds.forEach((productId) => productCatalogRealtimePendingRef.current.delete(productId));
+          }
+        } catch {
+          if (alive) {
+            const reconciled = await fallbackProductCatalogSnapshot();
+            if (reconciled) productIds.forEach((productId) => productCatalogRealtimePendingRef.current.delete(productId));
+          }
+        }
+        if (alive && productCatalogRealtimePendingRef.current.size) flushProductCatalogDeltas();
+      }, 180);
+    };
+
+    const queueProductCatalogDelta = (payload) => {
+      const productId = String(payload?.new?.product_id || payload?.old?.product_id || "").trim();
+      if (!productId) return;
+      const incomingVersion = payload?.new?.version;
+      const currentVersion = dbRef.current?.productCatalogDeltaVersions?.[productId];
+      if (currentVersion && compareCatalogCrmVersions(incomingVersion, currentVersion) !== 1) return;
+      productCatalogRealtimePendingRef.current.add(productId);
+      flushProductCatalogDeltas();
+    };
+
+    if (productCatalogDeltaRealtime && productCatalogRealtimePendingRef.current.size) flushProductCatalogDeltas();
+
+    const customerCrmReconciliationState = { active: null };
+    const fallbackCustomerCrmSnapshot = () => {
+      if (!customerCrmReconciliationState.active) {
+        customerCrmReconciliationState.active = (refetchFocoRef.current?.(
+          [SYNC_DOMAINS.OPERATIONS],
+          { reason: "customer-crm-delta-fallback", afterActive: true },
+        ) || Promise.resolve()).then(() => true).catch(() => {
+          if (alive) setRealtimeStatus("reconectando");
+          return false;
+        }).finally(() => { customerCrmReconciliationState.active = null; });
+      }
+      return customerCrmReconciliationState.active;
+    };
+    customerCrmReconcileRequestRef.current = fallbackCustomerCrmSnapshot;
+
+    const flushCustomerCrmDeltas = () => {
+      if (customerCrmTimer) clearTimeout(customerCrmTimer);
+      customerCrmTimer = setTimeout(async () => {
+        if (!alive || !hidratadoRef.current) return;
+        const customerIds = [...customerCrmRealtimePendingRef.current].slice(0, 20);
+        if (!customerIds.length) return;
+        const readGeneration = customerCrmSyncGenerationRef.current;
+        const orderGeneration = orderSyncGenerationRef.current;
+        try {
+          const envelope = await fetchCustomerCrmDeltas(customerIds);
+          if (!alive) return;
+          const result = aplicarDeltaClienteCrm(envelope, readGeneration, orderGeneration);
+          if (result?.status === "discarded") {
+            const reconciled = await fallbackCustomerCrmSnapshot();
+            if (reconciled) customerIds.forEach((customerId) => customerCrmRealtimePendingRef.current.delete(customerId));
+          } else {
+            customerIds.forEach((customerId) => customerCrmRealtimePendingRef.current.delete(customerId));
+          }
+        } catch {
+          if (alive) {
+            const reconciled = await fallbackCustomerCrmSnapshot();
+            if (reconciled) customerIds.forEach((customerId) => customerCrmRealtimePendingRef.current.delete(customerId));
+          }
+        }
+        if (alive && customerCrmRealtimePendingRef.current.size) flushCustomerCrmDeltas();
+      }, 180);
+    };
+
+    const queueCustomerCrmDelta = (payload) => {
+      const customerId = String(payload?.new?.customer_id || payload?.old?.customer_id || "").trim();
+      if (!customerId) return;
+      const incomingVersion = payload?.new?.version;
+      const currentVersion = dbRef.current?.customerCrmDeltaVersions?.[customerId];
+      if (currentVersion && compareCatalogCrmVersions(incomingVersion, currentVersion) !== 1) return;
+      customerCrmRealtimePendingRef.current.add(customerId);
+      flushCustomerCrmDeltas();
+    };
+
+    if (customerCrmDeltaRealtime && customerCrmRealtimePendingRef.current.size) flushCustomerCrmDeltas();
+
     const fallbackProductionActivitySnapshot = () => refetchFocoRef.current?.(
       [SYNC_DOMAINS.OPERATIONS],
       { reason: "production-activity-delta-fallback", afterActive: true },
@@ -6365,6 +6591,14 @@ export default function MomosOps() {
         }
         if (table === "production_activity_sync_versions") {
           queueProductionActivityDelta(payload);
+          return;
+        }
+        if (table === "product_catalog_sync_versions") {
+          queueProductCatalogDelta(payload);
+          return;
+        }
+        if (table === "customer_crm_sync_versions") {
+          queueCustomerCrmDelta(payload);
           return;
         }
         const domain = syncDomainForTable(table);
@@ -6428,15 +6662,19 @@ export default function MomosOps() {
       if (orderTimer) clearTimeout(orderTimer);
       if (finishedInventoryTimer) clearTimeout(finishedInventoryTimer);
       if (productionActivityTimer) clearTimeout(productionActivityTimer);
+      if (productCatalogTimer) clearTimeout(productCatalogTimer);
+      if (customerCrmTimer) clearTimeout(customerCrmTimer);
       reconciliationState.requested = false;
       if (inventoryReconcileRequestRef.current === requestInventoryReconciliation) {
         inventoryReconcileRequestRef.current = null;
       }
       if (orderReconcileRequestRef.current === fallbackOrderSnapshot) orderReconcileRequestRef.current = null;
       if (finishedInventoryReconcileRequestRef.current === fallbackFinishedInventorySnapshot) finishedInventoryReconcileRequestRef.current = null;
+      if (productCatalogReconcileRequestRef.current === fallbackProductCatalogSnapshot) productCatalogReconcileRequestRef.current = null;
+      if (customerCrmReconcileRequestRef.current === fallbackCustomerCrmSnapshot) customerCrmReconcileRequestRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -6473,18 +6711,30 @@ export default function MomosOps() {
     let orderSnapshotDiscarded = false;
     let finishedInventorySnapshotApplied = false;
     let finishedInventorySnapshotDiscarded = false;
+    let productCatalogSnapshotApplied = false;
+    let productCatalogSnapshotDiscarded = false;
+    let customerCrmSnapshotApplied = false;
+    let customerCrmSnapshotDiscarded = false;
     update((d) => {
       if (catalogs) {
       const cat = catalogs;
       const capturedFinishedInventoryGeneration = Number(cat.__finishedInventoryReadGeneration);
       const finishedInventoryCatalogIsCurrent = !Number.isFinite(capturedFinishedInventoryGeneration)
         || capturedFinishedInventoryGeneration === finishedInventorySyncGenerationRef.current;
-      if (finishedInventoryCatalogIsCurrent) {
+      const capturedProductCatalogGeneration = Number(cat.__productCatalogReadGeneration);
+      const productCatalogIsCurrent = !Number.isFinite(capturedProductCatalogGeneration)
+        || capturedProductCatalogGeneration === productCatalogSyncGenerationRef.current;
+      if (finishedInventoryCatalogIsCurrent && productCatalogIsCurrent) {
         d.products = cat.products;
+        d.recipes = cat.recipes;
         d.productsServerReady = Boolean(cat.productsServerReady);
+        d.catalogCrmDeltaReady = Boolean(cat.catalogCrmDeltaReady);
+        d.productCatalogDeltaVersions = {};
         finishedInventorySnapshotApplied = true;
+        productCatalogSnapshotApplied = true;
       } else {
-        finishedInventorySnapshotDiscarded = true;
+        if (!finishedInventoryCatalogIsCurrent) finishedInventorySnapshotDiscarded = true;
+        if (!productCatalogIsCurrent) productCatalogSnapshotDiscarded = true;
       }
       const capturedGeneration = Number(cat.__inventoryReadGeneration);
       const currentGeneration = generationBeforeApply;
@@ -6531,7 +6781,6 @@ export default function MomosOps() {
       } else {
         inventorySnapshotDiscarded = true;
       }
-      d.recipes = cat.recipes;
       d.users = cat.users;
       d.multipleRolesReady = Boolean(cat.multipleRolesReady);
       d.figuras = cat.figuras || []; // catálogo figuras con product_id/gramaje (Producción v2)
@@ -6661,19 +6910,29 @@ export default function MomosOps() {
       if (cat.brand_library) d.brand_library = cat.brand_library;
       }
       if (op) {
-        const { __orderReadGeneration, __finishedInventoryReadGeneration, ...operationData } = op;
+        const { __orderReadGeneration, __finishedInventoryReadGeneration, __customerCrmReadGeneration, ...operationData } = op;
         const capturedOrderGeneration = Number(__orderReadGeneration);
         const orderSnapshotIsCurrent = !Number.isFinite(capturedOrderGeneration)
           || capturedOrderGeneration === orderSyncGenerationRef.current;
         const capturedFinishedInventoryGeneration = Number(__finishedInventoryReadGeneration);
         const finishedInventoryOperationsAreCurrent = !Number.isFinite(capturedFinishedInventoryGeneration)
           || capturedFinishedInventoryGeneration === finishedInventorySyncGenerationRef.current;
+        const capturedCustomerCrmGeneration = Number(__customerCrmReadGeneration);
+        const customerCrmOperationsAreCurrent = !Number.isFinite(capturedCustomerCrmGeneration)
+          || capturedCustomerCrmGeneration === customerCrmSyncGenerationRef.current;
         if (orderSnapshotIsCurrent) {
           const currentProductionBatches = d.production_batches;
           const currentVariants = d.variantes;
           const currentQuarantinedVariants = d.variantesCuarentena;
           const currentFinishedInventoryReady = d.finishedInventoryDeltaReady;
           const currentFinishedInventoryVersions = d.finishedInventoryDeltaVersions;
+          const currentCustomers = d.customers;
+          const currentBenefits = d.benefits;
+          const currentCrmProfiles = d.customer_crm_profiles;
+          const currentCrmContacts = d.customer_contacts;
+          const currentCrmActivations = d.customer_activations;
+          const currentCustomerCrmReady = d.catalogCrmDeltaReady;
+          const currentCustomerCrmVersions = d.customerCrmDeltaVersions;
           const protectedOperations = d.inventoryMutationDeltaReady === true;
           if (protectedOperations) {
             // Con H70, OPERATIONS nunca es dueño del historial de Inventario:
@@ -6700,6 +6959,20 @@ export default function MomosOps() {
             d.finishedInventoryDeltaVersions = currentFinishedInventoryVersions;
             finishedInventorySnapshotDiscarded = true;
           }
+          if (customerCrmOperationsAreCurrent) {
+            d.catalogCrmDeltaReady = operationData.catalogCrmDeltaReady === true;
+            d.customerCrmDeltaVersions = {};
+            customerCrmSnapshotApplied = true;
+          } else {
+            d.customers = currentCustomers;
+            d.benefits = currentBenefits;
+            d.customer_crm_profiles = currentCrmProfiles;
+            d.customer_contacts = currentCrmContacts;
+            d.customer_activations = currentCrmActivations;
+            d.catalogCrmDeltaReady = currentCustomerCrmReady;
+            d.customerCrmDeltaVersions = currentCustomerCrmVersions;
+            customerCrmSnapshotDiscarded = true;
+          }
           d.orderDeltaVersions = {};
           orderSnapshotApplied = true;
         } else {
@@ -6714,6 +6987,8 @@ export default function MomosOps() {
     }
     if (orderSnapshotApplied) orderSyncGenerationRef.current += 1;
     if (finishedInventorySnapshotApplied) finishedInventorySyncGenerationRef.current += 1;
+    if (productCatalogSnapshotApplied) productCatalogSyncGenerationRef.current += 1;
+    if (customerCrmSnapshotApplied) customerCrmSyncGenerationRef.current += 1;
     if (inventorySnapshotDiscarded) {
       solicitarConciliacionInventario();
     } else if (inventorySnapshotNeedsHandshake && typeof inventoryReconcileRequestRef.current === "function") {
@@ -6724,6 +6999,12 @@ export default function MomosOps() {
     }
     if (finishedInventorySnapshotDiscarded && typeof finishedInventoryReconcileRequestRef.current === "function") {
       finishedInventoryReconcileRequestRef.current();
+    }
+    if (productCatalogSnapshotDiscarded && typeof productCatalogReconcileRequestRef.current === "function") {
+      productCatalogReconcileRequestRef.current();
+    }
+    if (customerCrmSnapshotDiscarded && typeof customerCrmReconcileRequestRef.current === "function") {
+      customerCrmReconcileRequestRef.current();
     }
     // La telemetría de ruta debe cerrar cuando React ya tuvo oportunidad de
     // pintar la versión aplicada, no apenas cuando terminó la respuesta HTTP.
@@ -6737,6 +7018,7 @@ export default function MomosOps() {
           [SYNC_DOMAINS.CATALOGS]: async () => {
             const inventoryReadGeneration = capturarGeneracionInventario();
             const finishedInventoryReadGeneration = finishedInventorySyncGenerationRef.current;
+            const productCatalogReadGeneration = productCatalogSyncGenerationRef.current;
             const catalogs = await measureSyncLoad(
               SYNC_DOMAINS.CATALOGS,
               () => fetchCatalogos({ includeAgency: false }),
@@ -6744,13 +7026,14 @@ export default function MomosOps() {
             // Metadato solo de coordinación local; nunca se persiste ni sale
             // del navegador. Permite descartar un snapshot que empezó antes
             // de un delta ya visible.
-            return { ...catalogs, __inventoryReadGeneration: inventoryReadGeneration, __finishedInventoryReadGeneration: finishedInventoryReadGeneration };
+            return { ...catalogs, __inventoryReadGeneration: inventoryReadGeneration, __finishedInventoryReadGeneration: finishedInventoryReadGeneration, __productCatalogReadGeneration: productCatalogReadGeneration };
           },
           [SYNC_DOMAINS.OPERATIONS]: async () => {
             const orderReadGeneration = orderSyncGenerationRef.current;
             const finishedInventoryReadGeneration = finishedInventorySyncGenerationRef.current;
+            const customerCrmReadGeneration = customerCrmSyncGenerationRef.current;
             const operations = await measureSyncLoad(SYNC_DOMAINS.OPERATIONS, fetchOperativo);
-            return { ...operations, __orderReadGeneration: orderReadGeneration, __finishedInventoryReadGeneration: finishedInventoryReadGeneration };
+            return { ...operations, __orderReadGeneration: orderReadGeneration, __finishedInventoryReadGeneration: finishedInventoryReadGeneration, __customerCrmReadGeneration: customerCrmReadGeneration };
           },
           [SYNC_DOMAINS.AGENCY]: () => measureSyncLoad(
             SYNC_DOMAINS.AGENCY,
@@ -6959,6 +7242,66 @@ export default function MomosOps() {
 
   function capturarGeneracionPedidos() {
     return orderSyncGenerationRef.current;
+  }
+
+  function capturarContextoMutacionCatalogoCrm() {
+    return {
+      productCatalogGeneration: productCatalogSyncGenerationRef.current,
+      customerCrmGeneration: customerCrmSyncGenerationRef.current,
+      finishedInventoryGeneration: finishedInventorySyncGenerationRef.current,
+      orderGeneration: orderSyncGenerationRef.current,
+    };
+  }
+
+  function aplicarDeltaCatalogoProductos(envelope, readGeneration, finishedInventoryGeneration = finishedInventorySyncGenerationRef.current) {
+    if (Number(readGeneration) !== productCatalogSyncGenerationRef.current
+        || Number(finishedInventoryGeneration) !== finishedInventorySyncGenerationRef.current) {
+      return { status: "discarded", reason: "product_catalog_generation_changed", applied: [], stale: [] };
+    }
+    let result;
+    update((draft) => {
+      result = applyProductCatalogDeltaBatchToDb(draft, envelope);
+      if (result?.db) Object.assign(draft, result.db);
+      normalizeDbShape(draft);
+    }, { silencioso: true, persistir: false });
+    if (result?.applied?.length) productCatalogSyncGenerationRef.current += 1;
+    return result;
+  }
+
+  function aplicarDeltaClienteCrm(envelope, readGeneration, orderGeneration = orderSyncGenerationRef.current) {
+    if (Number(readGeneration) !== customerCrmSyncGenerationRef.current
+        || Number(orderGeneration) !== orderSyncGenerationRef.current) {
+      return { status: "discarded", reason: "customer_crm_generation_changed", applied: [], stale: [] };
+    }
+    let result;
+    update((draft) => {
+      result = applyCustomerCrmDeltaBatchToDb(draft, envelope);
+      if (result?.db) Object.assign(draft, result.db);
+      normalizeDbShape(draft);
+    }, { silencioso: true, persistir: false });
+    if (result?.applied?.length) customerCrmSyncGenerationRef.current += 1;
+    return result;
+  }
+
+  function aplicarMutacionCatalogoCrm(envelope, expectedOperation, context = {}) {
+    const normalized = normalizeCatalogCrmMutationEnvelope(envelope, expectedOperation);
+    if (dbRef.current?.catalogCrmDeltaReady !== true) {
+      return { status: "discarded", reason: "catalog_crm_delta_not_ready", result: normalized.result };
+    }
+    if (normalized.catalog) {
+      const applied = aplicarDeltaCatalogoProductos(
+        normalized.catalog,
+        Number(context.productCatalogGeneration),
+        Number(context.finishedInventoryGeneration),
+      );
+      return { ...applied, duplicate: normalized.duplicate, result: normalized.result };
+    }
+    const applied = aplicarDeltaClienteCrm(
+      normalized.crm,
+      Number(context.customerCrmGeneration),
+      Number(context.orderGeneration),
+    );
+    return { ...applied, duplicate: normalized.duplicate, result: normalized.result };
   }
 
   function aplicarDeltaPedido(envelope, readGeneration) {
@@ -7394,6 +7737,7 @@ export default function MomosOps() {
       aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos,
       aplicarDeltaProductoTerminado, capturarGeneracionProductoTerminado, solicitarConciliacionProductoTerminado,
       sincronizarProductoTerminado, aplicarMutacionProduccion, capturarContextoMutacionProduccion,
+      aplicarMutacionCatalogoCrm, capturarContextoMutacionCatalogoCrm,
       perfil, serverDataReady: Boolean(catalogosDe), performanceRouteId: performanceRouteRef.current,
     };
     switch (activa) {
