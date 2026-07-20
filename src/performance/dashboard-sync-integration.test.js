@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const migration = readFileSync(new URL("../../supabase/dashboard-operativo-v1.sql", import.meta.url), "utf8");
 const ordered = readFileSync(new URL("../../supabase/tests/test-migraciones-ordenadas.sql", import.meta.url), "utf8");
 const app = readFileSync(new URL("../MomosOps.jsx", import.meta.url), "utf8");
+const businessPanels = readFileSync(new URL("../features/backoffice/BusinessPanels.jsx", import.meta.url), "utf8");
 const readModel = readFileSync(new URL("../lib/read-model.js", import.meta.url), "utf8");
 const coordinator = readFileSync(new URL("../lib/sync-coordinator.js", import.meta.url), "utf8");
 
@@ -33,12 +34,14 @@ test("H77 convierte Dashboard en un único dominio de lectura diferida", () => {
   assert.match(app, /dashboard_sync_state/);
   assert.match(app, /fetchDashboardSnapshot/);
 
-  const dashboardStart = app.indexOf("function Dashboard(");
-  const dashboardEnd = app.indexOf("/* ================= PEDIDOS", dashboardStart);
-  const dashboard = app.slice(dashboardStart, dashboardEnd);
+  const dashboardStart = businessPanels.indexOf("function Dashboard(");
+  const dashboardEnd = businessPanels.indexOf("function HistorialOperativo", dashboardStart);
+  const dashboard = businessPanels.slice(dashboardStart, dashboardEnd);
+  assert.ok(dashboardStart >= 0 && dashboardEnd > dashboardStart);
   assert.match(dashboard, /db\.dashboardSnapshotReady\s*\?\s*db\.dashboardSnapshot/);
   assert.doesNotMatch(dashboard, /db\.(?:orders|customers|products|inventory|campaigns|creatives|contentCalendar|productionSuggestions)/);
   assert.doesNotMatch(dashboard, /import\(["']\.\/lib\/assistant-control-center\.js["']\)/);
+  assert.match(app, /LazyBusinessPanels/);
 });
 
 test("la cadena ordenada incluye H77 después de H76", () => {

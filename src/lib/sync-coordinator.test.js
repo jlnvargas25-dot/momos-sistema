@@ -205,6 +205,52 @@ test("un commit durante una lectura conserva un unico refresco posterior", async
   assert.deepEqual(applied, [1, 2]);
 });
 
+test("una tormenta Realtime se compacta en una sola conciliacion posterior", async () => {
+  const first = deferred();
+  let calls = 0;
+  const applied = [];
+  const coordinator = createSyncCoordinator({
+    loaders: {
+      [SYNC_DOMAINS.OPERATIONS]: async () => {
+        calls += 1;
+        if (calls === 1) return first.promise;
+        return { version: calls };
+      },
+    },
+    apply: async (payload) => applied.push(payload.operativo.version),
+  });
+
+  const initial = coordinator.request(SYNC_DOMAINS.OPERATIONS);
+  const storm = Array.from({ length: 1_000 }, () => coordinator.request(SYNC_DOMAINS.OPERATIONS, {
+    reason: "realtime-storm",
+    afterActive: true,
+  }));
+  first.resolve({ version: 1 });
+  await Promise.all([initial, ...storm]);
+
+  assert.equal(calls, 2, "mil invalidaciones activas producen una sola lectura posterior");
+  assert.deepEqual(applied, [1, 2]);
+  assert.equal(coordinator.snapshot().counters.loads, 2);
+  assert.ok(coordinator.snapshot().counters.deduplicated >= 999);
+});
+
+test("un payload grande se aplica sin quedar retenido en las metricas del coordinador", async () => {
+  const rows = Array.from({ length: 25_000 }, (_, id) => ({ id, stock: id % 17 }));
+  let appliedRows = 0;
+  const coordinator = createSyncCoordinator({
+    loaders: { [SYNC_DOMAINS.CATALOGS]: async () => ({ rows }) },
+    apply: async (payload) => { appliedRows = payload.catalogos.rows.length; },
+  });
+
+  await coordinator.request(SYNC_DOMAINS.CATALOGS);
+  const snapshot = coordinator.snapshot();
+
+  assert.equal(appliedRows, 25_000);
+  assert.equal(snapshot.counters.loads, 1);
+  assert.equal(snapshot.durationsMs.length, 1);
+  assert.equal(JSON.stringify(snapshot).includes("stock"), false, "snapshot tecnico no conserva filas de negocio");
+});
+
 test("un evento Realtime no crea trailing si el snapshot activo ya incorporo su version", async () => {
   const first = deferred();
   let calls = 0;

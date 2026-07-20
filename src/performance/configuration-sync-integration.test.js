@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const migration = readFileSync(new URL("../../supabase/configuracion-servidor-v1.sql", import.meta.url), "utf8");
 const ordered = readFileSync(new URL("../../supabase/tests/test-migraciones-ordenadas.sql", import.meta.url), "utf8");
 const app = readFileSync(new URL("../MomosOps.jsx", import.meta.url), "utf8");
+const businessPanels = readFileSync(new URL("../features/backoffice/BusinessPanels.jsx", import.meta.url), "utf8");
 const readModel = readFileSync(new URL("../lib/read-model.js", import.meta.url), "utf8");
 const rpc = readFileSync(new URL("../lib/rpc.js", import.meta.url), "utf8");
 const coordinator = readFileSync(new URL("../lib/sync-coordinator.js", import.meta.url), "utf8");
@@ -29,7 +30,8 @@ test("H76 separa Configuración de catálogos y evita la hidratación completa",
   assert.match(rpc, /export async function guardarConfiguracionServidor[\s\S]+guardar_configuracion_v1/);
   assert.match(app, /SYNC_DOMAINS\.CONFIGURATION/);
   assert.match(app, /configuration_sync_state/);
-  assert.match(app, /Guardar configuración/);
+  assert.match(businessPanels, /Guardar configuración/);
+  assert.match(app, /LazyBusinessPanels/);
   assert.doesNotMatch(rpc, /guardarConfiguracionDemoras/);
 });
 

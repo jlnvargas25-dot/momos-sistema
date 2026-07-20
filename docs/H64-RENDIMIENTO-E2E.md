@@ -117,6 +117,39 @@ Gate remoto, en orden:
 2. `supabase/tests/test-agency-snapshot-rendimiento-v1.sql`
 3. `supabase/tests/test-migraciones-ordenadas.sql`
 
+## H78 · Cierre de carga diferida y presupuesto frontend
+
+H78 completa la expansión de la carga diferida sin cambiar contratos de servidor ni volver a hidratar el estado global:
+
+- Dashboard, Historial, Productos, Domicilios, Reclamos, Clientes, Beneficios, Reportes, Configuración, Marketing, Creativos, Calendario y Resultados viven en `BusinessPanels`, un chunk de negocio cargado únicamente al entrar en una de esas vistas.
+- El paquete inicial conserva solo el shell, la sesión, la navegación y los límites dinámicos. Producción, Pedidos/Empaque, Inventarios, Finanzas, Agencia, Momobot y paneles de negocio siguen separados.
+- La navegación se considera lista después de montar el panel real, no al mostrar el fallback de `Suspense`.
+- La telemetría E2E expone únicamente contadores, bytes aproximados, percentiles y nombres de dominio cerrados. No conserva URL, payload, filas, identidades, notas ni errores del negocio.
+- El coordinador compacta una tormenta sintética de 1.000 invalidaciones Realtime en una sola conciliación posterior. Una prueba adicional aplica 25.000 filas y comprueba que el snapshot técnico no retiene el payload.
+- Las pruebas preexistentes conservan la protección frente a desconexión/cambio de vista, respuestas tardías, reintento posterior a errores, cursores antiguos y deltas duplicados.
+
+Comparación reproducible con `npm run perf:budget`:
+
+| Métrica | Antes de H78 | H78 | Límite | Estado |
+| --- | ---: | ---: | ---: | --- |
+| JavaScript inicial gzip | 283.641 B | 241.056 B | 256.000 B | PASS |
+| Chunk JavaScript propio mayor | 472.805 B | 472.805 B | 512.000 B | PASS |
+| CSS inicial gzip | 7.448 B | 7.448 B | 30.720 B | PASS |
+| Líneas de `MomosOps.jsx` | 8.059 | 4.816 | 5.000 | PASS |
+| Estilos inline en `MomosOps.jsx` | 483 | 115 | 400 | PASS |
+
+Medición autenticada local con `?momosPerf=1`, tras recorrer los paneles diferidos:
+
+| Métrica | Resultado | Objetivo |
+| --- | ---: | ---: |
+| Lectura backend p95 | 420,2 ms | < 500 ms |
+| Sincronización p95 | 496,8 ms | < 800 ms |
+| Navegación p50 | 6,8 ms | informativa |
+| Navegación p95, incluida carga fría | 512,7 ms | < 800 ms |
+| Rutas diferidas listas | 9 / 9 medidas | sin errores |
+
+Validación de cierre: 63/63 pruebas de rendimiento, 592/592 pruebas funcionales, build de producción y todos los presupuestos PASS. H78 no necesita una migración: es un hito frontend, de telemetría agregada y pruebas adversariales; la autoridad de datos permanece en H65–H77.
+
 ## Presupuesto de aceptación
 
 - JavaScript inicial: máximo 250 KiB gzip.

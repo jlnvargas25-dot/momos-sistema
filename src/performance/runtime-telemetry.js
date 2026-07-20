@@ -14,12 +14,29 @@ const enabled = shouldEnableRuntimePerformance({
   search: typeof window !== "undefined" ? window.location?.search : "",
 });
 
+function exposeRuntimePerformance(state) {
+  if (!enabled || typeof window === "undefined") return;
+  window.MOMOS_PERF_METRICS = state;
+  // El atributo permite a la prueba E2E leer el resumen desde un mundo de
+  // automatización aislado. El contrato ya está agregado y no contiene URL,
+  // payload, identidad, notas ni mensajes de error.
+  document.documentElement?.setAttribute("data-momos-perf", JSON.stringify({
+    http: state.http,
+    sync: state.sync,
+    routes: state.routes,
+    activeRoute: state.activeRoute,
+  }));
+}
+
 export const runtimePerformance = createRuntimePerformance({
   enabled,
-  onChange: (state) => {
-    if (enabled && typeof window !== "undefined") window.MOMOS_PERF_METRICS = state;
-  },
+  onChange: exposeRuntimePerformance,
 });
+
+// La consola de medición debe existir desde el primer frame, incluso si la
+// primera navegación todavía no ha producido una muestra. Así un build de
+// preview puede auditarse con `?momosPerf=1` sin esperar otro evento.
+exposeRuntimePerformance(runtimePerformance.snapshot());
 
 function syncSource(value) {
   const source = String(value || "").toLowerCase();
