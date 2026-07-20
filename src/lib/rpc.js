@@ -23,6 +23,23 @@ export function createInventoryIdempotencyKey() {
   });
 }
 
+export async function actualizarPautaFinanciera({ monthlyBudget, from, to }, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+    throw new Error("La actualización financiera no tiene una llave idempotente válida.");
+  }
+  const { data, error } = await supabase.rpc("actualizar_pauta_financiera_v1", {
+    p: {
+      idempotency_key: key,
+      monthly_budget: Number(monthlyBudget),
+      from,
+      to,
+    },
+  });
+  if (error) throw rpcError(error, "No se pudo guardar la pauta mensual.");
+  return data;
+}
+
 async function inventoryMutationRpc(name, payload, idempotencyKey) {
   const key = String(idempotencyKey || "").trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {

@@ -578,6 +578,37 @@ export async function fetchFinancialFacts(from, to) {
   return data;
 }
 
+export async function fetchFinanceSnapshot(from, to) {
+  const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+  if (!isoDate.test(String(from || "")) || !isoDate.test(String(to || "")) || from > to) throw new Error("El rango financiero no es válido.");
+  const days = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86400000) + 1;
+  if (!Number.isFinite(days) || days < 1 || days > 367) throw new Error("El rango financiero no puede superar 367 días.");
+  const { data, error } = await supabase.rpc("momos_finance_snapshot_v1", {
+    p_from: from,
+    p_to: to,
+  });
+  const missing = error && (error.code === "PGRST202"
+    || /could not find (?:the )?function|schema cache|function\b.+\bdoes not exist/i.test(error.message || ""));
+  if (missing) {
+    return {
+      sourceKind: "legacy-financial-facts-v1",
+      key: `${from}|${to}`,
+      payload: await fetchFinancialFacts(from, to),
+    };
+  }
+  if (error) throw new Error(error.message);
+  return { sourceKind: "server-finance-snapshot-v1", key: `${from}|${to}`, payload: data };
+}
+
+export async function fetchFinanceSyncVersion() {
+  const { data, error } = await supabase.from("finance_sync_state").select("version").eq("id", 1).maybeSingle();
+  const missing = error && (error.code === "42P01" || error.code === "PGRST205"
+    || /relation\b.+\bdoes not exist|could not find the table|schema cache/i.test(error.message || ""));
+  if (missing) return "";
+  if (error) throw new Error(error.message);
+  return normalizeAgencySnapshotVersion(data?.version);
+}
+
 export async function fetchCatalogos(options = {}) {
   const includeAgency = options.includeAgency !== false;
   const skipAgencySnapshot = options.skipAgencySnapshot === true;

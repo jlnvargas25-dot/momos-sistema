@@ -332,6 +332,96 @@ export function validateFinancialDateRange(from, to) {
   return { from, to, days };
 }
 
+const FINANCE_COMPACT_CAVEATS = [
+  "Los cobros son valores brutos registrados en MOMO OPS; deben conciliarse contra Nequi, bancos y Rappi.",
+  "El resultado operativo no incluye nómina, servicios, impuestos, comisiones de pasarela ni otros gastos aún no registrados.",
+  "Las compras de inventario se muestran como salida de caja informativa, pero no se descuentan otra vez del resultado porque el COGS reconoce el consumo vendido.",
+];
+
+export function buildOperationalFinanceFromSnapshot(payload, expectedRange = null) {
+  const source = requireObject(payload, "snapshot");
+  if (source.contract !== "momos.finance-snapshot.v1" || Number(source.version) !== 1) {
+    throw new Error("Contrato financiero compacto no compatible.");
+  }
+  for (const key of ["containsPii", "containsFreeText", "containsStorageReferences", "containsSecrets", "externalExecution"]) {
+    if (source[key] !== false) throw new Error(`Contrato financiero compacto inseguro: ${key}.`);
+  }
+  if (!/^\d+$/.test(String(source.snapshotVersion || "")) || String(source.snapshotVersion) === "0") {
+    throw new Error("Contrato financiero compacto sin versión autoritativa.");
+  }
+  const rawRange = requireObject(source.range, "range");
+  const range = validateFinancialDateRange(requireText(rawRange.from, "range.from"), requireText(rawRange.to, "range.to"));
+  if (requireNumber(rawRange.days, "range.days") !== range.days) throw new Error("Contrato financiero compacto con rango inconsistente.");
+  if (expectedRange && (range.from !== expectedRange.from || range.to !== expectedRange.to)) {
+    throw new Error("El resumen financiero pertenece a otro rango.");
+  }
+  const rawSummary = requireObject(source.summary, "summary");
+  const numericKeys = [
+    "ordersReviewed", "confirmedPaymentOrders", "paidOrders", "grossCollected", "pendingValue",
+    "productRevenue", "deliveryCollected", "cogs", "deliveryCosts", "recognizedClaims",
+    "platformSpend", "manualAdAllocation", "configuredMonthlyAdBudget", "inventoryPurchases",
+    "rangeDays", "grossMargin", "recordedDeliveryCosts", "deliverySubsidy",
+    "recognizedClaimsForPeriod", "estimatedProfit", "operatingResult", "exceptions", "blocking",
+    "paymentEvidenceWaiting", "deliveryIssues", "costIssues",
+  ];
+  const summary = Object.fromEntries(numericKeys.map((key) => [key, requireNumber(rawSummary[key], `summary.${key}`)]));
+  summary.closeReady = requireBoolean(rawSummary.closeReady, "summary.closeReady");
+  if (summary.rangeDays !== range.days || summary.closeReady !== (summary.blocking === 0)) {
+    throw new Error("Contrato financiero compacto con indicadores inconsistentes.");
+  }
+  const countKeys = [
+    "ordersReviewed", "confirmedPaymentOrders", "paidOrders", "exceptions", "blocking",
+    "paymentEvidenceWaiting", "deliveryIssues", "costIssues",
+  ];
+  if (countKeys.some((key) => !Number.isInteger(summary[key]) || summary[key] < 0)
+      || summary.confirmedPaymentOrders > summary.ordersReviewed
+      || summary.paidOrders > summary.confirmedPaymentOrders
+      || summary.blocking > summary.exceptions) {
+    throw new Error("Contrato financiero compacto con conteos imposibles.");
+  }
+  const payments = requireArray(source.payments, "payments").map((row, index) => {
+    const value = requireObject(row, `payments[${index}]`);
+    return {
+      method: requireText(value.method, `payments[${index}].method`),
+      orders: requireNumber(value.orders, `payments[${index}].orders`),
+      amount: requireNumber(value.amount, `payments[${index}].amount`),
+    };
+  });
+  if (payments.some((row) => !Number.isInteger(row.orders) || row.orders < 0 || row.amount < 0)
+      || payments.reduce((sum, row) => sum + row.orders, 0) !== summary.confirmedPaymentOrders) {
+    throw new Error("Contrato financiero compacto con conciliación imposible.");
+  }
+  const closeEnough = (left, right) => Math.abs(left - right) <= 0.01;
+  // H65 prorratea a centavos y H75 redondea ese importe a pesos enteros.
+  // Replicar ambos pasos evita rechazar snapshots válidos en los bordes .499/.500.
+  const proratedAdBudget = Math.round((summary.configuredMonthlyAdBudget / 30 * range.days) * 100) / 100;
+  const expectedAdAllocation = Math.round(proratedAdBudget);
+  if (!closeEnough(payments.reduce((sum, row) => sum + row.amount, 0), summary.grossCollected)
+      || !closeEnough(summary.grossMargin, summary.productRevenue - summary.cogs)
+      || !closeEnough(summary.manualAdAllocation, expectedAdAllocation)
+      || !closeEnough(summary.estimatedProfit,
+        summary.grossMargin + summary.deliveryCollected - summary.recordedDeliveryCosts
+          - summary.manualAdAllocation - summary.recognizedClaimsForPeriod)
+      || !closeEnough(summary.operatingResult,
+        summary.productRevenue - summary.cogs + summary.deliveryCollected - summary.deliveryCosts
+          - summary.recognizedClaims - summary.platformSpend)) {
+    throw new Error("Contrato financiero compacto con totales inconsistentes.");
+  }
+  return {
+    range,
+    queue: [],
+    payments,
+    summary,
+    caveats: FINANCE_COMPACT_CAVEATS,
+    source: {
+      kind: "server-finance-snapshot-v1",
+      serverTime: requireText(source.serverTime, "serverTime"),
+      snapshotVersion: String(source.snapshotVersion),
+      completeRange: true,
+    },
+  };
+}
+
 export function normalizeFinancialFacts(payload, expectedRange = null) {
   const source = requireObject(payload, "respuesta");
   if (Number(source.version) !== 1) throw new Error("Contrato financiero inválido: versión no compatible.");

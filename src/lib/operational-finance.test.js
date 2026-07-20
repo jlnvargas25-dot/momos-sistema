@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildOperationalFinance, buildOperationalFinanceFromFacts, financeOrderTotal, normalizeFinancialFacts, validateFinancialDateRange } from "./operational-finance.js";
+import {
+  buildOperationalFinance,
+  buildOperationalFinanceFromFacts,
+  buildOperationalFinanceFromSnapshot,
+  financeOrderTotal,
+  normalizeFinancialFacts,
+  validateFinancialDateRange,
+} from "./operational-finance.js";
 
 function fixture() {
   return {
@@ -216,6 +223,110 @@ function serverFactsFixture(orderCount = 1) {
     external_execution: false,
   };
 }
+
+function compactSnapshotFixture(overrides = {}) {
+  return {
+    contract: "momos.finance-snapshot.v1",
+    version: 1,
+    snapshotVersion: "17",
+    serverTime: "2026-07-15T20:00:00Z",
+    range: { from: "2026-07-15", to: "2026-07-15", days: 1 },
+    summary: {
+      ordersReviewed: 75,
+      confirmedPaymentOrders: 75,
+      paidOrders: 75,
+      grossCollected: 3000000,
+      pendingValue: 0,
+      productRevenue: 2625000,
+      deliveryCollected: 375000,
+      cogs: 1050000,
+      deliveryCosts: 450000,
+      recognizedClaims: 0,
+      platformSpend: 4000,
+      manualAdAllocation: 10000,
+      configuredMonthlyAdBudget: 300000,
+      inventoryPurchases: 36000,
+      rangeDays: 1,
+      grossMargin: 1575000,
+      recordedDeliveryCosts: 450000,
+      deliverySubsidy: 75000,
+      recognizedClaimsForPeriod: 0,
+      estimatedProfit: 1490000,
+      operatingResult: 1496000,
+      exceptions: 1,
+      blocking: 0,
+      closeReady: true,
+      paymentEvidenceWaiting: 0,
+      deliveryIssues: 0,
+      costIssues: 0,
+    },
+    payments: [
+      { method: "Nequi", orders: 38, amount: 1520000 },
+      { method: "Daviplata", orders: 37, amount: 1480000 },
+    ],
+    containsPii: false,
+    containsFreeText: false,
+    containsStorageReferences: false,
+    containsSecrets: false,
+    externalExecution: false,
+    ...overrides,
+  };
+}
+
+test("H75 adapta el resumen compacto sin rehidratar hechos financieros completos", () => {
+  const result = buildOperationalFinanceFromSnapshot(compactSnapshotFixture(), {
+    from: "2026-07-15",
+    to: "2026-07-15",
+  });
+
+  assert.equal(result.source.kind, "server-finance-snapshot-v1");
+  assert.equal(result.source.snapshotVersion, "17");
+  assert.equal(result.summary.ordersReviewed, 75);
+  assert.equal(result.summary.grossCollected, 3000000);
+  assert.equal(result.summary.closeReady, true);
+  assert.equal(result.queue.length, 0);
+  assert.deepEqual(result.payments.map((row) => row.method), ["Nequi", "Daviplata"]);
+});
+
+test("H75 falla cerrado ante privacidad, rango, versión o indicadores inconsistentes", () => {
+  assert.throws(
+    () => buildOperationalFinanceFromSnapshot(compactSnapshotFixture({ containsPii: true })),
+    /inseguro/i,
+  );
+  assert.throws(
+    () => buildOperationalFinanceFromSnapshot(compactSnapshotFixture({ snapshotVersion: "0" })),
+    /versi.n autoritativa/i,
+  );
+  assert.throws(
+    () => buildOperationalFinanceFromSnapshot(compactSnapshotFixture(), { from: "2026-07-14", to: "2026-07-15" }),
+    /otro rango/i,
+  );
+  const inconsistent = compactSnapshotFixture();
+  inconsistent.summary.closeReady = false;
+  assert.throws(() => buildOperationalFinanceFromSnapshot(inconsistent), /indicadores inconsistentes/i);
+  const invalidTotal = compactSnapshotFixture();
+  invalidTotal.summary.grossMargin += 1;
+  assert.throws(() => buildOperationalFinanceFromSnapshot(invalidTotal), /totales inconsistentes/i);
+  const invalidPayments = compactSnapshotFixture();
+  invalidPayments.payments[0].orders = 37;
+  assert.throws(() => buildOperationalFinanceFromSnapshot(invalidPayments), /conciliaci.n imposible/i);
+});
+
+test("H75 mantiene una frontera compacta sin pedidos, actores, notas, archivos ni secretos", () => {
+  const payload = compactSnapshotFixture();
+  const serialized = JSON.stringify(payload).toLowerCase();
+  for (const forbidden of [
+    "order_id", "customer", "telefono", "direccion", "nota", "storage_path",
+    "signed_url", "auth_id", "service_role", "access_token", "refresh_token",
+  ]) {
+    assert.equal(serialized.includes(forbidden), false, `expuso ${forbidden}`);
+  }
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "containsFreeText", "containsPii", "containsSecrets", "containsStorageReferences",
+    "contract", "externalExecution", "payments", "range", "serverTime", "snapshotVersion",
+    "summary", "version",
+  ].sort());
+});
 
 test("normaliza H65 y usa la fuente completa para el mismo resumen de Finanzas", () => {
   const facts = normalizeFinancialFacts(serverFactsFixture(), { from: "2026-07-15", to: "2026-07-15" });

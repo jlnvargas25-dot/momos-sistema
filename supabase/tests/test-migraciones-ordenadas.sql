@@ -41,7 +41,8 @@ begin
     '20260718_67_agency_operational_facts','20260719_68_inventario_precision_lotes',
     '20260719_69_inventario_deltas','20260719_70_inventario_delta_consistencia',
     '20260719_71_pedidos_deltas','20260719_72_producto_terminado_deltas',
-    '20260719_73_produccion_deltas','20260719_74_catalogo_crm_deltas'
+    '20260719_73_produccion_deltas','20260719_74_catalogo_crm_deltas',
+    '20260719_75_finanzas_operativas'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -947,7 +948,28 @@ begin
       'public.momos_sync_manifest_v1()'::regprocedure
     ))>0,
     'el manifiesto de Data Sync no anuncia H74';
+  assert to_regclass('public.finance_sync_state') is not null
+    and to_regclass('public.finance_delta_receipts') is not null,
+    'H75 no instaló el outbox y los recibos privados de Finanzas';
+  assert has_function_privilege('authenticated','public.momos_finance_snapshot_v1(date,date)','EXECUTE')
+    and has_function_privilege('authenticated','public.actualizar_pauta_financiera_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_finance_snapshot_v1(date,date)','EXECUTE')
+    and not has_function_privilege('service_role','public.actualizar_pauta_financiera_v1(jsonb)','EXECUTE'),
+    'H75 perdió la frontera RBAC de Finanzas';
+  assert has_table_privilege('authenticated','public.finance_sync_state','SELECT')
+    and not has_table_privilege('authenticated','public.finance_sync_state','UPDATE')
+    and not has_table_privilege('authenticated','public.finance_delta_receipts','SELECT'),
+    'H75 expuso escritura del outbox o lectura de recibos financieros';
+  if exists(select 1 from pg_publication where pubname='supabase_realtime') then
+    assert exists(select 1 from pg_publication_tables
+      where pubname='supabase_realtime' and schemaname='public' and tablename='finance_sync_state'),
+      'Realtime no incluye el outbox compacto de Finanzas';
+  end if;
+  assert position('finanzas_operativas_disponibles' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H75';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-74 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-75 PASS, rollback total' as resultado;
 rollback;

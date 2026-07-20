@@ -19,7 +19,8 @@ const OPERATIONAL_RESOURCES = new Set([
 
 const FINANCE_RESOURCES = new Set([
   "finance_summary", "financial_summary", "finance_movements", "payment_reconciliations",
-  "momos_finance_snapshot_v1", "obtener_resumen_financiero",
+  "finance_sync_state", "momos_finance_snapshot_v1", "momos_financial_facts_v1",
+  "actualizar_pauta_financiera_v1", "obtener_resumen_financiero",
 ]);
 
 function normalizedToken(value) {

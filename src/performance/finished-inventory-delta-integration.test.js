@@ -39,5 +39,5 @@ test("H72 usa lectura dirigida tras cambiar un lote y conserva fallback", () => 
 
 test("la cadena ordenada incluye H72 después de H71", () => {
   assert.ok(ordered.indexOf("20260719_72_producto_terminado_deltas") > ordered.indexOf("20260719_71_pedidos_deltas"));
-  assert.match(ordered, /migraciones ordenadas 01-(?:72|73) PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-\d+ PASS/);
 });

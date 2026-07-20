@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { supabase } from "./supabase.js";
 import {
   adaptAgencyOperationalFactsEnvelope, adaptAgencySnapshotEnvelope, adaptAgencySnapshotsBundle, AGENCY_SNAPSHOT_SCOPES,
-  fetchAgencyCatalogos, fetchAgencyCatalogosConFallback,
+  fetchAgencyCatalogos, fetchAgencyCatalogosConFallback, fetchFinanceSnapshot,
 } from "./read-model.js";
 import { makeAgencyOperationalFacts } from "./agency-operational-facts.test-fixture.js";
 
@@ -67,6 +67,46 @@ const factsEnvelope = (overrides = {}) => ({
   },
   payload: { agency_operational_facts: operationalFacts },
   ...overrides,
+});
+
+test("H75 consulta un solo resumen financiero compacto por rango", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  const payload = { contract: "momos.finance-snapshot.v1", version: 1 };
+  supabase.rpc = async (name, args) => {
+    calls.push([name, args]);
+    return { data: payload, error: null };
+  };
+  try {
+    const result = await fetchFinanceSnapshot("2026-07-01", "2026-07-19");
+    assert.deepEqual(calls, [["momos_finance_snapshot_v1", { p_from: "2026-07-01", p_to: "2026-07-19" }]]);
+    assert.deepEqual(result, {
+      sourceKind: "server-finance-snapshot-v1",
+      key: "2026-07-01|2026-07-19",
+      payload,
+    });
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H75 solo usa H65 como compatibilidad cuando la RPC compacta aún no existe", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  supabase.rpc = async (name, args) => {
+    calls.push([name, args]);
+    if (name === "momos_finance_snapshot_v1") {
+      return { data: null, error: { code: "PGRST202", message: "Could not find the function in the schema cache" } };
+    }
+    return { data: { version: 1, orders: [] }, error: null };
+  };
+  try {
+    const result = await fetchFinanceSnapshot("2026-07-01", "2026-07-19");
+    assert.equal(result.sourceKind, "legacy-financial-facts-v1");
+    assert.deepEqual(calls.map(([name]) => name), ["momos_finance_snapshot_v1", "momos_financial_facts_v1"]);
+  } finally {
+    supabase.rpc = originalRpc;
+  }
 });
 
 test("H66 declara exactamente los cuatro scopes de Agencia", () => {

@@ -3,7 +3,7 @@ import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitiv
 import { supabase } from "./lib/supabase";
 import {
   fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos,
-  fetchCustomerCrmDeltas, fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductCatalogDeltas, fetchProductionActivityDelta, fetchUserProfile,
+  fetchCustomerCrmDeltas, fetchFinanceSnapshot, fetchFinanceSyncVersion, fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductCatalogDeltas, fetchProductionActivityDelta, fetchUserProfile,
 } from "./lib/read-model";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion, normalizeSyncDomains,
@@ -733,7 +733,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, financeSnapshotReady: false, financeSnapshot: null, financeSnapshotKey: "", financeSnapshotVersion: "", agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
@@ -783,6 +783,10 @@ function normalizeDbShape(d) {
       || Array.isArray(d.productCatalogDeltaVersions)) d.productCatalogDeltaVersions = {};
   if (!d.customerCrmDeltaVersions || typeof d.customerCrmDeltaVersions !== "object"
       || Array.isArray(d.customerCrmDeltaVersions)) d.customerCrmDeltaVersions = {};
+  d.financeSnapshotReady = d.financeSnapshotReady === true;
+  if (!d.financeSnapshot || typeof d.financeSnapshot !== "object" || Array.isArray(d.financeSnapshot)) d.financeSnapshot = null;
+  d.financeSnapshotKey = typeof d.financeSnapshotKey === "string" ? d.financeSnapshotKey : "";
+  d.financeSnapshotVersion = normalizeAgencySnapshotVersion(d.financeSnapshotVersion);
   d.agencySnapshotReady = d.agencySnapshotReady === true;
   d.agencySnapshotVersion = normalizeAgencySnapshotVersion(d.agencySnapshotVersion);
   d.agencyOperationalFactsReady = d.agencyOperationalFactsReady === true
@@ -5794,11 +5798,12 @@ function Crecimiento({ performanceRouteId, ...props }) {
 
 // Módulos que TODAVÍA escriben en el estado local (pendientes de migrar a RPCs):
 // sus cambios no llegan al servidor y la próxima hidratación los pisa.
-const MODULOS_EN_MIGRACION = ["Beneficios", "Finanzas", "Configuración"];
+const MODULOS_EN_MIGRACION = ["Configuración"];
 const PERFORMANCE_FRESHNESS_TTL = Object.freeze({
   [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
   [SYNC_DOMAINS.OPERATIONS]: 30_000,
   [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
+  [SYNC_DOMAINS.FINANCE]: 60_000,
 });
 const LAZY_PERFORMANCE_VIEWS = new Set(["Pedidos", "Empaque", "Producción", "Inventario terminado", "Inventario", "Crecimiento", "Finanzas"]);
 
@@ -5931,6 +5936,7 @@ export default function MomosOps() {
   const performanceRouteRef = useRef(0);
   const dbRef = useRef(null);
   const agencySnapshotVersionRef = useRef("");
+  const financeSnapshotVersionRef = useRef("");
   const agencyRealtimeSeenVersionRef = useRef("");
   // Persiste fuera del efecto de suscripción: un cambio de vista/flag durante
   // los 350 ms de debounce no puede borrar una versión Realtime ya observada.
@@ -5984,6 +5990,7 @@ export default function MomosOps() {
         })) {
       agencyRealtimePendingVersionRef.current = "";
     }
+    financeSnapshotVersionRef.current = normalizeAgencySnapshotVersion(db?.financeSnapshotVersion);
     const inventoryVersion = normalizeInventoryCursorToken(db?.inventoryMutationEventVersion);
     if (inventoryVersion && (compareInventoryCursorTokens(
       inventoryVersion,
@@ -6000,6 +6007,7 @@ export default function MomosOps() {
     agencySnapshotVersionRef.current = "";
     agencyRealtimeSeenVersionRef.current = "";
     agencyRealtimePendingVersionRef.current = "";
+    financeSnapshotVersionRef.current = "";
     inventoryMutationVersionsRef.current = {};
     inventoryMutationLatestEventRef.current = "";
     inventoryRealtimePendingRef.current.clear();
@@ -6072,6 +6080,8 @@ export default function MomosOps() {
     const operationsRealtime = realtimeDomains.has(SYNC_DOMAINS.OPERATIONS);
     const catalogsRealtime = realtimeDomains.has(SYNC_DOMAINS.CATALOGS);
     const agencyRealtime = realtimeDomains.has(SYNC_DOMAINS.AGENCY);
+    const financeRealtime = realtimeDomains.has(SYNC_DOMAINS.FINANCE)
+      && db.financeSnapshot?.sourceKind === "server-finance-snapshot-v1";
     // H69 se activa primero en la pantalla de Inventario. Allí el outbox
     // versionado sustituye cuatro tablas crudas que antes disparaban dos
     // snapshots completos por una sola compra o ajuste.
@@ -6128,6 +6138,7 @@ export default function MomosOps() {
     if (productionActivityDeltaRealtime) tables.push("production_activity_sync_versions");
     if (productCatalogDeltaRealtime) tables.push("product_catalog_sync_versions");
     if (customerCrmDeltaRealtime) tables.push("customer_crm_sync_versions");
+    if (financeRealtime) tables.push("finance_sync_state");
     let channel = supabase.channel(`momos-operacion-${session.user.id}`);
     const refresh = (domain, agencyVersion = "") => {
       pendingDomains.add(domain);
@@ -6601,6 +6612,14 @@ export default function MomosOps() {
           queueCustomerCrmDelta(payload);
           return;
         }
+        if (table === "finance_sync_state") {
+          const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
+          if (!financeSnapshotVersionRef.current
+              || compareAgencySnapshotVersions(incomingVersion, financeSnapshotVersionRef.current) === 1) {
+            refresh(SYNC_DOMAINS.FINANCE);
+          }
+          return;
+        }
         const domain = syncDomainForTable(table);
         if (table === "agency_snapshot_events") {
           const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
@@ -6646,6 +6665,17 @@ export default function MomosOps() {
             if (alive) setRealtimeStatus("reconectando");
           });
         }
+        if (financeRealtime) {
+          fetchFinanceSyncVersion().then((incomingVersion) => {
+            if (!alive) return;
+            if (incomingVersion && (!financeSnapshotVersionRef.current
+                || compareAgencySnapshotVersions(incomingVersion, financeSnapshotVersionRef.current) === 1)) {
+              refresh(SYNC_DOMAINS.FINANCE);
+            }
+          }).catch(() => {
+            if (alive) setRealtimeStatus("reconectando");
+          });
+        }
         if (inventoryDeltaRealtime && dbRef.current?.inventoryMutationDeltaReady === true) {
           requestInventoryReconciliation();
         }
@@ -6674,7 +6704,7 @@ export default function MomosOps() {
       if (customerCrmReconcileRequestRef.current === fallbackCustomerCrmSnapshot) customerCrmReconcileRequestRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.financeSnapshotReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -6703,6 +6733,7 @@ export default function MomosOps() {
     const catalogs = payload?.[SYNC_DOMAINS.CATALOGS];
     const agency = payload?.[SYNC_DOMAINS.AGENCY];
     const op = payload?.[SYNC_DOMAINS.OPERATIONS];
+    const finance = payload?.[SYNC_DOMAINS.FINANCE];
     const generationBeforeApply = capturarGeneracionInventario();
     let inventorySnapshotApplied = false;
     let inventorySnapshotDiscarded = false;
@@ -6979,6 +7010,16 @@ export default function MomosOps() {
           orderSnapshotDiscarded = true;
         }
       } // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
+      if (finance) {
+        d.financeSnapshotReady = true;
+        d.financeSnapshot = finance;
+        d.financeSnapshotKey = String(finance.key || "");
+        d.financeSnapshotVersion = normalizeAgencySnapshotVersion(finance?.payload?.snapshotVersion);
+        const compactBudget = Number(finance?.payload?.summary?.configuredMonthlyAdBudget);
+        const legacyBudget = Number(finance?.payload?.configured_ad?.monthly_budget);
+        const budget = Number.isFinite(compactBudget) ? compactBudget : legacyBudget;
+        if (Number.isFinite(budget) && budget >= 0) d.settings.pautaMensual = budget;
+      }
       normalizeDbShape(d); // re-deriva atributos/especie sobre lo hidratado
     }, { silencioso: true, persistir: false });
     if (inventorySnapshotApplied) {
@@ -7039,6 +7080,10 @@ export default function MomosOps() {
             SYNC_DOMAINS.AGENCY,
             fetchAgencyCatalogosConFallback,
           ),
+          [SYNC_DOMAINS.FINANCE]: () => measureSyncLoad(
+            SYNC_DOMAINS.FINANCE,
+            () => fetchFinanceSnapshot(dISO(-30), hoyISO()),
+          ),
         },
         apply: aplicarDominiosServidor,
         onState: (state) => {
@@ -7076,6 +7121,7 @@ export default function MomosOps() {
         [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
         [SYNC_DOMAINS.OPERATIONS]: 60_000,
         [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
+        [SYNC_DOMAINS.FINANCE]: 60_000,
       }).filter((domain) => visibles.has(domain)) || [];
       if (agencyFallbackOnly) vencidos = vencidos.filter((domain) => domain === SYNC_DOMAINS.AGENCY);
       if (vencidos.length) refetchFocoRef.current?.(vencidos, { reason: "focus" }).catch(() => {}); // si falla, sigue la caché
@@ -7119,6 +7165,7 @@ export default function MomosOps() {
       [SYNC_DOMAINS.CATALOGS]: 15 * 60_000,
       [SYNC_DOMAINS.OPERATIONS]: 30_000,
       [SYNC_DOMAINS.AGENCY]: 5 * 60_000,
+      [SYNC_DOMAINS.FINANCE]: 60_000,
     }).filter((domain) => visibles.has(domain));
     if (vencidos.length) hidratarDesdeServidor(vencidos, { reason: "view-enter" }).catch(() => {});
   }, [vista, catalogosDe]);

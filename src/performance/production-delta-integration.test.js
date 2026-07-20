@@ -43,5 +43,5 @@ test("H73 conserva una sola normalizacion al cruzar la frontera de red", () => {
 
 test("la cadena ordenada incluye H73 despues de H72", () => {
   assert.ok(ordered.indexOf("20260719_73_produccion_deltas") > ordered.indexOf("20260719_72_producto_terminado_deltas"));
-  assert.match(ordered, /migraciones ordenadas 01-73 PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-\d+ PASS/);
 });

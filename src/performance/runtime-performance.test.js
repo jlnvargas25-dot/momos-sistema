@@ -47,7 +47,7 @@ test("una navegación nueva reemplaza la anterior y solo cierra con UI y dominio
   clock = 10;
   telemetry.markUiCommitted(dashboard);
   clock = 20;
-  const finance = telemetry.startRoute("Finanzas", { requiredDomains: ["operativo"], freshDomains: ["operativo"] });
+  const finance = telemetry.startRoute("Finanzas", { requiredDomains: ["finanzas"], freshDomains: ["finanzas"] });
   clock = 35;
   assert.equal(telemetry.markUiCommitted(finance), true);
   const snapshot = telemetry.snapshot();
@@ -85,6 +85,9 @@ test("clasifica Supabase sin devolver URL, query, tabla cruda ni RPC cruda", () 
   const cases = [
     ["https://x.supabase.co/rest/v1/orders?cliente=secreto", { domain: "operativo", kind: "rest" }],
     ["https://x.supabase.co/rest/v1/rpc/momos_operational_snapshot_v1", { domain: "operativo", kind: "rpc" }],
+    ["https://x.supabase.co/rest/v1/rpc/momos_finance_snapshot_v1", { domain: "finanzas", kind: "rpc" }],
+    ["https://x.supabase.co/rest/v1/rpc/momos_financial_facts_v1", { domain: "finanzas", kind: "rpc" }],
+    ["https://x.supabase.co/rest/v1/finance_sync_state?select=version", { domain: "finanzas", kind: "rest" }],
     ["https://x.supabase.co/rest/v1/rpc/agency_context_snapshot", { domain: "agencia", kind: "rpc" }],
     ["https://x.supabase.co/rest/v1/rpc/momos_agency_snapshot", { domain: "agencia", kind: "rpc" }],
     ["https://x.supabase.co/rest/v1/momos_agency_assets?select=id", { domain: "agencia", kind: "rest" }],
@@ -188,13 +191,13 @@ test("estima bytes sin persistir el objeto y falla cerrado ante ciclos", () => {
 test("atribuye solicitudes reales a Finanzas durante su apertura", () => {
   let clock = 0;
   const telemetry = createRuntimePerformance({ now: () => clock });
-  const routeId = telemetry.startRoute("Finanzas", { requiredDomains: ["operativo"] });
-  telemetry.recordHttp({ domain: "operativo", kind: "rpc", status: 200, ok: true, durationMs: 40, bytesIn: 800 });
-  telemetry.recordHttp({ domain: "operativo", kind: "rest", status: 200, ok: true, durationMs: 60, bytesIn: 1200 });
+  const routeId = telemetry.startRoute("Finanzas", { requiredDomains: ["finanzas"] });
+  telemetry.recordHttp({ domain: "finanzas", kind: "rpc", status: 200, ok: true, durationMs: 40, bytesIn: 800 });
+  telemetry.recordHttp({ domain: "finanzas", kind: "rest", status: 200, ok: true, durationMs: 60, bytesIn: 1200 });
   clock = 90;
   telemetry.markUiCommitted(routeId);
   clock = 120;
-  telemetry.markDomainReady("operativo", routeId);
+  telemetry.markDomainReady("finanzas", routeId);
 
   const finance = telemetry.snapshot().routes.byView.finanzas;
   assert.equal(finance.count, 1);

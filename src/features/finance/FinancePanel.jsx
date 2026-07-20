@@ -1,51 +1,97 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InlineNotice } from "../../components/ui/OperationalPrimitives.jsx";
-import { fetchFinancialFacts } from "../../lib/read-model.js";
+import { fetchFinanceSnapshot, fetchFinancialFacts } from "../../lib/read-model.js";
+import { actualizarPautaFinanciera, createInventoryIdempotencyKey } from "../../lib/rpc.js";
 import * as operationalFinance from "../../lib/operational-finance.js";
 
 export function createFinancePanel(shared) {
   const {
-    T, addAudit, Btn, Card, dISO, downloadCSV, fmt, hoyISO, inputStyle, Modal, pct, SectionTitle, Stat,
+    T, Btn, Card, dISO, downloadCSV, fmt, hoyISO, inputStyle, Modal, pct, SectionTitle, Stat,
   } = shared;
 
-  function FinanceView({ db, update, user }) {
+  function FinanceView({ db }) {
     const [desde, setDesde] = useState(dISO(-30));
     const [hasta, setHasta] = useState(hoyISO());
     const [asistenteAbierto, setAsistenteAbierto] = useState(false);
     const financeRequestRef = useRef(0);
+    const financeDetailRequestRef = useRef(0);
+    const pautaMutationKeyRef = useRef(createInventoryIdempotencyKey());
     const financeKey = `${desde}|${hasta}`;
     const [financeRead, setFinanceRead] = useState({ key: "", status: "idle", data: null, error: "" });
+    const [financeDetailRead, setFinanceDetailRead] = useState({ key: "", status: "idle", data: null, error: "" });
+    const [pautaDraft, setPautaDraft] = useState(0);
+    const [pautaSave, setPautaSave] = useState({ status: "idle", error: "" });
     const [financeRuntime] = useState(() => operationalFinance);
 
-    const financeFallback = useMemo(() => financeRuntime
-      ? financeRuntime.buildOperationalFinance(db, { from: desde, to: hasta })
-      : null, [db, desde, hasta, financeRuntime]);
+    const financeFromEnvelope = (envelope) => {
+      const range = financeRuntime.validateFinancialDateRange(desde, hasta);
+      if (envelope?.sourceKind === "server-finance-snapshot-v1") {
+        return financeRuntime.buildOperationalFinanceFromSnapshot(envelope.payload, range);
+      }
+      const facts = financeRuntime.normalizeFinancialFacts(envelope?.payload, range);
+      return financeRuntime.buildOperationalFinanceFromFacts(facts);
+    };
 
     useEffect(() => {
       if (!financeRuntime) return undefined;
+      if (db.financeSnapshotReady === true && db.financeSnapshotKey === financeKey && db.financeSnapshot) {
+        try {
+          const data = financeFromEnvelope(db.financeSnapshot);
+          setFinanceRead({ key: financeKey, status: "ready", data, error: "" });
+        } catch (error) {
+          setFinanceRead({ key: financeKey, status: "error", data: null, error: error?.message || "El resumen financiero no cumple el contrato." });
+        }
+        return undefined;
+      }
+      const defaultKey = `${dISO(-30)}|${hoyISO()}`;
+      if (financeKey === defaultKey && db.financeSnapshotReady !== true) {
+        setFinanceRead((current) => current.key === financeKey && current.status === "loading"
+          ? current : { key: financeKey, status: "loading", data: null, error: "" });
+        return undefined;
+      }
       const requestId = ++financeRequestRef.current;
       let active = true;
       setFinanceRead({ key: financeKey, status: "loading", data: null, error: "" });
-      fetchFinancialFacts(desde, hasta)
-        .then((payload) => {
+      fetchFinanceSnapshot(desde, hasta)
+        .then((envelope) => {
           if (!active || requestId !== financeRequestRef.current) return;
-          const range = financeRuntime.validateFinancialDateRange(desde, hasta);
-          const data = financeRuntime.normalizeFinancialFacts(payload, range);
-          setFinanceRead({ key: financeKey, status: "ready", data, error: "" });
+          setFinanceRead({ key: financeKey, status: "ready", data: financeFromEnvelope(envelope), error: "" });
         })
         .catch((error) => {
           if (!active || requestId !== financeRequestRef.current) return;
           setFinanceRead({ key: financeKey, status: "error", data: null, error: error?.message || "No se pudo completar la lectura financiera." });
         });
       return () => { active = false; };
-    }, [desde, hasta, financeKey, financeRuntime]);
+    }, [desde, hasta, financeKey, financeRuntime, db.financeSnapshotReady, db.financeSnapshotKey, db.financeSnapshotVersion]);
 
-    const financeAssistant = useMemo(() => {
-      if (financeRuntime && financeRead.status === "ready" && financeRead.key === financeKey && financeRead.data) {
-        return financeRuntime.buildOperationalFinanceFromFacts(financeRead.data);
-      }
-      return financeFallback;
-    }, [financeFallback, financeKey, financeRead, financeRuntime]);
+    const financeAssistant = financeRead.status === "ready" && financeRead.key === financeKey ? financeRead.data : null;
+    const financeDetailKey = `${financeKey}|${financeAssistant?.source?.snapshotVersion || db.financeSnapshotVersion || "legacy"}`;
+
+    useEffect(() => {
+      if (!financeAssistant) return;
+      setPautaDraft(financeAssistant.summary.configuredMonthlyAdBudget);
+    }, [financeAssistant?.source?.snapshotVersion, financeAssistant?.summary?.configuredMonthlyAdBudget]);
+
+    useEffect(() => {
+      if (!asistenteAbierto || !financeRuntime) return undefined;
+      if (financeDetailRead.key === financeDetailKey && financeDetailRead.status === "ready") return undefined;
+      const requestId = ++financeDetailRequestRef.current;
+      let active = true;
+      setFinanceDetailRead({ key: financeDetailKey, status: "loading", data: null, error: "" });
+      fetchFinancialFacts(desde, hasta).then((payload) => {
+        if (!active || requestId !== financeDetailRequestRef.current) return;
+        const range = financeRuntime.validateFinancialDateRange(desde, hasta);
+        const facts = financeRuntime.normalizeFinancialFacts(payload, range);
+        setFinanceDetailRead({ key: financeDetailKey, status: "ready", data: financeRuntime.buildOperationalFinanceFromFacts(facts), error: "" });
+      }).catch((error) => {
+        if (!active || requestId !== financeDetailRequestRef.current) return;
+        setFinanceDetailRead({ key: financeDetailKey, status: "error", data: null, error: error?.message || "No se pudo abrir el detalle financiero." });
+      });
+      return () => { active = false; };
+    }, [asistenteAbierto, desde, hasta, financeDetailKey, financeRuntime]);
+
+    const financeDetailAssistant = financeDetailRead.status === "ready" && financeDetailRead.key === financeDetailKey
+      ? financeDetailRead.data : null;
     if (!financeAssistant) {
       return <div><SectionTitle>Finanzas operativas</SectionTitle><InlineNotice icon={financeRead.status === "error" ? "⚠️" : "⏳"} title={financeRead.status === "error" ? "No se pudo abrir Finanzas" : "Preparando Finanzas"} tone={financeRead.status === "error" ? "danger" : "warning"}>{financeRead.error || "Cargando el asistente y los controles del periodo solo para esta vista."}</InlineNotice></div>;
     }
@@ -57,10 +103,29 @@ export function createFinancePanel(shared) {
     const domCosto = financeSummary.recordedDeliveryCosts;
     const subsidio = financeSummary.deliverySubsidy;
     const costoReclamos = financeSummary.recognizedClaimsForPeriod;
-    const pautaMensual = db.settings.pautaMensual || 0;
+    const pautaMensual = financeSummary.configuredMonthlyAdBudget;
     const diasRango = financeSummary.rangeDays;
     const pauta = financeSummary.manualAdAllocation;
     const utilidad = financeSummary.estimatedProfit;
+
+    async function guardarPauta() {
+      const monthlyBudget = Number(pautaDraft);
+      if (!Number.isFinite(monthlyBudget) || monthlyBudget < 0) {
+        setPautaSave({ status: "error", error: "Ingresá un valor mensual válido." });
+        return;
+      }
+      setPautaSave({ status: "saving", error: "" });
+      try {
+        const response = await actualizarPautaFinanciera({ monthlyBudget, from: desde, to: hasta }, pautaMutationKeyRef.current);
+        const envelope = { sourceKind: "server-finance-snapshot-v1", key: financeKey, payload: response?.snapshot };
+        setFinanceRead({ key: financeKey, status: "ready", data: financeFromEnvelope(envelope), error: "" });
+        setFinanceDetailRead({ key: "", status: "idle", data: null, error: "" });
+        pautaMutationKeyRef.current = createInventoryIdempotencyKey();
+        setPautaSave({ status: "saved", error: "" });
+      } catch (error) {
+        setPautaSave({ status: "error", error: error?.message || "No se pudo guardar la pauta mensual." });
+      }
+    }
 
     function exportar() {
       downloadCSV("finanzas",
@@ -99,12 +164,12 @@ export function createFinancePanel(shared) {
 
         {financeRead.status === "loading" && (
           <InlineNotice icon="⏳" title="Consolidando el periodo" className="mb-4">
-            Finanzas está leyendo todos los hechos del rango; mientras termina, muestra una vista local parcial.
+            Finanzas está actualizando el resumen compacto y protegido de este periodo.
           </InlineNotice>
         )}
         {financeRead.status === "error" && (
-          <InlineNotice icon="⚠️" title="Lectura local parcial" tone="danger" className="mb-4">
-            {financeRead.error} Los valores visibles sirven para operar, pero pueden omitir registros antiguos hasta recuperar la lectura completa.
+          <InlineNotice icon="⚠️" title="No se pudo actualizar el resumen" tone="danger" className="mb-4">
+            {financeRead.error} Reintentá la lectura antes de tomar una decisión financiera.
           </InlineNotice>
         )}
         {financeRead.status === "ready" && financeRead.key === financeKey && (
@@ -175,12 +240,17 @@ export function createFinancePanel(shared) {
               <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>PAUTA PUBLICITARIA (asignación manual mensual)</div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold" style={{ color: T.choco2 }}>$</span>
-                <input type="number" value={pautaMensual} onChange={(e) => update((d) => {
-                  d.settings.pautaMensual = +e.target.value || 0;
-                  addAudit(d, { user, entidad: "Configuración", entidadId: "pauta", accion: "Pauta actualizada", a: fmt(+e.target.value || 0) });
-                })} className="flex-1 rounded-xl px-3 py-2 text-sm border font-bold" style={inputStyle} />
+                <input type="number" min="0" value={pautaDraft} onChange={(e) => {
+                  setPautaDraft(e.target.value);
+                  setPautaSave({ status: "idle", error: "" });
+                }} className="flex-1 rounded-xl px-3 py-2 text-sm border font-bold" style={inputStyle} />
+                <Btn small onClick={guardarPauta} disabled={pautaSave.status === "saving" || Number(pautaDraft) === pautaMensual}>
+                  {pautaSave.status === "saving" ? "Guardando…" : "Guardar"}
+                </Btn>
               </div>
               <div className="text-xs mt-2" style={{ color: T.choco2 }}>Valor mensual. En la utilidad se descuenta solo la parte proporcional a los {diasRango} días del rango ({fmt(pauta)}). Registra aquí lo invertido en Meta Ads, influencers o volantes.</div>
+              {pautaSave.status === "saved" && <div className="text-xs font-bold mt-2" style={{ color: "#3F6B42" }}>✓ Pauta guardada y resumen conciliado en servidor.</div>}
+              {pautaSave.status === "error" && <div className="text-xs font-bold mt-2" style={{ color: "#A03B2A" }}>{pautaSave.error}</div>}
             </Card>
           </div>
         </div>
@@ -199,21 +269,25 @@ export function createFinancePanel(shared) {
               </div>
             </div>
 
-            {financeAssistant.queue.length === 0 ? (
+            {financeDetailRead.status === "loading" ? (
+              <InlineNotice icon="⏳" title="Abriendo el detalle del periodo" className="mb-4">Solo ahora se consultan pedidos, soportes, domicilios y reclamos necesarios para el cierre.</InlineNotice>
+            ) : financeDetailRead.status === "error" ? (
+              <InlineNotice icon="⚠️" title="No se pudo abrir el detalle" tone="danger" className="mb-4">{financeDetailRead.error}</InlineNotice>
+            ) : financeDetailAssistant && financeDetailAssistant.queue.length === 0 ? (
               <div className="rounded-3xl p-8 text-center mb-4" style={{ background: "#E5F0E1" }}><div className="text-3xl">✓</div><div className="display text-xl mt-2">Sin excepciones internas</div><div className="text-sm font-semibold mt-1" style={{ color: "#3F6B42" }}>Ya podés comparar los cobros por medio de pago contra sus extractos externos.</div></div>
-            ) : (
+            ) : financeDetailAssistant ? (
               <div className="space-y-2 mb-4">
-                {financeAssistant.queue.map((task, index) => {
+                {financeDetailAssistant.queue.map((task, index) => {
                   const tone = task.severity === "critical" ? { bg: "#F6D4CD", fg: "#A03B2A", label: "Crítico" } : task.severity === "high" ? { bg: "#FBE8C8", fg: "#96690F", label: "Antes de cerrar" } : { bg: T.vainilla, fg: T.choco2, label: "Revisar" };
                   return <Card key={task.id} className="p-4" style={{ borderColor: index === 0 ? "#E59A83" : T.border, background: index === 0 ? "#FFF8F4" : T.surface }}>
                     <div className="flex items-start gap-3"><span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0" style={{ background: index === 0 ? T.coral : T.vainilla, color: index === 0 ? "#fff" : T.choco2 }}>{index + 1}</span><div className="flex-1 min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span><span className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{task.category}</span>{task.orderId && <span className="text-xs font-bold">{task.orderId}</span>}</div><div className="display text-lg font-semibold mt-1">{task.title}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{task.detail}</div><div className="text-xs font-bold mt-2" style={{ color: task.blocksClose ? "#A03B2A" : "#3F6B42" }}>Siguiente paso: {task.action}</div></div>{task.amount > 0 && <div className="font-extrabold shrink-0" style={{ color: T.coral }}>{fmt(task.amount)}</div>}</div>
                   </Card>;
                 })}
               </div>
-            )}
+            ) : null}
 
             <div className="grid md:grid-cols-2 gap-3">
-              <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.coral }}>Conciliación externa pendiente</div>{financeAssistant.payments.length ? financeAssistant.payments.map((row) => <div key={row.method} className="flex justify-between text-sm py-2 border-t first:border-0" style={{ borderColor: T.border }}><span className="font-bold">{row.method} · {row.orders}</span><b>{fmt(row.amount)}</b></div>) : <div className="text-sm" style={{ color: T.choco2 }}>Sin cobros para conciliar.</div>}</Card>
+              <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.coral }}>Conciliación externa pendiente</div>{(financeDetailAssistant || financeAssistant).payments.length ? (financeDetailAssistant || financeAssistant).payments.map((row) => <div key={row.method} className="flex justify-between text-sm py-2 border-t first:border-0" style={{ borderColor: T.border }}><span className="font-bold">{row.method} · {row.orders}</span><b>{fmt(row.amount)}</b></div>) : <div className="text-sm" style={{ color: T.choco2 }}>Sin cobros para conciliar.</div>}</Card>
               <Card className="p-4"><div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.coral }}>Límites de esta lectura</div>{financeAssistant.caveats.map((note) => <div key={note} className="text-xs font-semibold py-1.5 leading-relaxed" style={{ color: T.choco2 }}>• {note}</div>)}</Card>
             </div>
           </Modal>
