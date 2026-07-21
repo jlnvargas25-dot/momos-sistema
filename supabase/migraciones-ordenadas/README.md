@@ -107,6 +107,54 @@ Aplicado después de `20260717_55_identidad_marca`:
 
 Los SQL H55 y H56 se conservan aquí como historial reproducible de la base. No deben volver a ejecutarse en la base actual cuando sus IDs ya aparecen en `public.momos_ops_migrations`.
 
+## Hito 78 · estados físicos de Producción
+
+Aplicar únicamente después de confirmar `20260719_77_dashboard_operativo`:
+
+1. `../produccion-estados-fisicos-v1.sql` — limita la RPC del lote a En preparación, Congelando y Listo; Reservado/Vendido quedan derivados por pedido y FIFO.
+2. `../tests/test-produccion-estados-fisicos-v1.sql` — prueba RBAC, no-op físico y bloqueo de los cuatro estados manuales ambiguos; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–78; siempre hace rollback.
+
+## Hito 79 · historial operativo paginado
+
+Aplicar únicamente después de confirmar `20260719_78_produccion_estados_fisicos`:
+
+1. `../historial-operativo-paginado-v1.sql` — filtra búsqueda, área y fechas en servidor; pagina por cursor estable y limita cada lectura a 50 movimientos.
+2. `../tests/test-historial-operativo-paginado-v1.sql` — prueba cursores, filtros, fechas, privacidad, búsquedas sensibles, índices y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–79; siempre hace rollback.
+
+## Hito 80 · preflight obligatorio de elaboraciones
+
+Aplicar únicamente después de confirmar `20260719_79_historial_operativo_paginado`:
+
+1. `../produccion-preflight-elaboraciones-v1.sql` — impide crear un lote por subrecetas si no existe stock completo de mousse, cheesecake y ganache; bloquea las filas de inventario para evitar doble consumo concurrente.
+2. `../tests/test-produccion-preflight-elaboraciones-v1.sql` — prueba el rechazo transaccional, ausencia de corrida/lote huérfano, mensaje operativo y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–80; siempre hace rollback.
+
+## Hito 81 · snapshot compacto de Domicilios
+
+Aplicar únicamente después de confirmar `20260719_80_produccion_preflight_elaboraciones`:
+
+1. `../domicilios-snapshot-v1.sql` — entrega a Logística un snapshot aislado, versionado y acotado de pedidos, destinos y domicilios; excluye Rappi y no hidrata la operación completa.
+2. `../tests/test-domicilios-snapshot-v1.sql` — prueba contrato cerrado, límites, PII necesaria, versión, manifiesto y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–81; siempre hace rollback.
+
+## Hito 82 · mutaciones atómicas de Domicilios
+
+Aplicar únicamente después de confirmar `20260719_81_domicilios_snapshot`:
+
+1. `../domicilios-mutaciones-atomicas-v1.sql` — asigna, actualiza y cambia el estado logístico con llave idempotente; devuelve el delta exacto H71 del pedido desde el mismo commit y evita una lectura posterior en el camino feliz.
+2. `../tests/test-domicilios-mutaciones-atomicas-v1.sql` — prueba contrato cerrado, misma transacción, versiones, reintentos, privacidad y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–82; siempre hace rollback.
+
+## Hito 83 · vida útil configurable de Producción
+
+Aplicar únicamente después de confirmar `20260719_82_domicilios_mutaciones_atomicas`:
+
+1. `../vida-util-produccion-configurable-v1.sql` — agrega en Configuración la vida útil de producto terminado y mezclas; inicia en 6 y 5 días, recalcula la adopción inicial y sella cada lote nuevo para que cambios posteriores no lo rejuvenezcan.
+2. `../tests/test-vida-util-produccion-configurable-v1.sql` — prueba fechas de producto terminado, lotes de elaboraciones, inmutabilidad, rango y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–83; siempre hace rollback.
+
 No ejecutes el worker de postproducción 1.1.0 con trabajos pendientes hasta aplicar el paso de audio: el worker nuevo exige el contrato `audio_binding` y falla cerrado si el servidor aún entrega el contrato H47 antiguo.
 
 Después de cada paso ejecutá:
@@ -127,3 +175,131 @@ Si el preflight informa que falta `lote_figuras`, la base todavía no tiene la
 cadena previa de variantes. En ese caso no continúes con este paquete: primero
 deben verificarse y aplicar, en ese orden, `variantes-v1.sql`,
 `variantes-1b-fifo.sql` y `variantes-2-cola.sql`.
+
+## Hito 84 · desecho trazable de producto terminado
+
+Aplicar únicamente después de confirmar `20260719_83_vida_util_produccion`:
+
+1. `../desecho-producto-terminado-v1.sql` — retira el saldo libre vencido por lote + figura, conserva el rendimiento histórico, no toca reservas, exige la cantidad que la persona vio, usa el orden canónico de locks producto → figura y anuncia una capacidad H84 independiente al frontend.
+2. `../tests/test-desecho-producto-terminado-v1.sql` — prueba cantidad exacta, vista concurrente obsoleta, idempotencia, vigencia, ledger y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–84; siempre hace rollback.
+
+## Hito 85 · fichas técnicas versionadas de Cocina
+
+Aplicar únicamente después de confirmar `20260720_84_desecho_producto_terminado`:
+
+1. `../fichas-tecnicas-cocina-v1.sql` — separa BOM de procedimiento, conserva una versión vigente por subreceta y declara explícitamente los procesos aún no estandarizados.
+2. `../tests/test-fichas-tecnicas-cocina-v1.sql` — prueba versiones, confirmación humana, contrato cerrado, snapshot compacto y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–85; siempre hace rollback.
+
+## Hito 86 · gestión guiada de fichas técnicas
+
+Aplicar únicamente después de confirmar `20260720_85_fichas_tecnicas_cocina`:
+
+1. `../gestion-fichas-tecnicas-cocina-v1.sql` — permite a Cocina proponer una versión sin alterar la vigente, reserva la publicación a Administración, conserva historial y despierta las tablets mediante un cursor Realtime sin receta ni PII.
+2. `../tests/test-gestion-fichas-tecnicas-cocina-v1.sql` — prueba borrador, confirmación humana, publicación, archivo, historial, cursor compacto y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–86; siempre hace rollback.
+
+## Hito 87 · fórmulas de elaboraciones internas
+
+Aplicar únicamente después de confirmar `20260720_86_gestion_fichas_tecnicas`:
+
+1. `../formulas-elaboraciones-internas-v1.sql` — versiona juntos fórmula por 1.000 g y procedimiento, bloquea dependencias circulares y publica ambos atómicamente desde Inventario.
+2. `../tests/test-formulas-elaboraciones-internas-v1.sql` — prueba duplicados, ciclos, borrador, confirmación humana, publicación, separación de Productos, historial, integridad y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–87; siempre hace rollback.
+
+## Hito 88 · snapshots aislados por rol
+
+Aplicar únicamente después de confirmar `20260720_87_formulas_elaboraciones`:
+
+1. `../aislamiento-snapshots-por-rol-v1.sql` — instala catálogos v3 y operación v2 con proyección por la unión de roles; Cocina no recibe PII, pagos, Storage ni CRM, y Marketing/CRM no recibe direcciones exactas ni logística.
+2. `../tests/test-aislamiento-snapshots-por-rol-v1.sql` — presta una identidad autenticada a Cocina, Marketing/CRM y Administración para probar aislamiento real, contrato, privacidad y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–88; siempre hace rollback.
+
+**Despliegue en dos fases:** H88 debe aplicarse y comprobarse antes de H89. H89 retirará las políticas `staff_read` de las tablas con PII una vez que todas las sesiones consuman estos snapshots protegidos.
+
+## Hito 89 · cierre de lecturas PII por rol
+
+Aplicar únicamente después de confirmar `20260720_88_aislamiento_snapshots_rol`:
+
+1. `../cierre-lecturas-pii-por-rol-v1.sql` — vuelve obligatorios los snapshots H88, publica un perfil propio mínimo y retira las políticas de lectura directa sobre clientes, pedidos, domicilios, evidencias, reclamos, CRM y trazabilidad sensible.
+2. `../tests/test-cierre-lecturas-pii-por-rol-v1.sql` — intenta extraer tablas como Cocina y CRM, comprueba el perfil propio, conserva Administración y valida RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente 01–89; siempre hace rollback.
+
+La optimización frontend denominada H89 en `docs/H64-RENDIMIENTO-E2E.md` no era una migración de base. Este hito usa el número reservado en Supabase para completar el cierre de seguridad previsto por H88.
+
+## Hito 90 · dominio canónico de figuras y presentaciones
+
+H89 fue validado primero. El saldo agregado histórico de PR08 se concilió con
+`../reconciliar-pr08-antes-h90.sql`: se verificó que no existían lotes, variantes,
+reservas ni sugerencias vigentes, se conservó el pedido histórico y quedó el
+asiento auditable `AR-H90-PR08` con el antes/después.
+
+Cuando `20260720_89_cierre_lecturas_pii` aparezca aplicado y validado, y PR08
+no conserve stock, lotes, reservas ni sugerencias activas:
+
+1. `../dominio-productos-figuras-canonico-v1.sql` — separa figura física,
+   presentación comercial, sabor y caja; usa `figuras.product_id` como vínculo
+   exacto y bloquea la selección histórica por especie.
+2. `../tests/test-dominio-productos-figuras-canonico-v1.sql` — intenta
+   reintroducir figuras no canónicas, componentes no físicos, cruces de familia
+   y figuras incompatibles dentro y fuera de cajas; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–90; siempre hace rollback.
+
+H90 quedó aplicado únicamente después de esa conciliación explícita; su
+preflight sigue fallando cerrado si cualquier futura reclasificación intenta
+ocultar stock, lotes, reservas o sugerencias activas.
+
+## Hito 91 · mutaciones operativas compuestas y atómicas
+
+Aplicar únicamente después de confirmar `20260720_90_dominio_productos_figuras`:
+
+1. `../mutaciones-compuestas-atomicas-v1.sql` — convierte el relevo Cocina →
+   Empaque, la corrida con sugerencias agrupadas y la compra con recomendaciones
+   de abastecimiento en tres transacciones únicas, bloqueadas e idempotentes.
+2. `../tests/test-mutaciones-compuestas-atomicas-v1.sql` — fuerza un error en el
+   segundo paso de cada operación, exige rollback total y después comprueba
+   éxito, replay, contrato cerrado, pertenencia, privacidad y RBAC.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–91; siempre hace rollback.
+
+El fallback de frontend a las RPC anteriores existe únicamente para un
+despliegue escalonado. Cualquier error distinto a “RPC ausente” falla cerrado y
+nunca ejecuta el antiguo flujo partido.
+
+## Hito 92 · centro de salud operativa y contingencia
+
+Aplicar únicamente después de confirmar `20260721_91_mutaciones_compuestas_atomicas`:
+
+1. `../centro-salud-operativa-v1.sql` — instala monitor servidor, chequeos e
+   incidentes sanitizados, correlación de errores, recibos verificables de
+   backup, heartbeat del worker y modo de Solo lectura sobre el núcleo.
+2. `../tests/test-centro-salud-operativa-v1.sql` — provoca una divergencia de
+   inventario, exige congelamiento real, bloquea la reactivación prematura,
+   simula reparación y valida backup, worker, privacidad y RBAC; siempre hace
+   rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–92; siempre hace rollback.
+
+Si `pg_cron` ya existe, la migración programa la revisión cada cinco minutos.
+En caso contrario, ejecutar `npm run worker:health` bajo un supervisor privado;
+`npm run worker:health:check` valida un único ciclo sin abrir el navegador.
+
+## Hito 93 · continuidad y recuperación verificable
+
+Aplicar únicamente después de confirmar `20260721_92_centro_salud_operativa`:
+
+1. `../continuidad-recuperacion-v1.sql` — separa backup observado, restauración
+   ensayada y certificación RPO/RTO; agrega política versionada, exportación por
+   rol y bitácora idempotente para operar durante Solo lectura.
+2. `../tests/test-continuidad-recuperacion-v1.sql` — prueba evidencia inmutable,
+   rechazo de RPO/RTO incumplidos, privacidad de Cocina, replay, conciliación y
+   RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–93; siempre hace rollback.
+
+`npm run worker:continuity:observe` registra lo que informa el plano de backups
+de Supabase, pero no declara el respaldo recuperable. La certificación se obtiene
+únicamente después del simulacro mensual descrito en
+`docs/MOMOS-OPS-CONTINUIDAD-RUNBOOK.md`.

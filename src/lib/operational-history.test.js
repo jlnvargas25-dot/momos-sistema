@@ -33,7 +33,7 @@ test("Reservas vigentes se agrupan por pedido y revelan antigüedad y origen fí
   assert.equal(dashboard.summary.quantity, 4);
   assert.equal(dashboard.summary.exact, 1);
   assert.equal(dashboard.groups.find((group) => group.orderId === "P-1").rows.length, 2);
-  assert.equal(dashboard.reservations.find((row) => row.id === "R-1").sourceLabel, "Lote L-1 · Max");
+  assert.equal(dashboard.reservations.find((row) => row.id === "R-1").sourceLabel, "Lote L-1 · Max · Presentación comercial: Momo Perrito");
   assert.equal(dashboard.reservations.find((row) => row.id === "R-3").attention, true);
   assert.match(dashboard.reservations.find((row) => row.id === "R-3").attentionReasons.join(" "), /entregado/);
 });
@@ -133,4 +133,13 @@ test("el historial central ordena, identifica área y conserva responsable y tra
   assert.equal(rows[1].actor, "Cocina");
   assert.equal(rows[1].from, "Congelando");
   assert.equal(rows[1].to, "Listo");
+});
+
+test("el historial central clasifica Agencia, Finanzas e Inventario terminado sin dejarlos huérfanos", () => {
+  const rows = buildOperationalHistory({ audit_logs: [
+    { id: "A-AG", fecha: "2026-07-19 10:00", entidad: "Brief agencia", accion: "Aprobado" },
+    { id: "A-FI", fecha: "2026-07-19 09:00", entidad: "Movimiento financiero", accion: "Conciliado" },
+    { id: "A-IT", fecha: "2026-07-19 08:00", entidad: "Producto terminado", accion: "Reservado" },
+  ] });
+  assert.deepEqual(rows.map((row) => row.area), ["Agencia MOMOS", "Finanzas", "Inventario terminado"]);
 });

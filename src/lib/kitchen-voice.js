@@ -1,4 +1,5 @@
 import { hasAnyRole } from "./user-roles.js";
+import { orderLinePresentation } from "./momos-domain-language.js";
 
 const SMALL_NUMBERS = {
   cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
@@ -345,26 +346,16 @@ export function kitchenOrderAlert(order, catalogs = {}, { eventType = "new" } = 
   const childrenFor = (item) => allItems.filter((child) => child?.parentItemId === item?.id
     || (item?.cajaNum !== undefined && item?.cajaNum !== null && child?.esSubMomo && child?.cajaNum === item.cajaNum));
 
-  const describeDetails = (item, name) => {
-    const normalizedName = normalizeKitchenVoice(name);
-    const details = [];
-    if (item?.sabor && !normalizedName.includes(normalizeKitchenVoice(item.sabor))) details.push(`sabor ${item.sabor}`);
-    if (item?.figura) details.push(`figura ${item.figura}`);
-    if (item?.salsa) details.push(`salsa ${item.salsa}`);
-    if (item?.relleno) details.push(`relleno ${item.relleno}`);
-    const additions = (item?.adiciones || []).map((addition) => addition?.nombre).filter(Boolean);
-    if (additions.length) details.push(`adiciones ${additions.join(" y ")}`);
-    return details.length ? `, ${details.join(", ")}` : "";
-  };
   const describeItem = (item) => {
-    const name = item?.nombre || productById.get(item?.productId)?.name || "producto";
+    const product = productById.get(item?.productId);
+    const presentation = orderLinePresentation(item, product ? { ...product, nombre: product.name } : null);
     const quantity = Math.max(1, Number(item?.cant || 1));
-    const main = `${quantity === 1 ? "una unidad" : `${quantity} unidades`} de ${name}${describeDetails(item, name)}`;
+    const main = `${quantity === 1 ? "una unidad" : `${quantity} unidades`} de ${presentation.primary}${presentation.secondary ? `; ${presentation.secondary.toLowerCase()}` : ""}`;
     const children = childrenFor(item);
     if (!children.length) return main;
     const childSummary = children.slice(0, 6).map((child) => {
-      const childName = child?.figura || child?.nombre || productById.get(child?.productId)?.name || "Momo";
-      return `${childName}${child?.sabor ? ` de ${child.sabor}` : ""}${child?.salsa ? ` con salsa ${child.salsa}` : ""}`;
+      const childProduct = productById.get(child?.productId);
+      return orderLinePresentation(child, childProduct ? { ...childProduct, nombre: childProduct.name } : null).primary;
     }).join(", ");
     return `${main}; incluye ${childSummary}`;
   };
@@ -372,9 +363,12 @@ export function kitchenOrderAlert(order, catalogs = {}, { eventType = "new" } = 
   const content = visibleItems.length ? visibleItems.map(describeItem).join("; ") : "productos todavía sin detalle";
   const operationalItems = visibleItems.map((item) => {
     const children = childrenFor(item);
+    const product = productById.get(item?.productId);
+    const presentation = orderLinePresentation(item, product ? { ...product, nombre: product.name } : null);
     return {
       id: item?.id || "",
-      name: item?.nombre || productById.get(item?.productId)?.name || "Producto",
+      name: presentation.primary,
+      commercialFamily: presentation.exact ? presentation.familyName : "",
       quantity: Math.max(1, Number(item?.cant || 1)),
       figures: [...new Set([item?.figura, ...children.map((child) => child?.figura)].filter(Boolean))],
       flavors: [...new Set([item?.sabor, ...children.map((child) => child?.sabor)].filter(Boolean))],

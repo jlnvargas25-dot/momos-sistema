@@ -3,7 +3,9 @@ import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta
 
 const MUTATION_CONTRACT = "momos.production-mutation.v1";
 const ACTIVITY_CONTRACT = "momos.production-activity-delta.v1";
-const OPERATIONS = new Set(["crear_corrida", "producir_subreceta", "convertir_imperfectas"]);
+const OPERATIONS = new Set([
+  "crear_corrida", "producir_subreceta", "convertir_imperfectas", "desechar_producto_terminado",
+]);
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -135,6 +137,9 @@ export function normalizeProductionMutationEnvelope(input) {
   if (input.operation === "convertir_imperfectas" && !finishedInventory) {
     throw new Error("Convertir imperfectas debe devolver el lote actualizado.");
   }
+  if (input.operation === "desechar_producto_terminado" && !finishedInventory) {
+    throw new Error("Desechar producto terminado debe devolver el lote actualizado.");
+  }
   return {
     contract: MUTATION_CONTRACT,
     operation: input.operation,
@@ -158,6 +163,16 @@ export function applyProductionActivityDeltaToDb(db, input) {
   db.production_suggestions = normalized.productionSuggestions;
   db.productionActivityDeltaVersion = normalized.version;
   return { status: "applied", version: normalized.version };
+}
+
+// H88: la actividad de ProducciÃ³n reemplaza dos colecciones y una versiÃ³n;
+// no necesita clonar pedidos, inventarios, Agencia ni configuraciÃ³n.
+export function applyProductionActivityDelta(db, input) {
+  if (!db || typeof db !== "object") throw new Error("MOMO OPS no tiene estado para Produccion.");
+  const next = { ...db };
+  const result = applyProductionActivityDeltaToDb(next, input);
+  if (result.status !== "applied") return { ...result, db };
+  return { ...result, db: next };
 }
 
 export const PRODUCTION_MUTATION_CONTRACT = MUTATION_CONTRACT;

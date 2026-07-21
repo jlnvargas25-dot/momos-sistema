@@ -1,4 +1,5 @@
 import { agencyProductStock } from "./agency-intelligence.js";
+import { businessDateISO } from "./business-date.js";
 
 const ACTIVE_STATES = new Set(["Pendiente", "Programado"]);
 const HISTORY_STATES = new Set(["Publicado", "No publicado"]);
@@ -33,7 +34,7 @@ function weekDates(today) {
   return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
 }
 
-export function preflightCalendarPost(post = {}, db = {}, today = new Date().toISOString().slice(0, 10)) {
+export function preflightCalendarPost(post = {}, db = {}, today = businessDateISO()) {
   const issues = [];
   const postDate = iso(post.fecha);
   const creative = resolveCreative(db, post.creativeId);
@@ -49,10 +50,10 @@ export function preflightCalendarPost(post = {}, db = {}, today = new Date().toI
     if (creative.productoFocoId) {
       const product = resolveProduct(db, creative.productoFocoId);
       const stock = agencyProductStock(db, creative.productoFocoId, today);
-      if (!product) issues.push(issue("missing_product", "error", "El producto foco ya no existe."));
-      else if (product.activo === false) issues.push(issue("inactive_product", "error", "El producto foco está inactivo."));
-      else if (stock === null) issues.push(issue("unknown_stock", "error", "No se pudo verificar disponibilidad del producto foco."));
-      else if (stock <= 0) issues.push(issue("out_of_stock", "error", "El producto foco no tiene disponibilidad para respaldar la publicación."));
+      if (!product) issues.push(issue("missing_product", "error", "El postre o la presentación foco ya no existe."));
+      else if (product.activo === false) issues.push(issue("inactive_product", "error", "El postre o la presentación foco está inactivo."));
+      else if (stock === null) issues.push(issue("unknown_stock", "error", "No se pudo verificar la disponibilidad del postre o la presentación foco."));
+      else if (stock <= 0) issues.push(issue("out_of_stock", "error", "El postre o la presentación foco no tiene disponibilidad para respaldar la publicación."));
     }
   }
   if (!text(post.titulo)) issues.push(issue("missing_title", "error", "Falta el título interno de la publicación."));
@@ -71,7 +72,7 @@ export function preflightCalendarPost(post = {}, db = {}, today = new Date().toI
   };
 }
 
-export function calendarTransitionGuard(post, nextState, db = {}, today = new Date().toISOString().slice(0, 10)) {
+export function calendarTransitionGuard(post, nextState, db = {}, today = businessDateISO()) {
   const current = post?.estado || "Pendiente";
   if (current === nextState) return { allowed: true, reasons: [], preflight: preflightCalendarPost(post, db, today) };
   const transitions = {
@@ -101,7 +102,7 @@ function slotTaken(posts, date, time, channel) {
   return posts.some((post) => ACTIVE_STATES.has(post.estado) && post.fecha === date && post.hora === time && post.canal === channel);
 }
 
-export function buildPostDraftFromCreative(creative, db = {}, today = new Date().toISOString().slice(0, 10)) {
+export function buildPostDraftFromCreative(creative, db = {}, today = businessDateISO()) {
   if (!creative) return null;
   const slots = CHANNEL_SLOTS[creative.canal] || ["12:00"];
   let date = today; let time = slots[0]; let found = false;
@@ -120,7 +121,7 @@ export function buildPostDraftFromCreative(creative, db = {}, today = new Date()
   };
 }
 
-export function buildCommercialCalendar(db = {}, today = new Date().toISOString().slice(0, 10)) {
+export function buildCommercialCalendar(db = {}, today = businessDateISO()) {
   const posts = [...(db.content_calendar || [])].sort((left, right) => `${left.fecha}${left.hora}${left.id}`.localeCompare(`${right.fecha}${right.hora}${right.id}`));
   const duplicateIds = duplicateKeys(posts);
   const evaluated = posts.map((post) => {

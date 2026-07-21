@@ -1,0 +1,66 @@
+name: MOMOS staging database gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging:
+        description: Confirma que el destino es staging aislado, nunca producción
+        required: true
+        type: choice
+        options:
+          - NO
+          - STAGING
+
+permissions:
+  contents: read
+
+concurrency:
+  group: momos-staging-database-gate
+  cancel-in-progress: false
+
+jobs:
+  ordered-acceptance:
+    if: inputs.confirm_staging == 'STAGING'
+    name: staging-database-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Prove the target is isolated staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+        run: |
+          test -n "$STAGING_DATABASE_URL"
+          test -n "$STAGING_PROJECT_REF"
+          test -n "$PRODUCTION_PROJECT_REF"
+          test "$STAGING_PROJECT_REF" != "$PRODUCTION_PROJECT_REF"
+          case "$STAGING_DATABASE_URL" in
+            *"$STAGING_PROJECT_REF"*) ;;
+            *) echo "STAGING_DATABASE_URL no corresponde al proyecto staging sellado" >&2; exit 1 ;;
+          esac
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Run ordered acceptance with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
+          grep -q "01-93 PASS" "$RUNNER_TEMP/migrations.log"
+
+      - name: Run recovery contracts with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-continuidad-recuperacion-v1.sql | tee "$RUNNER_TEMP/recovery.log"
+          grep -q "H93 RPO/RTO" "$RUNNER_TEMP/recovery.log"

@@ -1,3 +1,5 @@
+import { businessDateISO } from "./business-date.js";
+
 const clean = (value) => String(value || "").trim();
 const list = (value) => Array.isArray(value) ? value : [];
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -83,7 +85,7 @@ function assetSearchText(asset) {
     .map(clean).join(" ").toLocaleLowerCase("es");
 }
 
-export function brandAssetReadiness(asset = {}, today = new Date().toISOString().slice(0, 10), operation = "Generar video") {
+export function brandAssetReadiness(asset = {}, today = businessDateISO(), operation = "Generar video") {
   const reasons = [];
   const warnings = [];
   if (!asset.id) reasons.push("El activo no tiene identidad trazable.");
@@ -102,7 +104,7 @@ export function brandAssetReadiness(asset = {}, today = new Date().toISOString()
   return { ready: reasons.length === 0, reasons: [...new Set(reasons)], warnings: [...new Set(warnings)] };
 }
 
-export function buildBrandMediaLibrary(db = {}, today = new Date().toISOString().slice(0, 10)) {
+export function buildBrandMediaLibrary(db = {}, today = businessDateISO()) {
   const assets = list(db.brandMediaAssets).map((asset) => ({
     ...asset,
     collection: brandAssetCollection(asset),
@@ -216,7 +218,7 @@ function targetFormat(channel, requested) {
   return "Reel 9:16";
 }
 
-export function buildCreativeStudioDraft(input = {}, db = {}, today = new Date().toISOString().slice(0, 10)) {
+export function buildCreativeStudioDraft(input = {}, db = {}, today = businessDateISO()) {
   const creative = list(db.creatives).find((item) => String(item.id) === String(input.creativeId)) || null;
   const brief = list(db.agencyBriefs).find((item) => String(item.id) === String(input.briefId)) || null;
   const requestedIds = [...new Set(list(input.assetIds).map(String).filter(Boolean))];
@@ -238,7 +240,7 @@ export function buildCreativeStudioDraft(input = {}, db = {}, today = new Date()
   });
   const productId = creative?.productoFocoId || brief?.productId || null;
   if (productId && !assets.some((asset) => asset.productId === productId)) {
-    errors.push("Falta una toma real del producto foco; no se permitirá que la IA invente su apariencia.");
+    errors.push("Falta una toma real del postre o la presentación foco; no se permitirá que la IA invente su apariencia.");
   }
   const hashes = assets.map((asset) => asset.contentHash).filter(Boolean);
   if (new Set(hashes).size !== hashes.length) errors.push("La selección contiene el mismo archivo más de una vez.");

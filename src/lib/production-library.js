@@ -1,3 +1,5 @@
+import { businessDateISO } from "./business-date.js";
+
 export const PRODUCTION_COMPONENT_TYPES = Object.freeze([
   "Producto", "Empaque", "Manos", "Presentador UGC", "Locación",
   "Movimiento", "Marca", "Audio", "Personaje",
@@ -78,7 +80,7 @@ export function productionProfileReadiness(asset = {}) {
   if (asset.status && asset.status !== "Activo") reasons.push("El original no está activo.");
   if (asset.rightsStatus && !["Propio", "Autorizado"].includes(asset.rightsStatus)) reasons.push("Los derechos del original no están vigentes.");
   if (asset.aiUseAllowed === false) reasons.push("El original no permite uso creativo con IA.");
-  if (asset.rightsExpiresAt && String(asset.rightsExpiresAt) < new Date().toISOString().slice(0, 10)) reasons.push("La autorización del original venció.");
+  if (asset.rightsExpiresAt && String(asset.rightsExpiresAt) < businessDateISO()) reasons.push("La autorización del original venció.");
   if (asset.readiness && !asset.readiness.ready) reasons.push(...(asset.readiness.reasons || []));
 
   if (HUMAN_COMPONENTS.has(profile.componentType)) {

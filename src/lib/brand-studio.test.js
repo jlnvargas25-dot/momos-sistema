@@ -98,17 +98,17 @@ test("una referencia canónica no se puede eliminar como archivo huérfano", () 
   assert.match(result.reasons.join(" "), /canónica/i);
 });
 
-test("una composición exige archivo real y producto foco exacto", () => {
+test("una composición exige archivo real y postre o presentación foco exacta", () => {
   const noAssets = buildCreativeStudioDraft({ creativeId: "CR-1", assetIds: [], operation: "Componer" }, db(), "2026-07-15");
   assert.equal(noAssets.audit.passed, false);
   const wrongProduct = buildCreativeStudioDraft({ creativeId: "CR-1", assetIds: ["A-2"], operation: "Componer" }, db({ brandMediaAssets: [asset({ id: "A-2", productId: "PR-2" })] }), "2026-07-15");
-  assert.match(wrongProduct.audit.errors.join(" "), /toma real del producto foco/i);
+  assert.match(wrongProduct.audit.errors.join(" "), /toma real del postre o la presentación foco/i);
 });
 
-test("una generación con producto foco tampoco puede inventar el postre", () => {
+test("una generación con postre o presentación foco tampoco puede inventar el sujeto", () => {
   const result = buildCreativeStudioDraft({ creativeId: "CR-1", assetIds: [], operation: "Generar imagen" }, db(), "2026-07-15");
   assert.equal(result.audit.passed, false);
-  assert.match(result.audit.errors.join(" "), /toma real del producto foco/i);
+  assert.match(result.audit.errors.join(" "), /toma real del postre o la presentación foco/i);
 });
 
 test("una composición segura congela identidad y nunca sobrescribe originales", () => {

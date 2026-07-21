@@ -1,4 +1,6 @@
 import { normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
+import { businessDateISO } from "./business-date.js";
+import { calculateOrderAttributionRevenue } from "./order-money.js";
 
 const PAID_STATES = new Set([
   "Pagado", "En producción", "Listo para empaque", "Empacado",
@@ -34,9 +36,7 @@ function readyOperationalFacts(db) {
 }
 
 function orderRevenue(order, db) {
-  if (number(order?.total) > 0) return number(order.total);
-  return (db.order_items || []).filter((line) => line.orderId === order?.id && !line.parentItemId)
-    .reduce((sum, line) => sum + number(line.precio) * Math.max(1, number(line.cant)), 0);
+  return calculateOrderAttributionRevenue(db, order);
 }
 
 function publishedPosts(db) {
@@ -167,7 +167,7 @@ function actionFor(stage, item) {
   return { ...common, type: "Pausar campaña" };
 }
 
-export function buildCommercialLearning(db = {}, today = new Date().toISOString().slice(0, 10), rawThresholds = {}) {
+export function buildCommercialLearning(db = {}, today = businessDateISO(), rawThresholds = {}) {
   const thresholds = { ...DEFAULT_LEARNING_THRESHOLDS, ...rawThresholds };
   const operationalFacts = readyOperationalFacts(db);
   const posts = publishedPosts(db);

@@ -1,3 +1,7 @@
+import {
+  activeFigureCatalog, commercialFamilyLabel, figureProductId, isCommercialFamilyProduct,
+} from "./momos-domain-language.js";
+
 const APPROVED_BRIEF_STATES = new Set(["Aprobado", "En producción", "Completado"]);
 const CHANNELS = new Set(["Instagram", "Facebook", "TikTok", "WhatsApp", "Rappi", "Referidos", "Influencer", "Orgánico"]);
 
@@ -59,8 +63,8 @@ function objectiveFamily(objective) {
   return "sales";
 }
 
-function hooksFor({ productName, family, phrase }) {
-  const product = productName || "MOMOS";
+function hooksFor({ subjectName, family, phrase }) {
+  const product = subjectName || "MOMOS";
   const byFamily = {
     birthday: [
       "Hoy el regalo más tierno tiene tu nombre",
@@ -91,8 +95,8 @@ function hooksFor({ productName, family, phrase }) {
   return byFamily[family] || byFamily.sales;
 }
 
-function bodyFor({ family, productName, preferredWord }) {
-  const product = productName || "un MOMOS hecho para sorprender";
+function bodyFor({ family, subjectName, preferredWord }) {
+  const product = subjectName || "un MOMOS hecho para sorprender";
   const word = preferredWord || "sorpresa";
   if (family === "birthday") return `Celebra con ${product}: una ${word} dulce, cercana y pensada para compartir.`;
   if (family === "retention") return `Vuelve a disfrutar ${product}. Te contamos las opciones disponibles para que elijas sin presión.`;
@@ -101,8 +105,8 @@ function bodyFor({ family, productName, preferredWord }) {
   return `Descubre ${product} y elige entre las figuras y sabores disponibles en la cocina de MOMOS.`;
 }
 
-function scriptFor({ format, productName, selectedHook, cta }) {
-  const product = productName || "MOMOS";
+function scriptFor({ format, subjectName, selectedHook, cta }) {
+  const product = subjectName || "MOMOS";
   if (format === "Copy") return [
     `Apertura: ${selectedHook}.`,
     `Contexto: presenta ${product} y la razón del contacto en una sola frase.`,
@@ -143,45 +147,80 @@ export function auditCreativePackage(pkg, brief = {}, db = {}) {
   if (forbiddenHits.length) errors.push(`Usa vocabulario prohibido por la marca: ${forbiddenHits.join(", ")}.`);
   if (brief.productId) {
     const product = resolveProduct(db, brief.productId);
-    if (!product) errors.push("El producto foco ya no existe.");
-    else if (product.activo === false) errors.push("El producto foco está inactivo.");
+    if (!product) errors.push("El postre o la presentación foco ya no existe.");
+    else if (product.activo === false) errors.push("El postre o la presentación foco está inactivo.");
   } else if (["sales", "launch"].includes(objectiveFamily(brief.objective))) {
-    warnings.push("El brief no tiene producto foco; el paquete habla de MOMOS de forma general.");
+    warnings.push("El brief no tiene postre o presentación foco; el paquete habla de MOMOS de forma general.");
   }
   if (clean(brief.offer) && !APPROVED_BRIEF_STATES.has(brief.status)) {
     warnings.push("La oferta se omitió porque el brief todavía no está aprobado.");
   }
   if (!CHANNELS.has(clean(brief.channel))) warnings.push("El canal se normalizó a Instagram porque el brief no tenía un canal ejecutable.");
+  if (pkg.requiresExactSubject && !pkg.exactSubjectReady) {
+    errors.push(pkg.figure && !pkg.compatibleFigures.includes(pkg.figure)
+      ? "La figura protagonista no pertenece a la presentación comercial elegida."
+      : "Elegí la figura y el sabor exactos antes de producir el creativo.");
+  }
   if (!clean(pkg.copy) || !clean(pkg.selectedHook) || !(pkg.script || []).length) errors.push("El paquete quedó incompleto.");
   return { passed: errors.length === 0, errors, warnings, forbiddenHits };
 }
 
-export function buildCreativePackage(brief = {}, db = {}, variant = 0) {
+function resolveCreativeSubject(product, db, subject = {}) {
+  const family = isCommercialFamilyProduct(product);
+  // Una figura física solo puede pertenecer a una familia comercial de
+  // producto terminado. Ignoramos cualquier figura heredada por una crepa,
+  // malteada u otra preparación al momento.
+  const figure = family ? clean(subject.figure || subject.figura) : "";
+  const flavor = clean(subject.flavor || subject.sabor);
+  const compatibleFigures = family
+    ? activeFigureCatalog(db).filter((row) => figureProductId(row) === String(product?.id || ""))
+    : [];
+  const validFigure = compatibleFigures.some((row) => clean(row.nombre) === figure);
+  const familyName = commercialFamilyLabel(product?.nombre || "MOMOS");
+  const exact = family && validFigure && Boolean(flavor);
+  return {
+    family,
+    familyName,
+    figure,
+    flavor,
+    compatibleFigures: compatibleFigures.map((row) => row.nombre),
+    validFigure,
+    exact,
+    subjectName: exact ? `${figure} de ${flavor}` : (family ? "Postre exacto pendiente" : clean(product?.nombre) || "MOMOS"),
+  };
+}
+
+export function buildCreativePackage(brief = {}, db = {}, variant = 0, subject = {}) {
   const brand = brandLibrary(db);
   const product = resolveProduct(db, brief.productId);
   const productName = product?.nombre || "MOMOS";
+  const resolvedSubject = resolveCreativeSubject(product, db, {
+    figure: subject.figure || subject.figura || brief.figure || brief.figura,
+    flavor: subject.flavor || subject.sabor || brief.flavor || brief.sabor,
+  });
+  const subjectName = resolvedSubject.subjectName;
   const channel = channelFor(brief);
   const format = formatFor(channel, brief.objective);
   const family = objectiveFamily(brief.objective);
   const safePhrase = brand.phrases.find((phrase) => allowedPhrase(phrase, brand.forbidden)) || "El antojo que te cambia el día.";
   const safePreferred = brand.preferred.find((word) => allowedPhrase(word, brand.forbidden)) || "sorpresa";
-  const hooks = hooksFor({ productName, family, phrase: safePhrase }).filter((hook) => allowedPhrase(hook, brand.forbidden));
+  const hooks = hooksFor({ subjectName, family, phrase: safePhrase }).filter((hook) => allowedPhrase(hook, brand.forbidden));
   const hookIndex = hooks.length ? Math.abs(Number(variant) || 0) % hooks.length : 0;
-  const selectedHook = hooks[hookIndex] || `Un momento ${productName}`;
+  const selectedHook = hooks[hookIndex] || `Un momento ${subjectName}`;
   const cta = ctaFor(channel);
   const approvedOffer = APPROVED_BRIEF_STATES.has(brief.status) ? clean(brief.offer) : "";
-  const body = bodyFor({ family, productName, preferredWord: safePreferred });
+  const body = bodyFor({ family, subjectName, preferredWord: safePreferred });
   const copy = [selectedHook, body, approvedOffer, cta].filter(Boolean).join("\n\n");
-  const script = scriptFor({ format, productName, selectedHook, cta });
+  const script = scriptFor({ format, subjectName, selectedHook, cta });
   const shotList = format === "Copy" ? ["Sin producción audiovisual obligatoria"] : [
-    `${productName} completo y fiel al producto real`,
+    `${subjectName} completo y fiel al producto real`,
     "Detalle de textura o relleno sin alterar su apariencia",
     "Empaque MOMOS limpio y marca legible",
     "Cierre con espacio seguro para CTA",
   ];
   const prompt = [
     `Crear una pieza ${format} para ${channel} de D'Momos Sweet Love.`,
-    `Producto foco: ${productName}. Objetivo: ${brief.objective || "Ventas"}.`,
+    `Sujeto exacto: ${subjectName}.${resolvedSubject.family ? ` Presentación comercial: ${resolvedSubject.familyName}.` : ""} Objetivo: ${brief.objective || "Ventas"}.`,
     `Concepto: ${selectedHook}. Tono: ${brand.tone.join(", ") || "tierno, premium y cercano"}.`,
     "Usar los colores, tipografía, empaque y proporciones reales de la marca; iluminación cálida, composición limpia y apetecible.",
     `Planos requeridos: ${shotList.join("; ")}. No agregar precios, descuentos ni afirmaciones que no estén en el brief aprobado.`,
@@ -189,9 +228,15 @@ export function buildCreativePackage(brief = {}, db = {}, variant = 0) {
   const negativePrompt = [...brand.forbidden, "logos inventados", "productos deformes", "texto ilegible", "colores ajenos a la marca", "promesas no verificadas"].filter(Boolean).join(", ");
   const pkg = {
     briefId: brief.id || null,
-    title: `${productName} · ${brief.objective || "Contenido"} · ${format}`,
+    title: `${subjectName} · ${brief.objective || "Contenido"} · ${format}`,
     productId: product?.id || null,
     productName,
+    subjectName,
+    figure: resolvedSubject.figure || null,
+    flavor: resolvedSubject.flavor || null,
+    requiresExactSubject: resolvedSubject.family,
+    exactSubjectReady: resolvedSubject.exact,
+    compatibleFigures: resolvedSubject.compatibleFigures,
     campaignId: brief.campaignId || null,
     objective: brief.objective || "Ventas",
     channel,

@@ -1,0 +1,53 @@
+name: MOMOS quality gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: momos-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          package-manager-cache: false
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Repository and migration contracts
+        run: npm run ci:contracts
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Performance and integration tests
+        run: npm run test:performance
+
+      - name: Production build
+        run: npm run build
+
+      - name: Performance budgets
+        run: npm run perf:budget
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high

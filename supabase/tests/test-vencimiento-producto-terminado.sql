@@ -10,11 +10,15 @@ declare
   v_desmoldado timestamptz;
   v_vence date;
   v_alias date;
+  v_days integer;
 begin
   assert exists (
     select 1 from public.momos_ops_migrations
     where id = '20260715_17_vencimiento_terminado'
   ), 'falta paso 17_vencimiento_terminado';
+  select coalesce((valor#>>'{}')::integer,3) into v_days
+  from public.app_settings where clave='vida_util_producto_terminado_dias';
+  v_days:=coalesce(v_days,3);
 
   -- Un lote en proceso no empieza vida útil, aunque un cliente viejo mande fecha.
   insert into public.production_batches(
@@ -28,7 +32,7 @@ begin
   assert v_desmoldado is null, 'un lote en proceso quedó desmoldado';
   assert v_vence is null and v_alias is null, 'un lote en proceso recibió vencimiento';
 
-  -- El cambio atómico usado por desmoldar_lote sella fecha Bogotá + 3 días.
+  -- El cambio atómico usado por desmoldar_lote sella la regla vigente.
   update public.production_batches
   set estado = 'Listo', stock_contabilizado = true,
       perfectas = 1, imperfectas = 0, descartadas = 0
@@ -37,8 +41,8 @@ begin
   into v_desmoldado, v_vence, v_alias
   from public.production_batches where id = v_batch;
   assert v_desmoldado is not null, 'el desmolde no selló desmoldado_en';
-  assert v_vence = (v_desmoldado at time zone 'America/Bogota')::date + 3,
-    'vence no corresponde a desmolde + 3 días';
+  assert v_vence = (v_desmoldado at time zone 'America/Bogota')::date + v_days,
+    'vence no corresponde a la vida útil vigente desde el desmolde';
   assert v_alias = v_vence, 'vence y vencimiento quedaron divergentes';
 
   -- Ni la fecha visible ni el timestamp pueden rejuvenecerse manualmente.
@@ -64,11 +68,11 @@ begin
   assert exists (
     select 1 from public.production_batches
     where id = v_fixed
-      and vence = date '2026-07-18'
-      and vencimiento = date '2026-07-18'
+      and vence = date '2026-07-15' + v_days
+      and vencimiento = date '2026-07-15' + v_days
   ), 'el cálculo no respetó la fecha local de Bogotá';
 
-  -- Un desmolde de hace cuatro días ya está vencido: aparece en cuarentena y
+  -- Un desmolde anterior a la vida útil ya está vencido: aparece en cuarentena y
   -- jamás en la disponibilidad exacta que consume el FIFO.
   select id into v_product from public.products order by id limit 1;
   assert v_product is not null, 'el test necesita al menos un producto';
@@ -76,8 +80,8 @@ begin
     id, fecha, product_id, figura, sabor, gramaje_g, prod,
     perfectas, imperfectas, descartadas, estado, stock_contabilizado, desmoldado_en
   ) values (
-    v_expired, current_date - 4, v_product, 'TST Figura', 'TST Sabor', 150, 1,
-    1, 0, 0, 'Listo', true, now() - interval '4 days'
+    v_expired, current_date - (v_days + 1), v_product, 'TST Figura', 'TST Sabor', 150, 1,
+    1, 0, 0, 'Listo', true, now() - make_interval(days=>v_days+1)
   );
   insert into public.lote_figuras(batch_id, figura, cant, perfectas, imperfectas, descartadas)
   values(v_expired, 'TST Figura', 1, 1, 0, 0);
@@ -94,11 +98,12 @@ begin
     select 1 from public.production_batches
     where desmoldado_en is not null
       and (
-        vence is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + 3)
-        or vencimiento is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + 3)
+        vida_util_dias is null
+        or vence is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + vida_util_dias)
+        or vencimiento is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + vida_util_dias)
       )
-  ), 'hay lotes desmoldados fuera de la regla +3 días';
+  ), 'hay lotes desmoldados fuera de su vida útil sellada';
 end $$;
 
-select 'TESTS_OK — producto terminado vence +3 días desde desmolde, fecha inmutable, rollback total' as resultado;
+select 'TESTS_OK — producto terminado usa vida útil configurable desde desmolde, fecha inmutable, rollback total' as resultado;
 rollback;

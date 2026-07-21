@@ -31,6 +31,8 @@ import {
 import { orderTransitionPermission } from "../../lib/order-workflow";
 import { explainOperationalError } from "../../lib/operational-errors";
 import { momobotContextAnswer, momobotContextSnapshot } from "../../lib/momobot-context";
+import { businessDateISO } from "../../lib/business-date";
+import { canonicalUsableIngredientStock, canonicalVariantsForAvailability } from "../../lib/canonical-stock";
 import {
   canAutoStartMomobot,
   isCurrentMomobotAuthorization,
@@ -139,19 +141,25 @@ export default function VoiceKitchenPanel({ db, perfil, flavors, figures, subrec
     && navigator.mediaDevices
     && typeof navigator.mediaDevices.getUserMedia === "function",
   );
-  const voiceCatalogs = useMemo(() => ({
+  const voiceCatalogs = useMemo(() => {
+    const today = businessDateISO();
+    const canonicalInventory = (db.inventory_items || []).map((item) => ({
+      ...item,
+      stock: canonicalUsableIngredientStock(db, item.id, { today }).usable,
+    }));
+    return ({
     flavors,
     figures,
     subrecipes,
     figureFillings: db.figura_relleno || [],
     products: db.products || [],
-    inventory: db.inventory_items || [],
+    inventory: canonicalInventory,
     inventoryLots: db.inventory_lots || [],
     batches: db.production_batches || [],
     orders: db.orders || [],
     orderItems: db.order_items || [],
     customers: db.customers || [],
-    variants: db.variantes || [],
+    variants: canonicalVariantsForAvailability(db, { today }),
     suggestions: db.production_suggestions || [],
     reservations: db.inventory_reservations || [],
     auditLogs: db.audit_logs || [],
@@ -161,7 +169,8 @@ export default function VoiceKitchenPanel({ db, perfil, flavors, figures, subrec
       ...(db.settings.rellenos || []),
       ...(db.settings.toppings || []).map((item) => item?.nombre || item).filter(Boolean),
     ],
-  }), [db, flavors, figures, subrecipes]);
+    });
+  }, [db, flavors, figures, subrecipes]);
   const voicePhrases = useMemo(() => kitchenVocabularyPhrases(voiceCatalogs), [voiceCatalogs]);
   const voiceTaskPhrases = useMemo(() => new Set(kitchenTaskVocabularyPhrases()), []);
   const contextSnapshot = useMemo(() => momobotContextSnapshot(voiceCatalogs), [voiceCatalogs]);

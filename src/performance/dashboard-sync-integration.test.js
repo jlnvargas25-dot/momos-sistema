@@ -46,5 +46,5 @@ test("H77 convierte Dashboard en un único dominio de lectura diferida", () => {
 
 test("la cadena ordenada incluye H77 después de H76", () => {
   assert.ok(ordered.indexOf("20260719_77_dashboard_operativo") > ordered.indexOf("20260719_76_configuracion_servidor"));
-  assert.match(ordered, /migraciones ordenadas 01-77 PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-83 PASS/);
 });

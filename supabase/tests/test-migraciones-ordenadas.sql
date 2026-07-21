@@ -43,7 +43,13 @@ begin
     '20260719_71_pedidos_deltas','20260719_72_producto_terminado_deltas',
     '20260719_73_produccion_deltas','20260719_74_catalogo_crm_deltas',
     '20260719_75_finanzas_operativas','20260719_76_configuracion_servidor',
-    '20260719_77_dashboard_operativo'
+    '20260719_77_dashboard_operativo','20260719_78_produccion_estados_fisicos',
+    '20260719_79_historial_operativo_paginado',
+    '20260719_80_produccion_preflight_elaboraciones',
+    '20260719_81_domicilios_snapshot',
+    '20260719_82_domicilios_mutaciones_atomicas',
+    '20260719_83_vida_util_produccion',
+    '20260720_84_desecho_producto_terminado'
   ] loop
     assert exists(select 1 from public.momos_ops_migrations where id=v_id), 'Falta registrar ' || v_id;
   end loop;
@@ -528,10 +534,11 @@ begin
     select 1 from public.production_batches
     where desmoldado_en is not null
       and (
-        vence is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + 3)
-        or vencimiento is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + 3)
+        vida_util_dias is null
+        or vence is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + vida_util_dias)
+        or vencimiento is distinct from ((desmoldado_en at time zone 'America/Bogota')::date + vida_util_dias)
       )
-  ), 'producto terminado no respeta desmolde +3 días';
+  ), 'producto terminado no respeta la vida útil sellada desde el desmolde';
   assert not exists(
     select 1
     from public.subrecetas sr
@@ -1011,7 +1018,386 @@ begin
       'public.momos_sync_manifest_v1()'::regprocedure
     ))>0,
     'el manifiesto de Data Sync no anuncia H77';
+  assert position('p_estado not in' in pg_get_functiondef(
+      'public.set_lote_estado(text,text)'::regprocedure
+    ))>0,
+    'H78 no cerró los estados manuales Reservado/Vendido del lote';
+  assert to_regprocedure('public.momos_history_page_v2(jsonb,integer,text,text,date,date)') is not null
+    and to_regprocedure('public.historial_operativo_paginado_disponible()') is not null,
+    'H79 no instaló el historial filtrado y paginado';
+  assert has_function_privilege('authenticated','public.momos_history_page_v2(jsonb,integer,text,text,date,date)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_history_page_v2(jsonb,integer,text,text,date,date)','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_history_page_v2(jsonb,integer,text,text,date,date)','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_history_area_v2(text)','EXECUTE'),
+    'H79 perdió su frontera RBAC';
+  assert exists(select 1 from pg_indexes where schemaname='public' and indexname='audit_logs_history_recent_idx')
+    and exists(select 1 from pg_indexes where schemaname='public' and indexname='audit_logs_history_area_recent_idx'),
+    'H79 no instaló los índices del historial';
+  assert exists(select 1 from pg_trigger
+      where tgname='production_batches_prepared_stock_guard'
+        and tgrelid='public.production_batches'::regclass
+        and not tgisinternal and tgenabled='O')
+    and not has_function_privilege(
+      'authenticated','public._production_batch_prepared_stock_guard()','EXECUTE'
+    ),
+    'H80 no cerró la creación de lotes sin elaboraciones o expuso su función interna';
+  assert to_regclass('public.delivery_sync_state') is not null
+    and to_regprocedure('public.momos_delivery_snapshot_v1(integer)') is not null
+    and to_regprocedure('public.domicilios_snapshot_disponible()') is not null,
+    'H81 no instaló el snapshot compacto de Domicilios';
+  assert has_function_privilege('authenticated','public.momos_delivery_snapshot_v1(integer)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_delivery_snapshot_v1(integer)','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_delivery_snapshot_v1(integer)','EXECUTE'),
+    'H81 perdió la frontera RBAC de Domicilios';
+  assert has_table_privilege('authenticated','public.delivery_sync_state','SELECT')
+    and not has_table_privilege('authenticated','public.delivery_sync_state','UPDATE'),
+    'H81 expuso escritura del outbox de Domicilios';
+  assert position('domicilios_snapshot_disponible' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H81';
+  assert to_regclass('public.delivery_mutation_receipts') is not null
+    and to_regprocedure('public.mutar_domicilio_delta(jsonb)') is not null
+    and to_regprocedure('public.domicilios_mutaciones_atomicas_disponibles()') is not null,
+    'H82 no instaló recibos privados y mutaciones atómicas de Domicilios';
+  assert has_function_privilege('authenticated','public.mutar_domicilio_delta(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.domicilios_mutaciones_atomicas_disponibles()','EXECUTE')
+    and not has_function_privilege('anon','public.mutar_domicilio_delta(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.mutar_domicilio_delta(jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_delivery_mutation_response_v1(text,uuid,boolean,text,text)','EXECUTE'),
+    'H82 perdió su frontera RPC pública/privada';
+  assert not has_table_privilege('authenticated','public.delivery_mutation_receipts','SELECT')
+    and not has_table_privilege('authenticated','public.delivery_mutation_receipts','INSERT')
+    and not has_table_privilege('service_role','public.delivery_mutation_receipts','SELECT'),
+    'H82 expuso recibos idempotentes privados';
+  assert position('domicilios_mutaciones_atomicas_disponibles' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H82';
+  assert exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='production_batches' and column_name='vida_util_dias')
+    and exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='inventory_lots' and column_name='vida_util_dias')
+    and to_regprocedure('public.momos_configuration_snapshot_v2()') is not null
+    and to_regprocedure('public.guardar_configuracion_v2(jsonb)') is not null,
+    'H83 no instaló vida útil sellada y Configuración v2';
+  assert has_function_privilege('authenticated','public.momos_configuration_snapshot_v2()','EXECUTE')
+    and has_function_privilege('authenticated','public.guardar_configuracion_v2(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_configuration_snapshot_v2()','EXECUTE')
+    and not has_function_privilege('service_role','public.guardar_configuracion_v2(jsonb)','EXECUTE')
+    and not has_table_privilege('authenticated','public.configuration_v2_mutation_receipts','SELECT'),
+    'H83 perdió su frontera administrativa o expuso recibos privados';
+  assert (select (valor#>>'{}')::integer between 1 and 30
+      from public.app_settings where clave='vida_util_producto_terminado_dias')
+    and (select (valor#>>'{}')::integer between 1 and 30
+      from public.app_settings where clave='vida_util_mezclas_dias'),
+    'H83 dejó una vida útil fuera del rango permitido';
+  assert not exists(select 1 from public.production_batches
+      where desmoldado_en is not null
+        and (vida_util_dias is null
+          or vence<>(desmoldado_en at time zone 'America/Bogota')::date+vida_util_dias
+          or vencimiento is distinct from vence)),
+    'H83 dejó lotes terminados sin fecha sellada consistente';
+  assert not exists(select 1
+      from public.inventory_lots l
+      join public.subrecetas sr on sr.item_id=l.item_id
+      where l.available_quantity>0
+        and (l.vida_util_dias is null or l.expires_at<>l.received_at+l.vida_util_dias)),
+    'H83 dejó elaboraciones disponibles sin vida útil sellada consistente';
 end $$;
 
-select 'TESTS_OK — migraciones ordenadas 01-77 PASS, rollback total' as resultado;
+select 'TESTS_OK — migraciones ordenadas 01-83 PASS, rollback total' as resultado;
+do $$
+begin
+  assert to_regclass('public.finished_product_disposals') is not null
+    and to_regprocedure('public.desechar_producto_terminado_delta(jsonb)') is not null
+    and to_regprocedure('public.desecho_producto_terminado_disponible()') is not null,
+    'H84 no instaló el ledger y RPC de desecho terminado';
+  assert has_function_privilege('authenticated','public.desechar_producto_terminado_delta(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.desecho_producto_terminado_disponible()','EXECUTE')
+    and not has_function_privilege('anon','public.desechar_producto_terminado_delta(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.desechar_producto_terminado_delta(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.desecho_producto_terminado_disponible()','EXECUTE')
+    and has_table_privilege('authenticated','public.finished_product_disposals','SELECT')
+    and not has_table_privilege('authenticated','public.finished_product_disposals','INSERT')
+    and not has_table_privilege('authenticated','public.finished_product_disposals','UPDATE'),
+    'H84 perdió RBAC o expuso escritura directa del ledger';
+  assert position('cantidad_esperada' in pg_get_functiondef('public.desechar_producto_terminado_delta(jsonb)'::regprocedure))>0,
+    'H84 no exige la cantidad exacta que la persona confirmó';
+  assert position('desecho_producto_terminado_disponible' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,
+    'el manifiesto de Data Sync no anuncia H84';
+  assert position('from public.products' in pg_get_functiondef('public.desechar_producto_terminado_delta(jsonb)'::regprocedure))
+       < position('from public.lote_figuras' in pg_get_functiondef('public.desechar_producto_terminado_delta(jsonb)'::regprocedure)),
+    'H84 invirtió el orden canónico de locks producto antes de lote_figuras';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-84 PASS, rollback total' as resultado_h84;
+do $$
+begin
+  assert to_regclass('public.kitchen_procedure_versions') is not null
+    and to_regprocedure('public.guardar_ficha_tecnica_cocina(jsonb)') is not null
+    and to_regprocedure('public.activar_ficha_tecnica_cocina(bigint,text)') is not null
+    and to_regprocedure('public.momos_core_snapshot_v2()') is not null
+    and to_regprocedure('public.fichas_tecnicas_cocina_disponibles()') is not null,
+    'H85 no instaló fichas técnicas y snapshot v2';
+  assert has_function_privilege('authenticated','public.momos_core_snapshot_v2()','EXECUTE')
+    and has_function_privilege('authenticated','public.guardar_ficha_tecnica_cocina(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_core_snapshot_v2()','EXECUTE')
+    and not has_function_privilege('service_role','public.activar_ficha_tecnica_cocina(bigint,text)','EXECUTE')
+    and has_table_privilege('authenticated','public.kitchen_procedure_versions','SELECT')
+    and not has_table_privilege('authenticated','public.kitchen_procedure_versions','UPDATE'),
+    'H85 perdió RBAC o expuso escritura directa';
+  assert position('fichas_tecnicas_cocina_disponibles' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,'el manifiesto de Data Sync no anuncia H85';
+  assert not exists(
+    select subrecipe_id from public.kitchen_procedure_versions
+    where status='Vigente' group by subrecipe_id having count(*)<>1
+  ) and (select count(*) from public.kitchen_procedure_versions where status='Vigente')
+      =(select count(*) from public.subrecetas where activo),
+    'H85 no dejó exactamente una ficha vigente por subreceta activa';
+  assert exists(
+    select 1 from public.kitchen_procedure_versions k
+    join public.subrecetas s on s.id=k.subrecipe_id
+    where s.tipo like 'mousse_%' and k.status='Vigente'
+      and not k.process_defined
+  ),'H85 inventó que el proceso de mousse ya estaba completamente definido';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-85 PASS, rollback total' as resultado_h85;
+do $$
+begin
+  assert to_regclass('public.kitchen_procedure_sync_state') is not null
+    and to_regprocedure('public.listar_fichas_tecnicas_cocina(text)') is not null
+    and to_regprocedure('public.archivar_borrador_ficha_tecnica(bigint,text)') is not null
+    and to_regprocedure('public.gestion_fichas_tecnicas_cocina_disponible()') is not null,
+    'H86 no instaló gestión e historial de fichas';
+  assert has_function_privilege('authenticated','public.listar_fichas_tecnicas_cocina(text)','EXECUTE')
+    and has_function_privilege('authenticated','public.archivar_borrador_ficha_tecnica(bigint,text)','EXECUTE')
+    and not has_function_privilege('anon','public.listar_fichas_tecnicas_cocina(text)','EXECUTE')
+    and not has_function_privilege('service_role','public.archivar_borrador_ficha_tecnica(bigint,text)','EXECUTE')
+    and has_table_privilege('authenticated','public.kitchen_procedure_sync_state','SELECT')
+    and not has_table_privilege('authenticated','public.kitchen_procedure_sync_state','UPDATE'),
+    'H86 perdió RBAC o expuso escritura del cursor';
+  assert (
+    select array_agg(a.attname::text order by a.attnum)
+    from pg_attribute a
+    where a.attrelid='public.kitchen_procedure_sync_state'::regclass
+      and a.attnum>0 and not a.attisdropped
+  )=array['id','version','changed_at']::text[],
+    'H86 dejó de usar un cursor compacto';
+  assert position('kitchen_procedure_sync_version' in pg_get_functiondef(
+      'public.momos_core_snapshot_v2()'::regprocedure
+    ))>0
+    and position('gestion_fichas_tecnicas_cocina_disponible' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure
+    ))>0,'snapshot o manifiesto no entregan H86';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-86 PASS, rollback total' as resultado_h86;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations where id='20260720_87_formulas_elaboraciones')
+    and to_regprocedure('public.listar_fichas_integrales_elaboracion(text)') is not null
+    and to_regprocedure('public.formulas_elaboraciones_internas_disponibles()') is not null,
+    'H87 no instaló las fórmulas integrales de elaboraciones';
+  assert exists(select 1 from pg_attribute
+      where attrelid='public.kitchen_procedure_versions'::regclass and attname='formula' and not attisdropped)
+    and exists(select 1 from pg_attribute
+      where attrelid='public.kitchen_procedure_versions'::regclass and attname='formula_fingerprint' and not attisdropped),
+    'H87 no versiona fórmula y huella';
+  assert has_function_privilege('authenticated','public.listar_fichas_integrales_elaboracion(text)','EXECUTE')
+    and not has_function_privilege('anon','public.listar_fichas_integrales_elaboracion(text)','EXECUTE')
+    and not has_function_privilege('service_role','public.listar_fichas_integrales_elaboracion(text)','EXECUTE')
+    and not has_table_privilege('authenticated','public.subreceta_ingredientes','INSERT')
+    and not has_table_privilege('authenticated','public.subreceta_ingredientes','UPDATE')
+    and not has_table_privilege('authenticated','public.subreceta_ingredientes','DELETE'),
+    'H87 perdió RBAC o expuso escritura directa de fórmulas';
+  assert position('formula_fingerprint' in pg_get_functiondef(
+      'public.activar_ficha_tecnica_cocina(bigint,text)'::regprocedure))>0
+    and position('formulas_elaboraciones_internas_disponibles' in pg_get_functiondef(
+      'public.momos_sync_manifest_v1()'::regprocedure))>0,
+    'H87 no verifica integridad o no aparece en el manifiesto';
+  assert not exists(
+    select 1 from public.kitchen_procedure_versions
+    where formula is null or formula_fingerprint!~'^[0-9a-f]{64}$'
+  ),'H87 dejó versiones sin fórmula capturada o huella';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-87 PASS, rollback total' as resultado_h87;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260720_88_aislamiento_snapshots_rol')
+    and to_regprocedure('public.momos_core_snapshot_v3()') is not null
+    and to_regprocedure('public.momos_operational_snapshot_v2()') is not null
+    and to_regprocedure('public.aislamiento_snapshots_rol_disponible()') is not null,
+    'H88 no instaló snapshots aislados por rol';
+  assert has_function_privilege('authenticated','public.momos_core_snapshot_v3()','EXECUTE')
+    and has_function_privilege('authenticated','public.momos_operational_snapshot_v2()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_operational_snapshot_v2()','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_operational_snapshot_v2()','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_project_jsonb_rows(jsonb,text[])','EXECUTE'),
+    'H88 perdió RBAC o expuso su proyector interno';
+  assert position('public.current_roles()' in pg_get_functiondef(
+      'public.momos_operational_snapshot_v2()'::regprocedure))>0
+    and position('public._momos_project_jsonb_rows' in pg_get_functiondef(
+      'public.momos_operational_snapshot_v2()'::regprocedure))>0,
+    'H88 dejó de proyectar por la unión real de roles';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-88 PASS, continúa H89' as resultado_h88;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260720_89_cierre_lecturas_pii')
+    and to_regprocedure('public.momos_current_user_profile_v1()') is not null
+    and to_regprocedure('public.cierre_lecturas_pii_disponible()') is not null,
+    'H89 no instaló el cierre de lecturas PII';
+  assert has_function_privilege('authenticated','public.momos_current_user_profile_v1()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_current_user_profile_v1()','EXECUTE')
+    and not has_function_privilege('service_role','public.momos_current_user_profile_v1()','EXECUTE'),
+    'H89 perdió RBAC en el perfil propio';
+  assert exists(select 1 from pg_catalog.pg_policies
+      where schemaname='public' and tablename='users'
+        and policyname='own_profile_read' and cmd='SELECT')
+    and not exists(
+      select 1 from pg_catalog.pg_policies p
+      where p.schemaname='public'
+        and p.tablename=any(array[
+          'users','customers','orders','order_items','order_item_adiciones',
+          'deliveries','evidences','benefits','claims','audit_logs',
+          'packing_verifications','order_stage_assignments','order_line_progress',
+          'order_incidents','order_dispatch_handoffs','customer_crm_profiles',
+          'customer_contacts','customer_activations'
+        ]::text[])
+        and (p.policyname='staff_read'
+          or p.policyname='packing_verifications_staff_read'
+          or p.policyname='claude_read')
+    ),'H89 dejó una lectura amplia o perdió el perfil propio';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-89 PASS, continúa H90' as resultado_h89;
+do $$
+declare v_audit jsonb;
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260720_90_dominio_productos_figuras')
+    and to_regprocedure('public.auditar_dominio_productos_figuras_v1()') is not null
+    and to_regprocedure('public.dominio_productos_figuras_canonico_disponible()') is not null,
+    'H90 no instaló el dominio canónico de productos y figuras';
+  assert has_function_privilege('authenticated','public.auditar_dominio_productos_figuras_v1()','EXECUTE')
+    and not has_function_privilege('anon','public.auditar_dominio_productos_figuras_v1()','EXECUTE')
+    and not has_function_privilege('service_role','public.auditar_dominio_productos_figuras_v1()','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_guard_linea_pedido_canonica()','EXECUTE'),
+    'H90 perdió RBAC o expuso un guard interno';
+  assert exists(select 1 from public.products where id='PR08'
+      and cat='Momos Cuchara' and tipo='pedido' and especie is null and stock is null)
+    and not exists(select 1 from public.figuras where product_id='PR08')
+    and (select count(*) from public.figuras f
+      where f.activo and public._momos_es_figura_canonica(f.nombre))=7,
+    'H90 dejó PR08 o las siete figuras en un estado ambiguo';
+  assert not exists(select 1 from public.combo_components cc
+      left join public.products c on c.id=cc.combo_id
+      left join public.products p on p.id=cc.component_id
+      where c.id is null or c.tipo<>'combo' or c.cat<>'Cajas y Combos'
+        or p.id is null or p.tipo<>'momo' or p.cat<>'Momos Signature' or not p.activo
+        or not exists(select 1 from public.figuras f where f.activo and f.product_id=p.id)),
+    'H90 dejó una caja ligada a una presentación sin figura exacta';
+  v_audit:=public.auditar_dominio_productos_figuras_v1();
+  assert v_audit->>'contract'='momos.domain-integrity.v1'
+    and (v_audit->>'canonical_figures')::integer=7
+    and (v_audit->>'invalid_product_classifications')::integer=0
+    and (v_audit->>'invalid_figure_mappings')::integer=0
+    and (v_audit->>'invalid_combo_components')::integer=0
+    and coalesce((v_audit->>'contains_customer_pii')::boolean,true)=false
+    and coalesce((v_audit->>'external_execution')::boolean,true)=false,
+    'H90 perdió integridad, privacidad o no ejecución';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-90 PASS, continúa H91' as resultado_h90;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260721_91_mutaciones_compuestas_atomicas')
+    and to_regclass('public.compound_mutation_receipts') is not null
+    and to_regprocedure('public.completar_cocina_y_entregar_empaque_v1(jsonb)') is not null
+    and to_regprocedure('public.crear_corrida_agrupada_v1(jsonb)') is not null
+    and to_regprocedure('public.registrar_compra_y_atender_sugerencias_v1(jsonb)') is not null
+    and to_regprocedure('public.mutaciones_compuestas_atomicas_disponibles()') is not null,
+    'H91 no instaló las mutaciones compuestas atómicas';
+  assert has_function_privilege('authenticated','public.completar_cocina_y_entregar_empaque_v1(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.crear_corrida_agrupada_v1(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.registrar_compra_y_atender_sugerencias_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.completar_cocina_y_entregar_empaque_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.crear_corrida_agrupada_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated','public._momos_h91_suggestion_ids(jsonb)','EXECUTE')
+    and not has_table_privilege('authenticated','public.compound_mutation_receipts','SELECT')
+    and not has_table_privilege('service_role','public.compound_mutation_receipts','SELECT'),
+    'H91 perdió RBAC o expuso sus recibos/helpers';
+  assert position('completar_etapa_pedido' in pg_get_functiondef(
+      'public.completar_cocina_y_entregar_empaque_v1(jsonb)'::regprocedure))>0
+    and position('set_order_status' in pg_get_functiondef(
+      'public.completar_cocina_y_entregar_empaque_v1(jsonb)'::regprocedure))>0
+    and position('crear_corrida_delta' in pg_get_functiondef(
+      'public.crear_corrida_agrupada_v1(jsonb)'::regprocedure))>0
+    and position('entrada_insumo_lote_delta' in pg_get_functiondef(
+      'public.registrar_compra_y_atender_sugerencias_v1(jsonb)'::regprocedure))>0,
+    'H91 dejó de componer las RPC canónicas';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-91 PASS, continúa H92' as resultado_h91;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260721_92_centro_salud_operativa')
+    and to_regclass('public.operational_health_state') is not null
+    and to_regclass('public.operational_health_incidents') is not null
+    and to_regclass('public.operational_health_error_events') is not null
+    and to_regprocedure('public.momos_operational_health_snapshot_v1()') is not null
+    and to_regprocedure('public.ejecutar_monitor_salud_operativa_v1(text,text)') is not null,
+    'H92 no instaló el centro de salud operativa';
+  assert has_function_privilege('authenticated','public.momos_operational_health_snapshot_v1()','EXECUTE')
+    and has_function_privilege('service_role','public.ejecutar_monitor_salud_operativa_v1(text,text)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_operational_health_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('authenticated','public._run_operational_health_monitor_v1(text)','EXECUTE')
+    and not has_table_privilege('authenticated','public.operational_health_incidents','SELECT')
+    and not has_table_privilege('service_role','public.operational_health_error_events','SELECT'),
+    'H92 perdió RBAC o expuso fuentes internas';
+  assert (select count(*) from pg_trigger where not tgisinternal
+      and tgname='momos_h92_read_only_guard')>=14,
+    'H92 no instaló el modo Solo lectura sobre todo el núcleo';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-92 PASS, continúa H93' as resultado_h92;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260721_93_continuidad_recuperacion')
+    and to_regclass('public.operational_continuity_policy') is not null
+    and to_regclass('public.operational_backup_observations') is not null
+    and to_regclass('public.operational_recovery_drills') is not null
+    and to_regclass('public.operational_contingency_actions') is not null
+    and to_regprocedure('public.momos_continuity_snapshot_v1()') is not null
+    and to_regprocedure('public.momos_contingency_export_v1()') is not null
+    and to_regprocedure('public.registrar_simulacro_recuperacion_v1(jsonb)') is not null,
+    'H93 no instaló continuidad y recuperación verificable';
+  assert has_function_privilege('authenticated','public.momos_continuity_snapshot_v1()','EXECUTE')
+    and has_function_privilege('authenticated','public.momos_contingency_export_v1()','EXECUTE')
+    and has_function_privilege('service_role','public.registrar_simulacro_recuperacion_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_continuity_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('authenticated','public.registrar_simulacro_recuperacion_v1(jsonb)','EXECUTE')
+    and not has_table_privilege('authenticated','public.operational_recovery_drills','SELECT')
+    and not has_table_privilege('service_role','public.operational_contingency_actions','SELECT'),
+    'H93 perdió RBAC o expuso evidencia privada';
+  assert position('momos_operational_snapshot_v2' in pg_get_functiondef(
+      'public.momos_contingency_export_v1()'::regprocedure))>0
+    and position('status=''Aprobado''' in pg_get_functiondef(
+      'public.registrar_simulacro_recuperacion_v1(jsonb)'::regprocedure))>0,
+    'H93 dejó de usar el aislamiento por rol o la certificación explícita';
+end $$;
+
+select 'TESTS_OK — migraciones ordenadas 01-93 PASS, rollback total' as resultado_h93;
 rollback;

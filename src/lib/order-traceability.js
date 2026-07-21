@@ -1,4 +1,11 @@
+import { inventoryReservationPresentation } from "./momos-domain-language.js";
+
 const FLOW = ["Nuevo", "Confirmado", "Pendiente de pago", "Pagado", "En producción", "Listo para empaque", "Empacado", "Listo para despacho", "En ruta", "Entregado"];
+
+function reservationEventLabel(reservation) {
+  const presentation = inventoryReservationPresentation(reservation);
+  return `${presentation.primary}${presentation.secondary ? ` (${presentation.secondary.toLowerCase()})` : ""}`;
+}
 
 export function orderCurrentArea(order) {
   const state = order?.estado;
@@ -73,7 +80,7 @@ export function buildOrderTraceability(db, order) {
     if (handoff.acceptedAt) add({ id: `handoff-accept-${orderId}`, at: handoff.acceptedAt, type: "handoff", title: "Relevo físico aceptado", actor: handoff.logisticsUser, area: "Logística" });
   }
   if (claim) add({ id: `claim-${claim.id}`, at: claim.reclamoEn || claim.fecha, type: "claim", title: `Reclamo ${claim.estado}`, detail: claim.desc, actor: claim.resp, area: "Servicio" });
-  reservations.slice(0, 20).forEach((row) => add({ id: `reservation-${row.id}`, at: row.fecha, type: "inventory", title: `${row.estado === "Activa" ? "Reserva" : row.estado}: ${row.nombre}`, detail: `${row.cantidad} unidad${Number(row.cantidad) === 1 ? "" : "es"}${row.batchId ? ` · lote ${row.batchId}` : ""}`, area: row.tipo === "producto" ? "Inventario terminado" : "Inventario" }));
+  reservations.slice(0, 20).forEach((row) => add({ id: `reservation-${row.id}`, at: row.fecha, type: "inventory", title: `${row.estado === "Activa" ? "Reserva" : row.estado}: ${reservationEventLabel(row)}`, detail: `${row.cantidad} unidad${Number(row.cantidad) === 1 ? "" : "es"}${row.batchId ? ` · lote ${row.batchId}` : ""}`, area: row.tipo === "producto" ? "Inventario terminado" : "Inventario" }));
 
   events.sort((a, b) => clean(b.at).localeCompare(clean(a.at)) || clean(b.id).localeCompare(clean(a.id)));
   const openIncidents = incidents.filter((row) => row.status === "Abierto");

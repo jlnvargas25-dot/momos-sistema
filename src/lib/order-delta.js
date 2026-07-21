@@ -155,6 +155,21 @@ export function applyOrderDeltaBatchToDb(db, envelope) {
   return { status: stale.length && !applied.length ? "stale" : "applied", applied, stale };
 }
 
+// H88: variante inmutable para el estado React. Conserva las colecciones no
+// afectadas por referencia y copia Ãºnicamente el registro de versiones que la
+// aplicaciÃ³n dirigida modifica en sitio. La funciÃ³n histÃ³rica de arriba sigue
+// disponible para compatibilidad con consumidores que trabajan sobre un draft.
+export function applyOrderDeltaBatch(db, envelope) {
+  if (!db || typeof db !== "object") throw new Error("MOMO OPS no tiene un estado operativo vÃ¡lido.");
+  const next = {
+    ...db,
+    orderDeltaVersions: { ...(db.orderDeltaVersions || {}) },
+  };
+  const result = applyOrderDeltaBatchToDb(next, envelope);
+  if (!result.applied.length) return { ...result, db };
+  return { ...result, db: next };
+}
+
 export function clearOrderDeltaVersions(db) {
   if (db && typeof db === "object") db.orderDeltaVersions = {};
   return db;

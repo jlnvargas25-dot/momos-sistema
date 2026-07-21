@@ -31,6 +31,18 @@ test("no mezcla eventos, evidencias ni reservas de otro pedido", () => {
   assert.equal(trace.reservations.length, 1);
 });
 
+test("la trazabilidad presenta primero la figura física reservada y deja la familia como contexto", () => {
+  const trace = buildOrderTraceability({
+    ...db,
+    inventory_reservations: [{
+      ...db.inventory_reservations[0], figuraLote: "Max",
+    }],
+  }, order);
+  const event = trace.events.find((row) => row.id === "reservation-R-1");
+  assert.match(event.title, /Max/);
+  assert.match(event.title, /presentación comercial: Momo Perrito/i);
+});
+
 test("mapea todas las áreas críticas sin ambigüedad", () => {
   assert.equal(orderCurrentArea({ estado: "Pendiente de pago" }), "Recepción / Caja");
   assert.equal(orderCurrentArea({ estado: "En producción" }), "Cocina");

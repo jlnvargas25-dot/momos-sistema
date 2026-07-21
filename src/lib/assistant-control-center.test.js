@@ -58,8 +58,22 @@ test("una variante incompleta muestra pedido y producto una sola vez", () => {
   assert.equal(related.length, 1);
   assert.equal(related[0].module, "Pedidos");
   assert.match(related[0].title, /pedido P-77/i);
-  assert.match(related[0].detail, /2× Momo Perrito/i);
+  assert.match(related[0].detail, /2× de la presentación comercial Momo Perrito/i);
   assert.match(related[0].nextAction, /abrir el pedido P-77/i);
+});
+
+test("Control interno trata Gatito como figura inválida, no como producto físico", () => {
+  const db = baseDb();
+  db.customers = [{ id: "C1", nombre: "Ana", telefono: "300", direccion: "Calle 1", barrio: "Caney" }];
+  db.products = [{ id: "PR1", nombre: "Momo Gatito", cat: "Momos Signature", tipo: "momo", precio: 18000 }];
+  db.orders = [{ id: "P-78", customerId: "C1", fecha: "2026-07-15", hora: "10:00", canal: "WhatsApp", estado: "Confirmado", pago: "Nequi", direccion: "Calle 1", barrio: "Caney" }];
+  db.order_items = [{ id: "IT16", orderId: "P-78", productId: "PR1", nombre: "Momo Gatito", cant: 1, precio: 18000, figura: "Gatito", sabor: "Coco" }];
+
+  const result = buildAssistantControlCenter(db, { today: "2026-07-15" });
+  const task = result.tasks.find((row) => row.entityId === "P-78" && row.area === "Control interno");
+  assert.ok(task);
+  assert.match(task.title, /figura física válida/i);
+  assert.match(task.detail, /presentación comercial Momo Gatito/i);
 });
 
 test("una elaboración sin fórmula explica las dos decisiones válidas", () => {

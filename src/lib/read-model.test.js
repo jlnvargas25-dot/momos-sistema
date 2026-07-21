@@ -4,6 +4,7 @@ import { supabase } from "./supabase.js";
 import {
   adaptAgencyOperationalFactsEnvelope, adaptAgencySnapshotEnvelope, adaptAgencySnapshotsBundle, AGENCY_SNAPSHOT_SCOPES,
   fetchAgencyCatalogos, fetchAgencyCatalogosConFallback, fetchConfigurationSnapshot, fetchDashboardSnapshot, fetchFinanceSnapshot,
+  fetchOperationalHistoryPage, normalizeOperationalHistoryFilters,
 } from "./read-model.js";
 import { makeAgencyOperationalFacts } from "./agency-operational-facts.test-fixture.js";
 
@@ -109,24 +110,44 @@ test("H75 solo usa H65 como compatibilidad cuando la RPC compacta aún no existe
   }
 });
 
-test("H76 consulta Configuración con una sola RPC compacta y sin fallback masivo", async () => {
+test("H83 consulta Configuración v2 con una sola RPC compacta", async () => {
   const originalRpc = supabase.rpc;
   const calls = [];
-  const payload = { contract: "momos.configuration-snapshot.v1", version: 1, snapshotVersion: "8" };
+  const payload = { contract: "momos.configuration-snapshot.v2", version: 2, snapshotVersion: "8" };
   supabase.rpc = async (name, args) => {
     calls.push([name, args]);
     return { data: payload, error: null };
   };
   try {
     const result = await fetchConfigurationSnapshot();
-    assert.deepEqual(calls, [["momos_configuration_snapshot_v1", undefined]]);
+    assert.deepEqual(calls, [["momos_configuration_snapshot_v2", undefined]]);
+    assert.deepEqual(result, { sourceKind: "server-configuration-snapshot-v2", payload });
+  } finally {
+    supabase.rpc = originalRpc;
+  }
+});
+
+test("H83 conserva H76 como compatibilidad únicamente cuando falta la RPC v2", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  const payload = { contract: "momos.configuration-snapshot.v1", version: 1, snapshotVersion: "8" };
+  supabase.rpc = async (name, args) => {
+    calls.push([name, args]);
+    if (name === "momos_configuration_snapshot_v2") {
+      return { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
+    }
+    return { data: payload, error: null };
+  };
+  try {
+    const result = await fetchConfigurationSnapshot();
+    assert.deepEqual(calls.map(([name]) => name), ["momos_configuration_snapshot_v2", "momos_configuration_snapshot_v1"]);
     assert.deepEqual(result, { sourceKind: "server-configuration-snapshot-v1", payload });
   } finally {
     supabase.rpc = originalRpc;
   }
 });
 
-test("H76 falla cerrado si el snapshot protegido no está desplegado", async () => {
+test("H76 falla cerrado si ningún snapshot protegido está desplegado", async () => {
   const originalRpc = supabase.rpc;
   supabase.rpc = async () => ({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
   try {
@@ -164,6 +185,48 @@ test("H77 no intenta hidratar dominios masivos cuando la RPC falla", async () =>
   try {
     await assert.rejects(fetchDashboardSnapshot(), /could not find the function/i);
     assert.deepEqual(calls, ["momos_dashboard_snapshot_v1"]);
+  } finally { supabase.rpc = originalRpc; }
+});
+
+test("H79 consulta filtros y cursor en una sola RPC cerrada", async () => {
+  const originalRpc = supabase.rpc;
+  const calls = [];
+  const payload = {
+    contract: "momos.history-page.v2", version: 2, limit: 25, has_more: true, filtered: true,
+    next_cursor: { at: "2026-07-19T12:00:00Z", id: "A-1" },
+    rows: [{ id: "A-2", fecha: "2026-07-19T13:00:00Z", user: "Administrador", entidad: "Pedido", entidad_id: "P-1", accion: "Pago", de: "Pendiente", a: "Pagado", area: "Pedidos" }],
+    privacy: { contains_customer_pii: false, contains_staff_identity: false, contains_storage_references: false, contains_secrets: false, contains_free_text: true, external_execution: false },
+  };
+  supabase.rpc = async (name, args) => { calls.push([name, args]); return { data: payload, error: null }; };
+  try {
+    const result = await fetchOperationalHistoryPage({ at: "2026-07-19T14:00:00Z", id: "A-3" }, 25, {
+      query: "P-1", area: "Pedidos", from: "2026-07-01", to: "2026-07-19",
+    });
+    assert.deepEqual(calls, [["momos_history_page_v2", {
+      p_cursor: { at: "2026-07-19T14:00:00Z", id: "A-3" }, p_limit: 25,
+      p_query: "P-1", p_area: "Pedidos", p_from: "2026-07-01", p_to: "2026-07-19",
+    }]]);
+    assert.equal(result.rows[0].id, "A-2");
+    assert.equal(result.hasMore, true);
+    assert.equal(result.filtered, true);
+    assert.deepEqual(result.cursor, payload.next_cursor);
+  } finally { supabase.rpc = originalRpc; }
+});
+
+test("H79 falla cerrado ante filtros inválidos, contrato abierto o despliegue ausente", async () => {
+  assert.deepEqual(normalizeOperationalHistoryFilters({ area: "Finanzas" }), { query: "", area: "Finanzas", from: "", to: "" });
+  assert.deepEqual(normalizeOperationalHistoryFilters({ area: "Inventario terminado" }), { query: "", area: "Inventario terminado", from: "", to: "" });
+  assert.throws(() => normalizeOperationalHistoryFilters({ area: "Talento humano" }), /área/i);
+  assert.throws(() => normalizeOperationalHistoryFilters({ from: "2026-07-20", to: "2026-07-19" }), /rango/i);
+  assert.throws(() => normalizeOperationalHistoryFilters({ query: "x".repeat(81) }), /búsqueda/i);
+
+  const originalRpc = supabase.rpc;
+  try {
+    supabase.rpc = async () => ({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
+    await assert.rejects(fetchOperationalHistoryPage(null, 50, { query: "P-1" }), /H79/i);
+
+    supabase.rpc = async () => ({ data: { contract: "abierto", version: 2, limit: 50, rows: [], privacy: {} }, error: null });
+    await assert.rejects(fetchOperationalHistoryPage(null, 50), /contrato protegido/i);
   } finally { supabase.rpc = originalRpc; }
 });
 
@@ -461,7 +524,11 @@ test("H66 y H67 ausentes ejecutan una sola vez el fallback legado", async () => 
     });
     assert.equal(result, legacy);
     assert.equal(legacyCalls, 1);
-    assert.deepEqual(calls, ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1"]);
+    assert.deepEqual(calls, [
+      "momos_agency_snapshots_v2",
+      "momos_agency_snapshots_v1",
+      "cierre_lecturas_pii_disponible",
+    ]);
   } finally {
     supabase.rpc = originalRpc;
   }

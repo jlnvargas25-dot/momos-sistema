@@ -11,9 +11,9 @@ const items = [
 test("arma el checklist completo de la orden, incluidas las piezas de una caja", () => {
   const lines = buildPackingChecklistLines("P1", items);
   assert.deepEqual(lines.map((line) => line.id), ["I1", "I2"]);
-  assert.match(lines[1].detail, /Figura Max/);
-  assert.match(lines[1].detail, /Sabor Oreo/);
-  assert.match(lines[1].detail, /Adición Milo/);
+  assert.equal(lines[1].label, "1× Max de Oreo");
+  assert.match(lines[1].detail, /Presentación comercial: Momo Perrito/);
+  assert.match(lines[1].detail, /Adiciones: Milo/);
 });
 
 test("la verificación pertenece únicamente al pedido correspondiente", () => {

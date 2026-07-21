@@ -1,3 +1,7 @@
+import { orderLinePresentation } from "./momos-domain-language.js";
+import { businessDateISO } from "./business-date.js";
+import { calculateOrderMoney } from "./order-money.js";
+
 const CLOSED_SALE_STATES = new Set(["Entregado", "Reclamo"]);
 const LOST_STATES = new Set(["Cancelado"]);
 
@@ -13,18 +17,11 @@ function daysBetween(from, to) {
   return Math.floor((b - a) / 86400000);
 }
 
-function itemTotal(item) {
-  const additions = (item.adiciones || []).reduce((sum, addition) => sum + Number(addition.precio || 0) * Number(addition.cant || 1), 0);
-  return Number(item.precio || 0) * Number(item.cant || 0) + additions;
-}
-
 export function customerOrderTotal(db, order) {
-  const subtotal = (db.order_items || []).filter((item) => item.orderId === order.id && !item.esSubMomo)
-    .reduce((sum, item) => sum + itemTotal(item), 0);
-  return Math.max(0, subtotal - Number(order.descuento || 0) + Number(order.domCobrado || 0));
+  return calculateOrderMoney(db, order).totalCharged;
 }
 
-export function buildCustomerCrm(db, customerId, today = new Date().toISOString().slice(0, 10)) {
+export function buildCustomerCrm(db, customerId, today = businessDateISO()) {
   const customer = (db.customers || []).find((row) => row.id === customerId) || {};
   const profile = (db.customer_crm_profiles || []).find((row) => row.customerId === customerId) || {};
   const orders = (db.orders || []).filter((order) => order.customerId === customerId)
@@ -44,7 +41,8 @@ export function buildCustomerCrm(db, customerId, today = new Date().toISOString(
 
   const preferences = new Map();
   completed.forEach((order) => order.itemsCrm.forEach((item) => {
-    const key = [item.nombre, item.figura, item.sabor].filter(Boolean).join(" · ") || "Producto sin detalle";
+    const product = (db.products || []).find((candidate) => candidate.id === item.productId);
+    const key = orderLinePresentation(item, product).primary || "Producto sin detalle";
     preferences.set(key, (preferences.get(key) || 0) + Number(item.cant || 0));
   }));
   const automaticFavorites = [...preferences.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)

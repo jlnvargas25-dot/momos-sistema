@@ -1,4 +1,5 @@
 import { preflightCalendarPost } from "./commercial-calendar.js";
+import { businessDateISO } from "./business-date.js";
 
 const MEDIA_CHANNELS = new Set(["Instagram", "Facebook", "TikTok", "Rappi", "Influencer", "Orgánico"]);
 const ACTIVE_POST_STATES = new Set(["Pendiente", "Programado"]);
@@ -50,7 +51,7 @@ export function distributionChecklistFor(post, db = {}) {
   return items;
 }
 
-export function distributionReadiness(post, db = {}, run = null, today = new Date().toISOString().slice(0, 10)) {
+export function distributionReadiness(post, db = {}, run = null, today = businessDateISO()) {
   const preflight = preflightCalendarPost(post, db, today);
   const creative = creativeOf(db, post);
   const errors = [...preflight.errors.map((item) => item.message)];
@@ -96,7 +97,7 @@ function nextAction(post, run, readiness, due, hasMetrics) {
   return "Sin acción";
 }
 
-export function buildDistributionRoom(db = {}, today = new Date().toISOString().slice(0, 10), nowTime = "12:00") {
+export function buildDistributionRoom(db = {}, today = businessDateISO(), nowTime = "12:00") {
   const posts = [...(db.content_calendar || [])].sort((left, right) => `${left.fecha}${left.hora}${left.id}`.localeCompare(`${right.fecha}${right.hora}${right.id}`));
   const evaluated = posts.map((post) => {
     const run = runOf(db, post.id);
@@ -125,7 +126,7 @@ export function buildDistributionRoom(db = {}, today = new Date().toISOString().
   };
 }
 
-export function validateDistributionAction(action, post, db = {}, run = null, payload = {}, today = new Date().toISOString().slice(0, 10), nowTime = "12:00") {
+export function validateDistributionAction(action, post, db = {}, run = null, payload = {}, today = businessDateISO(), nowTime = "12:00") {
   const readiness = distributionReadiness(post, db, run, today);
   const reasons = [];
   if (action === "prepare") reasons.push(...readiness.errors);

@@ -22,7 +22,7 @@ test("calcula historial, gasto real y favorito automático", () => {
   assert.equal(crm.averageTicket, 31500);
   assert.equal(crm.firstPurchase, "2026-05-01");
   assert.equal(crm.lastPurchase, "2026-06-01");
-  assert.deepEqual(crm.automaticFavorites[0], { label: "Momo Perrito · Max · Oreo", quantity: 3 });
+  assert.deepEqual(crm.automaticFavorites[0], { label: "Max de Oreo", quantity: 3 });
   assert.equal(crm.nextAction.type, "reactivation");
 });
 

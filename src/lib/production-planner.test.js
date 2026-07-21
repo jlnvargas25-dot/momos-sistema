@@ -95,6 +95,23 @@ test("no inventa demanda por clics si no existe una venta atribuida", () => {
   assert.equal(result.plans.length, 0);
 });
 
+test("no trata un preparado al momento mal tipado como familia de figuras", () => {
+  const db = baseDb();
+  db.products = [{
+    id: "P-CUCHARA", nombre: "Cheesecake Momo cuchareable", cat: "Momos Cuchara",
+    tipo: "momo", activo: true,
+  }];
+  db.orders = [{ id: "O-CUCHARA", estado: "Pagado", fecha: "2026-07-14" }];
+  db.order_items = [{
+    id: "L-CUCHARA", orderId: "O-CUCHARA", productId: "P-CUCHARA",
+    figura: "Lizi", sabor: "Coco", cant: 10,
+  }];
+  db.production_suggestions = [];
+
+  const result = buildKitchenProductionPlan(db, { today: "2026-07-15" });
+  assert.equal(result.plans.length, 0);
+});
+
 test("producto en proceso y stock exacto vigente reducen la recomendación sin ocultar la cola", () => {
   const db = baseDb();
   db.production_suggestions = [];
@@ -104,4 +121,38 @@ test("producto en proceso y stock exacto vigente reducen la recomendación sin o
   db.production_batches = [{ productId: "P-G", figuras: [{ figura: "Lizi", cant: 1 }], sabor: "Maracuyá", relleno: "Cheesecake con ganache", estado: "Congelando" }];
   const result = buildKitchenProductionPlan(db, { today: "2026-07-15", horizonDays: 3 });
   assert.equal(result.plans.length, 0);
+});
+
+test("bloquea una necesidad cuya familia contradice el productId canónico de la figura", () => {
+  const db = baseDb();
+  db.products.push({ id: "P-OTRA", nombre: "Momo premium", tipo: "momo", activo: true });
+  db.production_suggestions = [{
+    id: "S-MISMATCH", estado: "Pendiente", area: "Producción", orderId: "O-1",
+    orderItemId: "L-1", productId: "P-OTRA", cantidad: 1,
+  }];
+  const result = buildKitchenProductionPlan(db, { today: "2026-07-15" });
+  assert.equal(result.plans.some((plan) => plan.suggestionIds.includes("S-MISMATCH")), false);
+  assert.deepEqual(result.integrityIssues[0], {
+    code: "ORDER_VARIANT_PRODUCT_MISMATCH", sourceId: "S-MISMATCH", productId: "P-OTRA",
+    canonicalProductId: "P-G", figure: "Lizi", flavor: "Maracuyá", canCreate: false,
+  });
+});
+
+test("el plan de Cocina no convierte Gatito ni Horizontal en figuras producibles", () => {
+  const db = baseDb();
+  db.figuras.push({ nombre: "Gatito", productId: "P-G", gramajeG: 180, activo: true });
+  db.order_items[0] = { ...db.order_items[0], figura: "Gatito" };
+  db.production_suggestions = [{
+    id: "S-LEGACY", estado: "Pendiente", area: "Producción", orderId: "O-1",
+    orderItemId: "L-1", productId: "P-G", cantidad: 1,
+  }];
+  const result = buildKitchenProductionPlan(db, { today: "2026-07-15" });
+  assert.equal(result.plans.some((plan) => plan.suggestionIds.includes("S-LEGACY")), false);
+  assert.equal(result.integrityIssues.some((issue) => issue.code === "NON_CANONICAL_FIGURE"), true);
+
+  const draft = productionRunDraft({ variants: [{ figure: "Horizontal", recommended: 3 }] }, [
+    ...db.figuras, { nombre: "Horizontal", productId: "P-G", activo: true },
+  ]);
+  assert.equal("Horizontal" in draft.figuras, false);
+  assert.equal("Gatito" in draft.figuras, false);
 });

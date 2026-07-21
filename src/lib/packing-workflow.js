@@ -1,21 +1,22 @@
+import { orderLinePresentation } from "./momos-domain-language.js";
+
 const PACKING_EVIDENCE_OPEN = "Caja abierta";
 const PACKING_EVIDENCE_SEALS = new Set(["Caja cerrada con sello", "Bolsa sellada"]);
 
 export function buildPackingChecklistLines(orderId, orderItems = []) {
   return (orderItems || [])
     .filter((item) => item?.id && item.orderId === orderId)
-    .map((item) => ({
-      id: item.id,
-      parentItemId: item.parentItemId || "",
-      label: `${Number(item.cant || 0)}× ${item.nombre || "Producto"}`,
-      detail: [
-        item.figura && `Figura ${item.figura}`,
-        item.sabor && `Sabor ${item.sabor}`,
-        item.salsa && `Salsa ${item.salsa}`,
-        item.relleno && `Relleno ${item.relleno}`,
-        ...(item.adiciones || []).map((addition) => `Adición ${addition.nombre}${Number(addition.cant || 1) > 1 ? ` ×${addition.cant}` : ""}`),
-      ].filter(Boolean).join(" · "),
-    }));
+    .map((item) => {
+      const presentation = orderLinePresentation(item);
+      return {
+        id: item.id,
+        parentItemId: item.parentItemId || "",
+        label: presentation.quantityLabel,
+        detail: presentation.secondary,
+        domainKind: presentation.kind,
+        exactVariant: presentation.exact,
+      };
+    });
 }
 
 export function findPackingVerification(orderId, verifications = []) {
@@ -63,7 +64,7 @@ export function buildPackingGuide({ orderStatus = "Listo para empaque", progress
   const handoffAccepted = handoff?.status === "Aceptado" || DISPATCHED_OR_LATER.has(orderStatus);
   const definitions = [
     { key: "receive", icon: "📥", title: "Recibir de Cocina", detail: "Tomá la etapa y ubicá la orden física en la mesa.", done: ["Listo para empaque", ...PACKED_OR_LATER].includes(orderStatus) },
-    { key: "verify", icon: "✓", title: "Comparar la comanda", detail: "Revisá producto, figura, sabor, salsa, relleno y cantidades.", done: safeProgress.verified },
+    { key: "verify", icon: "✓", title: "Comparar la comanda", detail: "Revisá primero figura y sabor; después presentación comercial, salsa, relleno y cantidades.", done: safeProgress.verified },
     { key: "open-photo", icon: "📷", title: "Caja abierta", detail: "Fotografiá todo el contenido antes de cerrar.", done: safeProgress.hasOpenPhoto },
     { key: "seal-photo", icon: "🔒", title: "Cerrar y sellar", detail: "Cerrá, sellá y registrá la evidencia final.", done: safeProgress.hasSealPhoto },
     { key: "pack", icon: "🎁", title: "Confirmar Empacado", detail: "El sistema valida los tres controles antes de avanzar.", done: packed },
