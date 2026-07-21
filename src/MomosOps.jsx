@@ -15,7 +15,7 @@ import {
   editarReclamo, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente,
   registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente,
   crearProducto, editarProducto, setProductoActivo,
-  guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview,
+  guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, reportClientSloTelemetry, evaluateOperationalSloAlerts,
   crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado,
   registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion
 } from "./lib/rpc";
@@ -25,6 +25,7 @@ import { deliveryBlocksNewRequest, ORDER_ROLE_SUMMARY, ORDER_WORKFLOW_ROLES } fr
 import { hasAnyRole, hasRole, normalizeRoles, primaryRole, rolesLabel } from "./lib/user-roles";
 import { agencyOperationalFactsReady as hasAgencyOperationalFacts } from "./lib/agency-operational-facts";
 import { measureSyncLoad, runtimePerformance } from "./performance/runtime-telemetry";
+import { createRuntimeSloReporter } from "./performance/runtime-slo-reporter";
 import {
   applyInventoryMutationEnvelope, mergeInventoryAuditSnapshot, normalizeInventoryDeltaBatch, normalizeInventoryEventsEnvelope,
 } from "./lib/mutation-envelope";
@@ -2491,7 +2492,7 @@ function Bars({ data, money }) {
 /* ================= DASHBOARD ================= */
 
 function getBusinessPanelsShared() {
-  return { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION };
+  return { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, evaluateOperationalSloAlerts, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION };
 }
 
 function BusinessPanelFallback() {
@@ -3571,9 +3572,14 @@ export default function MomosOps() {
         })) refresh(domain);
       });
     });
+    const realtimeStartedAt = globalThis.performance?.now?.() ?? Date.now();
     channel.subscribe((status) => {
       if (!alive) return;
       if (status === "SUBSCRIBED") {
+        runtimePerformance.recordRealtime({
+          ok: true,
+          durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - realtimeStartedAt),
+        });
         setRealtimeStatus("activo");
         // Handshake sin PII: después de activar el canal comparamos solo la
         // versión singleton. Si hubo un cambio entre snapshot y suscripción,
@@ -3633,7 +3639,13 @@ export default function MomosOps() {
           flushProductionActivityDelta(0);
         }
       }
-      else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) setRealtimeStatus("reconectando");
+      else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+        runtimePerformance.recordRealtime({
+          ok: false,
+          durationMs: Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - realtimeStartedAt),
+        });
+        setRealtimeStatus("reconectando");
+      }
     });
     return () => {
       alive = false;
@@ -3676,6 +3688,17 @@ export default function MomosOps() {
     })();
     return () => { vivo = false; };
   }, [authUserId]);
+
+  // H96 envía, como máximo una vez por minuto, histogramas y contadores
+  // cerrados. No incluye URL, RPC, vista, usuario, pedido, payload ni texto.
+  useEffect(() => {
+    if (!authUserId || !perfil?.id || perfil?.activo === false) return undefined;
+    const reporter = createRuntimeSloReporter({
+      telemetry: runtimePerformance,
+      report: reportClientSloTelemetry,
+    });
+    return () => reporter.stop();
+  }, [authUserId, perfil?.id, perfil?.activo]);
 
   // ── Fase 3: hidratar desde Supabase (una vez por carga; re-usable tras cada escritura remota) ──
   // Maestros/catálogos + operativo + campaigns/creatives/content_posts/metrics_daily.

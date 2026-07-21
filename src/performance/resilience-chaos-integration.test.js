@@ -42,7 +42,7 @@ test("el gate H94 de staging falla cerrado y nunca reutiliza producción", async
   assert.match(workflow, /https:\/\/\$STAGING_PROJECT_REF\.supabase\.co/);
   assert.match(workflow, /secrets\.STAGING_SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(workflow, /secrets\.SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(workflow, /01-95 PASS/);
+  assert.match(workflow, /01-96 PASS/);
   assert.match(workflow, /test-certificacion-concurrencia-caos-v1\.sql/);
   assert.match(workflow, /test-observabilidad-slo-v1\.sql/);
   assert.match(workflow, /MOMOS_H94_ENVIRONMENT: Staging/);

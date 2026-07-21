@@ -350,3 +350,22 @@ El worker `operational-health-worker` 1.1.0 reporta su propia latencia y éxito 
 `HEALTH_MONITOR`. Los demás dominios permanecen honestamente `Sin datos` hasta
 que su proceso privado reporte evidencia; MOMO OPS nunca inventa salud por
 ausencia de telemetría.
+
+## Hito 96 — telemetría real y alertas operativas
+
+Aplicar únicamente después de confirmar `20260721_95_observabilidad_slo`:
+
+1. `../telemetria-operativa-alertas-v1.sql` — recibe un lote agregado por minuto
+   desde el navegador para Interfaz, RPC, Realtime y Storage; agrega sondas
+   privadas de Base de datos e Integraciones y genera alertas deduplicadas por
+   presupuesto de error, p95, saturación, cola y señal vencida. No acepta URL,
+   RPC, vista, usuario, pedido, payload, texto libre, PII ni secretos.
+2. `../tests/test-telemetria-operativa-alertas-v1.sql` — prueba idempotencia,
+   contrato cerrado, RBAC, privacidad, sonda y deduplicación; siempre rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–96; siempre hace rollback.
+
+El worker `operational-health-worker` 1.2.0 reporta `HEALTH_MONITOR`, `DATABASE`
+y `CONNECTORS`, y evalúa alertas. La interfaz agrega las cuatro señales cliente
+una vez por minuto y nunca bloquea una acción operativa si la observabilidad no
+está disponible.

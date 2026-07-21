@@ -2,7 +2,7 @@ import { hostname } from "node:os";
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
-const VERSION = "momos-operational-health-worker/1.1.0";
+const VERSION = "momos-operational-health-worker/1.2.0";
 const ONCE = process.argv.includes("--once");
 const HEALTH_ONLY = process.argv.includes("--health-only");
 const POLL_MS = Math.max(60_000, Number(process.env.OPERATIONAL_HEALTH_POLL_MS || 300_000));
@@ -54,25 +54,45 @@ function stableUuid(material) {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
-async function reportSlo(durationMs, succeeded) {
+function isMissingRpc(error) {
+  return error?.code === "PGRST202"
+    || /could not find (?:the )?function|schema cache|function\b.+\bdoes not exist/i.test(error?.message || "");
+}
+
+async function reportSlo(serviceCode, durationMs, succeeded, saturationPct = null, queueDepth = 0) {
   const bucketAt = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
   const { error } = await supabase.rpc("registrar_telemetria_slo_v1", {
     p: {
-      idempotency_key: stableUuid(`${WORKER_ID}|HEALTH_MONITOR|${bucketAt}|${succeeded ? "ok" : "error"}`),
-      service_code: "HEALTH_MONITOR",
+      idempotency_key: stableUuid(`${WORKER_ID}|${serviceCode}|${bucketAt}|${succeeded ? "ok" : "error"}`),
+      service_code: serviceCode,
       bucket_at: bucketAt,
       sample_count: 1,
       success_count: succeeded ? 1 : 0,
       error_count: succeeded ? 0 : 1,
       latency_buckets: latencyHistogram(durationMs),
-      saturation_pct: null,
-      queue_depth: 0,
-      source_kind: "worker",
+      saturation_pct: saturationPct,
+      queue_depth: queueDepth,
+      source_kind: serviceCode === "HEALTH_MONITOR" ? "worker" : "server",
     },
   });
   // Despliegue compatible: antes de H95 la RPC no existe. Cualquier otro
   // error deja de ser silencioso porque significaría perder observabilidad.
-  if (error && error.code !== "PGRST202") throw new Error("SLO_REPORT_FAILED");
+  if (error && !isMissingRpc(error)) throw new Error("SLO_REPORT_FAILED");
+}
+
+async function reportPrivateProbes() {
+  const startedAt = performance.now();
+  const { data, error } = await supabase.rpc("obtener_sonda_slo_servidor_v1");
+  const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+  if (error && isMissingRpc(error)) return { pendingActivation: true };
+  if (error || data?.contract !== "momos.server-slo-probe.v1") throw new Error("SLO_PROBE_FAILED");
+  await reportSlo("DATABASE", durationMs, data.database?.ok === true,
+    data.database?.saturationPct ?? null, data.database?.queueDepth ?? 0);
+  await reportSlo("CONNECTORS", durationMs, data.connectors?.ok === true,
+    null, data.connectors?.queueDepth ?? 0);
+  const evaluation = await supabase.rpc("evaluar_alertas_slo_v1", { p_window_minutes: 60 });
+  if (evaluation.error && !isMissingRpc(evaluation.error)) throw new Error("SLO_ALERT_EVALUATION_FAILED");
+  return data;
 }
 
 async function runMonitor() {
@@ -83,10 +103,11 @@ async function runMonitor() {
   });
   const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
   if (error) {
-    await reportSlo(durationMs, false).catch(() => {});
+    await reportSlo("HEALTH_MONITOR", durationMs, false).catch(() => {});
     throw new Error(error.message);
   }
-  await reportSlo(durationMs, true);
+  await reportSlo("HEALTH_MONITOR", durationMs, true);
+  await reportPrivateProbes();
   const state = String(data?.status || "Desconocido");
   const checks = Number(data?.checks || 0);
   const failures = Number(data?.failures || 0);

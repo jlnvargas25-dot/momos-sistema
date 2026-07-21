@@ -9,13 +9,17 @@ export function shouldEnableRuntimePerformance({ dev = false, search = "" } = {}
   }
 }
 
-const enabled = shouldEnableRuntimePerformance({
+const exposeEnabled = shouldEnableRuntimePerformance({
   dev: Boolean(import.meta.env?.DEV),
   search: typeof window !== "undefined" ? window.location?.search : "",
 });
+// H96 conserva solo contadores, histogramas y estados cerrados. Se recolectan en
+// produccion para reportar SLO, pero el detalle de diagnostico sigue visible
+// unicamente en desarrollo o cuando un administrador abre ?momosPerf=1.
+const enabled = typeof window !== "undefined";
 
 function exposeRuntimePerformance(state) {
-  if (!enabled || typeof window === "undefined") return;
+  if (!exposeEnabled || typeof window === "undefined") return;
   window.MOMOS_PERF_METRICS = state;
   // El atributo permite a la prueba E2E leer el resumen desde un mundo de
   // automatización aislado. El contrato ya está agregado y no contiene URL,

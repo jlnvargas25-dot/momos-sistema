@@ -17,15 +17,37 @@ test("H95 agrega SLO sin conservar eventos, rutas ni PII", async () => {
   assert.doesNotMatch(sql, /request_path|customer_id|actor_id|email|telefono|direcci[oó]n/i);
 });
 
-test("el monitor 1.1 reporta una muestra agregada e idempotente", async () => {
+test("el monitor 1.2 reporta salud, base, conectores y evalúa alertas", async () => {
   const worker = await read("scripts/operational-health-worker.mjs");
-  assert.match(worker, /momos-operational-health-worker\/1\.1\.0/);
+  assert.match(worker, /momos-operational-health-worker\/1\.2\.0/);
   assert.match(worker, /registrar_telemetria_slo_v1/);
-  assert.match(worker, /service_code: "HEALTH_MONITOR"/);
+  assert.match(worker, /reportSlo\("HEALTH_MONITOR"/);
+  assert.match(worker, /obtener_sonda_slo_servidor_v1/);
+  assert.match(worker, /evaluar_alertas_slo_v1/);
   assert.match(worker, /idempotency_key: stableUuid\(/);
   assert.match(worker, /Math\.floor\(Date\.now\(\) \/ 60_000\)/);
   assert.match(worker, /latency_buckets: latencyHistogram/);
   assert.doesNotMatch(worker, /p:\s*\{[^}]*message/s);
+});
+
+test("H96 conecta agregación cliente, sondas, alertas y UI sin PII", async () => {
+  const [sql, rpc, app, panel, reporter] = await Promise.all([
+    read("supabase/telemetria-operativa-alertas-v1.sql"),
+    read("src/lib/rpc.js"), read("src/MomosOps.jsx"),
+    read("src/features/backoffice/BusinessPanels.jsx"),
+    read("src/performance/runtime-slo-reporter.js"),
+  ]);
+  for (const marker of [
+    "registrar_lote_telemetria_cliente_slo_v1", "operational_slo_alerts",
+    "obtener_sonda_slo_servidor_v1", "evaluar_alertas_slo_v1",
+    "containsCustomerPii", "containsSecrets", "containsFreeText",
+  ]) assert.match(sql, new RegExp(marker));
+  assert.match(rpc, /reportClientSloTelemetry/);
+  assert.match(app, /createRuntimeSloReporter/);
+  assert.match(app, /recordRealtime/);
+  assert.match(panel, /data-testid="operational-slo-alerts"/);
+  assert.match(reporter, /OPS_FRONTEND[\s\S]*RPC_CORE[\s\S]*STORAGE[\s\S]*REALTIME/);
+  assert.doesNotMatch(reporter, /customer_id|actor_id|email|telefono|direcci[oó]n|request_path/i);
 });
 
 test("Configuración muestra SLO dentro del Centro de Salud existente", async () => {
@@ -51,6 +73,6 @@ test("H95 queda en la aceptación y en el gate aislado de staging", async () => 
   assert.match(ordered, /20260721_95_observabilidad_slo/);
   assert.match(ordered, /migraciones ordenadas 01-95 PASS/);
   assert.match(workflow, /test-observabilidad-slo-v1\.sql/);
-  assert.match(workflow, /01-95 PASS/);
+  assert.match(workflow, /01-96 PASS/);
   assert.match(contracts, /test-observabilidad-slo-v1\.sql/);
 });

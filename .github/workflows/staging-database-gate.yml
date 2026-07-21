@@ -73,7 +73,7 @@ jobs:
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-95 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-96 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run recovery contracts with rollback
         env:
@@ -98,6 +98,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-observabilidad-slo-v1.sql | tee "$RUNNER_TEMP/slo-contracts.log"
           grep -q "H95 SLO/percentiles/error-budget" "$RUNNER_TEMP/slo-contracts.log"
+
+      - name: Run H96 telemetry and alerts contracts with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-telemetria-operativa-alertas-v1.sql | tee "$RUNNER_TEMP/telemetry-alerts.log"
+          grep -q "H96 telemetria/sondas/alertas" "$RUNNER_TEMP/telemetry-alerts.log"
 
       - name: Certify isolated concurrency and chaos in staging
         env:

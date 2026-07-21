@@ -89,6 +89,37 @@ export async function fetchOperationalSloSnapshot(windowMinutes = 60) {
   return data;
 }
 
+export async function reportClientSloTelemetry(payload) {
+  const measurements = Array.isArray(payload?.measurements) ? payload.measurements : [];
+  if (measurements.length < 1 || measurements.length > 4) {
+    throw new Error("El lote de salud debe contener entre una y cuatro mediciones.");
+  }
+  const { data, error } = await supabase.rpc("registrar_lote_telemetria_cliente_slo_v1", {
+    p: { measurements },
+  });
+  // Compatibilidad durante el despliegue: el cliente H96 puede convivir con
+  // H95 sin interrumpir ninguna acción operativa.
+  if (error && isMissingRpcError(error)) return { ok: false, pendingActivation: true };
+  if (error) throw rpcError(error, "No se pudo reportar la salud agregada.");
+  if (data?.contract !== "momos.client-slo-batch.v1") {
+    throw new Error("El servidor no confirmó el lote de salud.");
+  }
+  return data;
+}
+
+export async function evaluateOperationalSloAlerts(windowMinutes = 60) {
+  const minutes = Number(windowMinutes);
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) {
+    throw new Error("La ventana de alertas no es válida.");
+  }
+  const { data, error } = await supabase.rpc("evaluar_alertas_slo_v1", {
+    p_window_minutes: minutes,
+  });
+  if (error && isMissingRpcError(error)) return { ok: false, pendingActivation: true };
+  if (error) throw rpcError(error, "No se pudieron evaluar las alertas de servicio.");
+  return data;
+}
+
 export async function fetchContinuitySnapshot() {
   const { data, error } = await supabase.rpc("momos_continuity_snapshot_v1");
   if (error) throw rpcError(error, "No se pudo consultar la continuidad de MOMO OPS.");

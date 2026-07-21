@@ -15,7 +15,7 @@ import { buildCanonicalFinishedStock } from "../../lib/canonical-stock.js";
 import { buildCanonicalPhysicalResults } from "../../lib/canonical-production-results.js";
 
 export function createBusinessPanels(shared) {
-  const { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION } = shared;
+  const { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, evaluateOperationalSloAlerts, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION } = shared;
 
   function Dashboard({ db, go, user }) {
     const [assistantCenterOpen, setAssistantCenterOpen] = useState(false);
@@ -2034,6 +2034,7 @@ export function createBusinessPanels(shared) {
       setHealthError("");
       try {
         await runOperationalHealthReview();
+        await evaluateOperationalSloAlerts(60);
         const [health, slo, continuity] = await Promise.all([fetchOperationalHealthSnapshot(), fetchOperationalSloSnapshot(60), fetchContinuitySnapshot()]);
         setHealthSnapshot(health);
         setSloSnapshot(slo);
@@ -2189,10 +2190,19 @@ export function createBusinessPanels(shared) {
     const healthIncidents = Array.isArray(healthSnapshot?.incidents) ? healthSnapshot.incidents : [];
     const sloServices = Array.isArray(sloSnapshot?.services) ? sloSnapshot.services : [];
     const sloCounts = sloSnapshot?.counts || {};
+    const sloAlerts = Array.isArray(sloSnapshot?.alerts) ? sloSnapshot.alerts : [];
+    const sloAlertCounts = sloSnapshot?.alertCounts || {};
     const sloLabels = {
       OPS_FRONTEND: "Interfaz MOMO OPS", RPC_CORE: "Operaciones del servidor",
       DATABASE: "Base de datos", REALTIME: "Actualización en vivo",
       STORAGE: "Archivos", CONNECTORS: "Integraciones", HEALTH_MONITOR: "Monitor automático",
+    };
+    const sloAlertTitle = {
+      ERROR_BUDGET_EXHAUSTED: "Se agotó el margen de errores",
+      LATENCY_P95_HIGH: "Las respuestas están tardando más de lo esperado",
+      SATURATION_HIGH: "El servicio está cerca de su capacidad",
+      QUEUE_HIGH: "Hay demasiado trabajo esperando",
+      TELEMETRY_STALE: "La señal dejó de actualizarse",
     };
     const sloTone = (status) => status === "Saludable"
       ? { bg: "#E3EFE0", color: "#315D36" }
@@ -2291,6 +2301,19 @@ export function createBusinessPanels(shared) {
                   </div>;
                 })}
               </div>
+              {sloAlerts.length > 0 && <div className="mt-3 rounded-2xl border p-3" style={{ borderColor: Number(sloAlertCounts.critical || 0) > 0 ? "#E56B55" : "#E3B35B", background: Number(sloAlertCounts.critical || 0) > 0 ? "#FFF5F2" : "#FFF9EC" }} data-testid="operational-slo-alerts">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="text-xs font-extrabold">Alertas del servicio</div>
+                  <span className="text-[9px] font-extrabold uppercase">{Number(sloAlertCounts.open || 0)} abiertas</span>
+                </div>
+                <div className="grid md:grid-cols-2 gap-2">
+                  {sloAlerts.slice(0, 6).map((alert) => <div key={alert.id} className="rounded-xl border px-3 py-2" style={{ borderColor: T.border, background: alert.status === "Recuperada" ? "#F2F7F0" : "#fff" }}>
+                    <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-extrabold uppercase" style={{ color: alert.severity === "Critica" ? "#A03B2A" : "#8A5D08" }}>{sloLabels[alert.serviceCode] || "Servicio MOMO OPS"}</span><Badge tone={alert.status === "Recuperada" ? "green" : "amber"}>{alert.status}</Badge></div>
+                    <div className="text-xs font-bold mt-1">{sloAlertTitle[alert.alertCode] || "Revisar la salud del servicio"}</div>
+                    <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>Responsable: {alert.ownerRole} · {healthDate(alert.lastSeenAt)}</div>
+                  </div>)}
+                </div>
+              </div>}
             </div>
             <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
               <div className="flex items-center justify-between gap-3 mb-2"><div className="text-xs font-extrabold uppercase tracking-wide" style={{ color: T.choco2 }}>Qué necesita atención</div><span className="text-[10px] font-bold">{healthIncidents.length} abiertas o recuperadas</span></div>

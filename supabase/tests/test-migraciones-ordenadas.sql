@@ -1458,5 +1458,29 @@ begin
     'H95 perdio dominios, percentiles o idempotencia';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-95 PASS, rollback total' as resultado_h95;
+select 'TESTS_OK - migraciones ordenadas 01-95 PASS, continua H96' as resultado_h95;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations where id='20260721_96_telemetria_alertas')
+    and to_regclass('public.operational_slo_alerts') is not null
+    and to_regprocedure('public.registrar_lote_telemetria_cliente_slo_v1(jsonb)') is not null
+    and to_regprocedure('public.obtener_sonda_slo_servidor_v1()') is not null
+    and to_regprocedure('public.evaluar_alertas_slo_v1(integer)') is not null,
+    'H96 no instalo telemetria real, sondas y alertas';
+  assert has_function_privilege('authenticated','public.registrar_lote_telemetria_cliente_slo_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.obtener_sonda_slo_servidor_v1()','EXECUTE')
+    and not has_function_privilege('authenticated','public.obtener_sonda_slo_servidor_v1()','EXECUTE')
+    and not has_table_privilege('authenticated','public.operational_slo_alerts','SELECT')
+    and not has_table_privilege('service_role','public.operational_slo_alerts','SELECT'),
+    'H96 perdio RBAC o expuso alertas privadas';
+  assert position('client-slo-batch.v1' in pg_get_functiondef(
+      'public.registrar_lote_telemetria_cliente_slo_v1(jsonb)'::regprocedure))>0
+    and position('momos.server-slo-probe.v1' in pg_get_functiondef(
+      'public.obtener_sonda_slo_servidor_v1()'::regprocedure))>0
+    and position('containsCustomerPii' in pg_get_functiondef(
+      'public.momos_operational_slo_snapshot_v1(integer)'::regprocedure))>0,
+    'H96 perdio contratos cerrados o privacidad';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-96 PASS, rollback total' as resultado_h96;
 rollback;

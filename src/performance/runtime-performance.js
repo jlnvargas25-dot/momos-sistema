@@ -147,8 +147,16 @@ export function createRuntimePerformance({
   const http = [];
   const sync = [];
   const routes = [];
+  const sloSubscribers = new Set();
   let activeRoute = null;
   let routeSequence = 0;
+
+  function emitSlo(event) {
+    if (!enabled) return;
+    sloSubscribers.forEach((subscriber) => {
+      try { subscriber(event); } catch { /* la telemetria nunca interrumpe la operacion */ }
+    });
+  }
 
   function emit() {
     if (enabled) onChange(snapshot());
@@ -168,6 +176,7 @@ export function createRuntimePerformance({
       requestDurationsMs: [...activeRoute.requestDurationsMs],
     };
     limitedPush(routes, finished, limit);
+    emitSlo({ type: "route", record: { status: finished.status, durationMs: finished.durationMs } });
     activeRoute = null;
     return finished;
   }
@@ -227,8 +236,11 @@ export function createRuntimePerformance({
       durationMs: safeNumber(metric.durationMs),
       bytesIn: safeNumber(metric.bytesIn),
       bytesOut: safeNumber(metric.bytesOut),
+      saturationPct: metric.saturationPct == null ? null : Math.min(100, safeNumber(metric.saturationPct)),
+      queueDepth: metric.queueDepth == null ? null : Math.trunc(safeNumber(metric.queueDepth)),
     };
     limitedPush(http, record, limit);
+    emitSlo({ type: "http", record: { ...record } });
     if (activeRoute) {
       activeRoute.requests += 1;
       activeRoute.bytesIn += record.bytesIn;
@@ -249,6 +261,26 @@ export function createRuntimePerformance({
       bytesOut: 0,
     }, limit);
     emit();
+  }
+
+  function recordRealtime(metric = {}) {
+    recordHttp({
+      domain: "operativo",
+      kind: "realtime",
+      status: metric.ok === true ? 200 : 503,
+      ok: metric.ok === true,
+      durationMs: metric.durationMs,
+      bytesIn: 0,
+      bytesOut: 0,
+      saturationPct: metric.saturationPct,
+      queueDepth: metric.queueDepth,
+    });
+  }
+
+  function subscribeSlo(subscriber) {
+    if (typeof subscriber !== "function") throw new Error("El suscriptor SLO no es valido.");
+    sloSubscribers.add(subscriber);
+    return () => sloSubscribers.delete(subscriber);
   }
 
   function snapshot() {
@@ -295,7 +327,18 @@ export function createRuntimePerformance({
     emit();
   }
 
-  return { isEnabled: () => enabled, startRoute, markUiCommitted, markDomainReady, recordHttp, recordSync, snapshot, reset };
+  return {
+    isEnabled: () => enabled,
+    startRoute,
+    markUiCommitted,
+    markDomainReady,
+    recordHttp,
+    recordSync,
+    recordRealtime,
+    subscribeSlo,
+    snapshot,
+    reset,
+  };
 }
 
 function requestUrl(input) {
