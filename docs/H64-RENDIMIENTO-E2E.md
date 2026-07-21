@@ -150,6 +150,18 @@ Medición autenticada local con `?momosPerf=1`, tras recorrer los paneles diferi
 
 Validación de cierre: 63/63 pruebas de rendimiento, 592/592 pruebas funcionales, build de producción y todos los presupuestos PASS. H78 no necesita una migración: es un hito frontend, de telemetría agregada y pruebas adversariales; la autoridad de datos permanece en H65–H77.
 
+## H80 · Domicilios incrementales por pedido
+
+H80 conecta Domicilios al contrato versionado instalado en H71. La tarjeta y el modal siguen usando el pedido como unidad de trabajo; el identificador `D-xxx` queda exclusivamente como trazabilidad del intento logístico.
+
+- La vista escucha `order_sync_versions` y deja de suscribirse a las tablas operativas crudas cuando la capability de deltas está disponible.
+- Asignar un domicilio o actualizar su seguimiento solicita solo `momos_order_deltas_v1` para el pedido afectado.
+- El mismo delta trae pedido, cliente, productos e intentos de domicilio del commit ya confirmado.
+- Una respuesta tardía se descarta por generación; solo una carrera, un error o una base sin H71 activa la conciliación operativa amplia.
+- El panel no ejecuta `refrescar()` en el camino feliz de ninguna mutación logística.
+
+H80 no agrega migración: reutiliza la autoridad, RBAC, outbox y contrato cerrado de H71. Su prueba de integración impide regresar silenciosamente a una recarga global.
+
 ## Presupuesto de aceptación
 
 - JavaScript inicial: máximo 250 KiB gzip.
@@ -267,3 +279,52 @@ La interfaz puede cachear vistas de lectura, pero nunca inventar ni adelantar la
 - No hacer una reescritura total: cada fase debe compilar y ser operable.
 - Una optimización que rompe consistencia o seguridad se rechaza aunque reduzca tiempo.
 - Los presupuestos se revisan con evidencia real; no se elevan solo para hacer pasar CI.
+
+## H81 · Domicilios compacto
+
+- `Domicilios` deja de hidratar todo el dominio Operaciones al entrar.
+- `momos_delivery_snapshot_v1(50)` devuelve solo pedidos que requieren Logística, sus líneas, destino y entregas; el historial queda limitado a 50 pedidos.
+- La PII de cliente está declarada y limitada a nombre, teléfono y destino porque es necesaria para entregar. No viajan actores, rutas de Storage, evidencias, reclamos, auditoría ni secretos.
+- El snapshot se guarda en colecciones propias (`deliveryOrders`, `deliveryOrderItems`, `deliveryCustomers`, `deliveryDeliveries`) y nunca reemplaza el estado global de Pedidos.
+- H71 continúa siendo el contrato incremental: cada cambio actualiza la orden global y su proyección logística sin una segunda hidratación.
+- El fallback de una carrera o una desconexión relee Logística, no Operaciones completas.
+- RBAC: solo Administrador, Logística y Mensajero pueden leer el snapshot.
+
+## H82 · Domicilios sin lectura posterior
+
+- Asignar, editar y confirmar `En ruta` o `Entregado` usa una sola RPC transaccional.
+- Cada intención conserva una llave UUID idempotente durante reintentos de red; repetirla no crea otro domicilio.
+- La respuesta contiene el delta H71 exacto del pedido desde el mismo commit y la interfaz lo aplica localmente.
+- El camino feliz no vuelve a consultar Pedidos ni Logística; solo concilia si la respuesta llega vencida, inválida o el servidor aún no tiene H82.
+- Los recibos son privados, no guardan dirección, teléfono ni notas, y el contrato declara PII sin exponer secretos.
+- RBAC: solo Administrador, Logística y Mensajero pueden ejecutar la mutación.
+
+## H88 · Publicación incremental del estado
+
+H88 elimina del camino crítico de Realtime y de las mutaciones dirigidas la clonación y normalización del árbol global completo de React.
+
+- Los deltas de Pedidos, Inventario terminado, Producción, Catálogo y CRM crean únicamente las colecciones que realmente modifican.
+- Los dominios no afectados conservan su referencia; una actualización de una orden ya no recorre inventario, finanzas, agencia ni biblioteca.
+- La normalización global permanece exclusivamente en snapshots completos y restauraciones, donde sigue siendo necesaria por compatibilidad.
+- Los productos recibidos por delta derivan localmente sus atributos operativos, sin depender de una normalización posterior de toda la base.
+- Las pruebas usan 25.000 filas ajenas para comprobar inmutabilidad y reutilización estructural, y una prueba de integración impide volver a invocar `update()` o `normalizeDbShape()` desde los deltas dirigidos.
+
+H88 es exclusivamente frontend y no necesita migración de Supabase. No cambia autoridad, RBAC, idempotencia, FIFO, pagos ni contratos instalados en H64–H87.
+
+## H89 · Dependencias diferidas por dominio
+
+H89 evita que el arranque descargue motores que solo se utilizan después de abrir Backoffice o Agencia.
+
+- La configuración mínima de Agencia vive en un módulo pequeño e independiente; el motor completo de inteligencia queda junto al chunk diferido de Agencia.
+- CRM, calendario comercial, distribución, despacho e historial operativo se importan directamente desde `BusinessPanels`, no desde el shell inicial.
+- El contrato compartido del panel deja de transportar helpers de dominio que el arranque no ejecuta.
+- Las pruebas estructurales impiden que estas dependencias vuelvan a importarse desde `MomosOps.jsx`.
+
+Medición de producción H89:
+
+- JavaScript inicial: 246.641 → 232.480 bytes gzip, ahorro de 14.161 bytes (5,7 %).
+- Margen bajo el presupuesto de 256.000 bytes: 23.520 bytes.
+- Chunk mayor: Agencia, 472.848 bytes crudos; continúa bajo el límite de 512.000 bytes.
+- `MomosOps.jsx`: 4.921 líneas; estilos inline: 115.
+
+H89 es exclusivamente frontend y no necesita migración de Supabase. La carga diferida cambia el momento de descarga del código, no los datos, permisos ni decisiones operativas.
