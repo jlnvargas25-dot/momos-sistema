@@ -103,7 +103,9 @@ begin
     and (v_rpc#>>'{latency,p99Ms}')::integer=2500
     and (v_rpc->>'availability')::numeric=0.990000,
     'H95 calculo mal disponibilidad o percentiles agregados.';
-  select version into v_version from public.operational_slo_policies where service_code='RPC_CORE';
+  -- La tabla de políticas es deliberadamente privada. El administrador obtiene la
+  -- versión optimista exclusivamente mediante el snapshot público y compacto.
+  v_version:=(v_rpc->>'version')::bigint;
   v_saved:=public.configurar_slo_operativo_v1('RPC_CORE',v_version,0.994000,900,75,20,20,true);
   assert (v_saved->>'version')::bigint=v_version+1,'H95 no versiono la politica SLO.';
   begin
