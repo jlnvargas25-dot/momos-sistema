@@ -15,7 +15,7 @@ import { buildCanonicalFinishedStock } from "../../lib/canonical-stock.js";
 import { buildCanonicalPhysicalResults } from "../../lib/canonical-production-results.js";
 
 export function createBusinessPanels(shared) {
-  const { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION } = shared;
+  const { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION } = shared;
 
   function Dashboard({ db, go, user }) {
     const [assistantCenterOpen, setAssistantCenterOpen] = useState(false);
@@ -2003,6 +2003,7 @@ export function createBusinessPanels(shared) {
     const [configDirty, setConfigDirty] = useState(false);
     const [configMsg, setConfigMsg] = useState("");
     const [healthSnapshot, setHealthSnapshot] = useState(null);
+    const [sloSnapshot, setSloSnapshot] = useState(null);
     const [continuitySnapshot, setContinuitySnapshot] = useState(null);
     const [healthLoading, setHealthLoading] = useState(true);
     const [healthReviewing, setHealthReviewing] = useState(false);
@@ -2020,8 +2021,8 @@ export function createBusinessPanels(shared) {
     useEffect(() => {
       let active = true;
       setHealthLoading(true);
-      Promise.all([fetchOperationalHealthSnapshot(), fetchContinuitySnapshot()])
-        .then(([health, continuity]) => { if (active) { setHealthSnapshot(health); setContinuitySnapshot(continuity); setHealthError(""); } })
+      Promise.all([fetchOperationalHealthSnapshot(), fetchOperationalSloSnapshot(60), fetchContinuitySnapshot()])
+        .then(([health, slo, continuity]) => { if (active) { setHealthSnapshot(health); setSloSnapshot(slo); setContinuitySnapshot(continuity); setHealthError(""); } })
         .catch((error) => { if (active) setHealthError(error?.message || "No se pudo consultar la salud de MOMO OPS."); })
         .finally(() => { if (active) setHealthLoading(false); });
       return () => { active = false; };
@@ -2033,8 +2034,9 @@ export function createBusinessPanels(shared) {
       setHealthError("");
       try {
         await runOperationalHealthReview();
-        const [health, continuity] = await Promise.all([fetchOperationalHealthSnapshot(), fetchContinuitySnapshot()]);
+        const [health, slo, continuity] = await Promise.all([fetchOperationalHealthSnapshot(), fetchOperationalSloSnapshot(60), fetchContinuitySnapshot()]);
         setHealthSnapshot(health);
+        setSloSnapshot(slo);
         setContinuitySnapshot(continuity);
         toast("ok", "Revisión operativa completada");
       } catch (error) {
@@ -2185,6 +2187,18 @@ export function createBusinessPanels(shared) {
     const healthStatus = healthSnapshot?.status || (healthLoading ? "Revisando" : "Sin diagnóstico");
     const healthCounts = healthSnapshot?.counts || {};
     const healthIncidents = Array.isArray(healthSnapshot?.incidents) ? healthSnapshot.incidents : [];
+    const sloServices = Array.isArray(sloSnapshot?.services) ? sloSnapshot.services : [];
+    const sloCounts = sloSnapshot?.counts || {};
+    const sloLabels = {
+      OPS_FRONTEND: "Interfaz MOMO OPS", RPC_CORE: "Operaciones del servidor",
+      DATABASE: "Base de datos", REALTIME: "Actualización en vivo",
+      STORAGE: "Archivos", CONNECTORS: "Integraciones", HEALTH_MONITOR: "Monitor automático",
+    };
+    const sloTone = (status) => status === "Saludable"
+      ? { bg: "#E3EFE0", color: "#315D36" }
+      : status === "En riesgo" ? { bg: "#FFF1D6", color: "#7B5410" }
+        : status === "Fuera de SLO" ? { bg: "#FBE1DC", color: "#A03B2A" }
+          : { bg: T.vainilla, color: T.choco2 };
     const healthTone = healthSnapshot?.readOnly || healthStatus === "Solo lectura"
       ? { bg: "#FBE1DC", border: "#E56B55", text: "#A03B2A", icon: "⛔" }
       : healthStatus === "Saludable"
@@ -2259,6 +2273,24 @@ export function createBusinessPanels(shared) {
               <div className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] font-extrabold uppercase" style={{ color: T.choco2 }}>Vigilancia</div><div className="text-sm font-bold mt-1">{healthSnapshot?.scheduler === "pg_cron" ? "Automática cada 5 minutos" : "Worker privado"}</div></div>
               <div className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] font-extrabold uppercase" style={{ color: T.choco2 }}>Backup observado</div><div className="text-sm font-bold mt-1">{continuityBackup.observed ? healthDate(continuityBackup.completedAt) : "Sin evidencia"}</div><div className="text-[10px] font-semibold mt-1" style={{ color: continuityBackup.pitrEnabled ? "#315D36" : "#A03B2A" }}>{continuityBackup.pitrEnabled ? "PITR activo" : "PITR inactivo"}</div></div>
               <div className="rounded-2xl border p-3" style={{ borderColor: continuityRecovery.certified ? "#93BF8D" : T.border, background: continuityRecovery.certified ? "#F2F7F0" : T.soft }}><div className="text-[9px] font-extrabold uppercase" style={{ color: T.choco2 }}>Recuperación comprobada</div><div className="text-sm font-bold mt-1">{continuityRecovery.certified ? `Certificada hasta ${healthDate(continuityRecovery.certifiedUntil)}` : continuityRecovery.tested ? `Último simulacro: ${continuityRecovery.status}` : "Simulacro pendiente"}</div></div>
+            </div>
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }} data-testid="operational-slo-center">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div><div className="text-xs font-extrabold uppercase tracking-wide" style={{ color: T.choco2 }}>Nivel de servicio · última hora</div><div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>Disponibilidad y velocidad con evidencia agregada, nunca con datos de clientes.</div></div>
+                <div className="flex gap-2 text-[10px] font-bold"><span>{Number(sloCounts.healthy || 0)} saludables</span><span>{Number(sloCounts.outside || 0)} fuera</span><span>{Number(sloCounts.withoutData || 0)} sin datos</span></div>
+              </div>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                {sloSnapshot?.pendingActivation && <div className="sm:col-span-2 xl:col-span-4 rounded-2xl border px-3 py-3 text-xs font-bold" style={{ borderColor: T.border, background: T.vainilla, color: T.choco2 }}>H95 estÃ¡ listo en la aplicaciÃ³n y espera activaciÃ³n en el servidor. El diagnÃ³stico operativo actual sigue disponible.</div>}
+                {sloServices.map((service) => {
+                  const tone = sloTone(service.status);
+                  const availabilityValue = service.availability == null ? "—" : `${(Number(service.availability) * 100).toFixed(2)}%`;
+                  const p95Value = service.latency?.p95Ms == null ? "—" : `${service.latency.p95Ms} ms`;
+                  return <div key={service.serviceCode} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#fff" }}>
+                    <div className="flex items-center justify-between gap-2"><div className="text-xs font-bold">{sloLabels[service.serviceCode] || service.serviceCode}</div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold uppercase" style={{ background: tone.bg, color: tone.color }}>{service.status}</span></div>
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-center"><div><div className="font-serif text-base font-bold">{availabilityValue}</div><div className="text-[8px] uppercase font-bold" style={{ color: T.choco2 }}>Disponible</div></div><div><div className="font-serif text-base font-bold">{p95Value}</div><div className="text-[8px] uppercase font-bold" style={{ color: T.choco2 }}>p95</div></div><div><div className="font-serif text-base font-bold">{Number(service.sampleCount || 0)}</div><div className="text-[8px] uppercase font-bold" style={{ color: T.choco2 }}>Muestras</div></div></div>
+                  </div>;
+                })}
+              </div>
             </div>
             <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
               <div className="flex items-center justify-between gap-3 mb-2"><div className="text-xs font-extrabold uppercase tracking-wide" style={{ color: T.choco2 }}>Qué necesita atención</div><span className="text-[10px] font-bold">{healthIncidents.length} abiertas o recuperadas</span></div>

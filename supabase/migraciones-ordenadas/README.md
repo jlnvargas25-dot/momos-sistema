@@ -327,8 +327,26 @@ de producción. Los probes solo escriben en las tablas privadas H94.
 
 La certificación real se ejecuta mediante
 `.github/workflows/staging-database-gate.yml`. El gate compara el ref de staging
-contra producción, valida la URL exacta, corre la cadena 01–94 y H93, repite la
-adversarial H94 con rollback, ejecuta el runner con 16 contendientes y exige en
+contra producción, valida la URL exacta, corre la cadena 01–95 y H93, repite las
+adversariales H94/H95 con rollback, ejecuta el runner con 16 contendientes y exige en
 servidor un certificado fresco con cero invariantes. Sin los cinco secretos del
 environment `staging`, el flujo falla cerrado antes de instalar dependencias o
 abrir una corrida.
+
+## Hito 95 — observabilidad y SLO agregados
+
+Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:
+
+1. `../observabilidad-slo-v1.sql` — extiende el Centro de Salud H92 con siete
+   dominios cerrados, disponibilidad, error budget, p50/p95/p99 por histograma,
+   saturación, cola, vigencia e ingestión privada idempotente; no guarda rutas,
+   requests, mensajes libres, actores, clientes, PII ni secretos.
+2. `../tests/test-observabilidad-slo-v1.sql` — prueba percentiles, objetivos,
+   idempotencia, versión optimista, privacidad y RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–95; siempre hace rollback.
+
+El worker `operational-health-worker` 1.1.0 reporta su propia latencia y éxito a
+`HEALTH_MONITOR`. Los demás dominios permanecen honestamente `Sin datos` hasta
+que su proceso privado reporte evidencia; MOMO OPS nunca inventa salud por
+ausencia de telemetría.

@@ -66,6 +66,29 @@ export async function fetchOperationalHealthSnapshot() {
   return data;
 }
 
+export async function fetchOperationalSloSnapshot(windowMinutes = 60) {
+  const minutes = Number(windowMinutes);
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) {
+    throw new Error("La ventana de observabilidad no es válida.");
+  }
+  const { data, error } = await supabase.rpc("momos_operational_slo_snapshot_v1", {
+    p_window_minutes: minutes,
+  });
+  if (error && isMissingRpcError(error)) {
+    return {
+      contract: "momos.operational-slo.v1",
+      pendingActivation: true,
+      services: [],
+      counts: { healthy: 0, atRisk: 0, outside: 0, withoutData: 0 },
+    };
+  }
+  if (error) throw rpcError(error, "No se pudieron consultar los SLO de MOMO OPS.");
+  if (data?.contract !== "momos.operational-slo.v1" || !Array.isArray(data?.services)) {
+    throw new Error("El servidor devolvió observabilidad incompleta.");
+  }
+  return data;
+}
+
 export async function fetchContinuitySnapshot() {
   const { data, error } = await supabase.rpc("momos_continuity_snapshot_v1");
   if (error) throw rpcError(error, "No se pudo consultar la continuidad de MOMO OPS.");

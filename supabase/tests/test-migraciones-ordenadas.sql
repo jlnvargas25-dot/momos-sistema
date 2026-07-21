@@ -1432,5 +1432,31 @@ begin
     'H94 confundio validacion sintetica con certificacion staging';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-94 PASS, rollback total' as resultado_h94;
+select 'TESTS_OK - migraciones ordenadas 01-94 PASS, continua H95' as resultado_h94;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260721_95_observabilidad_slo')
+    and to_regclass('public.operational_slo_policies') is not null
+    and to_regclass('public.operational_slo_buckets') is not null
+    and to_regclass('public.operational_slo_ingest_receipts') is not null
+    and to_regprocedure('public.registrar_telemetria_slo_v1(jsonb)') is not null
+    and to_regprocedure('public.momos_operational_slo_snapshot_v1(integer)') is not null,
+    'H95 no instalo observabilidad y SLO agregados';
+  assert has_function_privilege('service_role','public.registrar_telemetria_slo_v1(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.momos_operational_slo_snapshot_v1(integer)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_operational_slo_snapshot_v1(integer)','EXECUTE')
+    and not has_function_privilege('authenticated','public.registrar_telemetria_slo_v1(jsonb)','EXECUTE')
+    and not has_table_privilege('authenticated','public.operational_slo_buckets','SELECT')
+    and not has_table_privilege('service_role','public.operational_slo_ingest_receipts','SELECT'),
+    'H95 perdio RBAC o expuso telemetria privada';
+  assert (select count(*) from public.operational_slo_policies)=7
+    and position('histogram-upper-bound' in pg_get_functiondef(
+      'public.momos_operational_slo_snapshot_v1(integer)'::regprocedure))>0
+    and position('idempotency_key' in pg_get_functiondef(
+      'public.registrar_telemetria_slo_v1(jsonb)'::regprocedure))>0,
+    'H95 perdio dominios, percentiles o idempotencia';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-95 PASS, rollback total' as resultado_h95;
 rollback;

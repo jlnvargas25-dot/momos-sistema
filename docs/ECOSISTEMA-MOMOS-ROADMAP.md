@@ -219,6 +219,13 @@ de staging ya exige proyectos y secretos separados y puede emitir el certificado
 servidor. Sigue pendiente ejecutarlo sobre un staging restaurado y representativo;
 la validación sintética de producción no sustituye esa evidencia.
 
+**H95 preparado para despliegue:** al aplicarse, el Centro de Salud incorpora
+políticas SLO versionadas y una frontera privada e idempotente para telemetría agregada. Calcula disponibilidad,
+presupuesto de error, p50/p95/p99 por histograma, saturación, colas y vigencia en
+siete dominios sin guardar requests, rutas, actores, clientes, PII ni secretos.
+El monitor privado reportará su propia salud; los demás dominios quedan `Sin datos`
+hasta recibir evidencia real, en vez de presentarse como saludables por omisión.
+
 **Evidencia de cierre:** informe de carga firmado, SLO cumplidos y restauración/caos controlado aprobado.
 
 ### Gate 8 — Preparación comercial y lanzamiento
