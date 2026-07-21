@@ -131,8 +131,8 @@ export function createFinancePanel(shared) {
       downloadCSV("finanzas",
         ["Concepto","Valor"],
         [["Rango", desde + " a " + hasta],
-         ["Ventas de producto (con descuentos)", ventasProductos],
-         ["Costo estimado de producto (COGS)", cogs],
+         ["Ventas cobradas de postres y productos (con descuentos)", ventasProductos],
+         ["Costo histórico de todas las líneas cobradas (COGS)", cogs],
          ["Margen bruto", margenBruto],
          ["Domicilio cobrado", domCobrado],
          ["Costo real de domicilios", domCosto],
@@ -193,8 +193,8 @@ export function createFinancePanel(shared) {
         </Card>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          <Stat icon="💵" label="Ventas de producto" value={fmt(ventasProductos)} sub={financeSummary.paidOrders + " pedidos cobrados"} tone={T.coral} />
-          <Stat icon="🧾" label="Costo de producto" value={fmt(cogs)} sub="estimado por receta" />
+          <Stat icon="💵" label="Ventas cobradas" value={fmt(ventasProductos)} sub={financeSummary.paidOrders + " pedidos · postres, combos y productos al momento"} tone={T.coral} />
+          <Stat icon="🧾" label="Costo histórico" value={fmt(cogs)} sub="COGS de todas las líneas cobradas" />
           <Stat icon="📈" label="Margen bruto" value={fmt(margenBruto)} sub={ventasProductos ? pct(margenBruto / ventasProductos) + " de las ventas" : "—"} tone="#3F6B42" />
           <Stat icon="✨" label="Utilidad estimada" value={fmt(utilidad)} sub="tras domicilios, pauta y reclamos" tone={utilidad >= 0 ? "#3F6B42" : "#A03B2A"} />
         </div>
@@ -220,8 +220,8 @@ export function createFinancePanel(shared) {
         <div className="grid lg:grid-cols-2 gap-3">
           <Card className="p-4">
             <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>ESTADO DE RESULTADOS SIMPLE</div>
-            {linea("Ventas de producto (con descuentos aplicados)", ventasProductos)}
-            {linea("− Costo estimado de producto", cogs, { color: "#A03B2A" })}
+            {linea("Ventas de postres y productos (con descuentos)", ventasProductos)}
+            {linea("− Costo histórico de líneas cobradas", cogs, { color: "#A03B2A" })}
             {linea("= Margen bruto", margenBruto, { strong: true, color: "#3F6B42" })}
             {linea("+ Domicilio cobrado a clientes", domCobrado)}
             {linea("− Costo real de domicilios", domCosto, { color: "#A03B2A" })}

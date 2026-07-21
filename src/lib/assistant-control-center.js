@@ -4,6 +4,8 @@ import { buildPurchaseAssistant } from "./purchase-assistant.js";
 import { buildOperationalFinance } from "./operational-finance.js";
 import { buildKitchenProductionPlan } from "./production-planner.js";
 import { buildPackingQueue } from "./packing-queue.js";
+import { commercialFamilyLabel, isCommercialFamilyProduct, isKitchenFigureName } from "./momos-domain-language.js";
+import { businessDateISO } from "./business-date.js";
 
 const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, info: 3 };
 
@@ -68,7 +70,7 @@ function kitchenTasks(kitchen) {
     detail: `${plan.variants.map((variant) => `${variant.recommended}× ${variant.figure}`).join(" · ")} · ${plan.filling || "sin relleno"}.`,
     nextAction: plan.suggestionIds.length > 1 ? "Crear una sola corrida agrupada y confirmar responsable." : "Revisar y crear la corrida recomendada.",
     reasons: [
-      plan.queueUnits > 0 ? `${plan.queueUnits} unidad(es) vienen de pedidos pagados.` : "La recomendación viene del pronóstico de venta de 3 días.",
+      plan.queueUnits > 0 ? `${plan.queueUnits} unidad(es) vienen de pedidos pagados.` : `La recomendación viene del pronóstico de venta de ${plan.horizonDays || 3} días.`,
       `${plan.availableUnits} disponibles y ${plan.inProcessUnits} en proceso fueron descontadas.`,
       plan.adSignals.length ? `Pauta respaldada: ${plan.adSignals.join(", ")}.` : "La pauta no agregó demanda sin ventas atribuidas.",
     ],
@@ -191,9 +193,12 @@ function integrityTask(row, index, db) {
     const item = (db.order_items || []).find((candidate) => candidate.id === row.entityId);
     const order = (db.orders || []).find((candidate) => candidate.id === item?.orderId);
     const product = (db.products || []).find((candidate) => candidate.id === item?.productId);
-    const missing = [!String(item?.figura || "").trim() && "figura", !String(item?.sabor || "").trim() && "sabor"].filter(Boolean);
+    const missing = [!isKitchenFigureName(item?.figura) && "figura física válida", !String(item?.sabor || "").trim() && "sabor"].filter(Boolean);
     const orderId = order?.id || item?.orderId || "sin pedido identificado";
-    const productName = product?.nombre || item?.nombre || "producto MOMOS";
+    const rawProductName = product?.nombre || item?.nombre || "producto MOMOS";
+    const productName = isCommercialFamilyProduct(product || { nombre: rawProductName, tipo: item?.tipo })
+      ? `la presentación comercial ${commercialFamilyLabel(product || rawProductName)}`
+      : rawProductName;
     return task({
       id: `integrity-${row.code}-${orderId}`,
       area: "Control interno",
@@ -204,7 +209,7 @@ function integrityTask(row, index, db) {
       severity: "critical",
       blocks: true,
       title: `Completar ${missing.join(" y ") || "la variante"} del pedido ${orderId}`,
-      detail: `La línea ${row.entityId} corresponde a ${number(item?.cant) || 1}× ${productName}, pero no define ${missing.join(" ni ") || "su variante exacta"}.`,
+      detail: `La línea ${row.entityId} corresponde a ${number(item?.cant) || 1}× de ${productName}, pero no define ${missing.join(" ni ") || "su variante exacta"}.`,
       nextAction: `Abrir el pedido ${orderId}, elegir ${missing.join(" y ") || "figura y sabor"} y guardar antes de cobrar, reservar o producir.`,
       reasons: [
         `Dato faltante: ${missing.join(" y ") || "variante exacta"}.`,
@@ -229,9 +234,13 @@ function integrityTask(row, index, db) {
 }
 
 export function buildAssistantControlCenter(db = {}, options = {}) {
-  const today = options.today || new Date().toISOString().slice(0, 10);
+  const today = options.today || businessDateISO();
   const sales = buildSalesReceptionAssistant(db, { today, now: options.now });
-  const kitchen = buildKitchenProductionPlan(db, { today, historyDays: 28, horizonDays: 3 });
+  const configuredShelfDays = Number(db.settings?.vidaUtilProductoTerminadoDias);
+  const kitchen = buildKitchenProductionPlan(db, {
+    today, historyDays: 28,
+    horizonDays: Number.isInteger(configuredShelfDays) && configuredShelfDays > 0 ? configuredShelfDays : 3,
+  });
   const purchases = buildPurchaseAssistant({
     inventoryItems: db.inventory_items || [], inventoryLots: db.inventory_lots || [],
     inventoryLotsReady: db.inventoryLotsReady === true, subrecipes: db.subrecetas || [],

@@ -5,14 +5,17 @@ export const SYNC_DOMAINS = Object.freeze({
   FINANCE: "finanzas",
   CONFIGURATION: "configuracion",
   DASHBOARD: "dashboard",
+  LOGISTICS: "logistica",
 });
 
 const KNOWN_DOMAINS = new Set(Object.values(SYNC_DOMAINS));
 
 const OPERATIONAL_VIEWS = new Set([
-  "pedidos", "empaque", "inventario terminado", "domicilios",
+  "pedidos", "empaque",
   "reclamos", "historial operativo", "clientes", "beneficios",
 ]);
+
+const LOGISTICS_VIEWS = new Set(["domicilios"]);
 
 const FINANCE_VIEWS = new Set(["finanzas"]);
 const CONFIGURATION_VIEWS = new Set(["configuracion"]);
@@ -22,7 +25,11 @@ const CATALOG_VIEWS = new Set([
   "productos",
 ]);
 
-const MIXED_OPERATIONAL_VIEWS = new Set(["produccion", "inventario", "reportes"]);
+// Inventario terminado cruza el contador oficial de products (CATALOGS) con
+// variantes, cuarentena y lotes (OPERATIONS). Debe hidratar ambos dominios,
+// igual que Producción, para que una entrada al panel no compare contra un
+// contador comercial antiguo y oculte stock exacto válido.
+const MIXED_OPERATIONAL_VIEWS = new Set(["produccion", "inventario terminado", "inventario", "reportes"]);
 const AGENCY_VIEWS = new Set(["agencia momos", "crecimiento", "marketing", "creativos", "calendario", "resultados"]);
 
 const OPERATIONAL_TABLES = new Set([
@@ -56,6 +63,7 @@ function normalizedKey(value) {
 export function syncDomainsForView(view, _options = {}) {
   const key = normalizedKey(view);
   if (OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.OPERATIONS];
+  if (LOGISTICS_VIEWS.has(key)) return [SYNC_DOMAINS.LOGISTICS];
   if (FINANCE_VIEWS.has(key)) return [SYNC_DOMAINS.FINANCE];
   if (CONFIGURATION_VIEWS.has(key)) return [SYNC_DOMAINS.CONFIGURATION];
   if (DASHBOARD_VIEWS.has(key)) return [SYNC_DOMAINS.DASHBOARD];

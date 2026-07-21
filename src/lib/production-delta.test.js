@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyProductionActivityDelta,
   applyProductionActivityDeltaToDb,
   compareProductionDeltaVersions,
   normalizeProductionActivityDelta,
@@ -43,6 +44,19 @@ test("falla cerrada ante campos extra, secretos o colecciones repetidas", () => 
   assert.throws(() => normalizeProductionActivityDelta(duplicate), /repetidas/);
 });
 
+test("H88 publica actividad sin recorrer ni mutar otros dominios", () => {
+  const unrelated = Array.from({ length: 25000 }, (_, id) => ({ id }));
+  const db = {
+    productionActivityDeltaVersion: "6", subreceta_producciones: [], production_suggestions: [],
+    customers: unrelated,
+  };
+  const result = applyProductionActivityDelta(db, activity());
+  assert.equal(db.productionActivityDeltaVersion, "6");
+  assert.equal(db.subreceta_producciones.length, 0);
+  assert.equal(result.db.productionActivityDeltaVersion, "7");
+  assert.equal(result.db.customers, unrelated);
+});
+
 test("el sobre de mutacion exige deltas acordes a cada operacion", () => {
   const base = {
     contract: "momos.production-mutation.v1",
@@ -58,4 +72,10 @@ test("el sobre de mutacion exige deltas acordes a cada operacion", () => {
   };
   assert.throws(() => normalizeProductionMutationEnvelope(base), /inventario y actividad/);
   assert.throws(() => normalizeProductionMutationEnvelope({ ...base, operation: "borrar_todo" }), /contrato esperado/);
+  assert.throws(() => normalizeProductionMutationEnvelope({
+    ...base,
+    operation: "desechar_producto_terminado",
+    inventory: null,
+    activity: null,
+  }), /lote actualizado/);
 });

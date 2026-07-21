@@ -14,18 +14,31 @@ import {
   redactConnectorError,
 } from "../src/lib/higgsfield-connector.js";
 
-const VERSION = "momos-higgsfield-worker/1.0.0";
+const VERSION = "momos-higgsfield-worker/1.1.0";
 const ONCE = process.argv.includes("--once");
+const HEALTH_ONLY = process.argv.includes("--health-only");
 const POLL_MS = Math.max(10_000, Number(process.env.HIGGSFIELD_POLL_MS || 30_000));
 const WORKER_ID = process.env.HIGGSFIELD_WORKER_ID || `${hostname()}-${process.pid}`;
-const HIGGSFIELD_BIN = process.env.HIGGSFIELD_BIN || (process.platform === "win32" ? "higgsfield.cmd" : "higgsfield");
+const CUSTOM_HIGGSFIELD_BIN = String(process.env.HIGGSFIELD_BIN || "").trim();
+const HIGGSFIELD_CLI_ENTRY = String(process.env.HIGGSFIELD_CLI_ENTRY || (
+  process.platform === "win32" && process.env.APPDATA
+    ? path.join(process.env.APPDATA, "npm", "node_modules", "@higgsfield", "cli", "bin", "higgsfield.js")
+    : ""
+)).trim();
+const HIGGSFIELD_BIN = CUSTOM_HIGGSFIELD_BIN || (process.platform === "win32" ? process.execPath : "higgsfield");
+const HIGGSFIELD_ARGS_PREFIX = !CUSTOM_HIGGSFIELD_BIN && process.platform === "win32" ? [HIGGSFIELD_CLI_ENTRY] : [];
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const COP_PER_CREDIT = Number(process.env.HIGGSFIELD_COP_PER_CREDIT);
 const MAX_OUTPUT_BYTES = 100 * 1024 * 1024;
 
 if (!SUPABASE_URL || !SERVICE_KEY) throw new Error("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en el entorno privado del worker.");
-if (!Number.isFinite(COP_PER_CREDIT) || COP_PER_CREDIT <= 0) throw new Error("Falta HIGGSFIELD_COP_PER_CREDIT para proteger el tope en COP.");
+if (process.platform === "win32" && !CUSTOM_HIGGSFIELD_BIN && !HIGGSFIELD_CLI_ENTRY) {
+  throw new Error("No se pudo resolver el entrypoint del CLI Higgsfield. Define HIGGSFIELD_CLI_ENTRY en el runtime privado.");
+}
+if (!HEALTH_ONLY && (!Number.isFinite(COP_PER_CREDIT) || COP_PER_CREDIT <= 0)) {
+  throw new Error("Falta HIGGSFIELD_COP_PER_CREDIT para proteger el tope en COP.");
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -47,7 +60,11 @@ function parseCliJson(stdout) {
 
 function runCli(args, timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(HIGGSFIELD_BIN, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(HIGGSFIELD_BIN, [...HIGGSFIELD_ARGS_PREFIX, ...args], {
+      shell: false,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = ""; let stderr = ""; let settled = false;
     const timer = setTimeout(() => {
       child.kill();
@@ -86,7 +103,7 @@ async function reportHealth(status = "Activa", error = "", synced = false) {
 
 async function verifyHiggsfieldSession() {
   await runCli(["model", "list", "--json", "--no-color"], 60_000);
-  await reportHealth("Activa", "", true);
+  return reportHealth("Activa", "", true);
 }
 
 async function downloadSources(claim, directory) {
@@ -209,7 +226,11 @@ async function pollRuns() {
 }
 
 async function cycle() {
-  await verifyHiggsfieldSession();
+  const health = await verifyHiggsfieldSession();
+  if (HEALTH_ONLY) {
+    process.stdout.write(`[Higgsfield] Salud OK · CLI oficial · integración ${health?.status || "Activa"}\n`);
+    return;
+  }
   await pollRuns();
   await dispatchOne();
 }

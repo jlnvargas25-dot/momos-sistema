@@ -1,3 +1,11 @@
+import {
+  activeFigureCatalog,
+  expectedFigureProductId,
+  figureProductId,
+  isKitchenFigureName,
+} from "./momos-domain-language.js";
+import { businessDateISO } from "./business-date.js";
+
 function number(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -11,8 +19,13 @@ function variantKey(productId, figure, flavor) {
   return `${productId || ""}\u0000${normal(figure)}\u0000${normal(flavor)}`;
 }
 
+function figureBelongsToProduct(productId, figure) {
+  const expectedProductId = expectedFigureProductId(figure);
+  return Boolean(expectedProductId && String(productId || "").trim() === expectedProductId);
+}
+
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDateISO();
 }
 
 function exactVariantPool(variants = [], today = todayIso()) {
@@ -20,7 +33,12 @@ function exactVariantPool(variants = [], today = todayIso()) {
   variants.forEach((variant) => {
     const available = Math.max(0, number(variant.disponibles));
     const expiry = variant?.vence ? String(variant.vence).slice(0, 10) : "";
-    if (!variant?.productId || !normal(variant.figura) || !normal(variant.sabor) || available <= 0 || (expiry && expiry < today)) return;
+    if (!variant?.productId
+      || !isKitchenFigureName(variant.figura)
+      || !figureBelongsToProduct(variant.productId, variant.figura)
+      || !normal(variant.sabor)
+      || available <= 0
+      || (expiry && expiry < today)) return;
     const key = variantKey(variant.productId, variant.figura, variant.sabor);
     const current = pool.get(key) || { available: 0, expirations: [] };
     current.available += available;
@@ -41,7 +59,9 @@ export function evaluateExactVariantDemand({
   today = todayIso(),
 } = {}) {
   const required = Math.max(0, Math.round(number(quantity)));
-  const complete = Boolean(productId && normal(figure) && normal(flavor));
+  const figureKnown = isKitchenFigureName(figure);
+  const compatibleFamily = figureKnown && figureBelongsToProduct(productId, figure);
+  const complete = Boolean(productId && figureKnown && compatibleFamily && normal(flavor));
   const entry = complete ? exactVariantPool(variants, today).get(variantKey(productId, figure, flavor)) : null;
   const available = entry?.available || 0;
   const covered = Math.min(required, available);
@@ -57,24 +77,22 @@ export function evaluateExactVariantDemand({
     complete,
     canFulfill: complete && covered >= required,
     nextExpiry: entry?.expirations?.[0] || "",
+    integrityIssue: figureKnown && productId && !compatibleFamily ? "FAMILY_FIGURE_MISMATCH" : "",
+    expectedProductId: figureKnown ? expectedFigureProductId(figure) : "",
   };
 }
 
-function productSpecies(product) {
-  if (product?.especie === "perro" || product?.especie === "gato") return product.especie;
-  return /perr/i.test(product?.nombre || "") ? "perro" : "gato";
-}
-
-function figureSpecies(db, figure) {
-  const figures = [...(db?.figuras || []), ...(db?.settings?.figuras || [])];
-  return figures.find((item) => normal(item.nombre) === normal(figure))?.especie || "gato";
-}
-
 function componentForFigure(db, combo, figure) {
+  if (!isKitchenFigureName(figure)) return null;
+  const expectedProductId = expectedFigureProductId(figure);
   const componentIds = combo?.componentProductIds || [];
-  const components = (db?.products || []).filter((product) => componentIds.includes(product.id));
-  const species = figureSpecies(db, figure);
-  return components.find((product) => productSpecies(product) === species) || components[0] || null;
+  const mappedFigure = activeFigureCatalog(db)
+    .find((item) => normal(item?.nombre) === normal(figure));
+  const mappedProductId = figureProductId(mappedFigure);
+  if (!expectedProductId
+    || mappedProductId !== expectedProductId
+    || !componentIds.includes(expectedProductId)) return null;
+  return (db?.products || []).find((product) => product.id === expectedProductId) || null;
 }
 
 export function evaluateComboVariantAvailability({ db = {}, combo, boxes = [], today = todayIso() } = {}) {

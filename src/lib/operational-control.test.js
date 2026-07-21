@@ -45,6 +45,16 @@ test("el progreso exige todas las líneas y falla cerrado ante incidentes", () =
   assert.equal(stageProgressSummary("P1", "Cocina", items, complete).ready, false);
 });
 
+test("Cocina procesa los postres de una caja y Empaque verifica también la caja", () => {
+  const items = [
+    { id: "BOX", orderId: "P1", esCaja: true },
+    { id: "LIZI", orderId: "P1", parentItemId: "BOX", esSubMomo: true },
+    { id: "MAX", orderId: "P1", parentItemId: "BOX", esSubMomo: true },
+  ];
+  assert.deepEqual(lineProgressFor("P1", "Cocina", items, []).map((row) => row.item.id), ["LIZI", "MAX"]);
+  assert.deepEqual(lineProgressFor("P1", "Empaque", items, []).map((row) => row.item.id), ["BOX", "LIZI", "MAX"]);
+});
+
 test("solo expone incidentes abiertos y el relevo del pedido exacto", () => {
   const incidents = [{ orderId: "P1", status: "Abierto" }, { orderId: "P1", status: "Resuelto" }];
   assert.equal(openOrderIncidents("P1", incidents).length, 1);

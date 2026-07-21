@@ -1,5 +1,6 @@
 import { buildKitchenProductionPlan } from "./production-planner.js";
 import { normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
+import { businessDateISO } from "./business-date.js";
 
 const PAID_STATES = new Set([
   "Pagado", "En producción", "Listo para empaque", "Empacado",
@@ -152,7 +153,7 @@ function angle(id, title, format, promise, proof, channel) {
 }
 
 function recommendation(mode, product, facts) {
-  const productName = product?.nombre || "producto foco por definir";
+  const productName = product?.nombre || "postre o presentación foco por definir";
   const type = mode.id === "marca-comunidad" || mode.id === "pauta-aprendizaje" ? "Crear contenido" : "Impulsar producto";
   return {
     id: `growth-${mode.id}-${product?.id || "sin-producto"}`,
@@ -177,7 +178,7 @@ function recommendation(mode, product, facts) {
 }
 
 export function buildGrowthMultimodeEngine(db = {}, options = {}) {
-  const today = options.today || new Date().toISOString().slice(0, 10);
+  const today = options.today || businessDateISO();
   const operationalFacts = readyOperationalFacts(db);
   const activeProducts = operationalFacts
     ? operationalProducts(operationalFacts)
@@ -253,7 +254,7 @@ export function buildGrowthMultimodeEngine(db = {}, options = {}) {
       ? status("Bloqueado", `La disponibilidad de ${unverifiedStockProducts} producto(s) es desconocida; primero verificá su fuente de stock.`)
       : status("Preparar", "No hay producto terminado exacto; primero elegí una corrida verificable.");
   const demandStatus = !selectedStockVerified
-    ? status("Bloqueado", "El producto foco tiene stock desconocido. Verificá inventario o capacidad antes de conquistar demanda.")
+    ? status("Bloqueado", "El postre o la presentación foco tiene stock desconocido. Verificá inventario o capacidad antes de conquistar demanda.")
     : product && (production.summary.units > 0 || demand.length > 0)
       ? status("Plan listo", criticalPreparations.length
         ? `La demanda puede abrirse, pero ${criticalPreparations.length} preparación(es) deben quedar listas antes de escalar.`
@@ -263,10 +264,10 @@ export function buildGrowthMultimodeEngine(db = {}, options = {}) {
     ? status("Listo", "La identidad de MOMOS permite crear conexión sin depender del stock del día.")
     : status("Preparar", "Primero hay que activar una versión de marca o confirmar el lenguaje de MOMOS.");
   const paidStatus = !selectedStockVerified
-    ? status("Bloqueado", "La pauta no puede ampliarse con disponibilidad desconocida del producto foco.")
+    ? status("Bloqueado", "La pauta no puede ampliarse con disponibilidad desconocida del postre o la presentación foco.")
     : product && approvedCreatives.length > 0 && measurementReady
-      ? status("Listo", "Hay producto foco, creativo aprobado y una base de medición para comparar hipótesis.")
-      : status("Preparar", [!product && "producto foco", approvedCreatives.length === 0 && "creativo aprobado", !measurementReady && "medición"].filter(Boolean).join(", ") || "evidencia");
+      ? status("Listo", "Hay postre o presentación foco, creativo aprobado y una base de medición para comparar hipótesis.")
+      : status("Preparar", [!product && "postre o presentación foco", approvedCreatives.length === 0 && "creativo aprobado", !measurementReady && "medición"].filter(Boolean).join(", ") || "evidencia");
 
   const modes = [
     {
@@ -288,7 +289,7 @@ export function buildGrowthMultimodeEngine(db = {}, options = {}) {
       score: Math.min(100, 42 + Math.min(28, demand.reduce((sum, row) => sum + row.units, 0) * 2) + Math.min(30, production.summary.units * 3)),
       primaryMetric: "Beneficio incremental cubierto por producción", supportingMetrics: ["Demanda capturada", "Corridas creadas", "Promesas cumplidas"],
       why: [demand.length ? `${demand[0].units} unidad(es) recientes del producto líder muestran demanda.` : "Todavía no existe una señal histórica fuerte.", production.summary.units ? `El plan de Cocina propone ${production.summary.units} unidad(es) en ${production.summary.runs} corrida(s).` : "Producción aún no tiene una corrida sugerida."],
-      nextStep: criticalPreparations.length ? `Preparar ${criticalPreparations.map((need) => need.subrecipeName).slice(0, 2).join(" y ")} y confirmar capacidad antes de escalar.` : "Aprobar el producto foco y convertir la demanda en corrida antes de ampliar alcance.",
+      nextStep: criticalPreparations.length ? `Preparar ${criticalPreparations.map((need) => need.subrecipeName).slice(0, 2).join(" y ")} y confirmar capacidad antes de escalar.` : "Aprobar el postre o la presentación foco y convertir la demanda en corrida antes de ampliar alcance.",
       safeguards: ["La campaña no salta los gates de Cocina", "Toda promesa crea cobertura de producción", "Si faltan insumos, la escala se detiene"],
       productionPlan: {
         runs: production.summary.runs,

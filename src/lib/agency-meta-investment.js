@@ -51,7 +51,7 @@ export function buildInvestmentScenarios(rawEvidence = {}, horizonDays = 7) {
   const newMargin = number(evidence.lifecycle?.new?.margin);
   const lifecycleTarget = returningMargin > newMargin ? "Recurrentes" : "Nuevos";
   const operationalBlockers = [];
-  if (evidence.stockBlocked) operationalBlockers.push("Sin producto foco utilizable ni producción en curso.");
+  if (evidence.stockBlocked) operationalBlockers.push("Sin postre o presentación foco utilizable ni producción en curso.");
   if (evidence.exactAvailable <= evidence.reservations && evidence.inProcess <= 0) operationalBlockers.push("La disponibilidad exacta no supera las reservas vigentes.");
   if (evidence.kitchenQueue >= 5) operationalBlockers.push("Cocina tiene cinco o más pedidos activos.");
   const assumptions = ["Proyección, no promesa: escala conservadoramente el único resultado aprobado.", "No modifica presupuesto, audiencia, campaña ni publicación."];

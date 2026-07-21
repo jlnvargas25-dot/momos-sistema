@@ -35,10 +35,12 @@ export function lineProgressFor(orderId, stage, orderItems = [], progress = []) 
   const rows = new Map((progress || [])
     .filter((row) => row.orderId === orderId && row.stage === stage)
     .map((row) => [row.orderItemId, row]));
-  return (orderItems || []).filter((item) => item.orderId === orderId).map((item) => ({
+  return (orderItems || []).filter((item) => item.orderId === orderId)
+    .filter((item) => stage !== "Cocina" || !(item.esCaja || item.es_caja))
+    .map((item) => ({
     item,
     progress: rows.get(item.id) || { orderId, orderItemId: item.id, stage, status: "Pendiente" },
-  }));
+    }));
 }
 
 export function stageProgressSummary(orderId, stage, orderItems = [], progress = []) {

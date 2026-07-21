@@ -3,7 +3,7 @@ import { InlineNotice, SegmentedTabs } from "./components/ui/OperationalPrimitiv
 import { supabase } from "./lib/supabase";
 import {
   fetchAgencyCatalogosConFallback, fetchAgencySnapshotEventVersion, fetchCatalogos, fetchConfigurationSnapshot, fetchConfigurationSyncVersion, fetchDashboardSnapshot, fetchDashboardSyncVersion,
-  fetchCustomerCrmDeltas, fetchFinanceSnapshot, fetchFinanceSyncVersion, fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductCatalogDeltas, fetchProductionActivityDelta, fetchUserProfile,
+  fetchCustomerCrmDeltas, fetchDeliverySnapshot, fetchFinanceSnapshot, fetchFinanceSyncVersion, fetchFinishedInventoryDeltas, fetchInventoryDeltas, fetchInventoryDeltasSince, fetchOperativo, fetchOperationalHistoryPage, fetchOrderDeltas, fetchProductCatalogDeltas, fetchProductionActivityDelta, fetchUserProfile,
 } from "./lib/read-model";
 import {
   compareAgencySnapshotVersions, createSyncCoordinator, normalizeAgencySnapshotVersion, normalizeSyncDomains,
@@ -12,10 +12,10 @@ import {
 } from "./lib/sync-coordinator";
 import {
   setOrderStatusRemoto, setReclamoEstado,
-  editarReclamo, crearDomicilio, actualizarDomicilio, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente,
+  editarReclamo, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente,
   registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente,
   crearProducto, editarProducto, setProductoActivo,
-  guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor,
+  guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchContinuitySnapshot, runOperationalHealthReview,
   crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado,
   registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion
 } from "./lib/rpc";
@@ -33,23 +33,22 @@ import {
   inventoryDeltaCanApply, inventoryProtectedCatalogCanApply,
 } from "./lib/inventory-sync-policy";
 import { compareInventoryCursorTokens, normalizeInventoryCursorToken } from "./lib/inventory-cursor";
-import { applyOrderDeltaBatchToDb, compareOrderDeltaVersions } from "./lib/order-delta";
-import { applyFinishedInventoryDeltaBatchToDb, compareFinishedInventoryDeltaVersions } from "./lib/finished-inventory-delta";
+import { applyOrderDeltaBatch, compareOrderDeltaVersions } from "./lib/order-delta";
+import { applyFinishedInventoryDeltaBatch, compareFinishedInventoryDeltaVersions } from "./lib/finished-inventory-delta";
 import {
-  applyProductionActivityDeltaToDb, compareProductionDeltaVersions,
+  applyProductionActivityDelta, compareProductionDeltaVersions,
   normalizeProductionMutationEnvelope,
 } from "./lib/production-delta";
-import {
-  applyCustomerCrmDeltaBatchToDb, applyProductCatalogDeltaBatchToDb,
-  compareCatalogCrmVersions, normalizeCatalogCrmMutationEnvelope,
-} from "./lib/catalog-crm-delta";
+import { compareCatalogCrmVersions } from "./lib/catalog-crm-version";
 import { canOperateStage } from "./lib/operational-control";
-import { buildCustomerCrm, crmCompleteness } from "./lib/customer-crm";
-import { DEFAULT_AGENCY_SETTINGS } from "./lib/agency-intelligence";
-import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "./lib/commercial-calendar";
-import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "./lib/commercial-distribution";
-import { enrichDistributionWithDispatch } from "./lib/commercial-dispatch";
-import { buildOperationalHistory, isActiveClaim, isActiveDelivery, partitionByActivity } from "./lib/operational-history";
+import { DEFAULT_AGENCY_SETTINGS } from "./lib/agency-settings";
+import { legacyCacheKeys, sessionCacheKey, sessionCacheStorage } from "./lib/session-cache";
+import {
+  activeConfigurationFigureCatalog, activeFigureCatalog, expectedFigureProductId, figureProductId, figuresForCommercialProducts, KITCHEN_FIGURE_DEFAULTS,
+  isAuxiliaryFigureName, isCommercialFamilyProduct, isKitchenFigureName, orderAttributesForProduct, orderLinePresentation, productTypeForCategory,
+} from "./lib/momos-domain-language";
+import { calculateOrderMoney, orderLineAdditionsTotal as canonicalLineAdditionsTotal } from "./lib/order-money.js";
+import { businessDateISO, MOMOS_BUSINESS_TIME_ZONE } from "./lib/business-date.js";
 const LazyAgencyPanel = lazy(() => import("./features/agency/AgencyPanel.jsx").then((module) => ({
   default: module.createAgencyPanel(getAgencyPanelShared()),
 })));
@@ -75,7 +74,7 @@ const LazyBusinessPanels = lazy(() => import("./features/backoffice/BusinessPane
    Arquitectura: tablas normalizadas + persistencia (window.storage)
    ================================================================ */
 
-const DB_VERSION = 17;
+const DB_VERSION = 18;
 const DB_KEY = "momos-db-v2"; // clave estable; la versión interna migra los datos
 
 // Clonado seguro con fallback para navegadores sin structuredClone
@@ -91,7 +90,6 @@ const T = {
 };
 
 const FONTS = `
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700;6..12,800&display=swap');
 * { box-sizing: border-box; } body { margin: 0; }
 .momos {
   --momo-ease: cubic-bezier(.2,.8,.2,1);
@@ -250,9 +248,9 @@ body:has(.momo-kitchen-plan-fab[data-open="true"]) .momo-momobot-fab { opacity: 
 `;
 
 /* ---------------- Fechas dinámicas (zona horaria America/Bogota) ---------------- */
-const TZ = "America/Bogota";
+const TZ = MOMOS_BUSINESS_TIME_ZONE;
 // "en-CA" produce YYYY-MM-DD; NUNCA usar toISOString para la fecha operativa (daría el día de UTC, no el de Cali)
-const fechaISOEnBogota = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+const fechaISOEnBogota = (date) => businessDateISO(date);
 const hoyISO = () => fechaISOEnBogota(new Date());
 const ahoraHora = () => new Intl.DateTimeFormat("es-CO", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 const dISO = (nDias) => fechaISOEnBogota(new Date(Date.now() + nDias * 86400000));
@@ -435,21 +433,25 @@ function seedDb() {
     salsas: ["Frutos rojos","Chocolate","Arequipe","Maracuyá","Lechera"],
     rellenos: RELLENOS,
     toppings: TOPPINGS,
-    // Catálogo de figuras: la figura es la FORMA (nombre + especie + gramaje).
+    // Catálogo de figuras: la figura es el POSTRE físico (nombre + gramaje).
+    // productId señala la familia comercial que lo vende/reserva; especie es solo descriptiva.
     // El sabor es ortogonal: cualquier figura se ofrece en los 11 sabores. No se acoplan.
     figuras: [
-      { nombre: "Lizi",  especie: "gato",  gramaje: "150 g" },
-      { nombre: "Momo",  especie: "gato",  gramaje: "150 g" },
-      { nombre: "Toby",  especie: "gato",  gramaje: "280 g" },
-      { nombre: "Teo",   especie: "gato",  gramaje: "280 g" },
-      { nombre: "Max",   especie: "perro", gramaje: "150 g" },
-      { nombre: "Rocco", especie: "perro", gramaje: "150 g" },
-      { nombre: "Danna", especie: "perro", gramaje: "150 g" },
+      { nombre: "Lizi",  especie: "gato",  gramaje: "150 g", productId: "PR01" },
+      { nombre: "Momo",  especie: "gato",  gramaje: "180 g", productId: "PR01" },
+      { nombre: "Toby",  especie: "gato",  gramaje: "280 g", productId: "PR01" },
+      { nombre: "Teo",   especie: "gato",  gramaje: "250 g", productId: "PR04" },
+      { nombre: "Max",   especie: "perro", gramaje: "180 g", productId: "PR02" },
+      { nombre: "Rocco", especie: "perro", gramaje: "180 g", productId: "PR02" },
+      { nombre: "Danna", especie: "perro", gramaje: "180 g", productId: "PR02" },
     ],
     pagos: ["Nequi","Daviplata","Bancolombia","Rappi (app)"],
     proveedores: ["Picap","Pibox","Mensajeros Urbanos","Propio","Rappi"],
     pautaMensual: 350000,
     horasCongelacion: 10, // objetivo por defecto (rango operativo 8–12 h)
+    vidaUtilConfigurable: true,
+    vidaUtilProductoTerminadoDias: 6,
+    vidaUtilMezclasDias: 5,
     demoraCocinaMin: 15,
     demoraCocinaUrgenteMin: 30,
     demoraEmpaqueMin: 10,
@@ -458,16 +460,17 @@ function seedDb() {
     politicas: "MOMOS no despacha ningún pedido sin pago confirmado: se requiere comprobante de transferencia (Nequi, Daviplata o Bancolombia) o el pago dentro de la app de Rappi. No se aceptan pagos en efectivo contra entrega. Reclamos por estado del producto: máximo 20 minutos después de recibido, salvo calidad o inocuidad. Un beneficio por pedido, no acumulable, no aplica sobre domicilio.",
   };
 
-  // tipo: 'momo' = unidad con stock terminado · 'combo' = disponibilidad calculada · 'pedido' = se prepara al momento
+  // `tipo` conserva el modo técnico de stock. En UI, PR01–PR04 son familias/presentaciones
+  // comerciales; Lizi, Momo, Toby, Teo, Max, Rocco y Danna son los productos físicos de Cocina.
   const products = [
-    { id: "PR01", nombre: "Momo Gatito 150 g", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: 18000, precioRappi: 23000, costo: 6800, stock: 8, prep: 20, frio: true, lejano: false, activo: true, desc: "Figura de mousse helado en forma de gatito, base crocante y salsa a elección.", atributos: ["sabor","salsa","figura"] },
-    { id: "PR02", nombre: "Momo Perrito 150 g", cat: "Momos Signature", tipo: "momo", especie: "perro", precio: 18000, precioRappi: 23000, costo: 6800, stock: 6, prep: 20, frio: true, lejano: false, activo: true, desc: "Figura de mousse helado en forma de perrito, base crocante y salsa a elección.", atributos: ["sabor","salsa","figura"] },
-    { id: "PR03", nombre: "Momo grande 190 g", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: 23000, precioRappi: 29000, costo: 8900, stock: 4, prep: 25, frio: true, lejano: false, activo: true, desc: "Momo de 190 g con doble salsa y relleno a elección.", atributos: ["sabor","salsa","figura"] },
-    { id: "PR04", nombre: "Momo premium 280 g", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: 32000, precioRappi: 39000, costo: 12500, stock: 3, prep: 30, frio: true, lejano: false, activo: true, desc: "Momo premium 280 g con relleno doble, ideal para regalo.", atributos: ["sabor","salsa","figura"] },
+    { id: "PR01", nombre: "Momo Gatito", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: 18000, precioRappi: 23000, costo: 6800, stock: 8, prep: 20, frio: true, lejano: false, activo: true, desc: "Familia comercial para Lizi, Momo y Toby; la figura define forma y gramaje.", atributos: ["sabor","salsa","figura"] },
+    { id: "PR02", nombre: "Momo Perrito", cat: "Momos Signature", tipo: "momo", especie: "perro", precio: 18000, precioRappi: 23000, costo: 6800, stock: 6, prep: 20, frio: true, lejano: false, activo: true, desc: "Familia comercial para Max, Rocco y Danna; la figura define la forma física.", atributos: ["sabor","salsa","figura"] },
+    { id: "PR03", nombre: "Momo grande", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: 23000, precioRappi: 29000, costo: 8900, stock: 0, prep: 25, frio: true, lejano: false, activo: false, desc: "Presentación comercial en definición; no se ofrece hasta vincular una figura física canónica.", atributos: ["sabor","salsa","figura"] },
+    { id: "PR04", nombre: "Momo premium", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: 32000, precioRappi: 39000, costo: 12500, stock: 3, prep: 30, frio: true, lejano: false, activo: true, desc: "Presentación comercial premium vinculada a Teo y su ficha de Cocina.", atributos: ["sabor","salsa","figura"] },
     { id: "PR05", nombre: "Caja x3 Momos", cat: "Cajas y Combos", tipo: "combo", comboSize: 3, componentProductIds: ["PR01","PR02"], empaqueItem: "I08", precio: 49000, precioRappi: 59000, costo: 22500, prep: 35, frio: true, lejano: false, activo: true, desc: "Caja regalo con 3 momos surtidos, sticker y lazo. Disponibilidad según momos y cajas.", atributos: ["sabor","salsa"] },
     { id: "PR06", nombre: "Caja x4 Momos", cat: "Cajas y Combos", tipo: "combo", comboSize: 4, componentProductIds: ["PR01","PR02"], empaqueItem: "I13", precio: 63000, precioRappi: 75000, costo: 29500, prep: 40, frio: true, lejano: false, activo: true, desc: "Caja regalo con 4 momos surtidos.", atributos: ["sabor","salsa"] },
     { id: "PR07", nombre: "Caja x6 Momos", cat: "Cajas y Combos", tipo: "combo", comboSize: 6, componentProductIds: ["PR01","PR02"], empaqueItem: "I14", precio: 89000, precioRappi: 105000, costo: 43000, prep: 45, frio: true, lejano: false, activo: true, desc: "Caja premium con 6 momos surtidos para celebraciones.", atributos: ["sabor","salsa"] },
-    { id: "PR08", nombre: "Cheesecake Momo cuchareable", cat: "Momos Cuchara", tipo: "momo", especie: "gato", precio: 15000, precioRappi: 19000, costo: 5200, stock: 12, prep: 10, frio: true, lejano: true, activo: true, desc: "Cheesecake en vaso con figurita horizontal y salsa.", atributos: ["sabor","salsa","figura"] },
+    { id: "PR08", nombre: "Cheesecake Momo cuchareable", cat: "Momos Cuchara", tipo: "pedido", precio: 15000, precioRappi: 19000, costo: 5200, prep: 10, frio: true, lejano: true, activo: true, desc: "Cheesecake en vaso preparado al momento, con sabor y salsa a elecciÃ³n.", atributos: ["sabor","salsa"] },
     { id: "PR09", nombre: "Crepa Momo Nutella", cat: "Momos Antojos", tipo: "pedido", precio: 14000, precioRappi: 18000, costo: 4800, prep: 12, frio: false, lejano: true, activo: true, desc: "Crepa con Nutella, banano y topping de momo mini. Se prepara al momento.", atributos: [] },
     { id: "PR10", nombre: "Crepa Momo Oreo", cat: "Momos Antojos", tipo: "pedido", precio: 14000, precioRappi: 18000, costo: 4600, prep: 12, frio: false, lejano: true, activo: true, desc: "Crepa con crema de Oreo y galleta triturada. Se prepara al momento.", atributos: [] },
     { id: "PR11", nombre: "Malteada Oreo Momo", cat: "Momos Bebidas", tipo: "pedido", precio: 13000, precioRappi: 16500, costo: 4200, prep: 8, frio: true, lejano: false, activo: true, desc: "Malteada cremosa de Oreo con crema batida.", atributos: [] },
@@ -478,10 +481,10 @@ function seedDb() {
   ];
 
   const customers = [
-    { id: "C01", nombre: "Valentina Ríos", telefono: "3104567890", instagram: "@valen.rios", barrio: "El Caney", direccion: "Cra 85C #48-30, torre 2 apto 402", canal: "Instagram", primera: dISO(-115), ultima: hoyISO(), total: 214000, pedidos: 6, cumple: cumpleEn(13), favoritos: "Maracuyá · Gatito", estado: "VIP", notas: "Siempre pide gatito de maracuyá. Sube historias con frecuencia." },
-    { id: "C02", nombre: "Andrés Cabal", telefono: "3159876543", instagram: "@andrescabal", barrio: "El Ingenio", direccion: "Cra 83 #14-21", canal: "WhatsApp", primera: dISO(-64), ultima: dISO(-1), total: 96000, pedidos: 3, cumple: "11-02", favoritos: "Oreo · Perrito", estado: "Recurrente", notas: "" },
+    { id: "C01", nombre: "Valentina Ríos", telefono: "3104567890", instagram: "@valen.rios", barrio: "El Caney", direccion: "Cra 85C #48-30, torre 2 apto 402", canal: "Instagram", primera: dISO(-115), ultima: hoyISO(), total: 214000, pedidos: 6, cumple: cumpleEn(13), favoritos: "Lizi de Maracuyá", estado: "VIP", notas: "Prefiere Lizi de Maracuyá. Sube historias con frecuencia." },
+    { id: "C02", nombre: "Andrés Cabal", telefono: "3159876543", instagram: "@andrescabal", barrio: "El Ingenio", direccion: "Cra 83 #14-21", canal: "WhatsApp", primera: dISO(-64), ultima: dISO(-1), total: 96000, pedidos: 3, cumple: "11-02", favoritos: "Max de Oreo", estado: "Recurrente", notas: "" },
     { id: "C03", nombre: "Laura Sepúlveda", telefono: "3001234567", instagram: "@lau.sep", barrio: "Valle del Lili", direccion: "Cra 98 #42-05, casa 12", canal: "Rappi", primera: dISO(-7), ultima: dISO(-7), total: 39000, pedidos: 1, cumple: cumpleEn(4), favoritos: "Nutella", estado: "Nuevo", notas: "Llegó por Rappi, pedir Instagram en próxima entrega." },
-    { id: "C04", nombre: "Camilo Torres", telefono: "3186543210", instagram: "", barrio: "El Limonar", direccion: "Calle 13A #66-40", canal: "WhatsApp", primera: dISO(-86), ultima: dISO(-46), total: 128000, pedidos: 4, cumple: "01-25", favoritos: "Milo · Perrito", estado: "Inactivo", notas: "No compra hace más de 30 días. Enviar beneficio de reactivación." },
+    { id: "C04", nombre: "Camilo Torres", telefono: "3186543210", instagram: "", barrio: "El Limonar", direccion: "Calle 13A #66-40", canal: "WhatsApp", primera: dISO(-86), ultima: dISO(-46), total: 128000, pedidos: 4, cumple: "01-25", favoritos: "Rocco de Milo", estado: "Inactivo", notas: "No compra hace más de 30 días. Enviar beneficio de reactivación." },
     { id: "C05", nombre: "María José Lenis", telefono: "3178889911", instagram: "@majolenis", barrio: "Ciudad Jardín", direccion: "Cra 105 #15-80, casa 14", canal: "Instagram", primera: dISO(-34), ultima: hoyISO(), total: 152000, pedidos: 3, cumple: "12-15", favoritos: "Coco · Caja x3", estado: "Recurrente", notas: "Subió historia hace 2 días → beneficio activo." },
     { id: "C06", nombre: "Sebastián Perea", telefono: "3123334455", instagram: "@sebasperea", barrio: "Ciudad 2000", direccion: "Cra 44 #13B-11", canal: "Directo", primera: dISO(-20), ultima: dISO(-15), total: 41000, pedidos: 2, cumple: "08-30", favoritos: "Mango biche", estado: "Riesgo por reclamos", notas: "2 reclamos, uno rechazado por llegar 3 horas después de la entrega." },
     { id: "C07", nombre: "Daniela Quintero", telefono: "3167771122", instagram: "@dani.qh", barrio: "Capri", direccion: "Calle 14 #50-26", canal: "WhatsApp", primera: dISO(-17), ultima: dISO(-17), total: 36000, pedidos: 1, cumple: cumpleEn(40), favoritos: "Caramelo salado", estado: "Nuevo", notas: "" },
@@ -499,15 +502,18 @@ function seedDb() {
   ];
 
   const order_items = [
-    { id: "IT01", orderId: "P-1041", productId: "PR01", nombre: "Momo Gatito 150 g", sabor: "Maracuyá", salsa: "Frutos rojos", relleno: "Cheesecake con ganache", figura: "Gatito", cant: 2, precio: 18000 },
+    { id: "IT01", orderId: "P-1041", productId: "PR01", nombre: "Momo Gatito", sabor: "Maracuyá", salsa: "Frutos rojos", relleno: "Cheesecake con ganache", figura: "Lizi", cant: 2, precio: 18000 },
     { id: "IT02", orderId: "P-1041", productId: "PR11", nombre: "Malteada Oreo Momo", sabor: "Oreo", salsa: "", relleno: "", figura: "", cant: 1, precio: 13000 },
-    { id: "IT03", orderId: "P-1042", productId: "PR05", nombre: "Caja x3 Momos", sabor: "Surtido frutal", salsa: "Chocolate", relleno: "Cheesecake con ganache", figura: "Gatito y perrito", cant: 1, precio: 49000 },
-    { id: "IT04", orderId: "P-1043", productId: "PR08", nombre: "Cheesecake Momo cuchareable", sabor: "Durazno", salsa: "Frutos rojos", relleno: "Cheesecake con ganache", figura: "Gatito horizontal", cant: 2, precio: 19000 },
-    { id: "IT05", orderId: "P-1044", productId: "PR02", nombre: "Momo Perrito 150 g", sabor: "Oreo", salsa: "Chocolate", relleno: "Cheesecake con ganache", figura: "Perrito", cant: 1, precio: 18000 },
+    { id: "IT03", orderId: "P-1042", productId: "PR05", nombre: "Caja x3 Momos", sabor: "", salsa: "", relleno: "", figura: "", cant: 1, precio: 49000, esCaja: true },
+    { id: "IT03-1", orderId: "P-1042", parentItemId: "IT03", productId: "PR01", nombre: "Momo Gatito", sabor: "Coco", salsa: "Chocolate", relleno: "Cheesecake con ganache", figura: "Lizi", cant: 1, precio: 0, esSubMomo: true },
+    { id: "IT03-2", orderId: "P-1042", parentItemId: "IT03", productId: "PR01", nombre: "Momo Gatito", sabor: "Maracuyá", salsa: "Chocolate", relleno: "Cheesecake con ganache", figura: "Momo", cant: 1, precio: 0, esSubMomo: true },
+    { id: "IT03-3", orderId: "P-1042", parentItemId: "IT03", productId: "PR02", nombre: "Momo Perrito", sabor: "Oreo", salsa: "Chocolate", relleno: "Cheesecake con ganache", figura: "Max", cant: 1, precio: 0, esSubMomo: true },
+    { id: "IT04", orderId: "P-1043", productId: "PR08", nombre: "Cheesecake Momo cuchareable", sabor: "Durazno", salsa: "Frutos rojos", relleno: "Cheesecake con ganache", figura: "", cant: 2, precio: 19000 },
+    { id: "IT05", orderId: "P-1044", productId: "PR02", nombre: "Momo Perrito", sabor: "Oreo", salsa: "Chocolate", relleno: "Cheesecake con ganache", figura: "Max", cant: 1, precio: 18000 },
     { id: "IT06", orderId: "P-1044", productId: "PR13", nombre: "Granizado de maracuyá", sabor: "Maracuyá", salsa: "", relleno: "", figura: "", cant: 2, precio: 9000 },
-    { id: "IT07", orderId: "P-1040", productId: "PR03", nombre: "Momo grande 190 g", sabor: "Milo", salsa: "Arequipe", relleno: "Cheesecake con ganache", figura: "Osito", cant: 1, precio: 23000 },
+    { id: "IT07", orderId: "P-1040", productId: "PR02", nombre: "Momo Perrito", sabor: "Milo", salsa: "Arequipe", relleno: "Cheesecake con ganache", figura: "Rocco", cant: 1, precio: 18000 },
     { id: "IT08", orderId: "P-1039", productId: "PR09", nombre: "Crepa Momo Nutella", sabor: "Nutella", salsa: "Chocolate", relleno: "", figura: "", cant: 2, precio: 14000 },
-    { id: "IT09", orderId: "P-1045", productId: "PR04", nombre: "Momo premium 280 g", sabor: "Caramelo salado", salsa: "Lechera", relleno: "Cheesecake con ganache", figura: "Corazón", cant: 1, precio: 32000 },
+    { id: "IT09", orderId: "P-1045", productId: "PR04", nombre: "Momo premium", sabor: "Caramelo salado", salsa: "Lechera", relleno: "Cheesecake con ganache", figura: "Teo", cant: 1, precio: 32000 },
   ];
 
   const evidences = [
@@ -524,11 +530,10 @@ function seedDb() {
   ];
 
   const production_batches = [
-    { id: "L-018", fecha: hoyISO(), producto: "Momo Gatito 150 g", figura: "Gatito", sabor: "Maracuyá", relleno: "Cheesecake con ganache", salsa: "Frutos rojos", gramaje: "150 g", prod: 12, perfectas: 10, imperfectas: 1, descartadas: 1, destino: "Insumo para malteadas", resp: "Karen", vence: "", desmoldadoEn: "", estado: "Congelando", stockContabilizado: false, horasCongelacion: 10, inicioCongelacion: selloHaceHoras(6), obs: "Molde nuevo, mejor definición de orejas." },
-    { id: "L-017", fecha: dISO(-1), producto: "Momo Perrito 150 g", figura: "Perrito", sabor: "Oreo", relleno: "Cheesecake con ganache", salsa: "Chocolate", gramaje: "150 g", prod: 10, perfectas: 9, imperfectas: 1, descartadas: 0, destino: "Prueba interna", resp: "Karen", vence: dISO(2), desmoldadoEn: dISO(-1) + " 10:00:00", estado: "Listo", stockContabilizado: true, obs: "" },
-    { id: "L-016", fecha: dISO(-2), producto: "Momo premium 280 g", figura: "Corazón", sabor: "Caramelo salado", relleno: "Cheesecake con ganache", salsa: "Lechera", gramaje: "280 g", prod: 6, perfectas: 5, imperfectas: 0, descartadas: 1, destino: "—", resp: "Julián", vence: dISO(1), desmoldadoEn: dISO(-2) + " 11:00:00", estado: "Listo", stockContabilizado: true, obs: "Una pieza se fracturó al desmoldar." },
-    { id: "L-015", fecha: dISO(-3), producto: "Cheesecake Momo cuchareable", figura: "Gatito horizontal", sabor: "Durazno", relleno: "Cheesecake con ganache", salsa: "Frutos rojos", gramaje: "160 g", prod: 15, perfectas: 15, imperfectas: 0, descartadas: 0, destino: "—", resp: "Karen", vence: dISO(0), desmoldadoEn: dISO(-3) + " 09:00:00", estado: "Reservado", stockContabilizado: false, obs: "Reservado parcial para pedidos de Rappi." },
-    { id: "L-014", fecha: dISO(-4), producto: "Momo grande 190 g", figura: "Osito", sabor: "Milo", relleno: "Cheesecake con ganache", salsa: "Arequipe", gramaje: "190 g", prod: 8, perfectas: 6, imperfectas: 2, descartadas: 0, destino: "Insumo para crepas", resp: "Julián", vence: dISO(-1), desmoldadoEn: dISO(-4) + " 09:30:00", estado: "Vendido", stockContabilizado: false, obs: "" },
+    { id: "L-018", fecha: hoyISO(), productId: "PR01", producto: "Momo Gatito", figura: "Lizi", sabor: "Maracuyá", relleno: "Cheesecake con ganache", salsa: "Frutos rojos", gramaje: "150 g", prod: 12, perfectas: 10, imperfectas: 1, descartadas: 1, destino: "Insumo para malteadas", resp: "Karen", vence: "", desmoldadoEn: "", estado: "Congelando", stockContabilizado: false, horasCongelacion: 10, inicioCongelacion: selloHaceHoras(6), obs: "Molde nuevo, mejor definición de orejas." },
+    { id: "L-017", fecha: dISO(-1), productId: "PR02", producto: "Momo Perrito", figura: "Max", sabor: "Oreo", relleno: "Cheesecake con ganache", salsa: "Chocolate", gramaje: "180 g", prod: 10, perfectas: 9, imperfectas: 1, descartadas: 0, destino: "Prueba interna", resp: "Karen", vence: dISO(2), desmoldadoEn: dISO(-1) + " 10:00:00", estado: "Listo", stockContabilizado: true, obs: "" },
+    { id: "L-016", fecha: dISO(-2), productId: "PR04", producto: "Momo premium", figura: "Teo", sabor: "Caramelo salado", relleno: "Cheesecake con ganache", salsa: "Lechera", gramaje: "250 g", prod: 6, perfectas: 5, imperfectas: 0, descartadas: 1, destino: "—", resp: "Julián", vence: dISO(1), desmoldadoEn: dISO(-2) + " 11:00:00", estado: "Listo", stockContabilizado: true, obs: "Una pieza se fracturó al desmoldar." },
+    { id: "L-014", fecha: dISO(-4), productId: "PR02", producto: "Momo Perrito", figura: "Rocco", sabor: "Milo", relleno: "Cheesecake con ganache", salsa: "Arequipe", gramaje: "180 g", prod: 8, perfectas: 6, imperfectas: 2, descartadas: 0, destino: "Insumo para crepas", resp: "Julián", vence: dISO(-1), desmoldadoEn: dISO(-4) + " 09:30:00", estado: "Vendido", stockContabilizado: false, obs: "" },
   ];
 
   const inventory_items = [
@@ -537,7 +542,7 @@ function seedDb() {
     { id: "I03", nombre: "Salsa frutos rojos", cat: "Salsas", unidad: "L", stock: 1.2, min: 1, costo: 22000, proveedor: "Producción propia", vence: dISO(7), ubicacion: "Nevera 2", compra: dISO(-3) },
     { id: "I04", nombre: "Nutella 3 kg", cat: "Rellenos", unidad: "kg", stock: 1.8, min: 1, costo: 32000, proveedor: "Makro", vence: dISO(120), ubicacion: "Estante seco", compra: dISO(-10) },
     { id: "I05", nombre: "Ganache de chocolate", cat: "Ganache", unidad: "kg", stock: 0.8, min: 1, costo: 26000, proveedor: "Producción propia", vence: dISO(4), ubicacion: "Nevera 2", compra: dISO(-2) },
-    { id: "I06", nombre: "Mezcla de crepa", cat: "Mezcla de crepa", unidad: "L", stock: 3, min: 2, costo: 9000, proveedor: "Producción propia", vence: dISO(3), ubicacion: "Nevera 1", compra: dISO(-1) },
+    { id: "I06", nombre: "Mezcla de crepa", cat: "Mezcla de crepa", unidad: "L", stock: 3, min: 2, costo: 9000, proveedor: "Producción propia", vence: dISO(5), ubicacion: "Nevera 1", compra: dISO(-1) },
     { id: "I07", nombre: "Pulpa mango biche", cat: "Granizados", unidad: "kg", stock: 4, min: 2, costo: 8500, proveedor: "Galería Alameda", vence: dISO(20), ubicacion: "Congelador B", compra: dISO(-5) },
     { id: "I08", nombre: "Caja regalo x3", cat: "Cajas", unidad: "und", stock: 9, min: 8, costo: 3200, proveedor: "Empaques del Valle", vence: "", ubicacion: "Estante empaques", compra: dISO(-15) },
     { id: "I13", nombre: "Caja regalo x4", cat: "Cajas", unidad: "und", stock: 5, min: 6, costo: 3800, proveedor: "Empaques del Valle", vence: "", ubicacion: "Estante empaques", compra: dISO(-15) },
@@ -586,7 +591,7 @@ function seedDb() {
   ];
 
   const production_suggestions = [
-    { id: "S-02", fecha: hoyISO(), producto: "Momo premium 280 g", cantidad: 4, motivo: "Stock por debajo de la demanda semanal", orderId: "", estado: "Pendiente", area: "Producción", itemId: "" },
+    { id: "S-02", fecha: hoyISO(), producto: "Momo premium", figura: "Teo", sabor: "Durazno", cantidad: 4, motivo: "Stock exacto por figura y sabor debajo de la demanda semanal", orderId: "", estado: "Pendiente", area: "Producción", itemId: "" },
   ];
 
   // recetas: consumo de insumos por 1 unidad de producto (tabla recipes, una fila por línea)
@@ -621,21 +626,21 @@ function seedDb() {
 
   // ---- Marketing: campañas ----
   const campaigns = [
-    { id: "CMP-01", nombre: "Lanzamiento Gatitos MOMOS", canal: "Instagram", objetivo: "Lanzamiento", productoFoco: "Momo Gatito 150 g", oferta: "2x1 primer pedido", fechaInicio: dISO(-20), fechaFin: dISO(10), presupuesto: 250000, gastoReal: 180000, estado: "Activa", responsable: "Marketing", notas: "Campaña insignia de apertura de la cocina oculta." },
+    { id: "CMP-01", nombre: "Lanzamiento Lizi MOMOS", canal: "Instagram", objetivo: "Lanzamiento", productoFoco: "Momo Gatito", oferta: "2x1 primer pedido", fechaInicio: dISO(-20), fechaFin: dISO(10), presupuesto: 250000, gastoReal: 180000, estado: "Activa", responsable: "Marketing", notas: "Campaña insignia de Lizi; la familia comercial es Momo Gatito." },
     { id: "CMP-02", nombre: "Caja regalo x3", canal: "Facebook", objetivo: "Ventas", productoFoco: "Caja x3 Momos", oferta: "Envío gratis zona 1", fechaInicio: dISO(-12), fechaFin: dISO(6), presupuesto: 150000, gastoReal: 95000, estado: "Activa", responsable: "Marketing", notas: "Enfocada en regalos y fechas especiales." },
     { id: "CMP-03", nombre: "Historia + etiqueta = malteada gratis", canal: "Instagram", objetivo: "Recompra", productoFoco: "Malteada Oreo Momo", oferta: "Malteada gratis por historia", fechaInicio: dISO(-8), fechaFin: dISO(14), presupuesto: 60000, gastoReal: 20000, estado: "Activa", responsable: "Marketing", notas: "Beneficio conectado al módulo de Beneficios." },
-    { id: "CMP-04", nombre: "Reactivación clientes 30 días", canal: "WhatsApp", objetivo: "Recompra", productoFoco: "Momo Perrito 150 g", oferta: "30% descuento reactivación", fechaInicio: dISO(-5), fechaFin: dISO(20), presupuesto: 40000, gastoReal: 0, estado: "Planeada", responsable: "Marketing", notas: "Segmentar clientes inactivos del CRM." },
+    { id: "CMP-04", nombre: "Reactivación clientes 30 días", canal: "WhatsApp", objetivo: "Recompra", productoFoco: "Momo Perrito", oferta: "30% descuento reactivación", fechaInicio: dISO(-5), fechaFin: dISO(20), presupuesto: 40000, gastoReal: 0, estado: "Planeada", responsable: "Marketing", notas: "Segmentar clientes inactivos del CRM." },
   ];
 
   // ---- Marketing: creativos ----
   const creatives = [
-    { id: "CRE-01", campaignId: "CMP-01", titulo: "Adopta tu Momo favorito", canal: "Instagram", formato: "Reel", productoFoco: "Momo Gatito 150 g", figuraFoco: "Gatito", saborFoco: "Maracuyá", hook: "Da pesar comerlos… hasta la primera cucharada", copy: "Gatitos de mousse helado hechos a mano en Cali. Adopta el tuyo hoy 🐱", guion: "Plano 1: caja abriéndose. Plano 2: cuchara rompiendo el mousse. Plano 3: reacción.", estado: "Ganador", responsable: "Karen", fechaEntrega: dISO(-18), assetUrl: "", notas: "El reel con mejor retención." },
-    { id: "CRE-02", campaignId: "CMP-02", titulo: "El regalo más tierno de Cali", canal: "Facebook", formato: "Carrusel", productoFoco: "Caja x3 Momos", figuraFoco: "Gatito y perrito", saborFoco: "Surtido", hook: "El regalo más tierno de Cali", copy: "Sorprende con una caja de 3 momos surtidos. Envolvemos con lazo y tarjeta 🎁", guion: "", estado: "Publicado", responsable: "Marketing", fechaEntrega: dISO(-10), assetUrl: "", notas: "" },
-    { id: "CRE-03", campaignId: "CMP-01", titulo: "Gatitos de mousse helado para regalar", canal: "Instagram", formato: "Historia", productoFoco: "Momo Gatito 150 g", figuraFoco: "Gatito", saborFoco: "Coco", hook: "Gatitos de mousse helado para regalar", copy: "Desliza hacia arriba y pide el tuyo 👆", guion: "", estado: "Publicado", responsable: "Karen", fechaEntrega: dISO(-6), assetUrl: "", notas: "" },
+    { id: "CRE-01", campaignId: "CMP-01", titulo: "Adopta a Lizi", canal: "Instagram", formato: "Reel", productoFoco: "Momo Gatito", figuraFoco: "Lizi", saborFoco: "Maracuyá", hook: "Da pesar comerla… hasta la primera cucharada", copy: "Lizi de mousse helado hecha a mano en Cali. Pide la tuya hoy 🐱", guion: "Plano 1: caja abriéndose. Plano 2: Lizi completa. Plano 3: cuchara rompiendo el mousse.", estado: "Ganador", responsable: "Karen", fechaEntrega: dISO(-18), assetUrl: "", notas: "El reel con mejor retención." },
+    { id: "CRE-02", campaignId: "CMP-02", titulo: "El regalo más tierno de Cali", canal: "Facebook", formato: "Carrusel", productoFoco: "Caja x3 Momos", figuraFoco: "", saborFoco: "Surtido", hook: "El regalo más tierno de Cali", copy: "Sorprende con una caja de 3 momos surtidos. Envolvemos con lazo y tarjeta 🎁", guion: "", estado: "Publicado", responsable: "Marketing", fechaEntrega: dISO(-10), assetUrl: "", notas: "El combo no inventa una figura global; cada componente conserva su figura y sabor exactos." },
+    { id: "CRE-03", campaignId: "CMP-01", titulo: "Lizi de mousse helado para regalar", canal: "Instagram", formato: "Historia", productoFoco: "Momo Gatito", figuraFoco: "Lizi", saborFoco: "Coco", hook: "Una Lizi de mousse helado para regalar", copy: "Desliza hacia arriba y pide la tuya 👆", guion: "", estado: "Publicado", responsable: "Karen", fechaEntrega: dISO(-6), assetUrl: "", notas: "" },
     { id: "CRE-04", campaignId: "CMP-03", titulo: "Sube tu historia y gana", canal: "Instagram", formato: "Historia", productoFoco: "Malteada Oreo Momo", figuraFoco: "", saborFoco: "Oreo", hook: "Etiquétanos y tu malteada va por la casa", copy: "Sube una historia con tu momo, etiquétanos y reclama tu malteada gratis 🥤", guion: "", estado: "Aprobado", responsable: "Marketing", fechaEntrega: dISO(-2), assetUrl: "", notas: "Listo para publicar esta semana." },
-    { id: "CRE-05", campaignId: "CMP-01", titulo: "UGC clienta Ciudad Jardín", canal: "TikTok", formato: "Video UGC", productoFoco: "Momo Gatito 150 g", figuraFoco: "Gatito", saborFoco: "Maracuyá", hook: "Me llegó el gatito más lindo de Cali", copy: "", guion: "Cliente real mostrando la entrega y la primera cucharada.", estado: "En revisión", responsable: "Karen", fechaEntrega: dISO(1), assetUrl: "", notas: "Esperando aprobación de la clienta." },
+    { id: "CRE-05", campaignId: "CMP-01", titulo: "UGC clienta Ciudad Jardín", canal: "TikTok", formato: "Video UGC", productoFoco: "Momo Gatito", figuraFoco: "Momo", saborFoco: "Maracuyá", hook: "Me llegó Momo, el postre más lindo de Cali", copy: "", guion: "Cliente real mostrando la entrega y la primera cucharada.", estado: "En revisión", responsable: "Karen", fechaEntrega: dISO(1), assetUrl: "", notas: "Esperando aprobación de la clienta." },
     { id: "CRE-06", campaignId: "CMP-02", titulo: "Foto producto caja premium", canal: "Instagram", formato: "Foto producto", productoFoco: "Caja x6 Momos", figuraFoco: "Surtido", saborFoco: "Surtido", hook: "", copy: "", guion: "", estado: "En diseño", responsable: "Marketing", fechaEntrega: dISO(3), assetUrl: "", notas: "" },
-    { id: "CRE-07", campaignId: "CMP-04", titulo: "Copy reactivación WhatsApp", canal: "WhatsApp", formato: "Copy", productoFoco: "Momo Perrito 150 g", figuraFoco: "Perrito", saborFoco: "", hook: "Te extrañamos 💗", copy: "¡Hola! Hace un mes no te consentimos. Tienes 30% en tu próximo momo, solo por hoy.", guion: "", estado: "Idea", responsable: "Marketing", fechaEntrega: dISO(4), assetUrl: "", notas: "" },
+    { id: "CRE-07", campaignId: "CMP-04", titulo: "Copy reactivación WhatsApp", canal: "WhatsApp", formato: "Copy", productoFoco: "Momo Perrito", figuraFoco: "Max", saborFoco: "Oreo", hook: "Te extrañamos 💗", copy: "¡Hola! Hace un mes no te consentimos. Tienes 30% en tu próximo Max de Oreo, solo por hoy.", guion: "", estado: "Idea", responsable: "Marketing", fechaEntrega: dISO(4), assetUrl: "", notas: "" },
   ];
 
   // ---- Marketing: calendario de contenido ----
@@ -672,33 +677,33 @@ function seedDb() {
 
   // ---- Crecimiento: ideas listas (biblioteca aprobada) ----
   const marketing_ideas = [
-    { id: "ID-01", titulo: "Da pesar comerlos… hasta la primera cucharada", cat: "Ideas tiernas", objetivo: "vender", productoSugerido: "Momo Gatito 150 g", copy: "Da pesar comerlos… hasta la primera cucharada 🥺🐱 Adopta el tuyo por WhatsApp.", guionCorto: "Muestra el gatito completo, luego la cuchara entrando al mousse.", canal: "Instagram", estado: "Ganadora" },
-    { id: "ID-02", titulo: "Adopta tu Momo favorito", cat: "Ideas tiernas", objetivo: "vender", productoSugerido: "Momo Perrito 150 g", copy: "Adopta tu Momo favorito 🐶🐱 gatitos y perritos de mousse helado, hechos en Cali.", guionCorto: "Fila de momos surtidos, la mano elige uno.", canal: "TikTok", estado: "Repetir" },
+    { id: "ID-01", titulo: "Da pesar comerlos… hasta la primera cucharada", cat: "Ideas tiernas", objetivo: "vender", productoSugerido: "Lizi · Momo Gatito", copy: "Da pesar comer a Lizi… hasta la primera cucharada 🥺🐱 Pide la tuya por WhatsApp.", guionCorto: "Muestra a Lizi completa, luego la cuchara entrando al mousse.", canal: "Instagram", estado: "Ganadora" },
+    { id: "ID-02", titulo: "Elige tu figura MOMOS favorita", cat: "Ideas tiernas", objetivo: "vender", productoSugerido: "Max · Momo Perrito", copy: "Elige tu figura MOMOS favorita 🐶🐱 postres de mousse helado, hechos en Cali.", guionCorto: "Fila de figuras surtidas; la mano elige a Max.", canal: "TikTok", estado: "Repetir" },
     { id: "ID-03", titulo: "Caja x3 para regalar", cat: "Ideas de regalo", objetivo: "regalo", productoSugerido: "Caja x3 Momos", copy: "El regalo más tierno de Cali 🎁 Caja x3 MOMOS con lazo y tarjeta. Pide la tuya.", guionCorto: "Caja cerrada, se abre lento y aparecen los 3 momos.", canal: "Instagram", estado: "Nueva" },
-    { id: "ID-04", titulo: "Gatitos de mousse helado", cat: "Ideas para vender", objetivo: "seguidores", productoSugerido: "Momo Gatito 150 g", copy: "Gatitos de mousse helado 🐱💛 el antojo que te cambia el día.", guionCorto: "Primer plano de la carita del gatito.", canal: "TikTok", estado: "Usada" },
-    { id: "ID-05", titulo: "Perritos MOMOS para cumpleaños", cat: "Ideas para cumpleaños", objetivo: "cumpleaños", productoSugerido: "Momo Perrito 150 g", copy: "¿Cumple de alguien especial? 🎂 Regálale un perrito MOMOS y sorpréndelo.", guionCorto: "Perrito con velita encima.", canal: "Instagram", estado: "Nueva" },
+    { id: "ID-04", titulo: "Toby de mousse helado", cat: "Ideas para vender", objetivo: "seguidores", productoSugerido: "Toby · Momo Gatito", copy: "Toby de mousse helado 🐱💛 el antojo que te cambia el día.", guionCorto: "Primer plano de la figura Toby.", canal: "TikTok", estado: "Usada" },
+    { id: "ID-05", titulo: "Max para cumpleaños", cat: "Ideas para cumpleaños", objetivo: "cumpleaños", productoSugerido: "Max · Momo Perrito", copy: "¿Cumple de alguien especial? 🎂 Regálale un Max MOMOS y sorpréndelo.", guionCorto: "Max con una velita encima.", canal: "Instagram", estado: "Nueva" },
     { id: "ID-06", titulo: "Historia + etiqueta = malteada gratis", cat: "Ideas para que etiqueten a MOMOS", objetivo: "historias etiquetadas", productoSugerido: "Malteada Oreo Momo", copy: "Sube una historia con tu MOMOS, etiquétanos y tu malteada va por la casa 🥤💛", guionCorto: "Cliente etiquetando la cuenta en su historia.", canal: "Instagram", estado: "Ganadora" },
-    { id: "ID-07", titulo: "Así nacen los gatitos", cat: "Ideas para mostrar proceso", objetivo: "seguidores", productoSugerido: "Momo Gatito 150 g", copy: "Así nacen los gatitos MOMOS 🐱 todo hecho a mano, con amor y mousse helado.", guionCorto: "Timelapse del desmolde y decorado.", canal: "TikTok", estado: "Nueva" },
-    { id: "ID-08", titulo: "Nuevo sabor: coco", cat: "Ideas para sabores", objetivo: "vender", productoSugerido: "Momo Gatito 150 g", copy: "¡Nuevo sabor! 🥥 Gatito de coco, cremoso y tropical. Solo esta semana.", guionCorto: "Cuchara mostrando el relleno de coco.", canal: "Instagram", estado: "Nueva" },
-    { id: "ID-09", titulo: "Te extrañamos, vuelve por tu MOMOS", cat: "Ideas para clientes que ya compraron", objetivo: "recompra", productoSugerido: "Momo Gatito 150 g", copy: "Hace rato no te consentimos 💛 vuelve por tu MOMOS favorito, te separamos uno.", guionCorto: "Momo con mensaje 'te extrañamos'.", canal: "WhatsApp", estado: "Nueva" },
+    { id: "ID-07", titulo: "Así nace Lizi", cat: "Ideas para mostrar proceso", objetivo: "seguidores", productoSugerido: "Lizi · Momo Gatito", copy: "Así nace Lizi MOMOS 🐱 todo hecho a mano, con amor y mousse helado.", guionCorto: "Timelapse del desmolde de Lizi y su decorado.", canal: "TikTok", estado: "Nueva" },
+    { id: "ID-08", titulo: "Lizi, nuevo sabor: coco", cat: "Ideas para sabores", objetivo: "vender", productoSugerido: "Lizi de Coco · Momo Gatito", copy: "¡Nuevo sabor! 🥥 Lizi de coco, cremosa y tropical. Solo esta semana.", guionCorto: "Cuchara mostrando el relleno de Lizi de coco.", canal: "Instagram", estado: "Nueva" },
+    { id: "ID-09", titulo: "Te extrañamos, vuelve por tu MOMOS", cat: "Ideas para clientes que ya compraron", objetivo: "recompra", productoSugerido: "Momo · Momo Gatito", copy: "Hace rato no te consentimos 💛 vuelve por tu figura MOMOS favorita.", guionCorto: "La figura Momo con mensaje 'te extrañamos'.", canal: "WhatsApp", estado: "Nueva" },
     { id: "ID-10", titulo: "Especial de fin de semana", cat: "Ideas para fechas especiales", objetivo: "vender", productoSugerido: "Caja x3 Momos", copy: "Plan de finde: MOMOS a domicilio 🛵💛 pide antes de las 5 pm y disfruta.", guionCorto: "Caja llegando a la puerta.", canal: "Instagram", estado: "Nueva" },
-    { id: "ID-11", titulo: "Nueva figura: osito", cat: "Ideas para productos nuevos", objetivo: "vender", productoSugerido: "Momo grande 190 g", copy: "¡Llegó el osito MOMOS! 🐻 nuevo integrante de la familia. Adóptalo ya.", guionCorto: "Presentación del osito girando.", canal: "TikTok", estado: "Nueva" },
+    { id: "ID-11", titulo: "Teo entra en escena", cat: "Ideas para productos nuevos", objetivo: "vender", productoSugerido: "Teo · Momo premium", copy: "¡Teo MOMOS entra en escena! 🐱 una figura premium para un antojo especial.", guionCorto: "Presentación de Teo girando con su sabor visible.", canal: "TikTok", estado: "Nueva" },
     { id: "ID-12", titulo: "El regalo más tierno de Cali", cat: "Ideas de regalo", objetivo: "regalo", productoSugerido: "Caja x6 Momos", copy: "El regalo más tierno de Cali 🎁 sorprende con una caja x6 MOMOS.", guionCorto: "Persona recibiendo la caja emocionada.", canal: "Instagram", estado: "Repetir" },
   ];
 
   // ---- Crecimiento: guiones fáciles ----
   const marketing_guiones = [
-    { id: "GU-01", titulo: "Da pesar comerlos… hasta la primera cucharada", duracion: "15 seg", productoFoco: "Momo Gatito 150 g", objetivo: "vender", dificultad: "Fácil", escena1: "Muestra el Momo gatito completo sobre la mano.", escena2: "Acercamiento a la carita del gatito.", escena3: "La cuchara entra lentamente al mousse.", escena4: "Muestra el relleno por dentro.", textoPantalla: "Pide el tuyo por WhatsApp 💛", audio: "Audio tierno o trend suave de moda" },
+    { id: "GU-01", titulo: "Da pesar comerla… hasta la primera cucharada", duracion: "15 seg", productoFoco: "Lizi · Momo Gatito", objetivo: "vender", dificultad: "Fácil", escena1: "Muestra a Lizi completa sobre la mano.", escena2: "Acercamiento a la figura de Lizi.", escena3: "La cuchara entra lentamente al mousse.", escena4: "Muestra el relleno por dentro.", textoPantalla: "Pide tu Lizi por WhatsApp 💛", audio: "Audio tierno o trend suave de moda" },
     { id: "GU-02", titulo: "Abre la caja x3", duracion: "20 seg", productoFoco: "Caja x3 Momos", objetivo: "regalo", dificultad: "Fácil", escena1: "Caja cerrada con el lazo.", escena2: "Manos abriendo la caja lentamente.", escena3: "Se ven los 3 momos surtidos.", escena4: "Primer plano de cada figura.", textoPantalla: "El regalo más tierno de Cali 🎁", audio: "Música alegre suave" },
-    { id: "GU-03", titulo: "Así se hace un MOMOS", duracion: "30 seg", productoFoco: "Momo Gatito 150 g", objetivo: "seguidores", dificultad: "Medio", escena1: "Vertido del mousse en el molde.", escena2: "Al congelador (timelapse).", escena3: "Desmolde del gatito.", escena4: "Decorado de la carita y salsa.", textoPantalla: "Hecho a mano, con amor 💛", audio: "Audio satisfactorio / ASMR" },
+    { id: "GU-03", titulo: "Así se hace Lizi", duracion: "30 seg", productoFoco: "Lizi · Momo Gatito", objetivo: "seguidores", dificultad: "Medio", escena1: "Vertido del mousse en el molde de Lizi.", escena2: "Al congelador (timelapse).", escena3: "Desmolde de Lizi.", escena4: "Decorado de la figura y salsa.", textoPantalla: "Hecho a mano, con amor 💛", audio: "Audio satisfactorio / ASMR" },
     { id: "GU-04", titulo: "Reto historia + etiqueta", duracion: "10 seg", productoFoco: "Malteada Oreo Momo", objetivo: "historias etiquetadas", dificultad: "Fácil", escena1: "Muestra la malteada.", escena2: "Texto: sube tu historia y etiquétanos.", escena3: "Muestra el momo junto a la malteada.", escena4: "", textoPantalla: "Tu malteada va por la casa 🥤", audio: "Trend del momento" },
-    { id: "GU-05", titulo: "Perrito para cumpleaños", duracion: "15 seg", productoFoco: "Momo Perrito 150 g", objetivo: "cumpleaños", dificultad: "Fácil", escena1: "Perrito con una velita encima.", escena2: "Se enciende la velita.", escena3: "Alguien pide un deseo.", escena4: "Primer plano del perrito.", textoPantalla: "Sorprende en su cumple 🎂", audio: "Cumpleaños suave / tierno" },
+    { id: "GU-05", titulo: "Max para cumpleaños", duracion: "15 seg", productoFoco: "Max · Momo Perrito", objetivo: "cumpleaños", dificultad: "Fácil", escena1: "Max con una velita encima.", escena2: "Se enciende la velita.", escena3: "Alguien pide un deseo.", escena4: "Primer plano de Max.", textoPantalla: "Sorprende en su cumple 🎂", audio: "Cumpleaños suave / tierno" },
   ];
 
   // ---- Crecimiento: mensajes listos de WhatsApp ----
   const marketing_mensajes = [
     { id: "MSG-01", tipo: "Cliente nuevo", texto: "¡Hola! 💛 Bienvenido a D'Momos Sweet Love 🐱 Tenemos gatitos y perritos de mousse helado, cheesecakes y más. ¿Te muestro el menú de hoy?" },
-    { id: "MSG-02", tipo: "Cliente que preguntó precio", texto: "¡Hola! 💛 El Momo gatito está en $18.000 y la caja x3 en $49.000. Todos hechos a mano. ¿Te separo uno para hoy?" },
+    { id: "MSG-02", tipo: "Cliente que preguntó precio", texto: "¡Hola! 💛 Las figuras de la familia Momo Gatito están desde $18.000 y la caja x3 en $49.000. ¿Cuál figura y sabor te provoca para hoy?" },
     { id: "MSG-03", tipo: "Cliente que no respondió", texto: "¡Hola de nuevo! 🐱 Todavía tenemos MOMOS fresquitos para hoy. ¿Te animas a adoptar uno? Te lo llevamos a domicilio 🛵" },
     { id: "MSG-04", tipo: "Cliente que compró hace 7 días", texto: "¡Hola! 💛 ¿Qué tal estuvo tu MOMOS? Esta semana tenemos sabores nuevos. ¿Quieres que te cuente cuáles?" },
     { id: "MSG-05", tipo: "Cliente que compró hace 15 días", texto: "¡Te extrañamos! 💛 Hace rato no te consentimos con un MOMOS. ¿Te separo tu favorito para hoy?" },
@@ -737,17 +742,17 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, financeSnapshotReady: false, financeSnapshot: null, financeSnapshotKey: "", financeSnapshotVersion: "", configurationSnapshotReady: false, configurationSnapshotVersion: "", configurationInventoryChoices: [], configurationFigureProductChoices: [], agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, deliveryMutationDeltaReady: false, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, financeSnapshotReady: false, financeSnapshot: null, financeSnapshotKey: "", financeSnapshotVersion: "", configurationSnapshotReady: false, configurationSnapshotVersion: "", configurationInventoryChoices: [], configurationFigureProductChoices: [], agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
-/* ---- Atributos derivados del tipo (ÚNICA fuente de verdad) ----
-   Los atributos que un producto pide al venderse dependen SOLO de su tipo.
-   No hay override manual: un granizado (pedido) jamás puede pedir salsa/figura.
-   momo → sabor+salsa+figura · combo → sabor+salsa · pedido → ninguno. */
-function atributosDeTipo(tipo) {
-  if (tipo === "pedido") return [];
-  if (tipo === "combo") return ["sabor", "salsa"];
-  return ["sabor", "salsa", "figura"]; // momo
+/* ---- Atributos derivados del dominio comercial (ÚNICA fuente de verdad) ----
+   La categoría distingue familias con figura, cajas y productos al momento.
+   Un cuchareable pide sabor y salsa, pero nunca una figura física. */
+function atributosDeTipo(productOrType, category = "", name = "") {
+  const product = productOrType && typeof productOrType === "object"
+    ? productOrType
+    : { tipo: productOrType, cat: category, nombre: name };
+  return orderAttributesForProduct(product);
 }
 const ATRIBUTO_LABEL = { sabor: "Sabor", salsa: "Salsa", figura: "Figura" };
 
@@ -756,6 +761,7 @@ function normalizeDbShape(d) {
   const s = seedDb();
   const arrayTables = [
     "orders", "order_items", "customers", "products", "production_batches", "subreceta_producciones", "variantes", "variantesCuarentena",
+    "deliveryOrders", "deliveryOrderItems", "deliveryCustomers", "deliveryDeliveries",
     "inventory_items", "inventory_lots", "inventory_movements", "deliveries", "evidences", "claims",
     "benefits", "audit_logs", "production_suggestions", "recipes", "inventory_reservations",
     "users", "campaigns", "creatives", "content_calendar", "creative_results", "content_distributions", "distributionConnectorJobs",
@@ -773,13 +779,19 @@ function normalizeDbShape(d) {
     || !inventoryCursor;
   d.inventoryMutationEventVersion = d.inventoryMutationFullSnapshotRequired ? "" : inventoryCursor;
   d.orderDeltaReady = d.orderDeltaReady === true;
+  d.deliveryMutationDeltaReady = d.deliveryMutationDeltaReady === true;
   if (!d.orderDeltaVersions || typeof d.orderDeltaVersions !== "object" || Array.isArray(d.orderDeltaVersions)) {
     d.orderDeltaVersions = {};
   }
+  d.deliverySnapshotReady = d.deliverySnapshotReady === true;
+  d.deliverySnapshotVersion = normalizeAgencySnapshotVersion(d.deliverySnapshotVersion);
+  if (!d.deliverySnapshotSummary || typeof d.deliverySnapshotSummary !== "object"
+      || Array.isArray(d.deliverySnapshotSummary)) d.deliverySnapshotSummary = null;
   d.finishedInventoryDeltaReady = d.finishedInventoryDeltaReady === true;
   if (!d.finishedInventoryDeltaVersions || typeof d.finishedInventoryDeltaVersions !== "object"
       || Array.isArray(d.finishedInventoryDeltaVersions)) d.finishedInventoryDeltaVersions = {};
   d.productionMutationDeltaReady = d.productionMutationDeltaReady === true;
+  d.finishedProductDisposalReady = d.finishedProductDisposalReady === true;
   d.productionActivityDeltaVersion = /^\d+$/.test(String(d.productionActivityDeltaVersion || ""))
     ? String(d.productionActivityDeltaVersion) : "";
   d.catalogCrmDeltaReady = d.catalogCrmDeltaReady === true;
@@ -804,9 +816,12 @@ function normalizeDbShape(d) {
     && hasAgencyOperationalFacts(d.agencyOperationalFacts);
   if (!d.agencyOperationalFactsReady) d.agencyOperationalFacts = null;
   if (!d.agencyBrandIdentity || typeof d.agencyBrandIdentity !== "object" || Array.isArray(d.agencyBrandIdentity)) d.agencyBrandIdentity = null;
-  d.products.forEach((p) => { p.atributos = atributosDeTipo(p.tipo); }); // siempre derivado del tipo; sin override manual
-  // Combos reales: cada momo tiene especie (gato/perro). El stock vive a nivel especie; backfill por nombre.
-  d.products.forEach((p) => { if (p.tipo === "momo" && p.especie !== "perro" && p.especie !== "gato") p.especie = /perr/i.test(p.nombre || "") ? "perro" : "gato"; });
+  d.products.forEach((p) => {
+    p.tipo = productTypeForCategory(p.cat);
+    p.atributos = atributosDeTipo(p);
+    if (!isCommercialFamilyProduct(p)) delete p.especie;
+    else if (p.especie !== "perro" && p.especie !== "gato") p.especie = "";
+  });
   d.order_items.forEach((i) => { if (!Array.isArray(i.adiciones)) i.adiciones = []; }); // toppings por línea (retro-compat)
   if (!d.brand_library || typeof d.brand_library !== "object" || Array.isArray(d.brand_library)) {
     d.brand_library = cloneDb(s.brand_library);
@@ -835,13 +850,31 @@ function normalizeDbShape(d) {
   });
   // figuras evolucionó de string[] a objetos {nombre, especie, gramaje}.
   // Normaliza entradas viejas (localStorage previo) para que .nombre no rompa.
-  d.settings.figuras = d.settings.figuras
-    .map((f) =>
-      typeof f === "string"
-        ? { nombre: f, especie: /perr/i.test(f) ? "perro" : "gato", gramaje: "150 g" }
-        : { nombre: (f.nombre || "").trim(), especie: f.especie === "perro" ? "perro" : "gato", gramaje: f.gramaje || "150 g" }
-    )
-    .filter((f) => f.nombre);
+  d.settings.figuras = activeConfigurationFigureCatalog({
+    products: d.products,
+    figuras: d.settings.figuras
+    .map((f) => {
+      const nombre = String(typeof f === "string" ? f : f?.nombre || "").trim();
+      const canonical = KITCHEN_FIGURE_DEFAULTS[nombre];
+      if (typeof f === "string") {
+        return {
+          nombre,
+          especie: canonical?.species || "",
+          gramaje: canonical ? `${canonical.grams} g` : "",
+          productId: expectedFigureProductId(nombre),
+          activo: true,
+        };
+      }
+      return {
+        nombre,
+        especie: ["gato", "perro"].includes(f?.especie) ? f.especie : (canonical?.species || ""),
+        gramaje: f?.gramaje || (f?.gramajeG ? `${f.gramajeG} g` : (canonical ? `${canonical.grams} g` : "")),
+        productId: String(f?.productId || f?.product_id || expectedFigureProductId(nombre)).trim(),
+        activo: f?.activo !== false,
+      };
+    })
+    .filter((f) => isKitchenFigureName(f.nombre) || isAuxiliaryFigureName(f.nombre)),
+  });
   // relleno pasó a valor único fijo ("Cheesecake con ganache"). Migra el default viejo
   // de 2 ítems al canónico, sin pisar personalizaciones del usuario.
   if (Array.isArray(d.settings.rellenos) && d.settings.rellenos.length === 2 &&
@@ -858,6 +891,9 @@ function normalizeDbShape(d) {
   if (typeof d.settings.pedidoMinimo !== "number") d.settings.pedidoMinimo = s.settings.pedidoMinimo;
   if (typeof d.settings.pautaMensual !== "number") d.settings.pautaMensual = s.settings.pautaMensual;
   if (typeof d.settings.horasCongelacion !== "number") d.settings.horasCongelacion = s.settings.horasCongelacion;
+  if (typeof d.settings.vidaUtilConfigurable !== "boolean") d.settings.vidaUtilConfigurable = s.settings.vidaUtilConfigurable;
+  if (!Number.isInteger(d.settings.vidaUtilProductoTerminadoDias) || d.settings.vidaUtilProductoTerminadoDias < 1 || d.settings.vidaUtilProductoTerminadoDias > 30) d.settings.vidaUtilProductoTerminadoDias = s.settings.vidaUtilProductoTerminadoDias;
+  if (!Number.isInteger(d.settings.vidaUtilMezclasDias) || d.settings.vidaUtilMezclasDias < 1 || d.settings.vidaUtilMezclasDias > 30) d.settings.vidaUtilMezclasDias = s.settings.vidaUtilMezclasDias;
   Object.assign(d.settings, normalizeKitchenDelaySettings(d.settings));
   if (typeof d.settings.politicas !== "string") d.settings.politicas = s.settings.politicas;
   return d;
@@ -1114,6 +1150,15 @@ function migrate(d) {
     });
     d.version = 17;
   }
+  if (d.version === 17) {
+    d.settings.vidaUtilConfigurable = true;
+    d.settings.vidaUtilProductoTerminadoDias = 6;
+    d.settings.vidaUtilMezclasDias = 5;
+    (d.production_batches || []).forEach((l) => {
+      if (l.desmoldadoEn) l.vence = sumarDiasISO(l.desmoldadoEn, 6);
+    });
+    d.version = 18;
+  }
   return d;
 }
 
@@ -1142,9 +1187,10 @@ const storage = {
   },
 };
 
-async function dbLoad(storageKey = DB_KEY) {
+async function dbLoad(storageKey) {
   try {
-    const r = await storage.get(storageKey);
+    if (!storageKey) return null;
+    const r = await sessionCacheStorage.get(storageKey);
     if (r && typeof r.value === "string" && r.value.trim().length > 0) {
       const d = JSON.parse(r.value);
       if (!d || typeof d !== "object" || Array.isArray(d) || typeof d.version !== "number") {
@@ -1175,13 +1221,22 @@ async function dbLoad(storageKey = DB_KEY) {
   }
 }
 
-async function dbPersist(db, storageKey = DB_KEY) {
-  try { await storage.set(storageKey, JSON.stringify(db)); return true; }
+async function dbPersist(db, storageKey) {
+  if (!storageKey) return false;
+  try { return await sessionCacheStorage.set(storageKey, JSON.stringify(db)); }
   catch (e) { console.error("No se pudo guardar:", e); return false; }
 }
 
-async function dbReset(storageKey = DB_KEY) {
-  try { await storage.delete(storageKey); } catch (e) {}
+async function dbReset(storageKey) {
+  try { await sessionCacheStorage.delete(storageKey); } catch (e) {}
+}
+
+async function purgeLegacyPersistentCache(userId) {
+  const keys = legacyCacheKeys(DB_KEY, userId);
+  await Promise.all(keys.map(async (key) => {
+    try { await storage.delete(key); } catch (e) { /* best effort */ }
+    try { if (typeof localStorage !== "undefined") localStorage.removeItem(key); } catch (e) { /* blocked storage */ }
+  }));
 }
 
 /* ---- Helpers de dominio (operan sobre una copia mutable de db) ---- */
@@ -1210,15 +1265,15 @@ const productOf = (db, id) => db.products.find((p) => p.id === id);
 
 // Suma de adiciones/toppings de una línea (precio × cantidad de cada adición)
 const lineAdiciones = (i) => (Array.isArray(i.adiciones) ? i.adiciones : []);
-const lineAdicionesTotal = (i) => lineAdiciones(i).reduce((a, ad) => a + (+ad.precio || 0) * (+ad.cant || 1) * (+i.cant || 1), 0);
+const lineAdicionesTotal = (i) => canonicalLineAdditionsTotal(i);
 // Suma de toppings de los sub-momos de una línea combo en NuevoPedido (aún no persistidos como hijas; cada slot = 1 momo).
 const boxesAdicionesTotal = (l) => (l.boxes || []).reduce((s, box) => s + box.reduce((ss, sl) => ss + lineAdicionesTotal({ adiciones: sl.adiciones, cant: 1 }), 0), 0);
 // Congela el costo del insumo de cada adición al crear el pedido: el COGS histórico no se mueve si cambia el
 // precio del insumo, y sobrevive aunque el insumo se borre. Fallback al costo en vivo (en el read) para filas viejas.
 const snapAdiciones = (d, adiciones) => (Array.isArray(adiciones) ? adiciones : []).map((ad) =>
   ad.insumoId ? { ...ad, insumoCosto: +((d.inventory_items.find((x) => x.id === ad.insumoId) || {}).costo) || 0 } : ad);
-const orderSubtotal = (db, o) => itemsOf(db, o.id).reduce((s, i) => s + i.precio * i.cant + lineAdicionesTotal(i), 0);
-const orderTotal = (db, o) => orderSubtotal(db, o) - (o.descuento || 0) + (o.domCobrado || 0);
+const orderSubtotal = (db, o) => calculateOrderMoney(db, o).subtotalBeforeDiscount;
+const orderTotal = (db, o) => calculateOrderMoney(db, o).totalCharged;
 // Costo de insumo de las adiciones de una línea (solo las que consumen inventario).
 // Topping POR MOMO: escala por la cantidad de la línea (i.cant), igual que reserveInventory →
 // el COGS refleja el inventario real gastado. (Costo de insumo en vivo; congelarlo queda para Supabase.)
@@ -1237,7 +1292,7 @@ const orderCOGS = (db, o) => itemsOf(db, o.id).reduce((s, i) => {
 // Un pedido cuenta como venta SOLO si tiene pago confirmado y no está en estados previos ni cancelado
 const esPedidoCobrado = (o) => !!o.pagadoEn && !["Nuevo","Confirmado","Pendiente de pago","Cancelado"].includes(o.estado);
 
-const momoUnitStock = (db) => db.products.filter((p) => p.tipo === "momo" && p.cat === "Momos Signature").reduce((s, p) => s + (p.stock || 0), 0);
+const momoUnitStock = (db) => db.products.filter(isCommercialFamilyProduct).reduce((s, p) => s + (p.stock || 0), 0);
 
 // Sugiere la zona de domicilio a partir del barrio del cliente (busca el barrio en el nombre de la zona)
 function sugerirZona(zonas, barrio) {
@@ -1250,42 +1305,30 @@ function sugerirZona(zonas, barrio) {
   return z ? z.nombre : null;
 }
 
-// Disponibilidad real: unidades con stock, combos calculados por momos + cajas, resto bajo pedido
-// Stock de momos que sirven como componentes de un combo (solo los componentProductIds definidos)
+// Disponibilidad real: unidades con stock, combos por familias comerciales permitidas + cajas.
 function comboComponentStock(db, p) {
   const ids = p.componentProductIds || [];
   const comps = db.products.filter((x) => ids.includes(x.id));
   return comps.reduce((s, x) => s + (x.stock || 0), 0);
 }
 
-// --- Combos reales: la figura de cada slot mapea a una ESPECIE, y la especie al momo-componente ---
-// El stock de momos vive a nivel especie (PR01 = pool gato, PR02 = pool perro), NO por figura.
-function momoEspecie(p) {
-  if (!p) return "gato";
-  if (p.especie === "perro" || p.especie === "gato") return p.especie;
-  return /perr/i.test(p.nombre || "") ? "perro" : "gato"; // retro-compat: deriva del nombre
-}
-function figuraEspecie(db, nombre) {
-  const f = (db.settings.figuras || []).find((x) => x.nombre === nombre);
-  return f ? f.especie : "gato";
-}
-// El momo-componente del combo cuya especie coincide con la figura del slot (descuento exacto).
+// --- Compatibilidad legado: `especie` ya no decide producto, inventario ni reserva. ---
+// Familia comercial exacta de la figura. `figuras.product_id` es la única relación canónica.
 function componentProductForFigura(db, combo, figuraNombre) {
-  const esp = figuraEspecie(db, figuraNombre);
   const comps = (db.products || []).filter((p) => (combo.componentProductIds || []).includes(p.id));
-  return comps.find((p) => momoEspecie(p) === esp) || comps[0] || null;
+  const figure = activeFigureCatalog(db).find((candidate) => candidate.nombre === figuraNombre);
+  const exactProductId = figureProductId(figure);
+  return exactProductId ? (comps.find((product) => product.id === exactProductId) || null) : null;
 }
-// Figuras ofrecibles en un combo: solo las de especies presentes entre sus componentes.
+// Figuras ofrecibles en un combo: únicamente las enlazadas a sus familias comerciales.
 function figurasDeCombo(db, combo) {
-  const ids = combo.componentProductIds || [];
-  const especies = new Set((db.products || []).filter((p) => ids.includes(p.id)).map((p) => momoEspecie(p)));
-  return (db.settings.figuras || []).filter((f) => especies.has(f.especie));
+  return figuresForCommercialProducts(db, combo.componentProductIds || []);
 }
-// Faltante por ESPECIE de un combo ya compuesto (boxes): demanda por momo-componente vs su stock.
-// Necesario porque `availability` mira el POOL combinado, pero reserveInventory descuenta la especie
-// EXACTA de cada figura → si el usuario concentra una especie agotada, el pool "alcanza" pero la
-// especie no. Devuelve [] si todo alcanza; si no, [{nombre, falta}] por componente corto.
-function comboFaltantesEspecie(db, combo, boxes) {
+// Faltante por FAMILIA COMERCIAL exacta de un combo ya compuesto.
+// Necesario porque `availability` mira el POOL combinado, pero reserveInventory descuenta la
+// FAMILIA COMERCIAL exacta vinculada a cada figura. Si el usuario concentra una familia agotada,
+// el pool "alcanza" pero esa presentación no. Devuelve el faltante por componente.
+function comboFaltantesFamilia(db, combo, boxes) {
   const demanda = {};
   (boxes || []).forEach((box) => (box || []).forEach((sl) => {
     if (!sl || !sl.figura) return;
@@ -1301,7 +1344,7 @@ function comboFaltantesEspecie(db, combo, boxes) {
 }
 
 function availability(db, p) {
-  if (p.tipo === "momo") return p.stock || 0;
+  if (isCommercialFamilyProduct(p)) return p.stock || 0;
   if (p.tipo === "combo") {
     const momos = comboComponentStock(db, p);
     const emp = db.inventory_items.find((i) => i.id === p.empaqueItem);
@@ -1389,7 +1432,7 @@ function campaignMetrics(db, c) {
   return { pedidos, ventas, cac, roas, ticket };
 }
 
-// Stock disponible del producto foco de una campaña (por nombre)
+// Stock de la entrada comercial foco de una campaña (por nombre).
 function stockProductoFoco(db, nombre) {
   if (!nombre) return null;
   const p = db.products.find((x) => x.nombre === nombre);
@@ -1410,7 +1453,7 @@ function trafficRecomendaciones(db) {
         accion: "pausar", bg: "#F6D4CD", color: "#A03B2A" });
     } else if (c.productoFoco && stockFoco !== null && stockFoco <= 0) {
       recs.push({ tipo: "sinstock", campaignId: c.id, icon: "📦", titulo: c.nombre,
-        texto: `Estás promocionando "${c.productoFoco}" pero no tienes stock. Repón antes de seguir invirtiendo.`,
+        texto: `Estás promocionando "${c.productoFoco}", pero esa entrada comercial no tiene stock. Reponé la figura y el sabor exactos —o la preparación al momento— antes de seguir invirtiendo.`,
         bg: "#FBE8C8", color: "#96690F" });
     } else if (m.roas !== null && m.roas >= 2 && (stockFoco === null || stockFoco > 0)) {
       const nuevo = Math.round((c.presupuesto || c.gastoReal) * 1.2);
@@ -1473,14 +1516,15 @@ function reserveInventory(db, order, user) {
   itemsOf(db, order.id).forEach((it) => {
     const p = productOf(db, it.productId);
     if (!p) return;
-    if (p.tipo === "momo") {
+    if (isCommercialFamilyProduct(p)) {
+      const presentation = orderLinePresentation(it, p);
       const toma = Math.min(p.stock, it.cant);
       p.stock -= toma;
-      addReservation(db, order.id, "producto", p.id, p.nombre, toma);
-      if (toma < it.cant) faltantes.push({ producto: p.nombre, cant: it.cant - toma, area: "Producción" });
+      addReservation(db, order.id, "producto", p.id, presentation.primary, toma);
+      if (toma < it.cant) faltantes.push({ producto: presentation.primary, cant: it.cant - toma, area: "Producción" });
     } else if (p.tipo === "combo") {
-      // Combos reales: si la caja tiene sub-momos (hijas con parentItemId), cada hija se descuenta
-      // sola por la rama "momo" de arriba (especie EXACTA del slot) → se salta el pull genérico.
+      // Combos reales: si la caja tiene hijas con parentItemId, cada una descuenta la familia
+      // comercial exacta asignada por figuras.productId; nunca se decide por especie.
       // Combo legacy de semilla (sin hijas) → pull genérico del pool de componentes (retrocompat).
       const tieneHijas = itemsOf(db, order.id).some((x) => x.parentItemId === it.id);
       if (!tieneHijas) {
@@ -2111,13 +2155,16 @@ function Modal({ title, onClose, children, wide, extraWide = false, topLayer = f
   );
 }
 
-function GlobalKitchenOrderAlerts({ db, perfil, serverDataReady, onOpenProduction, onOpenPacking }) {
+function GlobalKitchenOrderAlerts({ db, perfil, activeView, serverDataReady, onOpenProduction, onOpenPacking }) {
   const operationalRoles = normalizeRoles(perfil);
   const operationalRolesKey = operationalRoles.join("|");
   const canSeeKitchenCommands = hasAnyRole(operationalRoles, ["Administrador", "Cocina"]);
   const canSeePackingCommands = hasAnyRole(operationalRoles, ["Administrador", "Empaque"]);
   const orderAlertsEnabled = canReceiveKitchenOrderAlerts(operationalRoles);
-  const delayAlertsEnabled = canReceiveKitchenDelayReminders(operationalRoles);
+  // Recepción necesita una superficie continua para tomar y cobrar pedidos.
+  // Las demoras pertenecen a supervisión, Producción y Empaque; no interrumpen
+  // la vista Pedidos. Los eventos propios del pedido siguen funcionando.
+  const delayAlertsEnabled = activeView !== "Pedidos" && canReceiveKitchenDelayReminders(operationalRoles);
   const incidentAlertsEnabled = Boolean(db?.operationalControlReady);
   const enabled = orderAlertsEnabled || delayAlertsEnabled || incidentAlertsEnabled;
   const [dialogMode, setDialogMode] = useState(null);
@@ -2148,6 +2195,12 @@ function GlobalKitchenOrderAlerts({ db, perfil, serverDataReady, onOpenProductio
     if (incident.area === "Recepción") return hasRole(operationalRoles, "Cajero");
     return canOperateStage(operationalRoles, incident.area);
   }) : [], [incidentAlertsEnabled, db?.order_incidents, operationalRolesKey]);
+
+  useEffect(() => {
+    if (activeView !== "Pedidos" || dialogMode !== "delays") return;
+    setDialogMode(null);
+    setUnreadCount(0);
+  }, [activeView, dialogMode]);
 
   useEffect(() => {
     const orders = db?.orders || [];
@@ -2438,7 +2491,7 @@ function Bars({ data, money }) {
 /* ================= DASHBOARD ================= */
 
 function getBusinessPanelsShared() {
-  return { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, momoEspecie, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, buildCustomerCrm, crmCompleteness, buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard, buildDistributionRoom, distributionChecklistFor, validateDistributionAction, enrichDistributionWithDispatch, buildOperationalHistory, isActiveClaim, isActiveDelivery, partitionByActivity, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION };
+  return { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION };
 }
 
 function BusinessPanelFallback() {
@@ -2456,7 +2509,7 @@ function getOrdersPanelShared() {
   return {
     T, hoyISO, fmt, copiarTexto, toast, Badge, Btn, BtnAsync, Card, Empty, Field, Input, MiniSelect,
     Modal, SectionTitle, Select, Stat, WorkScopeTabs, CANALES, CANAL_STYLE,
-    EV_TIPOS, ORDER_STATES, ORIGEN_SIMPLE, availability, boxesAdicionesTotal, comboFaltantesEspecie,
+    EV_TIPOS, ORDER_STATES, ORIGEN_SIMPLE, availability, boxesAdicionesTotal, comboFaltantesFamilia,
     compressImage, customerOf, downloadCSV, evidencesOf, figurasDeCombo, inputCls, inputStyle, itemsOf,
     lineAdiciones, lineAdicionesTotal, orderSubtotal, orderTotal, productOf, reqFotosPaso, sugerirZona,
     tieneEvidencia, tieneSelloEmpaque,
@@ -2495,7 +2548,7 @@ function getProductionPanelShared() {
   return {
     T, Badge, Btn, BtnAsync, Card, Empty, Field, Input, MiniSelect, Modal, SectionTitle, Select,
     WorkScopeTabs, customerOf, dISO, estadoCongelacion, fmt, fmtHoras, hoyISO, inputCls, inputStyle,
-    pct, toast, vibrar,
+    pct, recipeCost, recipeLines, toast, vibrar,
   };
 }
 
@@ -2599,6 +2652,7 @@ const PERFORMANCE_FRESHNESS_TTL = Object.freeze({
   [SYNC_DOMAINS.FINANCE]: 60_000,
   [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
   [SYNC_DOMAINS.DASHBOARD]: 30_000,
+  [SYNC_DOMAINS.LOGISTICS]: 30_000,
 });
 const LAZY_PERFORMANCE_VIEWS = new Set(["Dashboard", "Pedidos", "Empaque", "Producción", "Inventario terminado", "Inventario", "Productos", "Domicilios", "Reclamos", "Historial operativo", "Clientes", "Beneficios", "Crecimiento", "Marketing", "Creativos", "Calendario", "Resultados", "Finanzas", "Reportes", "Configuración"]);
 
@@ -2716,6 +2770,7 @@ export default function MomosOps() {
   const [vista, setVista] = useState("Dashboard");
   const [focus, setFocus] = useState(null); // contexto de navegación: {estado} | {itemId} | {claimId} | {desde,hasta}
   const [session, setSession] = useState(undefined); // undefined = verificando sesión · null = sin sesión
+  const [sessionCacheReady, setSessionCacheReady] = useState(false);
   const [perfil, setPerfil] = useState(null); // fila de public.users del usuario logueado (id, nombre, rol, activo)
   const [perfilError, setPerfilError] = useState(null);
   const [catalogosDe, setCatalogosDe] = useState(null); // null=sin intentar | "servidor" | "cache"
@@ -2767,7 +2822,7 @@ export default function MomosOps() {
   const customerCrmRealtimePendingRef = useRef(new Set());
   const customerCrmReconcileRequestRef = useRef(null);
   const sessionOwnerRef = useRef(null);
-  const activeStorageKeyRef = useRef(DB_KEY);
+  const activeStorageKeyRef = useRef(null);
   const visibleSyncDomainsRef = useRef(new Set(syncDomainsForDbView(vista, db)));
   visibleSyncDomainsRef.current = new Set(syncDomainsForDbView(vista, db));
   useEffect(() => { syncRef.current = sync; }, [sync]);
@@ -2801,6 +2856,7 @@ export default function MomosOps() {
   useEffect(() => {
     const nextUserId = session?.user?.id || null;
     const previousUserId = sessionOwnerRef.current;
+    let cancelled = false;
     syncCoordinatorRef.current?.cancel();
     syncCoordinatorRef.current = null;
     agencySnapshotVersionRef.current = "";
@@ -2831,18 +2887,53 @@ export default function MomosOps() {
     customerCrmReconcileRequestRef.current = null;
     hidratadoRef.current = false;
     setCatalogosDe(null);
-    activeStorageKeyRef.current = nextUserId ? `${DB_KEY}:${nextUserId}` : DB_KEY;
-    if (previousUserId !== nextUserId && (previousUserId || nextUserId)) {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-      saveTokenRef.current += 1;
+    setSessionCacheReady(false);
+    setCorruptStorage(false);
+    setIncompat(null);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    saveTokenRef.current += 1;
+    activeStorageKeyRef.current = sessionCacheKey(DB_KEY, nextUserId);
+    sessionOwnerRef.current = nextUserId;
+    if (previousUserId && previousUserId !== nextUserId) {
+      dbReset(sessionCacheKey(DB_KEY, previousUserId)).catch(() => {});
+    }
+    purgeLegacyPersistentCache(nextUserId || previousUserId).catch(() => {});
+
+    if (!nextUserId) {
+      dbRef.current = null;
+      setDb(null);
+      setSync("cargando");
+      setSessionCacheReady(true);
+    } else {
+      const storageKey = activeStorageKeyRef.current;
       const clean = seedDb();
       dbRef.current = clean;
       setDb(clean);
-      setSync(nextUserId ? "cargando" : "local");
+      setSync("cargando");
+      (async () => {
+        const guardado = await dbLoad(storageKey);
+        if (cancelled || sessionOwnerRef.current !== nextUserId) return;
+        if (guardado?._corruptStorage || guardado?._readError) {
+          setCorruptStorage(true);
+          setSync("local");
+        } else if (guardado?._incompatibleVersion) {
+          setIncompat(guardado.version);
+          setSync("local");
+        } else if (guardado) {
+          if (guardado._migrated) delete guardado._migrated;
+          dbRef.current = guardado;
+          setDb(guardado);
+          setSync("guardado");
+          await dbPersist(guardado, storageKey);
+        } else {
+          await dbPersist(clean, storageKey);
+        }
+        if (!cancelled && sessionOwnerRef.current === nextUserId) setSessionCacheReady(true);
+      })();
     }
-    sessionOwnerRef.current = nextUserId;
     return () => {
+      cancelled = true;
       syncCoordinatorRef.current?.cancel();
       syncCoordinatorRef.current = null;
     };
@@ -2887,6 +2978,8 @@ export default function MomosOps() {
       && db.configurationSnapshotReady === true;
     const dashboardRealtime = realtimeDomains.has(SYNC_DOMAINS.DASHBOARD)
       && db.dashboardSnapshotReady === true;
+    const logisticsRealtime = realtimeDomains.has(SYNC_DOMAINS.LOGISTICS)
+      && db.deliverySnapshotReady === true;
     // H69 se activa primero en la pantalla de Inventario. Allí el outbox
     // versionado sustituye cuatro tablas crudas que antes disparaban dos
     // snapshots completos por una sola compra o ajuste.
@@ -2897,9 +2990,9 @@ export default function MomosOps() {
       && db.inventoryMutationFullSnapshotRequired === false
       && inventoryFullSnapshotRequiredRef.current === false
       && (operationsRealtime || catalogsRealtime);
-    const orderDeltaRealtime = ["Pedidos", "Empaque", "Inventario terminado", "Producción"].includes(vista)
+    const orderDeltaRealtime = ["Pedidos", "Empaque", "Inventario terminado", "Producción", "Domicilios"].includes(vista)
       && db.orderDeltaReady === true
-      && operationsRealtime;
+      && (operationsRealtime || logisticsRealtime);
     const finishedInventoryDeltaRealtime = (vista === "Inventario terminado" || productionMutationRealtime)
       && db.finishedInventoryDeltaReady === true
       && operationsRealtime;
@@ -2910,6 +3003,9 @@ export default function MomosOps() {
     const customerCrmDeltaRealtime = ["Clientes", "Beneficios"].includes(vista)
       && db.catalogCrmDeltaReady === true
       && operationsRealtime;
+    const kitchenProcedureRealtime = vista === "Producción"
+      && db.kitchenProcedureManagementReady === true
+      && catalogsRealtime;
     const tables = [];
     if (operationsRealtime) {
       if (!orderDeltaRealtime) tables.push(
@@ -2943,6 +3039,7 @@ export default function MomosOps() {
     if (productionActivityDeltaRealtime) tables.push("production_activity_sync_versions");
     if (productCatalogDeltaRealtime) tables.push("product_catalog_sync_versions");
     if (customerCrmDeltaRealtime) tables.push("customer_crm_sync_versions");
+    if (kitchenProcedureRealtime) tables.push("kitchen_procedure_sync_state");
     if (financeRealtime) tables.push("finance_sync_state");
     if (configurationRealtime) tables.push("configuration_sync_state");
     if (dashboardRealtime) tables.push("dashboard_sync_state");
@@ -3145,7 +3242,7 @@ export default function MomosOps() {
     const fallbackOrderSnapshot = () => {
       if (!orderReconciliationState.active) {
         orderReconciliationState.active = (refetchFocoRef.current?.(
-          [SYNC_DOMAINS.OPERATIONS],
+          [logisticsRealtime ? SYNC_DOMAINS.LOGISTICS : SYNC_DOMAINS.OPERATIONS],
           { reason: "order-delta-fallback", afterActive: true },
         ) || Promise.resolve()).then(() => true).catch(() => {
           if (alive) setRealtimeStatus("reconectando");
@@ -3166,7 +3263,7 @@ export default function MomosOps() {
         try {
           const envelope = await fetchOrderDeltas(orderIds);
           if (!alive) return;
-          const result = aplicarDeltaPedido(envelope, readGeneration);
+          const result = await aplicarDeltaPedido(envelope, readGeneration);
           if (result?.status === "discarded") {
             const reconciled = await fallbackOrderSnapshot();
             if (reconciled) orderIds.forEach((orderId) => orderRealtimePendingRef.current.delete(orderId));
@@ -3275,7 +3372,7 @@ export default function MomosOps() {
         try {
           const envelope = await fetchProductCatalogDeltas(productIds);
           if (!alive) return;
-          const result = aplicarDeltaCatalogoProductos(envelope, readGeneration, finishedInventoryGeneration);
+          const result = await aplicarDeltaCatalogoProductos(envelope, readGeneration, finishedInventoryGeneration);
           if (result?.status === "discarded") {
             const reconciled = await fallbackProductCatalogSnapshot();
             if (reconciled) productIds.forEach((productId) => productCatalogRealtimePendingRef.current.delete(productId));
@@ -3330,7 +3427,7 @@ export default function MomosOps() {
         try {
           const envelope = await fetchCustomerCrmDeltas(customerIds);
           if (!alive) return;
-          const result = aplicarDeltaClienteCrm(envelope, readGeneration, orderGeneration);
+          const result = await aplicarDeltaClienteCrm(envelope, readGeneration, orderGeneration);
           if (result?.status === "discarded") {
             const reconciled = await fallbackCustomerCrmSnapshot();
             if (reconciled) customerIds.forEach((customerId) => customerCrmRealtimePendingRef.current.delete(customerId));
@@ -3417,6 +3514,14 @@ export default function MomosOps() {
         }
         if (table === "customer_crm_sync_versions") {
           queueCustomerCrmDelta(payload);
+          return;
+        }
+        if (table === "kitchen_procedure_sync_state") {
+          const incomingVersion = normalizeAgencySnapshotVersion(payload?.new?.version);
+          const currentVersion = normalizeAgencySnapshotVersion(dbRef.current?.kitchenProcedureSyncVersion);
+          if (!currentVersion || compareAgencySnapshotVersions(incomingVersion, currentVersion) === 1) {
+            refresh(SYNC_DOMAINS.CATALOGS);
+          }
           return;
         }
         if (table === "finance_sync_state") {
@@ -3549,7 +3654,7 @@ export default function MomosOps() {
       if (customerCrmReconcileRequestRef.current === fallbackCustomerCrmSnapshot) customerCrmReconcileRequestRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.financeSnapshotReady), Boolean(db?.configurationSnapshotReady), Boolean(db?.dashboardSnapshotReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
+  }, [session?.user?.id, perfil?.id, vista, Boolean(db?.operationalControlReady), Boolean(db?.crmServerReady), Boolean(db?.agencySnapshotReady), Boolean(db?.agencyOperationalFactsReady), Boolean(db?.financeSnapshotReady), Boolean(db?.configurationSnapshotReady), Boolean(db?.dashboardSnapshotReady), Boolean(db?.deliverySnapshotReady), Boolean(db?.inventoryMutationDeltaReady), Boolean(db?.inventoryMutationFullSnapshotRequired), Boolean(db?.orderDeltaReady), Boolean(db?.finishedInventoryDeltaReady), Boolean(db?.productionMutationDeltaReady), Boolean(db?.catalogCrmDeltaReady)]);
 
   // Con sesión: cargar el perfil real (public.users) por auth_id — define nombre y rol
   const authUserId = session?.user?.id;
@@ -3581,6 +3686,7 @@ export default function MomosOps() {
     const finance = payload?.[SYNC_DOMAINS.FINANCE];
     const configuration = payload?.[SYNC_DOMAINS.CONFIGURATION];
     const dashboard = payload?.[SYNC_DOMAINS.DASHBOARD];
+    const logistics = payload?.[SYNC_DOMAINS.LOGISTICS];
     const generationBeforeApply = capturarGeneracionInventario();
     let inventorySnapshotApplied = false;
     let inventorySnapshotDiscarded = false;
@@ -3593,6 +3699,7 @@ export default function MomosOps() {
     let productCatalogSnapshotDiscarded = false;
     let customerCrmSnapshotApplied = false;
     let customerCrmSnapshotDiscarded = false;
+    let logisticsSnapshotApplied = false;
     update((d) => {
       if (catalogs) {
       const cat = catalogs;
@@ -3661,10 +3768,15 @@ export default function MomosOps() {
       }
       d.users = cat.users;
       d.multipleRolesReady = Boolean(cat.multipleRolesReady);
-      d.figuras = cat.figuras || []; // catálogo figuras con product_id/gramaje (Producción v2)
+      d.figuras = activeFigureCatalog({ figuras: cat.figuras || [], products: d.products || [] });
       d.subrecetas = cat.subrecetas || []; // Componentes+BOM: bases (mousses/cheesecake/ganache/salsas/crocante)
       d.subreceta_ingredientes = cat.subreceta_ingredientes || []; // receta maestra por 1000 g
       d.figura_relleno = cat.figura_relleno || []; // relleno configurable de figuras (20/15 g editables)
+      d.kitchen_procedures = cat.kitchen_procedures || [];
+      d.kitchenProceduresReady = Boolean(cat.kitchenProceduresReady);
+      d.kitchenProcedureManagementReady = Boolean(cat.kitchenProcedureManagementReady);
+      d.internalPreparationFormulaReady = Boolean(cat.internalPreparationFormulaReady);
+      d.kitchenProcedureSyncVersion = cat.kitchenProcedureSyncVersion || "";
       Object.assign(d.settings, cat.settingsCatalogos);
       }
       if (agency) {
@@ -3857,6 +3969,21 @@ export default function MomosOps() {
           orderSnapshotDiscarded = true;
         }
       } // orders, order_items, customers, deliveries, evidences, benefits, claims, movements, reservations, suggestions, audit, production_batches
+      if (logistics) {
+        d.deliverySnapshotReady = true;
+        d.deliveryMutationDeltaReady = logistics.mutationDeltaReady === true;
+        d.deliverySnapshotVersion = normalizeAgencySnapshotVersion(logistics.version);
+        d.deliverySnapshotSummary = logistics.summary;
+        d.deliveryOrders = logistics.orders;
+        d.deliveryOrderItems = logistics.orderItems;
+        d.deliveryCustomers = logistics.customers;
+        d.deliveryDeliveries = logistics.deliveries;
+        // H81 depende de H71: las versiones exactas del snapshot son el punto
+        // de partida para los cambios dirigidos posteriores.
+        d.orderDeltaReady = true;
+        d.orderDeltaVersions = { ...d.orderDeltaVersions, ...logistics.orderVersions };
+        logisticsSnapshotApplied = true;
+      }
       if (finance) {
         d.financeSnapshotReady = true;
         d.financeSnapshot = finance;
@@ -3876,7 +4003,7 @@ export default function MomosOps() {
         d.configurationFigureProductChoices = normalizedConfiguration.figureProductChoices;
         d.users = normalizedConfiguration.users;
         d.multipleRolesReady = true;
-        d.figuras = normalizedConfiguration.figures.map((figure) => ({
+        d.figuras = normalizedConfiguration.figures.filter((figure) => isKitchenFigureName(figure?.nombre)).map((figure) => ({
           nombre: figure.nombre, especie: figure.especie,
           gramajeG: Number.parseInt(figure.gramaje, 10), productId: figure.productId, activo: figure.activo,
         }));
@@ -3898,6 +4025,7 @@ export default function MomosOps() {
       inventorySnapshotRevisionRef.current += 1;
     }
     if (orderSnapshotApplied) orderSyncGenerationRef.current += 1;
+    if (logisticsSnapshotApplied) orderSyncGenerationRef.current += 1;
     if (finishedInventorySnapshotApplied) finishedInventorySyncGenerationRef.current += 1;
     if (productCatalogSnapshotApplied) productCatalogSyncGenerationRef.current += 1;
     if (customerCrmSnapshotApplied) customerCrmSyncGenerationRef.current += 1;
@@ -3963,6 +4091,10 @@ export default function MomosOps() {
             SYNC_DOMAINS.DASHBOARD,
             fetchDashboardSnapshot,
           ),
+          [SYNC_DOMAINS.LOGISTICS]: () => measureSyncLoad(
+            SYNC_DOMAINS.LOGISTICS,
+            () => fetchDeliverySnapshot(50),
+          ),
         },
         apply: aplicarDominiosServidor,
         onState: (state) => {
@@ -4008,6 +4140,7 @@ export default function MomosOps() {
         [SYNC_DOMAINS.FINANCE]: 60_000,
         [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
         [SYNC_DOMAINS.DASHBOARD]: 30_000,
+        [SYNC_DOMAINS.LOGISTICS]: 30_000,
       }).filter((domain) => visibles.has(domain)) || [];
       if (agencyFallbackOnly) vencidos = vencidos.filter((domain) => domain === SYNC_DOMAINS.AGENCY);
       if (vencidos.length) refetchFocoRef.current?.(vencidos, { reason: "focus" }).catch(() => {}); // si falla, sigue la caché
@@ -4029,7 +4162,7 @@ export default function MomosOps() {
   }, [vista]);
 
   useEffect(() => {
-    if (!perfil || !db || hidratadoRef.current) return;
+    if (!perfil || !db || !sessionCacheReady || hidratadoRef.current) return;
     hidratadoRef.current = true;
     (async () => {
       try {
@@ -4042,7 +4175,7 @@ export default function MomosOps() {
         if (syncRef.current === "cargando") setSync("local");
       }
     })();
-  }, [perfil, db]);
+  }, [perfil, db, sessionCacheReady]);
 
   useEffect(() => {
     if (!hidratadoRef.current || !syncCoordinatorRef.current) return;
@@ -4054,6 +4187,7 @@ export default function MomosOps() {
       [SYNC_DOMAINS.FINANCE]: 60_000,
       [SYNC_DOMAINS.CONFIGURATION]: 5 * 60_000,
       [SYNC_DOMAINS.DASHBOARD]: 30_000,
+      [SYNC_DOMAINS.LOGISTICS]: 30_000,
     }).filter((domain) => visibles.has(domain));
     if (vencidos.length) hidratarDesdeServidor(vencidos, { reason: "view-enter" }).catch(() => {});
   }, [vista, catalogosDe]);
@@ -4065,10 +4199,11 @@ export default function MomosOps() {
         // #2/#8: escribir al MISMO backend que dbLoad lee (window.storage), no sólo a localStorage
         try {
           if (dbRef.current) {
-            const payload = JSON.stringify(dbRef.current);
             const storageKey = activeStorageKeyRef.current;
-            storage.set(storageKey, payload); // best-effort al backend real (no se puede await en unload)
-            if (typeof localStorage !== "undefined") localStorage.setItem(storageKey, payload); // espejo
+            if (storageKey) {
+              const payload = JSON.stringify(dbRef.current);
+              sessionCacheStorage.set(storageKey, payload); // nunca persiste entre sesiones
+            }
           }
         } catch (err) { /* sin espacio o storage bloqueado */ }
         e.preventDefault();
@@ -4108,47 +4243,6 @@ export default function MomosOps() {
     return () => cancelAnimationFrame(frame);
   }, [vista]);
 
-  useEffect(() => {
-    (async () => {
-      const guardado = await dbLoad();
-      if (sessionOwnerRef.current) return; // la sesión ya inicializó un estado aislado
-      if (guardado && guardado._corruptStorage) {
-        // base local dañada: NO cargar semilla ni sobrescribir
-        setCorruptStorage(true);
-        setSync("local");
-        return;
-      }
-      if (guardado && guardado._readError) {
-        // #9: falló la LECTURA (no es "vacío"): no resembrar encima de datos posiblemente reales
-        setCorruptStorage(true);
-        setSync("local");
-        return;
-      }
-      if (guardado && guardado._incompatibleVersion) {
-        // base guardada es de una versión más nueva que esta app: NO cargar semilla ni sobrescribir
-        setIncompat(guardado.version);
-        setSync("local");
-        return;
-      }
-      if (guardado) {
-        if (guardado._migrated) {
-          delete guardado._migrated;
-          setDb(guardado);
-          const ok = await dbPersist(guardado, activeStorageKeyRef.current);
-          setSync(ok ? "guardado" : "error");
-        } else {
-          setDb(guardado);
-          setSync("guardado");
-        }
-      } else {
-        const semilla = seedDb();
-        setDb(semilla);
-        const ok = await dbPersist(semilla, activeStorageKeyRef.current);
-        setSync(ok ? "guardado" : "error");
-      }
-    })();
-  }, []);
-
   // update(fn): fn muta una copia del db y PUEDE devolver un resultado leído de forma SÍNCRONA.
   // Se calcula fuera del updater de setState para no depender del timing eager-state de React 18
   // (esto arregla que cambiar/guardar/registrarLote/domicilio lean su resultado de forma confiable).
@@ -4171,6 +4265,17 @@ export default function MomosOps() {
     return result;
   }
 
+  // H88: los deltas del servidor ya llegan validados y construyen sus propias
+  // colecciones inmutables. Publicarlos no debe clonar ni normalizar el Ã¡rbol
+  // completo: eso reconstruÃ­a semillas, settings y decenas de dominios ajenos
+  // por cada evento Realtime.
+  function publicarDeltaServidor(next) {
+    if (!next || typeof next !== "object" || next === dbRef.current) return false;
+    dbRef.current = next;
+    setDb(next);
+    return true;
+  }
+
   function capturarGeneracionInventario() {
     return inventorySyncGenerationRef.current;
   }
@@ -4188,50 +4293,47 @@ export default function MomosOps() {
     };
   }
 
-  function aplicarDeltaCatalogoProductos(envelope, readGeneration, finishedInventoryGeneration = finishedInventorySyncGenerationRef.current) {
+  async function aplicarDeltaCatalogoProductos(envelope, readGeneration, finishedInventoryGeneration = finishedInventorySyncGenerationRef.current) {
     if (Number(readGeneration) !== productCatalogSyncGenerationRef.current
         || Number(finishedInventoryGeneration) !== finishedInventorySyncGenerationRef.current) {
       return { status: "discarded", reason: "product_catalog_generation_changed", applied: [], stale: [] };
     }
-    let result;
-    update((draft) => {
-      result = applyProductCatalogDeltaBatchToDb(draft, envelope);
-      if (result?.db) Object.assign(draft, result.db);
-      normalizeDbShape(draft);
-    }, { silencioso: true, persistir: false });
+    const { applyProductCatalogDeltaBatchToDb } = await import("./lib/catalog-crm-delta");
+    const applied = applyProductCatalogDeltaBatchToDb(dbRef.current, envelope);
+    const { db: nextDb, ...result } = applied;
+    if (result?.applied?.length) publicarDeltaServidor(nextDb);
     if (result?.applied?.length) productCatalogSyncGenerationRef.current += 1;
     return result;
   }
 
-  function aplicarDeltaClienteCrm(envelope, readGeneration, orderGeneration = orderSyncGenerationRef.current) {
+  async function aplicarDeltaClienteCrm(envelope, readGeneration, orderGeneration = orderSyncGenerationRef.current) {
     if (Number(readGeneration) !== customerCrmSyncGenerationRef.current
         || Number(orderGeneration) !== orderSyncGenerationRef.current) {
       return { status: "discarded", reason: "customer_crm_generation_changed", applied: [], stale: [] };
     }
-    let result;
-    update((draft) => {
-      result = applyCustomerCrmDeltaBatchToDb(draft, envelope);
-      if (result?.db) Object.assign(draft, result.db);
-      normalizeDbShape(draft);
-    }, { silencioso: true, persistir: false });
+    const { applyCustomerCrmDeltaBatchToDb } = await import("./lib/catalog-crm-delta");
+    const applied = applyCustomerCrmDeltaBatchToDb(dbRef.current, envelope);
+    const { db: nextDb, ...result } = applied;
+    if (result?.applied?.length) publicarDeltaServidor(nextDb);
     if (result?.applied?.length) customerCrmSyncGenerationRef.current += 1;
     return result;
   }
 
-  function aplicarMutacionCatalogoCrm(envelope, expectedOperation, context = {}) {
+  async function aplicarMutacionCatalogoCrm(envelope, expectedOperation, context = {}) {
+    const { normalizeCatalogCrmMutationEnvelope } = await import("./lib/catalog-crm-delta");
     const normalized = normalizeCatalogCrmMutationEnvelope(envelope, expectedOperation);
     if (dbRef.current?.catalogCrmDeltaReady !== true) {
       return { status: "discarded", reason: "catalog_crm_delta_not_ready", result: normalized.result };
     }
     if (normalized.catalog) {
-      const applied = aplicarDeltaCatalogoProductos(
+      const applied = await aplicarDeltaCatalogoProductos(
         normalized.catalog,
         Number(context.productCatalogGeneration),
         Number(context.finishedInventoryGeneration),
       );
       return { ...applied, duplicate: normalized.duplicate, result: normalized.result };
     }
-    const applied = aplicarDeltaClienteCrm(
+    const applied = await aplicarDeltaClienteCrm(
       normalized.crm,
       Number(context.customerCrmGeneration),
       Number(context.orderGeneration),
@@ -4239,26 +4341,59 @@ export default function MomosOps() {
     return { ...applied, duplicate: normalized.duplicate, result: normalized.result };
   }
 
-  function aplicarDeltaPedido(envelope, readGeneration) {
+  async function aplicarDeltaPedido(envelope, readGeneration) {
     if (Number(readGeneration) !== orderSyncGenerationRef.current) {
       return { status: "discarded", applied: [], stale: [] };
     }
-    let result;
-    update((draft) => {
-      result = applyOrderDeltaBatchToDb(draft, envelope);
-      normalizeDbShape(draft);
-    }, { silencioso: true, persistir: false });
+    const applied = applyOrderDeltaBatch(dbRef.current, envelope);
+    const { db: nextDb, ...result } = applied;
+    if (result?.applied?.length) {
+      const { syncDeliverySnapshotOrders } = await import("./lib/delivery-sync");
+      syncDeliverySnapshotOrders(nextDb, result.applied, 50);
+      publicarDeltaServidor(nextDb);
+    }
     if (result?.applied?.length) orderSyncGenerationRef.current += 1;
     return result;
+  }
+
+  async function aplicarMutacionDomicilio(envelope, expectedOperation, readGeneration) {
+    const { normalizeDeliveryMutationEnvelope } = await import("./lib/delivery-mutation");
+    const normalized = normalizeDeliveryMutationEnvelope(envelope, expectedOperation);
+    const applied = await aplicarDeltaPedido(normalized.orderDelta, readGeneration);
+    return { ...applied, duplicate: normalized.duplicate, orderId: normalized.orderId, deliveryId: normalized.deliveryId };
   }
 
   function solicitarConciliacionPedidos() {
     const request = orderReconcileRequestRef.current;
     if (typeof request === "function") return request();
     return refetchFocoRef.current?.(
-      [SYNC_DOMAINS.OPERATIONS],
+      [vista === "Domicilios" ? SYNC_DOMAINS.LOGISTICS : SYNC_DOMAINS.OPERATIONS],
       { reason: "order-delta-fallback", afterActive: true },
     ) || Promise.resolve();
+  }
+
+  async function sincronizarPedidos(orderIds) {
+    const ids = [...new Set((Array.isArray(orderIds) ? orderIds : [orderIds])
+      .map((value) => String(value || "").trim()).filter(Boolean))];
+    if (!ids.length) return { status: "empty", applied: [] };
+    if (dbRef.current?.orderDeltaReady !== true) {
+      await solicitarConciliacionPedidos();
+      return { status: "snapshot", applied: [] };
+    }
+    const generation = capturarGeneracionPedidos();
+    try {
+      const envelope = await fetchOrderDeltas(ids);
+      const result = await aplicarDeltaPedido(envelope, generation);
+      if (result?.status === "discarded") await solicitarConciliacionPedidos();
+      return result;
+    } catch (error) {
+      try {
+        await solicitarConciliacionPedidos();
+        return { status: "snapshot", applied: [], recoveredFrom: error?.code || "order_delta_failed" };
+      } catch {
+        throw error;
+      }
+    }
   }
 
   function capturarGeneracionProductoTerminado() {
@@ -4269,11 +4404,9 @@ export default function MomosOps() {
     if (Number(readGeneration) !== finishedInventorySyncGenerationRef.current) {
       return { status: "discarded", applied: [], stale: [] };
     }
-    let result;
-    update((draft) => {
-      result = applyFinishedInventoryDeltaBatchToDb(draft, envelope);
-      normalizeDbShape(draft);
-    }, { silencioso: true, persistir: false });
+    const applied = applyFinishedInventoryDeltaBatch(dbRef.current, envelope);
+    const { db: nextDb, ...result } = applied;
+    if (result?.applied?.length) publicarDeltaServidor(nextDb);
     if (result?.applied?.length) finishedInventorySyncGenerationRef.current += 1;
     return result;
   }
@@ -4307,11 +4440,9 @@ export default function MomosOps() {
   }
 
   function aplicarActividadProduccion(envelope) {
-    let result;
-    update((draft) => {
-      result = applyProductionActivityDeltaToDb(draft, envelope);
-      normalizeDbShape(draft);
-    }, { silencioso: true, persistir: false });
+    const applied = applyProductionActivityDelta(dbRef.current, envelope);
+    const { db: nextDb, ...result } = applied;
+    if (result?.status === "applied") publicarDeltaServidor(nextDb);
     return result;
   }
 
@@ -4669,7 +4800,7 @@ export default function MomosOps() {
     const p = {
       db, update, user, refrescar: refrescarVistaActual, aplicarDeltaInventario,
       capturarGeneracionInventario, solicitarConciliacionInventario,
-      aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos,
+      aplicarDeltaPedido, aplicarMutacionDomicilio, capturarGeneracionPedidos, solicitarConciliacionPedidos, sincronizarPedidos,
       aplicarDeltaProductoTerminado, capturarGeneracionProductoTerminado, solicitarConciliacionProductoTerminado,
       sincronizarProductoTerminado, aplicarMutacionProduccion, capturarContextoMutacionProduccion,
       aplicarMutacionCatalogoCrm, capturarContextoMutacionCatalogoCrm,
@@ -4682,7 +4813,7 @@ export default function MomosOps() {
       case "Empaque": return <OrdersPanel section="Empaque" {...p} />;
       case "Inventario terminado": return <InventarioTerminado {...p} go={go} />;
       case "Inventario": return <Inventario {...p} focus={focus} go={go} />;
-      case "Productos": return <BusinessPanel panel="Productos" {...p} />;
+      case "Productos": return <BusinessPanel panel="Productos" {...p} go={go} />;
       case "Domicilios": return <BusinessPanel panel="Domicilios" {...p} />;
       case "Reclamos": return <BusinessPanel panel="Reclamos" {...p} focus={focus} />;
       case "Historial operativo": return <BusinessPanel panel="HistorialOperativo" {...p} />;
@@ -4710,6 +4841,7 @@ export default function MomosOps() {
       <GlobalKitchenOrderAlerts
         db={db}
         perfil={perfil}
+        activeView={vista}
         serverDataReady={Boolean(catalogosDe)}
         onOpenProduction={() => go("Producción")}
         onOpenPacking={() => go("Empaque")}

@@ -40,6 +40,13 @@ test("H71 evita que un snapshot antiguo pise un delta y enruta Realtime por orde
   assert.match(app, /compareOrderDeltaVersions\(incomingVersion, currentVersion\)/);
 });
 
+test("Pedidos silencia recordatorios de demora sin apagar sus propios eventos", () => {
+  assert.match(app, /activeView !== "Pedidos" && canReceiveKitchenDelayReminders/);
+  assert.match(app, /activeView !== "Pedidos" \|\| dialogMode !== "delays"/);
+  assert.match(app, /<GlobalKitchenOrderAlerts[\s\S]+activeView=\{vista\}/);
+  assert.doesNotMatch(app, /activeView !== "Pedidos" && canReceiveKitchenOrderAlerts/);
+});
+
 test("la cadena ordenada incluye H71 después de H70", () => {
   assert.ok(ordered.indexOf("20260719_71_pedidos_deltas") > ordered.indexOf("20260719_70_inventario_delta_consistencia"));
 });

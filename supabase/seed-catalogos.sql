@@ -262,14 +262,14 @@ on conflict (id) do nothing;
 -- combo_size/empaque_item_id solo en combos (PR05-07).
 -- ---------------------------------------------------------------------------
 insert into products (id, nombre, cat, tipo, especie, precio, precio_rappi, costo, stock, prep, frio, lejano, activo, descr, combo_size, empaque_item_id) values
-  ('PR01', 'Momo Gatito 150 g',              'Momos Signature', 'momo',  'gato',  18000, 23000, 6800,  8,    20, true,  false, true, 'Figura de mousse helado en forma de gatito, base crocante y salsa a elección.', null, null),
-  ('PR02', 'Momo Perrito 150 g',             'Momos Signature', 'momo',  'perro', 18000, 23000, 6800,  6,    20, true,  false, true, 'Figura de mousse helado en forma de perrito, base crocante y salsa a elección.', null, null),
-  ('PR03', 'Momo grande 190 g',              'Momos Signature', 'momo',  'gato',  23000, 29000, 8900,  4,    25, true,  false, true, 'Momo de 190 g con doble salsa y relleno a elección.', null, null),
-  ('PR04', 'Momo premium 280 g',             'Momos Signature', 'momo',  'gato',  32000, 39000, 12500, 3,    30, true,  false, true, 'Momo premium 280 g con relleno doble, ideal para regalo.', null, null),
+  ('PR01', 'Momo Gatito',                    'Momos Signature', 'momo',  'gato',  18000, 23000, 6800,  8,    20, true,  false, true, 'Familia comercial de Lizi, Momo y Toby; la figura física define forma y gramaje.', null, null),
+  ('PR02', 'Momo Perrito',                   'Momos Signature', 'momo',  'perro', 18000, 23000, 6800,  6,    20, true,  false, true, 'Familia comercial de Max, Rocco y Danna; la figura física define forma y gramaje.', null, null),
+  ('PR03', 'Momo grande',                    'Momos Signature', 'momo',  'gato',  23000, 29000, 8900,  0,    25, true,  false, false, 'Presentación comercial en definición; no se ofrece hasta vincular una figura física canónica.', null, null),
+  ('PR04', 'Momo premium',                   'Momos Signature', 'momo',  'gato',  32000, 39000, 12500, 3,    30, true,  false, true, 'Familia comercial premium vinculada a Teo; la ficha de Cocina define su gramaje.', null, null),
   ('PR05', 'Caja x3 Momos',                  'Cajas y Combos',  'combo', null,    49000, 59000, 22500, null, 35, true,  false, true, 'Caja regalo con 3 momos surtidos, sticker y lazo. Disponibilidad según momos y cajas.', 3, 'I08'),
   ('PR06', 'Caja x4 Momos',                  'Cajas y Combos',  'combo', null,    63000, 75000, 29500, null, 40, true,  false, true, 'Caja regalo con 4 momos surtidos.', 4, 'I13'),
   ('PR07', 'Caja x6 Momos',                  'Cajas y Combos',  'combo', null,    89000, 105000, 43000, null, 45, true, false, true, 'Caja premium con 6 momos surtidos para celebraciones.', 6, 'I14'),
-  ('PR08', 'Cheesecake Momo cuchareable',    'Momos Cuchara',   'momo',  'gato',  15000, 19000, 5200,  12,   10, true,  true,  true, 'Cheesecake en vaso con figurita horizontal y salsa.', null, null),
+  ('PR08', 'Cheesecake Momo cuchareable',    'Momos Cuchara',   'pedido',null,    15000, 19000, 5200,  null, 10, true,  true,  true, 'Cheesecake en vaso preparado al momento, con sabor y salsa a elección.', null, null),
   ('PR09', 'Crepa Momo Nutella',             'Momos Antojos',   'pedido', null,   14000, 18000, 4800,  null, 12, false, true,  true, 'Crepa con Nutella, banano y topping de momo mini. Se prepara al momento.', null, null),
   ('PR10', 'Crepa Momo Oreo',                'Momos Antojos',   'pedido', null,   14000, 18000, 4600,  null, 12, false, true,  true, 'Crepa con crema de Oreo y galleta triturada. Se prepara al momento.', null, null),
   ('PR11', 'Malteada Oreo Momo',             'Momos Bebidas',   'pedido', null,   13000, 16500, 4200,  null, 8,  true,  false, true, 'Malteada cremosa de Oreo con crema batida.', null, null),
@@ -287,8 +287,8 @@ on conflict (id) do nothing;
 -- INSERT ... ON CONFLICT porque la columna se rellena sobre filas ya
 -- sembradas, no se crean filas nuevas. Idempotente por naturaleza (un UPDATE
 -- que fija siempre el mismo valor final es re-ejecutable sin efectos extra).
--- PR03/PR08 quedan SIN figura a propósito (decisión de la spec: no
--- producibles desde el form de corrida hasta que se les asigne figura).
+-- PR03 queda sin figura: no se ofrece hasta que el negocio defina qué figura
+-- física/tamaño representa. PR08 es preparación al momento y nunca lleva figura.
 -- ---------------------------------------------------------------------------
 update figuras set product_id = 'PR01' where nombre in ('Lizi','Momo','Toby');
 update figuras set product_id = 'PR02' where nombre in ('Max','Rocco','Danna');

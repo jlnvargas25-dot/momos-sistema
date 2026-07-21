@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const migration = readFileSync(new URL("../../supabase/configuracion-servidor-v1.sql", import.meta.url), "utf8");
+const shelfLifeMigration = readFileSync(new URL("../../supabase/vida-util-produccion-configurable-v1.sql", import.meta.url), "utf8");
 const ordered = readFileSync(new URL("../../supabase/tests/test-migraciones-ordenadas.sql", import.meta.url), "utf8");
 const app = readFileSync(new URL("../MomosOps.jsx", import.meta.url), "utf8");
 const businessPanels = readFileSync(new URL("../features/backoffice/BusinessPanels.jsx", import.meta.url), "utf8");
@@ -35,7 +36,24 @@ test("H76 separa Configuración de catálogos y evita la hidratación completa",
   assert.doesNotMatch(rpc, /guardarConfiguracionDemoras/);
 });
 
+test("H83 configura vida útil sin cambiar silenciosamente lotes ya sellados", () => {
+  for (const required of [
+    "20260719_83_vida_util_produccion", "vida_util_producto_terminado_dias", "vida_util_mezclas_dias",
+    "vida_util_dias", "inventory_lots_shelf_life_days_check", "momos_configuration_snapshot_v2", "guardar_configuracion_v2",
+  ]) assert.match(shelfLifeMigration, new RegExp(required, "i"));
+  assert.match(shelfLifeMigration, /new\.vida_util_dias:=old\.vida_util_dias/);
+  assert.match(shelfLifeMigration, /between 1 and 30/);
+  assert.match(readModel, /momos_configuration_snapshot_v2[\s\S]+momos_configuration_snapshot_v1/);
+  assert.match(rpc, /finished_product_shelf_days[\s\S]+guardar_configuracion_v2/);
+  assert.match(businessPanels, /data-testid="production-shelf-life-settings"/);
+});
+
 test("la cadena ordenada incluye H76 después de H75", () => {
   assert.ok(ordered.indexOf("20260719_76_configuracion_servidor") > ordered.indexOf("20260719_75_finanzas_operativas"));
   assert.match(ordered, /migraciones ordenadas 01-\d+ PASS/);
+});
+
+test("la cadena ordenada incluye H83 después de Domicilios H82", () => {
+  assert.ok(ordered.indexOf("20260719_83_vida_util_produccion") > ordered.indexOf("20260719_82_domicilios_mutaciones_atomicas"));
+  assert.match(ordered, /migraciones ordenadas 01-83 PASS/);
 });

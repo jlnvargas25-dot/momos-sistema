@@ -3,6 +3,7 @@ import { fetchEvidenceSignedUrl, fetchOrderDeltas } from "../../lib/read-model";
 import {
   crearPedido, setOrderStatusRemoto, confirmarVerificacionEmpaque, subirEvidencia, crearReclamo,
   crearDomicilio, tomarEtapaPedido, liberarEtapaPedido, setProgresoLineaPedido, completarEtapaPedido,
+  completarCocinaYEntregarEmpaque, createInventoryIdempotencyKey, isMissingRpcError,
   crearIncidentePedido, resolverIncidentePedido, ofrecerRelevoDespacho, aceptarRelevoDespacho,
 } from "../../lib/rpc";
 import {
@@ -23,13 +24,117 @@ import {
 import { buildOrderTraceability, traceabilityHealth } from "../../lib/order-traceability";
 import { isActiveOrder, isPackingHistoryOrder, partitionByActivity } from "../../lib/operational-history";
 import { evaluateComboVariantAvailability, evaluateExactVariantDemand } from "../../lib/variant-availability";
+import {
+  activeFigureCatalog, commercialFamilyLabel, isCommercialFamilyProduct,
+  isKitchenFigureName, normalizeDomainText, orderAttributesForProduct, orderLinePresentation,
+} from "../../lib/momos-domain-language";
+import { groupOrderCatalogChoices, PRODUCT_CATEGORY_EMOJI } from "../../lib/product-categories.js";
+import { canonicalVariantsForAvailability } from "../../lib/canonical-stock.js";
+import {
+  applyOrderComboFigureEdit, applyOrderFigureEdit, decorateOrderLineCompatibility,
+  orderFiguresForFamily, orderLineFigureCompatibilityErrors, sanitizeOrderLineFigureFields,
+  validateOrderComboSlotFigure, validateOrderFigureCatalogLink,
+} from "./order-figure-compatibility.js";
 import { createCompactQueueOrderCard } from "../operations/CompactQueueOrderCard.jsx";
+
+const orderCatalogFigureKey = (productId, figureName) =>
+  `figure:${String(productId || "").trim()}:${normalizeDomainText(figureName)}`;
+const orderCatalogProductKey = (productId) => `product:${String(productId || "").trim()}`;
+
+/**
+ * El alta del pedido habla el idioma de Cocina: primero el postre fisico.
+ * `products` conserva la presentacion comercial que fija precio y receta;
+ * `figuras` declara que postre exacto recibira el cliente.
+ */
+export function buildOrderCatalogChoices(db = {}) {
+  // Pedidos refleja el menú vendible, no todo el catálogo administrativo.
+  // Un producto desactivado (o sin activación explícita) nunca se ofrece al recibir una orden.
+  const activeProducts = (db.products || []).filter((product) => product?.activo === true);
+  const productsById = new Map(activeProducts.map((product) => [String(product.id), product]));
+  const invalidFigureLinks = [];
+  const figures = activeFigureCatalog(db)
+    .map((figure) => {
+      const link = validateOrderFigureCatalogLink(figure);
+      if (!link.valid) {
+        invalidFigureLinks.push(link);
+        return null;
+      }
+      const productId = link.expectedProductId;
+      const product = productsById.get(productId);
+      if (!product || !isCommercialFamilyProduct(product)) return null;
+      return {
+        key: orderCatalogFigureKey(productId, figure.nombre),
+        kind: "figure",
+        productId,
+        figure: String(figure.nombre).trim(),
+        product,
+        category: "Momos Signature",
+        primary: String(figure.nombre).trim(),
+        secondary: `Familia comercial: ${commercialFamilyLabel(product)}`,
+      };
+    })
+    .filter(Boolean);
+
+  const seenFigures = new Set();
+  const figureChoices = figures.filter((choice) => {
+    const key = normalizeDomainText(choice.figure);
+    if (seenFigures.has(key)) return false;
+    seenFigures.add(key);
+    return true;
+  });
+  const otherChoices = activeProducts
+    .filter((product) => !isCommercialFamilyProduct(product))
+    .map((product) => ({
+      key: orderCatalogProductKey(product.id),
+      kind: "product",
+      productId: String(product.id),
+      figure: "",
+      product,
+      category: String(product.cat || "Otros").trim() || "Otros",
+      primary: product.nombre,
+      secondary: product.tipo === "combo"
+        ? "Caja o combo"
+        : product.tipo === "pedido" ? "Elaboración al momento" : "Otro producto del menú",
+    }));
+
+  return { figureChoices, otherChoices, invalidFigureLinks, all: [...figureChoices, ...otherChoices] };
+}
+
+export function applyOrderCatalogChoice(item, choice) {
+  if (!choice) {
+    return { ...item, catalogKey: "", productId: "", figura: "", sabor: "", salsa: "", relleno: "", adiciones: [], boxes: [] };
+  }
+  const quantity = Math.max(1, Math.floor(Number(item?.cant) || 1));
+  const product = choice.product;
+  const boxes = product?.tipo === "combo"
+    ? Array.from({ length: quantity }, () => Array.from({ length: product.comboSize || 0 }, () => ({ figura: "", sabor: "", salsa: "", adiciones: [] })))
+    : [];
+  return {
+    ...item,
+    catalogKey: choice.key,
+    productId: choice.productId,
+    figura: choice.kind === "figure" ? choice.figure : "",
+    sabor: "",
+    salsa: "",
+    relleno: "",
+    adiciones: [],
+    boxes,
+  };
+}
+
+export function orderProductAttributes(product) {
+  return orderAttributesForProduct(product);
+}
+
+export function orderLinePresentationForOrders(item, product) {
+  return decorateOrderLineCompatibility(orderLinePresentation(item, product), item, product);
+}
 
 export function createOrdersPanel(shared) {
   const {
     T, hoyISO, fmt, copiarTexto, toast, Badge, Btn, BtnAsync, Card, Empty, Field, Input, MiniSelect,
     Modal, SectionTitle, Select, Stat, WorkScopeTabs, CANALES, CANAL_STYLE,
-    EV_TIPOS, ORDER_STATES, ORIGEN_SIMPLE, availability, boxesAdicionesTotal, comboFaltantesEspecie,
+    EV_TIPOS, ORDER_STATES, ORIGEN_SIMPLE, availability, boxesAdicionesTotal, comboFaltantesFamilia,
     compressImage, customerOf, downloadCSV, evidencesOf, figurasDeCombo, inputCls, inputStyle, itemsOf,
     lineAdiciones, lineAdicionesTotal, orderSubtotal, orderTotal, productOf, reqFotosPaso, sugerirZona,
     tieneEvidencia, tieneSelloEmpaque,
@@ -45,7 +150,7 @@ export function createOrdersPanel(shared) {
     const generation = capturarGeneracionPedidos();
     try {
       const envelope = await fetchOrderDeltas([orderId]);
-      const result = aplicarDeltaPedido(envelope, generation);
+      const result = await aplicarDeltaPedido(envelope, generation);
       if (result?.status === "discarded") {
         await solicitarConciliacionPedidos?.();
         return { status: "reconciled" };
@@ -117,7 +222,7 @@ function Empaque({ db, update, user, refrescar, perfil, aplicarDeltaPedido, capt
     <div>
       <SectionTitle>Verificá la comanda antes de sellar</SectionTitle>
       <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
-        Compará cada producto, figura, sabor y cantidad. La verificación queda registrada con usuario y hora.
+        Compará primero cada postre —figura, sabor y cantidad— y después su presentación comercial, salsa y relleno. La verificación queda registrada con usuario y hora.
       </div>
 
       <div className="mb-4"><WorkScopeTabs value={scope} onChange={setScope} activeCount={incoming.length + pending.length + packed.length + handoffQueue.length} historyCount={history.length} activeLabel="Cola de Empaque" /></div>
@@ -223,7 +328,8 @@ function DetalleTrazabilidad({ trace, db, onOpen, labelledBy }) {
         <div className="flex items-center justify-between gap-2 mb-3"><div><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Contenido y control físico</div><div className="display text-lg font-semibold">{trace.items.length} línea{trace.items.length === 1 ? "" : "s"} del pedido</div></div><span className="text-xs font-bold" style={{ color: trace.packing ? "#3F6B42" : T.choco2 }}>{trace.packing ? "Comanda verificada ✓" : "Sin verificación de Empaque"}</span></div>
         <div className="space-y-2">{trace.items.map((item) => {
           const lineProgress = trace.progress.filter((row) => row.orderItemId === item.id);
-          return <div key={item.id} className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: T.soft }}><div className="flex-1"><b className="text-sm">{item.cant}× {item.nombre}</b><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa, item.relleno].filter(Boolean).join(" · ")}</div></div><div className="flex flex-wrap gap-1">{lineProgress.map((row) => <span key={row.stage} className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: row.status === "Incidente" ? "#F6D4CD" : row.status === "Listo" || row.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{row.stage}: {row.status}</span>)}</div></div>;
+          const presentation = orderLinePresentationForOrders(item, productOf(db, item.productId));
+          return <div key={item.id} className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ background: T.soft }}><div className="flex-1"><b className="text-sm">{presentation.quantityLabel}</b><div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{presentation.secondary || "Línea sin variante física"}</div></div><div className="flex flex-wrap gap-1">{lineProgress.map((row) => <span key={row.stage} className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: row.status === "Incidente" ? "#F6D4CD" : row.status === "Listo" || row.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{row.stage}: {row.status}</span>)}</div></div>;
         })}</div>
       </Card>
 
@@ -347,7 +453,11 @@ function Pedidos({ db, update, user, focus, refrescar, perfil, aplicarDeltaPedid
   const sincronizarPedido = (orderId) => sincronizarPedidoDirigido(orderId, {
     db, refrescar, aplicarDeltaPedido, capturarGeneracionPedidos, solicitarConciliacionPedidos,
   });
-  const salesAssistant = useMemo(() => buildSalesReceptionAssistant(db, { today: hoyISO() }), [db.orders, db.order_items, db.customers, db.evidences, db.benefits, db.products, db.variantes]);
+  const salesAssistant = useMemo(() => buildSalesReceptionAssistant(db, { today: hoyISO() }), [
+    db.orders, db.order_items, db.customers, db.evidences, db.benefits,
+    db.products, db.variantes, db.variantesCuarentena, db.inventory_reservations,
+    db.production_batches, db.figuras, db.settings?.figuras,
+  ]);
 
   const barrios = [...new Set(db.orders.map((o) => o.barrio))];
 
@@ -355,7 +465,11 @@ function Pedidos({ db, update, user, focus, refrescar, perfil, aplicarDeltaPedid
   const filtrados = scopeOrders.filter((o) => {
     const c = customerOf(db, o.customerId);
     const items = itemsOf(db, o.id);
-    const texto = (o.id + " " + (c.nombre || "") + " " + (c.telefono || "")).toLowerCase();
+    const contenido = items.map((item) => {
+      const presentation = orderLinePresentationForOrders(item, productOf(db, item.productId));
+      return `${presentation.primary} ${presentation.familyName} ${item.sabor || ""} ${item.figura || ""}`;
+    }).join(" ");
+    const texto = (o.id + " " + (c.nombre || "") + " " + (c.telefono || "") + " " + contenido).toLowerCase();
     const cumplePendPago = !pendPago || (["Nuevo","Confirmado","Pendiente de pago"].includes(o.estado) && !o.pagadoEn);
     return cumplePendPago
       && (!f.q || texto.includes(f.q.toLowerCase()))
@@ -382,9 +496,17 @@ function Pedidos({ db, update, user, focus, refrescar, perfil, aplicarDeltaPedid
     let res;
     try {
       if (estado === "Listo para empaque" && db.operationalControlReady) {
-        await completarEtapaPedido(orderId, "Cocina");
+        try {
+          const compound = await completarCocinaYEntregarEmpaque(orderId, createInventoryIdempotencyKey());
+          res = compound?.status;
+        } catch (error) {
+          if (!isMissingRpcError(error)) throw error;
+          await completarEtapaPedido(orderId, "Cocina");
+          res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
+        }
+      } else {
+        res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
       }
-      res = await setOrderStatusRemoto(orderId, estado, !!(opts && opts.ventaRapida));
     } catch (e) {
       toast("error", e.message);
       return false;
@@ -410,13 +532,13 @@ function Pedidos({ db, update, user, focus, refrescar, perfil, aplicarDeltaPedid
 
   function exportar() {
     downloadCSV("pedidos",
-      ["Pedido","Fecha","Hora","Canal","Cliente","Teléfono","Barrio","Zona","Productos","Subtotal","Descuento","Domicilio cobrado","Costo domicilio","Total","Pago","Estado","Campaña","Creativo","Origen"],
+      ["Pedido","Fecha","Hora","Canal","Cliente","Teléfono","Barrio","Zona","Contenido exacto","Subtotal","Descuento","Domicilio cobrado","Costo domicilio","Total","Pago","Estado","Campaña","Creativo","Origen"],
       filtrados.map((o) => {
         const c = customerOf(db, o.customerId);
         const camp = db.campaigns.find((x) => x.id === o.campaignId);
         const cre = db.creatives.find((x) => x.id === o.creativeId);
         return [o.id, o.fecha, o.hora, o.canal, c.nombre, c.telefono, o.barrio, o.zona,
-          itemsOf(db, o.id).map((i) => i.cant + "x " + i.nombre + (i.sabor ? " (" + i.sabor + ")" : "") + (i.costoUnitario !== undefined ? " · costo hist. " + fmt(i.costoUnitario) : "")).join(" | "),
+          itemsOf(db, o.id).map((i) => { const p = orderLinePresentationForOrders(i, productOf(db, i.productId)); return p.quantityLabel + (p.secondary ? " (" + p.secondary + ")" : "") + (i.costoUnitario !== undefined ? " · costo hist. " + fmt(i.costoUnitario) : ""); }).join(" | "),
           orderSubtotal(db, o), o.descuento, o.domCobrado, o.domCosto, orderTotal(db, o), o.pago, o.estado,
           camp ? camp.nombre : "", cre ? cre.titulo : "", o.origenDetalle || ""];
       }));
@@ -483,7 +605,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil, aplicarDeltaPedid
           <MiniSelect placeholder="Estado: todos" options={ORDER_STATES} value={f.estado} onChange={(e) => { const estado = e.target.value; setF({ ...f, estado }); if (estado) setScope(isActiveOrder({ estado }) ? "active" : "history"); }} />
           <MiniSelect placeholder="Barrio: todos" options={barrios} value={f.barrio} onChange={(e) => setF({ ...f, barrio: e.target.value })} />
           <select value={f.producto} onChange={(e) => setF({ ...f, producto: e.target.value })} className="rounded-xl px-2 py-2 text-xs border font-semibold" style={inputStyle}>
-            <option value="">Producto: todos</option>
+            <option value="">Postre, caja o elaboración: todos</option>
             {db.products.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
           <select value={f.cliente} onChange={(e) => setF({ ...f, cliente: e.target.value })} className="rounded-xl px-2 py-2 text-xs border font-semibold" style={inputStyle}>
@@ -520,7 +642,7 @@ function Pedidos({ db, update, user, focus, refrescar, perfil, aplicarDeltaPedid
                         <div className="text-sm font-semibold mt-1 truncate">{c.nombre}</div>
                         <div className="text-xs truncate" style={{ color: T.choco2 }}>{o.barrio} · {o.hora}</div>
                         <div className="text-xs mt-1 truncate" style={{ color: T.choco2 }}>
-                          {itemsOf(db, o.id).map((i) => `${i.cant}× ${i.nombre.split(" ").slice(0, 2).join(" ")}`).join(", ")}
+                          {itemsOf(db, o.id).filter((item) => !item.esCaja).map((i) => orderLinePresentationForOrders(i, productOf(db, i.productId)).quantityLabel).join(", ")}
                         </div>
                         <div className="flex justify-between items-center mt-2">
                           <span className="display font-semibold" style={{ color: T.coral }}>{fmt(orderTotal(db, o))}</span>
@@ -660,20 +782,23 @@ function ControlOperativoPedido({ db, order, perfil, sincronizarPedido, setAviso
       </div>
 
       {lines.length > 0 && <div className="mt-4 space-y-2">
-        {lines.map(({ item, progress }) => (
+        {lines.map(({ item, progress }) => {
+          const presentation = orderLinePresentationForOrders(item, productOf(db, item.productId));
+          return (
           <div key={item.id} className="rounded-xl border px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2" style={{ borderColor: progress.status === "Incidente" ? "#E3A292" : T.border, background: progress.status === "Listo" || progress.status === "Verificado" ? "#F2F8F0" : "#fff" }}>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold">{item.cant}× {item.nombre}</div>
-              <div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{[item.figura, item.sabor, item.salsa].filter(Boolean).join(" · ") || "Línea de la orden"}</div>
+              <div className="text-sm font-bold">{presentation.quantityLabel}</div>
+              <div className="text-[11px] font-semibold" style={{ color: T.choco2 }}>{presentation.secondary || "Línea de la orden"}</div>
             </div>
             <span className="rounded-full px-2.5 py-1 text-[10px] font-extrabold" style={{ background: progress.status === "Incidente" ? "#F8D6CF" : progress.status === "Listo" || progress.status === "Verificado" ? "#DDEBD9" : T.vainilla }}>{progress.status}</span>
-            {stage === "Cocina" && owns && <select aria-label={`Estado de ${item.nombre}`} value={progress.status} disabled={!!busy}
-              onChange={(event) => act(item.id, () => setProgresoLineaPedido(item.id, stage, event.target.value, progress.version || null), `${item.nombre} · ${event.target.value}`)}
+            {stage === "Cocina" && owns && <select aria-label={`Estado de ${presentation.primary}`} value={progress.status} disabled={!!busy}
+              onChange={(event) => act(item.id, () => setProgresoLineaPedido(item.id, stage, event.target.value, progress.version || null), `${presentation.primary} · ${event.target.value}`)}
               className="rounded-xl border px-2 py-2 text-xs font-bold" style={inputStyle}>
               {STAGE_LINE_STATUSES.Cocina.map((status) => <option key={status}>{status}</option>)}
             </select>}
           </div>
-        ))}
+          );
+        })}
         {stage === "Cocina" && owns && <div className="flex items-center justify-between gap-3 pt-1">
           <div className="text-[11px] font-semibold" style={{ color: allKitchenReady ? "#3F6B42" : T.choco2 }}>{lines.filter(({ progress }) => progress.status === "Listo").length}/{lines.length} líneas listas</div>
           {!allKitchenReady && <Btn small disabled={!!busy || incidents.length > 0} onClick={() => act("complete", () => completarEtapaPedido(order.id, "Cocina"), `${order.id} · todas las líneas quedaron listas`)}>Marcar cocina terminada</Btn>}
@@ -684,7 +809,7 @@ function ControlOperativoPedido({ db, order, perfil, sincronizarPedido, setAviso
       {issueOpen && <div className="mt-4 rounded-xl p-3 border" style={{ background: T.coralSoft, borderColor: "#E8B5A5" }}>
         <div className="grid sm:grid-cols-3 gap-2">
           <select value={issue.orderItemId} onChange={(e) => setIssue({ ...issue, orderItemId: e.target.value })} className="rounded-xl border px-2 py-2 text-xs" style={inputStyle}>
-            <option value="">Pedido completo</option>{lines.map(({ item }) => <option key={item.id} value={item.id}>{item.cant}× {item.nombre}</option>)}
+            <option value="">Pedido completo</option>{lines.map(({ item }) => <option key={item.id} value={item.id}>{orderLinePresentationForOrders(item, productOf(db, item.productId)).quantityLabel}</option>)}
           </select>
           <select value={issue.type} onChange={(e) => setIssue({ ...issue, type: e.target.value })} className="rounded-xl border px-2 py-2 text-xs" style={inputStyle}>
             {["Faltante", "Sustitución", "Preparación equivocada", "Rehacer", "Diferencia de empaque", "Dirección", "Domicilio", "Cliente ausente", "Otro"].map((type) => <option key={type}>{type}</option>)}
@@ -1054,20 +1179,21 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, sincro
       )}
 
       <div id={`packing-content-${o.id}`} className="mt-4">
-        <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>PRODUCTOS</div>
+        <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>CONTENIDO DEL PEDIDO</div>
         {itemsOf(db, o.id).filter((i) => !i.parentItemId).map((i) => {
           const p = productOf(db, i.productId);
+          const presentation = orderLinePresentationForOrders(i, p);
           const disp = p ? availability(db, p) : Infinity;
           const sinStock = p && !["Pagado","En producción","Listo para empaque","Empacado","Listo para despacho","En ruta","Entregado"].includes(o.estado) && disp < i.cant;
           const hijas = itemsOf(db, o.id).filter((h) => h.parentItemId === i.id);
           return (
             <Card key={i.id} className="p-3 mb-2">
               <div className="flex justify-between gap-2">
-                <div className="text-sm font-bold">{i.cant}× {i.nombre}</div>
+                <div className="text-sm font-bold">{presentation.quantityLabel}</div>
                 <div className="text-sm font-bold">{fmt(i.precio * i.cant + lineAdicionesTotal(i) + hijas.reduce((s, h) => s + lineAdicionesTotal(h), 0))}</div>
               </div>
               <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>
-                {[i.sabor && `Sabor: ${i.sabor}`, i.figura && `Figura: ${i.figura}`, i.salsa && `Salsa: ${i.salsa}`, i.relleno && `Relleno: ${i.relleno}`].filter(Boolean).join(" · ")}
+                {presentation.secondary}
               </div>
               {lineAdiciones(i).length > 0 && (
                 <div className="text-xs font-bold mt-1" style={{ color: T.coral }}>
@@ -1085,12 +1211,19 @@ function DetallePedido({ db, o, update, user, onClose, cambiar, setAviso, sincro
                     {nums.map((n) => (
                       <div key={n} className={multi ? "mb-1" : ""}>
                         {multi && <div className="text-[10px] font-bold" style={{ color: T.coral }}>Caja {n}</div>}
-                        {cajas[n].map((h) => (
-                          <div key={h.id} className="text-xs mb-0.5" style={{ color: T.choco2 }}>
-                            <span className="font-bold">🐾 {h.figura}</span>{[h.sabor && ` · ${h.sabor}`, h.salsa && ` · ${h.salsa}`, h.cant > 1 && ` · ×${h.cant}`].filter(Boolean).join("")}
-                            {lineAdiciones(h).length > 0 && <span className="font-bold" style={{ color: T.coral }}>  ·  🍫 {lineAdiciones(h).map((ad) => ad.nombre + (+ad.precio > 0 ? " (+" + fmt(ad.precio) + ")" : "")).join(", ")}</span>}
-                          </div>
-                        ))}
+                        {cajas[n].map((h) => {
+                          const childPresentation = orderLinePresentationForOrders(h, productOf(db, h.productId));
+                          const comboSlotCompatibility = validateOrderComboSlotFigure(p, h.figura);
+                          const childCompatibilityError = childPresentation.figureCompatibilityError
+                            || (!comboSlotCompatibility.valid ? comboSlotCompatibility.message : "");
+                          return (
+                            <div key={h.id} className="text-xs mb-0.5" style={{ color: T.choco2 }}>
+                              <span className="font-bold">🐾 {h.figura}</span>{[h.sabor && ` · ${h.sabor}`, h.salsa && ` · ${h.salsa}`, h.cant > 1 && ` · ×${h.cant}`].filter(Boolean).join("")}
+                              {lineAdiciones(h).length > 0 && <span className="font-bold" style={{ color: T.coral }}>  ·  🍫 {lineAdiciones(h).map((ad) => ad.nombre + (+ad.precio > 0 ? " (+" + fmt(ad.precio) + ")" : "")).join(", ")}</span>}
+                              {childCompatibilityError && <span className="block font-bold" style={{ color: "#8E4B5A" }}>⚠ {childCompatibilityError}</span>}
+                            </div>
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
@@ -1300,27 +1433,41 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
   const [origenDetalle, setOrigenDetalle] = useState("");
   const [origenSimple, setOrigenSimple] = useState("");
   const [verAvanzado, setVerAvanzado] = useState(false);
-  const [items, setItems] = useState([{ productId: "", sabor: "", salsa: "", relleno: "", figura: "", cant: 1, adiciones: [], boxes: [] }]);
+  const [items, setItems] = useState([{ catalogKey: "", productId: "", sabor: "", salsa: "", relleno: "", figura: "", cant: 1, adiciones: [], boxes: [] }]);
   const [error, setError] = useState("");
 
   const pagosDisponibles = canal === "Rappi" ? ["Rappi (app)"] : s.pagos.filter((p) => p !== "Rappi (app)");
   const sabores = [...s.saboresFrutales, ...s.saboresCremosos];
   const c = db.customers.find((x) => x.id === customerId);
   const benef = c && db.benefits.find((b) => b.customerId === c.id && b.estado === "Activo" && b.vence >= hoyISO());
+  const today = hoyISO();
+  const availabilityVariants = useMemo(() => canonicalVariantsForAvailability(db, { today }), [
+    today, db.products, db.variantes, db.variantesCuarentena, db.inventory_reservations,
+    db.production_batches, db.figuras, db.settings?.figuras,
+  ]);
+  const canonicalAvailabilityDb = useMemo(() => ({ ...db, variantes: availabilityVariants }), [db, availabilityVariants]);
   const tarifaZona = (s.zonas.find((z) => z.nombre === zona) || {}).tarifa || 0;
   const tarifa = canal === "Rappi" ? 0 : tarifaZona;
+  const orderCatalog = useMemo(
+    () => buildOrderCatalogChoices(db),
+    [db.products, db.figuras, db.settings?.figuras],
+  );
+  const orderCatalogGroups = useMemo(
+    () => groupOrderCatalogChoices(orderCatalog.all),
+    [orderCatalog],
+  );
 
   const lineas = items.map((it) => {
     const p = productOf(db, it.productId);
-    // Combos: faltante por ESPECIE según la composición real (boxes), coherente con reserveInventory.
-    const faltaEsp = p && p.tipo === "combo" ? comboFaltantesEspecie(db, p, it.boxes) : [];
-    const disponibilidadExacta = p && p.tipo === "momo" ? evaluateExactVariantDemand({
+    // Combos: faltante por presentación comercial según cada postre exacto de la caja.
+    const faltantesFamilia = p && p.tipo === "combo" ? comboFaltantesFamilia(db, p, it.boxes) : [];
+    const disponibilidadExacta = p && isCommercialFamilyProduct(p) ? evaluateExactVariantDemand({
       productId: p.id, productName: p.nombre, figure: it.figura, flavor: it.sabor,
-      quantity: it.cant, variants: db.variantes || [],
+      quantity: it.cant, variants: availabilityVariants, today,
     }) : null;
-    const disponibilidadCaja = p && p.tipo === "combo" ? evaluateComboVariantAvailability({ db, combo: p, boxes: it.boxes }) : null;
+    const disponibilidadCaja = p && p.tipo === "combo" ? evaluateComboVariantAvailability({ db: canonicalAvailabilityDb, combo: p, boxes: it.boxes, today }) : null;
     const faltantesExactos = disponibilidadCaja?.shortages || (disponibilidadExacta?.complete && disponibilidadExacta.missing > 0 ? [disponibilidadExacta] : []);
-    return { ...it, nombre: p ? p.nombre : "", precio: p ? (canal === "Rappi" ? p.precioRappi : p.precio) : 0, disp: p ? availability(db, p) : Infinity, tipo: p ? p.tipo : "", faltaEsp, disponibilidadExacta, disponibilidadCaja, faltantesExactos };
+    return { ...it, nombre: p ? p.nombre : "", precio: p ? (canal === "Rappi" ? p.precioRappi : p.precio) : 0, disp: p ? availability(db, p) : Infinity, tipo: p ? p.tipo : "", faltantesFamilia, disponibilidadExacta, disponibilidadCaja, faltantesExactos };
   });
   const subtotal = lineas.reduce((sm, l) => sm + l.precio * l.cant + lineAdicionesTotal(l) + boxesAdicionesTotal(l), 0);
 
@@ -1334,12 +1481,28 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
     else if (benef.tipoBeneficio === "producto_gratis") productoGratis = productOf(db, benef.productoGratisId);
   }
   const total = subtotal - descuento + tarifa;
-  const faltaStock = lineas.filter((l) => l.productId && (l.disp < l.cant || (l.faltaEsp && l.faltaEsp.length > 0) || (l.faltantesExactos && l.faltantesExactos.length > 0)));
+  const faltaStock = lineas.filter((l) => l.productId && (l.disp < l.cant || (l.faltantesFamilia && l.faltantesFamilia.length > 0) || (l.faltantesExactos && l.faltantesExactos.length > 0)));
 
   const setItem = (i, campo, valor) => setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, [campo]: valor } : x));
   // Combos con composición POR CAJA: boxes = Array(cant) de Array(comboSize) de {figura,sabor,salsa}.
   const setSlot = (i, boxIdx, slotIdx, campo, valor) => setItems((prev) => prev.map((x, idx) =>
     idx === i ? { ...x, boxes: (x.boxes || []).map((box, bi) => bi === boxIdx ? box.map((sl, si) => si === slotIdx ? { ...sl, [campo]: valor } : sl) : box) } : x));
+  const setFigure = (i, product, value) => {
+    const result = applyOrderFigureEdit(items[i], product, value);
+    if (!result.ok) { setError(result.error.message); return; }
+    setError("");
+    setItems((prev) => prev.map((item, index) => index === i ? result.item : item));
+  };
+  const setSlotFigure = (i, boxIdx, slotIdx, combo, value) => {
+    const current = items[i]?.boxes?.[boxIdx]?.[slotIdx] || {};
+    const result = applyOrderComboFigureEdit(current, combo, value);
+    if (!result.ok) { setError(result.error.message); return; }
+    setError("");
+    setItems((prev) => prev.map((item, index) => index !== i ? item : {
+      ...item,
+      boxes: (item.boxes || []).map((box, currentBox) => currentBox !== boxIdx ? box : box.map((slot, currentSlot) => currentSlot === slotIdx ? result.slot : slot)),
+    }));
+  };
   // "= mismos momos": copia el slot 0 al resto de esa caja.
   const mismosMomos = (i, boxIdx) => setItems((prev) => prev.map((x, idx) => {
     if (idx !== i) return x;
@@ -1384,13 +1547,25 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
     })) };
   }));
 
+  const agregarLinea = () => setItems((prev) => [...prev, { catalogKey: "", productId: "", sabor: "", salsa: "", relleno: "", figura: "", cant: 1, adiciones: [], boxes: [] }]);
+  const quitarLinea = (index) => setItems((prev) => prev.filter((_, current) => current !== index));
+
   async function guardar() {
     if (!customerId && (!nc.nombre || !nc.telefono)) { setError("Selecciona un cliente o registra nombre y teléfono."); return; }
-    if (!lineas.some((l) => l.productId)) { setError("Agrega al menos un producto."); return; }
+    if (!lineas.some((l) => l.productId)) { setError("Agrega al menos una línea al pedido."); return; }
     if (subtotal < s.pedidoMinimo) { setError(`El pedido mínimo es ${fmt(s.pedidoMinimo)} (sin domicilio).`); return; }
+    const incompatibilidad = lineas.flatMap((line) => (
+      orderLineFigureCompatibilityErrors(line, productOf(db, line.productId))
+    ))[0];
+    if (incompatibilidad) { setError(`No se puede guardar: ${incompatibilidad.message}`); return; }
+    const postresIncompletos = lineas.filter((line) => {
+      const product = productOf(db, line.productId);
+      return product && isCommercialFamilyProduct(product) && (!isKitchenFigureName(line.figura) || !line.sabor);
+    });
+    if (postresIncompletos.length) { setError("Elegí el postre exacto y su sabor. La familia comercial se asigna automáticamente."); return; }
     const combosIncompletos = lineas.filter((l) => l.productId && l.tipo === "combo")
       .filter((l) => !(l.boxes || []).length || (l.boxes || []).some((box) => !box.length || box.some((sl) => !sl.figura || !sl.sabor || !sl.salsa)));
-    if (combosIncompletos.length) { setError("Completá figura, sabor y salsa en cada momo de cada caja."); return; }
+    if (combosIncompletos.length) { setError("Completá postre, sabor y salsa en cada espacio de la caja."); return; }
     if (enviandoRef.current) return;
     enviandoRef.current = true;
     setEnviando(true);
@@ -1407,8 +1582,9 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
       idempotency_key: idemKeyRef.current,
       lineas: items.filter((l) => l.productId).map((l) => {
         const p = productOf(db, l.productId);
-        const base = { product_id: l.productId, cant: l.cant, sabor: l.sabor || "", salsa: l.salsa || "", figura: l.figura || "", adiciones: mapAdic(l.adiciones) };
-        if (p && p.tipo === "combo") base.boxes = (l.boxes || []).map((box) => box.map((sl) => ({ figura: sl.figura, sabor: sl.sabor, salsa: sl.salsa, adiciones: mapAdic(sl.adiciones) })));
+        const clean = sanitizeOrderLineFigureFields(l, p);
+        const base = { product_id: clean.productId, cant: clean.cant, sabor: clean.sabor || "", salsa: clean.salsa || "", figura: clean.figura, adiciones: mapAdic(clean.adiciones) };
+        if (p && p.tipo === "combo") base.boxes = clean.boxes.map((box) => box.map((sl) => ({ figura: sl.figura, sabor: sl.sabor, salsa: sl.salsa, adiciones: mapAdic(sl.adiciones) })));
         return base;
       }),
     };
@@ -1486,42 +1662,60 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
         </div>
       )}
 
-      <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>PRODUCTOS DEL PEDIDO</div>
+      <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>QUÉ VA EN EL PEDIDO</div>
+      {orderCatalog.invalidFigureLinks.length > 0 && (
+        <div className="text-xs font-bold mb-2 p-2.5 rounded-xl" style={{ color: "#8E4B5A", background: "#F3D7DC" }}>
+          ⚠️ Hay figuras con una familia incorrecta y no se ofrecerán: {orderCatalog.invalidFigureLinks.map((issue) => issue.message).join(" · ")}
+        </div>
+      )}
       {items.map((it, i) => {
         const l = lineas[i];
         const pSel = productOf(db, it.productId);
-        const attrs = pSel && Array.isArray(pSel.atributos) ? pSel.atributos : ["sabor", "salsa", "relleno", "figura"];
+        const attrs = orderProductAttributes(pSel);
+        const compatibilityErrors = orderLineFigureCompatibilityErrors(it, pSel);
+        const selectedCatalogChoice = orderCatalog.all.find((choice) => choice.key === it.catalogKey)
+          || orderCatalog.all.find((choice) => choice.productId === it.productId && (choice.kind !== "figure" || choice.figure === it.figura));
+        const selectedExactFigure = selectedCatalogChoice?.kind === "figure";
         return (
           <Card key={i} className="p-3 mb-2">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="col-span-2 sm:col-span-3">
-                <select value={it.productId} onChange={(e) => {
-                  const pid = e.target.value;
-                  const prod = productOf(db, pid);
-                  setItems((prev) => prev.map((x, idx) => {
-                    if (idx !== i) return x;
-                    const boxes = prod && prod.tipo === "combo"
-                      ? Array.from({ length: Math.max(1, x.cant || 1) }, () => Array.from({ length: prod.comboSize || 0 }, () => ({ figura: "", sabor: "", salsa: "", adiciones: [] })))
-                      : [];
-                    return { ...x, productId: pid, boxes };
-                  }));
-                }} className={inputCls} style={inputStyle}>
-                  <option value="">Elegir producto…</option>
-                  {db.products.filter((p) => p.activo).map((p) => {
-                    const disp = availability(db, p);
-                    const stockText = !isFinite(disp) ? "" : p.tipo === "combo" ? ` · hasta ${disp} caja(s) por stock general` : ` · ${disp} disp. generales`;
-                    return <option key={p.id} value={p.id}>{p.nombre} · {fmt(canal === "Rappi" ? p.precioRappi : p.precio)}{stockText}</option>;
-                  })}
+                <div className="text-[10px] uppercase tracking-wider font-extrabold mb-1" style={{ color: T.choco2 }}>Postre, caja o elaboración del pedido</div>
+                <select
+                  aria-label="Postre, caja o elaboración del pedido"
+                  className={inputCls}
+                  style={inputStyle}
+                  value={selectedCatalogChoice?.key || ""}
+                  onChange={(event) => {
+                    const choice = orderCatalog.all.find((entry) => entry.key === event.target.value);
+                    setItems((prev) => prev.map((x, idx) => idx === i ? applyOrderCatalogChoice(x, choice) : x));
+                  }}
+                >
+                  <option value="">Elegir postre, caja o elaboración…</option>
+                  {orderCatalogGroups.map((group) => (
+                    <optgroup key={group.category} label={`${PRODUCT_CATEGORY_EMOJI[group.category] || PRODUCT_CATEGORY_EMOJI.Otros} ${group.category}`}>
+                      {group.choices.map((choice) => {
+                        const price = canal === "Rappi" ? choice.product.precioRappi : choice.product.precio;
+                        const context = choice.kind === "figure" ? commercialFamilyLabel(choice.product) : "";
+                        return <option key={choice.key} value={choice.key}>{choice.primary} · {fmt(price)}{context ? ` · ${context}` : ""}</option>;
+                      })}
+                    </optgroup>
+                  ))}
                 </select>
+                {compatibilityErrors.length > 0 && (
+                  <div className="mt-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>
+                    ⚠️ {compatibilityErrors[0].message}
+                  </div>
+                )}
               </div>
               {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("sabor") && <Select placeholder="Sabor" options={sabores} value={it.sabor} onChange={(e) => setItem(i, "sabor", e.target.value)} />}
               {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("salsa") && <Select placeholder="Salsa" options={s.salsas} value={it.salsa} onChange={(e) => setItem(i, "salsa", e.target.value)} />}
               {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("relleno") && <Select placeholder="Relleno" options={s.rellenos} value={it.relleno} onChange={(e) => setItem(i, "relleno", e.target.value)} />}
-              {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && <Select placeholder="Figura" options={(() => { const propias = (db.figuras || []).filter((f) => f.activo && f.productId === it.productId); return (propias.length ? propias : s.figuras).map((f) => f.nombre); })()} value={it.figura} onChange={(e) => setItem(i, "figura", e.target.value)} />}
+              {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && !selectedExactFigure && <Select placeholder="Postre / figura" options={orderFiguresForFamily(activeFigureCatalog(db), it.productId).map((figure) => figure.nombre)} value={it.figura} onChange={(e) => setFigure(i, pSel, e.target.value)} />}
               <Input type="number" min="1" value={it.cant} onChange={(e) => setCant(i, pSel, Math.max(1, +e.target.value))} />
               <div className="flex items-center justify-between px-1">
                 <span className="text-sm font-bold">{fmt(l.precio * l.cant + lineAdicionesTotal(l) + boxesAdicionesTotal(l))}</span>
-                {items.length > 1 && <button onClick={() => setItems(items.filter((_, x) => x !== i))} className="text-xs font-bold" style={{ color: "#A03B2A" }}>Quitar</button>}
+                {items.length > 1 && <button onClick={() => quitarLinea(i)} className="text-xs font-bold" style={{ color: "#A03B2A" }}>Quitar</button>}
               </div>
             </div>
             {it.productId && pSel && pSel.tipo !== "combo" && attrs.includes("figura") && (() => {
@@ -1546,7 +1740,9 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
             {it.productId && pSel && pSel.tipo === "combo" && (() => {
               const boxes = it.boxes || [];
               const multi = boxes.length > 1;
-              const figOpts = figurasDeCombo(db, pSel).map((f) => f.nombre);
+              const figOpts = figurasDeCombo(db, pSel)
+                .filter((figure) => validateOrderFigureCatalogLink(figure).valid && validateOrderComboSlotFigure(pSel, figure.nombre).valid)
+                .map((figure) => figure.nombre);
               return (
                 <div className="mt-2 pt-2 border-t" style={{ borderColor: T.border }}>
                   <div className="flex items-center justify-between mb-1.5">
@@ -1554,7 +1750,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
                     {multi && <button type="button" onClick={() => copiarCaja1ATodas(i)} className="text-[11px] font-bold" style={{ color: T.coral }}>Caja 1 → todas</button>}
                   </div>
                   <div className="mb-2 px-2.5 py-2 rounded-xl text-[11px] font-bold flex items-center justify-between gap-2" style={{ background: l.disponibilidadCaja?.canFulfill ? "#DDEBD9" : "#F7EAC9", color: l.disponibilidadCaja?.canFulfill ? "#3F6B42" : "#8A6D1F" }}>
-                    <span>{l.disponibilidadCaja?.incomplete ? "Completá figura y sabor para validar cada momo" : l.disponibilidadCaja?.canFulfill ? "Composición exacta disponible" : "La caja necesita producción exacta"}</span>
+                    <span>{l.disponibilidadCaja?.incomplete ? "Completá postre y sabor para validar cada espacio" : l.disponibilidadCaja?.canFulfill ? "Composición exacta disponible" : "La caja necesita producción exacta"}</span>
                     <span className="shrink-0">{l.disponibilidadCaja?.covered || 0}/{l.disponibilidadCaja?.slots?.length || 0} verificadas</span>
                   </div>
                   {boxes.map((box, b) => (
@@ -1566,7 +1762,7 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
                       {box.map((sl, si) => (
                         <div key={si} className="mb-1.5">
                           <div className="grid grid-cols-3 gap-1.5">
-                            <Select placeholder="Figura" options={figOpts} value={sl.figura} onChange={(e) => setSlot(i, b, si, "figura", e.target.value)} />
+                            <Select placeholder="Postre" options={figOpts} value={sl.figura} onChange={(e) => setSlotFigure(i, b, si, pSel, e.target.value)} />
                             <Select placeholder="Sabor" options={sabores} value={sl.sabor} onChange={(e) => setSlot(i, b, si, "sabor", e.target.value)} />
                             <Select placeholder="Salsa" options={s.salsas} value={sl.salsa} onChange={(e) => setSlot(i, b, si, "salsa", e.target.value)} />
                           </div>
@@ -1616,16 +1812,16 @@ function NuevoPedido({ db, update, user, onClose, setAviso, sincronizarPedido })
                 </div>
               </div>
             )}
-            {l.productId && (!l.faltantesExactos || l.faltantesExactos.length === 0) && (l.faltaEsp && l.faltaEsp.length > 0) && (
-              <div className="text-xs font-bold mt-2" style={{ color: "#A03B2A" }}>⚠️ Faltan momos para esta caja: {l.faltaEsp.map((f) => f.falta + " " + f.nombre).join(", ")}. Se reservará lo posible y se sugerirá producción del resto.</div>
+            {l.productId && (!l.faltantesExactos || l.faltantesExactos.length === 0) && (l.faltantesFamilia && l.faltantesFamilia.length > 0) && (
+              <div className="text-xs font-bold mt-2" style={{ color: "#A03B2A" }}>⚠️ Faltan unidades de estas presentaciones para la caja: {l.faltantesFamilia.map((f) => f.falta + " " + f.nombre).join(", ")}. Se reservará lo posible y se sugerirá producción del resto.</div>
             )}
-            {l.productId && l.disp < l.cant && !(l.faltaEsp && l.faltaEsp.length > 0) && (
+            {l.productId && l.disp < l.cant && !(l.faltantesFamilia && l.faltantesFamilia.length > 0) && (
               <div className="text-xs font-bold mt-2" style={{ color: "#A03B2A" }}>⚠️ Capacidad general: {l.disp}{l.tipo === "combo" ? " caja(s) por momos y empaques" : ""}. Se sugerirá producción del faltante.</div>
             )}
           </Card>
         );
       })}
-      <Btn small kind="rosa" onClick={() => setItems([...items, { productId: "", sabor: "", salsa: "", relleno: "", figura: "", cant: 1, adiciones: [], boxes: [] }])}>＋ Agregar otro producto</Btn>
+      <Btn small kind="rosa" onClick={agregarLinea}>＋ Agregar otra línea</Btn>
 
       <Field label="Observaciones"><Input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Hora deseada, dedicatoria…" /></Field>
 

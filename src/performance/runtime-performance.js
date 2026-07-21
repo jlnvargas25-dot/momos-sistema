@@ -24,8 +24,8 @@ const FINANCE_RESOURCES = new Set([
 ]);
 
 const CONFIGURATION_RESOURCES = new Set([
-  "configuration_sync_state", "momos_configuration_snapshot_v1",
-  "guardar_configuracion_v1", "configuracion_servidor_disponible",
+  "configuration_sync_state", "momos_configuration_snapshot_v1", "momos_configuration_snapshot_v2",
+  "guardar_configuracion_v1", "guardar_configuracion_v2", "configuracion_servidor_disponible",
 ]);
 
 const DASHBOARD_RESOURCES = new Set([

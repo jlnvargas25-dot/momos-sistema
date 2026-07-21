@@ -1,4 +1,7 @@
-const BIGINT_TOKEN = /^\d+$/;
+import { compareCatalogCrmVersions, normalizeCatalogCrmVersion } from "./catalog-crm-version.js";
+import { isCommercialFamilyProduct, orderAttributesForProduct, productTypeForCategory } from "./momos-domain-language.js";
+
+export { compareCatalogCrmVersions, normalizeCatalogCrmVersion } from "./catalog-crm-version.js";
 
 function asObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -18,19 +21,6 @@ function requiredText(value, label) {
   return text;
 }
 
-export function normalizeCatalogCrmVersion(value) {
-  const token = String(value ?? "").trim();
-  if (!BIGINT_TOKEN.test(token)) throw new Error("La versión incremental no es válida.");
-  return token.replace(/^0+(?=\d)/, "");
-}
-
-export function compareCatalogCrmVersions(left, right) {
-  const a = normalizeCatalogCrmVersion(left);
-  const b = normalizeCatalogCrmVersion(right);
-  if (a.length !== b.length) return a.length > b.length ? 1 : -1;
-  return a === b ? 0 : a > b ? 1 : -1;
-}
-
 function normalizeProduct(raw) {
   const product = asObject(raw, "El producto");
   exactKeys(product, [
@@ -38,12 +28,19 @@ function normalizeProduct(raw) {
     "prep", "frio", "lejano", "activo", "desc", "comboSize", "componentProductIds",
     "empaqueItem", "colchonProduccion",
   ], "El producto");
+  const cat = requiredText(product.cat, "product.cat");
+  const tipo = productTypeForCategory(cat);
+  const normalizedProduct = { tipo, cat, nombre: product.nombre };
+  const especie = isCommercialFamilyProduct(normalizedProduct) && ["gato", "perro"].includes(product.especie)
+    ? product.especie
+    : undefined;
   return {
     id: requiredText(product.id, "product.id"),
     nombre: requiredText(product.nombre, "product.nombre"),
-    cat: requiredText(product.cat, "product.cat"),
-    tipo: requiredText(product.tipo, "product.tipo"),
-    especie: product.especie || undefined,
+    cat,
+    tipo,
+    especie,
+    atributos: orderAttributesForProduct(normalizedProduct),
     precio: Number(product.precio || 0),
     precioRappi: Number(product.precioRappi || 0),
     costo: Number(product.costo || 0),
@@ -54,7 +51,7 @@ function normalizeProduct(raw) {
     activo: product.activo === true,
     desc: String(product.desc || ""),
     colchonProduccion: Number(product.colchonProduccion || 0),
-    ...(product.tipo === "combo" ? {
+    ...(tipo === "combo" ? {
       comboSize: Number(product.comboSize || 0),
       componentProductIds: Array.isArray(product.componentProductIds)
         ? product.componentProductIds.map((id) => requiredText(id, "componentProductId")) : [],

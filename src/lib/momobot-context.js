@@ -4,6 +4,8 @@ import {
   kitchenOrderAlert,
   normalizeKitchenVoice,
 } from "./kitchen-voice.js";
+import { batchPresentation, commercialFamilyLabel, isCommercialFamilyProduct } from "./momos-domain-language.js";
+import { buildCanonicalPhysicalResults, canonicalBatchPhysicalResult } from "./canonical-production-results.js";
 
 const UNPAID = new Set(["Nuevo", "Confirmado", "Pendiente de pago"]);
 const ACTIVE_BATCH_STATES = new Set(["En preparación", "Congelando"]);
@@ -98,11 +100,11 @@ function freezingStatus(batch, now) {
 }
 
 function describeBatch(batch, now) {
-  const produced = number(batch.prod);
-  const results = number(batch.perfectas) + number(batch.imperfectas) + number(batch.descartadas);
-  const countText = produced ? ` Tiene ${produced} producida${produced === 1 ? "" : "s"}.` : "";
-  const resultText = results ? ` Resultado: ${number(batch.perfectas)} perfectas, ${number(batch.imperfectas)} imperfectas y ${number(batch.descartadas)} descartadas.` : "";
-  return `El lote ${batch.id} de ${batch.producto || "producto"}${batch.figura ? `, figura ${batch.figura}` : ""}${batch.sabor ? `, sabor ${batch.sabor}` : ""}, está ${batch.estado}.${countText}${resultText}${freezingStatus(batch, now)}`;
+  const presentation = batchPresentation(batch);
+  const result = canonicalBatchPhysicalResult(batch);
+  const countText = result.produced ? ` Tiene ${result.produced} producida${result.produced === 1 ? "" : "s"}.` : "";
+  const resultText = result.classified ? ` Resultado: ${result.perfect} perfectas, ${result.imperfect} imperfectas y ${result.discarded} descartadas. Merma bruta ${Math.round(result.grossWasteRate * 100)}%; descarte definitivo ${result.discarded}.` : "";
+  return `El lote ${batch.id} corresponde a ${presentation.primary}; ${presentation.secondary.toLowerCase()}. Está ${batch.estado}.${countText}${resultText}${freezingStatus(batch, now)}`;
 }
 
 function matchedCatalogName(query, entries = []) {
@@ -130,6 +132,10 @@ function exactVariantAnswer(query, catalogs) {
   const expiry = variants.map((variant) => text(variant.vence)).filter(Boolean).sort()[0];
   return {
     text: `Hay ${available} unidad${available === 1 ? "" : "es"} lista${available === 1 ? "" : "s"} de ${figureName} sabor ${flavorName}.${expiry ? ` El vencimiento más próximo es ${expiry}.` : ""}${available ? "" : " Esa combinación requiere producción."}`,
+    magnitude: {
+      kind: "finished_exact_sellable", value: available,
+      productId: variants[0]?.productId || "", figure: figureName, flavor: flavorName,
+    },
     memoryPatch: { lastTopic: "inventory", lastFigure: figureName, lastFlavor: flavorName },
   };
 }
@@ -144,15 +150,17 @@ function stockAnswer(query, catalogs) {
     const warning = stock <= minimum ? " Está en mínimo o por debajo; conviene reponerlo." : "";
     return {
       text: `Hay ${stock} ${inventoryItem.unidad || "unidades"} de ${entityName(inventoryItem)}.${warning}`,
+      magnitude: { kind: "ingredient_usable", value: stock, itemId: inventoryItem.id || "" },
       memoryPatch: { lastTopic: "inventory", lastInventoryId: inventoryItem.id || null },
     };
   }
   const product = matchedCatalogName(query, catalogs.products || []);
   if (product) {
     const stock = number(product.stock);
-    const exactNote = product.tipo === "momo" ? " Es el total general; para prometer una figura y sabor debo revisar la variante exacta." : "";
+    const exactNote = isCommercialFamilyProduct(product) ? " Es el total general de la familia comercial; para prometer una figura y sabor debo revisar la variante exacta." : "";
     return {
       text: `El stock general de ${entityName(product)} es ${stock}.${exactNote}`,
+      magnitude: { kind: "finished_official_physical", value: stock, productId: product.id || "" },
       memoryPatch: { lastTopic: "inventory", lastProductId: product.id || null },
     };
   }
@@ -201,7 +209,11 @@ function overviewAnswer(catalogs, now) {
 function shortagesAnswer(catalogs) {
   const pending = (catalogs.suggestions || []).filter((item) => !item.estado || item.estado === "Pendiente");
   if (!pending.length) return { text: "No hay faltantes pendientes registrados para Producción o Inventario.", memoryPatch: { lastTopic: "shortages" } };
-  const visible = pending.slice(0, 5).map((item) => `${number(item.cantidad)} de ${item.producto || "producto"}${item.orderId ? ` para ${item.orderId}` : ""}`);
+  const visible = pending.slice(0, 5).map((item) => {
+    const entity = item.area === "Inventario" ? "insumo" : "presentación comercial";
+    const name = item.area === "Inventario" ? (item.producto || "sin identificar") : commercialFamilyLabel(item.producto || "sin identificar");
+    return `${number(item.cantidad)} de ${entity} ${name}${item.orderId ? ` para ${item.orderId}` : ""}`;
+  });
   return {
     text: `Hay ${pending.length} faltante${pending.length === 1 ? "" : "s"} pendiente${pending.length === 1 ? "" : "s"}: ${naturalList(visible)}${pending.length > 5 ? `, y ${pending.length - 5} más` : ""}.`,
     memoryPatch: { lastTopic: "shortages" },
@@ -211,7 +223,7 @@ function shortagesAnswer(catalogs) {
 function activeLotsAnswer(catalogs, now) {
   const active = (catalogs.batches || []).filter((batch) => ACTIVE_BATCH_STATES.has(batch.estado));
   if (!active.length) return { text: "No hay lotes en preparación ni congelando en este momento.", memoryPatch: { lastTopic: "batch" } };
-  const visible = active.slice(0, 4).map((batch) => `${batch.id} de ${batch.figura || batch.producto || "producto"}, ${batch.estado}`);
+  const visible = active.slice(0, 4).map((batch) => `${batch.id}: ${batchPresentation(batch).primary}, ${batch.estado}`);
   const first = active[0];
   return {
     text: `Hay ${active.length} lote${active.length === 1 ? "" : "s"} activo${active.length === 1 ? "" : "s"}: ${naturalList(visible)}.${active.length === 1 ? freezingStatus(first, now) : ""}`,
@@ -290,12 +302,35 @@ export function momobotContextAnswer(value, catalogs = {}, memory = {}, now = Da
 
   const batch = findBatch(catalogs, query, memory);
   const asksBatch = batch && /(?:como|cuanto|que|cual|estado|falta|va|tiempo)/.test(query);
-  if (asksBatch) return {
-    matched: true,
-    topic: "batch",
-    text: describeBatch(batch, now),
-    memoryPatch: { lastTopic: "batch", lastBatchId: batch.id },
-  };
+  if (asksBatch) {
+    const physicalResult = canonicalBatchPhysicalResult(batch);
+    return {
+      matched: true,
+      topic: "batch",
+      text: describeBatch(batch, now),
+      magnitude: { kind: "physical_batch_result", ...physicalResult },
+      memoryPatch: { lastTopic: "batch", lastBatchId: batch.id },
+    };
+  }
+
+  const asksPhysicalResults = /(?:merma|rendimiento fisico|resultado fisico|resultados fisicos|imperfectas|descartadas)/.test(query);
+  if (asksPhysicalResults) {
+    if (!Array.isArray(catalogs.batches)) return {
+      matched: true,
+      topic: "physical-results",
+      text: "No tengo cargados los resultados físicos de Producción; no voy a reportar una merma cero sin evidencia.",
+      magnitude: { kind: "physical_production_summary", available: false },
+      memoryPatch: { lastTopic: "physical-results" },
+    };
+    const physicalResults = buildCanonicalPhysicalResults(catalogs.batches || []);
+    return {
+      matched: true,
+      topic: "physical-results",
+      text: `Resultados físicos: ${physicalResults.produced} producidas, ${physicalResults.perfect} perfectas, ${physicalResults.imperfect} imperfectas y ${physicalResults.discarded} descartadas. La merma bruta es ${Math.round(physicalResults.grossWasteRate * 100)}%; ${physicalResults.repurposedImperfectUnits} imperfectas fueron reaprovechadas y el descarte definitivo es ${physicalResults.definitiveLossUnits}.`,
+      magnitude: { kind: "physical_production_summary", ...physicalResults },
+      memoryPatch: { lastTopic: "physical-results" },
+    };
+  }
 
   const asksOverview = /(?:como|que tal).*(?:cocina|produccion|operacion)|(?:dame|dime|quiero) (?:un )?resumen|ponme al dia|panorama (?:de )?(?:cocina|produccion|operativo)/.test(query);
   if (asksOverview) return { matched: true, topic: "overview", ...overviewAnswer(catalogs, now) };

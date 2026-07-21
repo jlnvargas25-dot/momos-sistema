@@ -1,4 +1,5 @@
-import { buildIngredientLotSummary } from "./ingredient-lots.js";
+import { canonicalUsableIngredientStock } from "./canonical-stock.js";
+import { businessDateISO } from "./business-date.js";
 import { inventorySupplyMode } from "./inventory-supply-mode.js";
 
 const PRIORITY_ORDER = { Urgente: 0, Alta: 1, Revisar: 2 };
@@ -13,7 +14,7 @@ function roundQuantity(value, unit) {
   return Math.ceil(safe * 1000) / 1000;
 }
 
-function recentConsumption(item, movements = [], today = new Date().toISOString().slice(0, 10), windowDays = 14) {
+function recentConsumption(item, movements = [], today = businessDateISO(), windowDays = 14) {
   const end = Date.parse(`${today}T00:00:00Z`);
   if (!Number.isFinite(end)) return 0;
   const start = end - (windowDays - 1) * 86400000;
@@ -31,29 +32,32 @@ export function buildPurchaseAssistant({
   inventoryItems = [], inventoryLots = [], inventoryLotsReady = false,
   subrecipes = [], suggestions = [], movements = [], today,
 } = {}) {
-  const day = today || new Date().toISOString().slice(0, 10);
+  const day = today || businessDateISO();
+  const stockDb = {
+    inventory_items: inventoryItems,
+    inventory_lots: inventoryLots,
+    inventoryLotsReady,
+  };
   const pending = (suggestions || []).filter((row) => row?.area === "Inventario" && row?.estado === "Pendiente");
   const recommendations = [];
   let internalPending = 0;
   const internalNeedsSetup = [];
 
   for (const item of inventoryItems || []) {
+    const stockView = canonicalUsableIngredientStock(stockDb, item.id, { today: day });
+    const current = stockView.usable;
     const supply = inventorySupplyMode(item, subrecipes);
     const itemSuggestions = pending.filter((row) => row.itemId === item.id || (!row.itemId && row.producto === item.nombre));
     const ownProduction = /producci[oó]n propia/i.test(String(item.proveedor || ""))
       || /producci[oó]n interna/i.test(String(item.origenAbastecimiento || item.origen_abastecimiento || ""));
     if (supply.kind === "prepared" || ownProduction) {
       internalPending += itemSuggestions.length;
-      if (ownProduction && !supply.subrecipe && (positive(item.stock) <= positive(item.min) || itemSuggestions.length)) {
-        internalNeedsSetup.push({ itemId: item.id, name: item.nombre, current: positive(item.stock), minimum: positive(item.min) });
+      if (ownProduction && !supply.subrecipe && (current <= positive(item.min) || itemSuggestions.length)) {
+        internalNeedsSetup.push({ itemId: item.id, name: item.nombre, current, minimum: positive(item.min) });
       }
       continue;
     }
 
-    const lotSummary = buildIngredientLotSummary(item.id, inventoryLots, day);
-    const current = inventoryLotsReady && lotSummary.active.length
-      ? positive(lotSummary.usableStock)
-      : positive(item.stock);
     const minimum = positive(item.min);
     const pendingDemand = itemSuggestions.reduce((sum, row) => sum + positive(row.cantidad), 0);
     const dailyUse = recentConsumption(item, movements, day);
@@ -71,7 +75,7 @@ export function buildPurchaseAssistant({
     if (current === 0) reasons.push("no queda stock utilizable");
     else if (current < minimum) reasons.push(`stock ${current} ${item.unidad}, por debajo del mínimo ${minimum}`);
     else if (current === minimum) reasons.push(`stock justo en el mínimo ${minimum}`);
-    if (lotSummary.expiredStock > 0) reasons.push(`${lotSummary.expiredStock} ${item.unidad} vencidos no cuentan`);
+    if (stockView.expired > 0) reasons.push(`${stockView.expired} ${item.unidad} vencidos no cuentan`);
     if (dailyUse > 0) reasons.push(`consumo reciente ≈ ${roundQuantity(dailyUse * 7, item.unidad)} ${item.unidad}/semana`);
 
     recommendations.push({
@@ -88,7 +92,7 @@ export function buildPurchaseAssistant({
       unitCost: positive(item.costo),
       estimatedCost: quantity * positive(item.costo),
       pendingDemand: roundQuantity(pendingDemand, item.unidad),
-      expiredStock: lotSummary.expiredStock,
+      expiredStock: stockView.expired,
       suggestionIds: itemSuggestions.map((row) => row.id),
       orderIds: [...new Set(itemSuggestions.map((row) => row.orderId).filter(Boolean))],
       reasons,

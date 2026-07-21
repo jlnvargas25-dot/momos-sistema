@@ -1,3 +1,7 @@
+import {
+  activeConfigurationFigureCatalog, isAuxiliaryFigureName, isKitchenFigureName,
+} from "./momos-domain-language.js";
+
 const isObject = (value) => value && typeof value === "object" && !Array.isArray(value);
 
 function object(value, label) {
@@ -16,9 +20,9 @@ function text(value, label, { allowEmpty = false } = {}) {
   return result;
 }
 
-function number(value, label, { integer = false, min = 0 } = {}) {
+function number(value, label, { integer = false, min = 0, max = Number.POSITIVE_INFINITY } = {}) {
   const result = Number(value);
-  if (!Number.isFinite(result) || result < min || (integer && !Number.isInteger(result))) {
+  if (!Number.isFinite(result) || result < min || result > max || (integer && !Number.isInteger(result))) {
     throw new Error(`Configuración inválida: ${label}.`);
   }
   return result;
@@ -35,7 +39,9 @@ function stringArray(value, label, { allowEmpty = false } = {}) {
 
 export function normalizeConfigurationSnapshot(payload) {
   const source = object(payload, "snapshot");
-  if (source.contract !== "momos.configuration-snapshot.v1" || Number(source.version) !== 1) {
+  const v2 = source.contract === "momos.configuration-snapshot.v2" && Number(source.version) === 2;
+  const v1 = source.contract === "momos.configuration-snapshot.v1" && Number(source.version) === 1;
+  if (!v1 && !v2) {
     throw new Error("Contrato de Configuración no compatible.");
   }
   if (source.containsCustomerPii !== false || source.containsStaffPii !== true
@@ -55,10 +61,12 @@ export function normalizeConfigurationSnapshot(payload) {
   });
   const figures = array(settings.figures, "settings.figures").map((row, index) => {
     const item = object(row, `settings.figures[${index}]`);
+    const name = text(item.name, `settings.figures[${index}].name`);
+    if (!isKitchenFigureName(name) && !isAuxiliaryFigureName(name)) throw new Error(`Configuración contiene una figura física no canónica: ${name}.`);
     const species = text(item.species, `settings.figures[${index}].species`);
-    if (!['gato', 'perro'].includes(species)) throw new Error("Configuración contiene una especie inválida.");
+    if (!['gato', 'perro'].includes(species)) throw new Error("Configuración contiene una silueta visual inválida.");
     return {
-      nombre: text(item.name, `settings.figures[${index}].name`),
+      nombre: name,
       especie: species,
       gramaje: `${number(item.grams, `settings.figures[${index}].grams`, { integer: true, min: 1 })} g`,
       productId: text(item.productId, `settings.figures[${index}].productId`, { allowEmpty: true }),
@@ -90,6 +98,13 @@ export function normalizeConfigurationSnapshot(payload) {
     toppings: activeToppings,
     pedidoMinimo: number(settings.orderMinimum, "settings.orderMinimum"),
     horasCongelacion: number(settings.freezingHours, "settings.freezingHours", { integer: true, min: 1 }),
+    vidaUtilConfigurable: v2,
+    vidaUtilProductoTerminadoDias: v2
+      ? number(settings.finishedProductShelfDays, "settings.finishedProductShelfDays", { integer: true, min: 1, max: 30 })
+      : 3,
+    vidaUtilMezclasDias: v2
+      ? number(settings.mixtureShelfDays, "settings.mixtureShelfDays", { integer: true, min: 1, max: 30 })
+      : 0,
     demoraCocinaMin: number(delays.kitchenWarning, "settings.delays.kitchenWarning", { integer: true, min: 1 }),
     demoraCocinaUrgenteMin: number(delays.kitchenUrgent, "settings.delays.kitchenUrgent", { integer: true, min: 1 }),
     demoraEmpaqueMin: number(delays.packingWarning, "settings.delays.packingWarning", { integer: true, min: 1 }),
@@ -140,8 +155,18 @@ const grams = (value) => {
 export function buildConfigurationSavePayload(db, delayOverrides = {}) {
   const settings = object(db?.settings, "db.settings");
   const figures = array(settings.figuras, "db.settings.figuras");
+  figures.forEach((figure) => {
+    const name = String(figure?.nombre || "").trim();
+    if (!isKitchenFigureName(name) && !isAuxiliaryFigureName(name)) {
+      throw new Error(`Configuración contiene una figura física no canónica: ${name}.`);
+    }
+  });
+  const visibleFigures = activeConfigurationFigureCatalog({
+    figuras: figures,
+    products: Array.isArray(db?.products) ? db.products : [],
+  }).filter((figure) => isKitchenFigureName(figure?.nombre));
   const toppings = array(settings.toppings, "db.settings.toppings");
-  return {
+  const payload = {
     zones: array(settings.zonas, "db.settings.zonas").map((zone) => ({ name: String(zone.nombre || "").trim(), fee: Number(zone.tarifa) })),
     catalogs: {
       fruit_flavors: [...array(settings.saboresFrutales, "db.settings.saboresFrutales")],
@@ -151,10 +176,13 @@ export function buildConfigurationSavePayload(db, delayOverrides = {}) {
       delivery_providers: [...array(settings.proveedores, "db.settings.proveedores")],
     },
     fixed_filling: String(settings.rellenos?.[0] || "").trim(),
-    figures: figures.map((figure) => ({
-      name: String(figure.nombre || "").trim(), species: figure.especie,
-      grams: grams(figure.gramaje), product_id: String(figure.productId || "").trim(),
-    })),
+    figures: visibleFigures.map((figure) => {
+      const name = String(figure.nombre || "").trim();
+      return {
+        name, species: figure.especie,
+        grams: grams(figure.gramaje), product_id: String(figure.productId || "").trim(),
+      };
+    }),
     toppings: toppings.map((topping) => ({
       name: String(topping.nombre || "").trim(), price: Number(topping.precio || 0),
       inventory_item_id: String(topping.insumoId || "").trim(), inventory_quantity: Number(topping.insumoCant || 0),
@@ -170,4 +198,9 @@ export function buildConfigurationSavePayload(db, delayOverrides = {}) {
     },
     policies: String(settings.politicas || "").trim(),
   };
+  if (settings.vidaUtilConfigurable === true) {
+    payload.finished_product_shelf_days = Number(settings.vidaUtilProductoTerminadoDias);
+    payload.mixture_shelf_days = Number(settings.vidaUtilMezclasDias);
+  }
+  return payload;
 }

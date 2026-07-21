@@ -2,16 +2,34 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SegmentedTabs } from "../../components/ui/OperationalPrimitives.jsx";
 import {
   createInventoryIdempotencyKey, crearInsumo, desecharLoteInsumo, desecharLoteInsumoDelta,
-  entradaInsumo, entradaInsumoLote, entradaInsumoLoteDelta, isMissingRpcError,
-  movimientoInsumo, movimientoInsumoDelta, setSugerenciaEstado,
+  desecharProductoTerminadoDelta, entradaInsumo, entradaInsumoLote, entradaInsumoLoteDelta, isMissingRpcError,
+  movimientoInsumo, movimientoInsumoDelta, registrarCompraYAtenderSugerencias, setSugerenciaEstado,
 } from "../../lib/rpc";
 import { buildFinishedInventory } from "../../lib/finished-inventory";
+import { buildFinishedStockSummary } from "../../lib/production-stock-summary";
 import { buildIngredientLotSummary } from "../../lib/ingredient-lots";
 import { inventorySupplyMode } from "../../lib/inventory-supply-mode";
 import { buildPurchaseAssistant } from "../../lib/purchase-assistant";
+import { batchPresentation, commercialFamilyLabel, inventoryReservationPresentation } from "../../lib/momos-domain-language";
+import { FinishedFigureCards, FinishedFigureDetailContent } from "./FinishedFigureSummary.jsx";
 import {
   buildActiveReservationDashboard, buildInventoryHistory, isActiveInventoryReservation, partitionByActivity,
 } from "../../lib/operational-history";
+
+function belongsToProduct(row, product) {
+  if (!row || !product) return false;
+  const productId = row.productId || row.refId;
+  return productId ? productId === product.id : row.producto === product.nombre || row.nombre === product.nombre;
+}
+
+function physicalBatchPresentation(batch) {
+  const presentation = batchPresentation(batch);
+  if (presentation.figures.length <= 1) return presentation;
+  return {
+    ...presentation,
+    primary: `${presentation.flavor || "Sin sabor"} · ${presentation.composition}`,
+  };
+}
 
 export function createInventoryPanels(shared) {
   const {
@@ -19,18 +37,42 @@ export function createInventoryPanels(shared) {
     downloadCSV, fmt, hoyISO, inputStyle, toast,
   } = shared;
 
-  function InventarioTerminado({ db, go }) {
+  function InventarioTerminado({
+    db, go, user, refrescar, sincronizarProductoTerminado,
+    aplicarMutacionProduccion, capturarContextoMutacionProduccion,
+  }) {
     const [tab, setTab] = useState("Figuras");
     const [detalleProductoId, setDetalleProductoId] = useState(null);
     const [detalleFiguraNombre, setDetalleFiguraNombre] = useState(null);
-    const inventory = useMemo(() => buildFinishedInventory(db), [db]);
+    const [desechoTerminado, setDesechoTerminado] = useState(null);
+    const [motivoDesechoTerminado, setMotivoDesechoTerminado] = useState("");
+    const [errorDesechoTerminado, setErrorDesechoTerminado] = useState("");
+    const [enviandoDesechoTerminado, setEnviandoDesechoTerminado] = useState(false);
+    const desechoTerminadoKeyRef = useRef(null);
+    // Usa el mismo día operativo local de Producción. `toISOString()` puede
+    // adelantarse un día respecto a Cali después de las 19:00 y pondría en
+    // cuarentena una figura aquí mientras Producción todavía la muestra vigente.
+    const inventory = useMemo(() => buildFinishedInventory(db, { today: hoyISO() }), [db, hoyISO]);
+    const finishedStock = useMemo(() => buildFinishedStockSummary({
+      products: db.products || [],
+      variants: db.variantes || [],
+      quarantinedVariants: db.variantesCuarentena || [],
+      productionBatches: db.production_batches || [],
+      today: hoyISO(),
+    }), [db, hoyISO]);
     const orderById = useMemo(() => Object.fromEntries((db.orders || []).map((order) => [order.id, order])), [db.orders]);
     const detalleProducto = detalleProductoId ? inventory.products.find((product) => product.id === detalleProductoId) : null;
+    const detalleStockTrazable = detalleProductoId ? finishedStock.find((product) => product.productId === detalleProductoId) : null;
+    const detalleLotesCuarentena = (detalleStockTrazable?.lotRows || []).filter((lot) => lot.quarantined);
+    const detalleCuarentenaExacta = detalleLotesCuarentena.reduce((sum, lot) => sum + Number(lot.available || 0), 0);
+    const detalleCuarentenaSinLote = Math.max(0, (detalleStockTrazable?.quarantined || 0) - detalleCuarentenaExacta);
+    const puedeDesecharTerminado = ["Administrador", "Cocina"].includes(user)
+      && db.finishedProductDisposalReady === true;
     const detalleVariantes = detalleProducto ? inventory.variants.filter((variant) => variant.productId === detalleProducto.id) : [];
     const detalleCuarentena = detalleProducto ? inventory.quarantinedVariants.filter((variant) => variant.productId === detalleProducto.id) : [];
-    const detalleReservas = detalleProducto ? inventory.reservations.filter((reservation) => reservation.refId === detalleProducto.id || reservation.nombre === detalleProducto.nombre) : [];
-    const detalleEnProceso = detalleProducto ? inventory.inProcess.filter((batch) => batch.producto === detalleProducto.nombre) : [];
-    const detalleImperfectas = detalleProducto ? inventory.imperfects.filter((batch) => batch.producto === detalleProducto.nombre) : [];
+    const detalleReservas = detalleProducto ? inventory.reservations.filter((reservation) => belongsToProduct(reservation, detalleProducto)) : [];
+    const detalleEnProceso = detalleProducto ? inventory.inProcess.filter((batch) => belongsToProduct(batch, detalleProducto)) : [];
+    const detalleImperfectas = detalleProducto ? inventory.imperfects.filter((batch) => belongsToProduct(batch, detalleProducto)) : [];
     const detalleFigura = detalleFiguraNombre ? inventory.figureSummaries.find((figure) => figure.figura === detalleFiguraNombre) : null;
     const tabs = [
       ["Figuras", inventory.figureSummaries.length],
@@ -42,6 +84,74 @@ export function createInventoryPanels(shared) {
     const exactCoverage = inventory.summary.available > 0
       ? Math.round(inventory.summary.exactAvailable / inventory.summary.available * 100)
       : 0;
+
+    function abrirDesechoTerminado(lot) {
+      setDesechoTerminado({
+        ...lot,
+        productId: detalleProducto.id,
+        productName: detalleProducto.nombre,
+      });
+      setMotivoDesechoTerminado(`Vencimiento del lote ${lot.batchId} el ${lot.expiry}`);
+      setErrorDesechoTerminado("");
+      desechoTerminadoKeyRef.current = createInventoryIdempotencyKey();
+    }
+
+    async function confirmarDesechoTerminado() {
+      if (!desechoTerminado || enviandoDesechoTerminado) return;
+      const motivo = motivoDesechoTerminado.trim();
+      if (!motivo) {
+        setErrorDesechoTerminado("Indicá el motivo para conservar la trazabilidad de la merma.");
+        return;
+      }
+      setEnviandoDesechoTerminado(true);
+      setErrorDesechoTerminado("");
+      try {
+        const canApplyDelta = db.finishedProductDisposalReady === true
+          && db.productionMutationDeltaReady === true
+          && typeof aplicarMutacionProduccion === "function"
+          && typeof capturarContextoMutacionProduccion === "function";
+        if (!canApplyDelta) throw new Error("Aplicá la migración H84 y recargá MOMO OPS para habilitar el desecho trazable de producto terminado.");
+
+        const context = capturarContextoMutacionProduccion();
+        const envelope = await desecharProductoTerminadoDelta({
+          batchId: desechoTerminado.batchId,
+          figura: desechoTerminado.figure,
+          motivo,
+          cantidadEsperada: desechoTerminado.quantity,
+        }, desechoTerminadoKeyRef.current);
+
+        let viewUpdated = false;
+        try {
+          viewUpdated = aplicarMutacionProduccion(envelope, context)?.status === "applied";
+        } catch {
+          // La escritura ya fue confirmada; reconciliar sin repetir la mutación.
+        }
+        if (!viewUpdated) {
+          try {
+            if (typeof sincronizarProductoTerminado === "function") {
+              await sincronizarProductoTerminado([desechoTerminado.productId]);
+            } else {
+              await refrescar();
+            }
+            viewUpdated = true;
+          } catch {
+            // El recibo idempotente conserva el resultado; una recarga lo concilia.
+          }
+        }
+
+        toast("ok", `✓ ${desechoTerminado.available} und de ${desechoTerminado.figure} desechadas`);
+        if (!viewUpdated) toast("alert", "El desecho se registró, pero la vista requiere una recarga.");
+        setDesechoTerminado(null);
+        setMotivoDesechoTerminado("");
+        desechoTerminadoKeyRef.current = null;
+      } catch (error) {
+        setErrorDesechoTerminado(isMissingRpcError(error)
+          ? "Aplicá la migración H84 y recargá MOMO OPS para habilitar este desecho."
+          : (error?.message || "No se pudo desechar el producto terminado."));
+      } finally {
+        setEnviandoDesechoTerminado(false);
+      }
+    }
 
     const metrics = [
       { icon: "✓", label: "Disponibles para vender", value: inventory.summary.available, note: inventory.summary.quarantined > 0 ? `stock seguro · ${inventory.summary.quarantined} en cuarentena` : "stock oficial, después de reservas", color: T.coral, wash: "rgba(63,107,66,.12)", iconBg: "#E3EFE0" },
@@ -89,47 +199,25 @@ export function createInventoryPanels(shared) {
             <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
               Cada tarjeta suma únicamente producto terminado vigente con figura y sabor verificados. Las imperfectas aparecen aparte y nunca aumentan el stock para venta.
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-              {inventory.figureSummaries.map((figure) => (
-                <Card key={figure.figura} className="momo-queue-item p-4" onClick={() => setDetalleFiguraNombre(figure.figura)} aria-label={`Abrir inventario de la figura ${figure.figura}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Figura terminada</div>
-                      <div className="display text-xl font-semibold mt-0.5">{figure.figura}</div>
-                      {(figure.especie || figure.gramajeG) && <div className="text-[10px] font-bold mt-0.5 capitalize" style={{ color: T.choco2 }}>{[figure.especie, figure.gramajeG ? `${figure.gramajeG} g` : ""].filter(Boolean).join(" · ")}</div>}
-                      <div className="text-[11px] font-semibold mt-1" style={{ color: T.choco2 }}>{figure.flavors.length} {figure.flavors.length === 1 ? "sabor disponible" : "sabores disponibles"}</div>
-                    </div>
-                    <div className="text-right shrink-0"><div className="display text-3xl" style={{ color: figure.available > 0 ? "#3F6B42" : T.choco2 }}>{figure.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>para vender</div></div>
-                  </div>
-                  <div className="flex gap-1.5 flex-wrap mt-3">
-                    {figure.flavors.map((flavor) => <span key={flavor.sabor} className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: "#E3EFE0", color: "#315D37" }}>{flavor.sabor} · {flavor.available}</span>)}
-                    {figure.flavors.length === 0 && <span className="text-[10px] font-extrabold px-2 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>Sin stock vendible exacto</span>}
-                  </div>
-                  {(figure.imperfectForShakes > 0 || figure.imperfectPending > 0) && <div className="grid grid-cols-2 gap-2 mt-3">
-                    <div className="rounded-xl p-2" style={{ background: "#F1DFEB" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: "#754568" }}>Para malteadas</div><div className="font-extrabold" style={{ color: "#754568" }}>{figure.imperfectForShakes}</div></div>
-                    <div className="rounded-xl p-2" style={{ background: "#FBE8C8" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: "#7A5410" }}>Por decidir</div><div className="font-extrabold" style={{ color: "#7A5410" }}>{figure.imperfectPending}</div></div>
-                  </div>}
-                  <div className="flex items-center justify-end mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.coral }}>Ver sabores, vencimientos e imperfectas ›</div>
-                </Card>
-              ))}
-              {inventory.figureSummaries.length === 0 && <Empty icon="🐾" text="Todavía no hay figuras terminadas con detalle verificable." />}
-            </div>
+            <FinishedFigureCards figureSummaries={inventory.figureSummaries} products={db.products} Card={Card} Empty={Empty} T={T} onOpen={setDetalleFiguraNombre} />
           </>
         )}
 
         {tab === "Disponibles" && (
           <>
-            <SectionTitle>Producto disponible para venta</SectionTitle>
+            <SectionTitle>Disponibilidad por presentación comercial</SectionTitle>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
               {inventory.products.map((product) => {
                 const productVariants = inventory.variants.filter((variant) => variant.productId === product.id);
+                const figureNames = [...new Set(productVariants.map((variant) => variant.figura).filter(Boolean))];
                 const coverage = product.available > 0 ? Math.round(product.exactAvailable / product.available * 100) : 0;
                 return (
                 <Card key={product.id} className="momo-queue-item p-4" onClick={() => setDetalleProductoId(product.id)} aria-label={`Abrir detalle de ${product.nombre}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: product.available <= 2 ? "#A03B2A" : T.choco2 }}>{product.available <= 2 ? "Stock por reponer" : "Disponible ahora"}</div>
-                      <div className="text-sm font-bold leading-tight mt-0.5">{product.nombre}</div>
+                      <div className="text-sm font-bold leading-tight mt-0.5">{figureNames.length ? figureNames.join(" · ") : "Figuras exactas pendientes"}</div>
+                      <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>Presentación comercial: {commercialFamilyLabel(product)}</div>
                     </div>
                     <div className="text-right shrink-0"><div className="display text-2xl" style={{ color: product.available <= 2 ? "#A03B2A" : T.coral }}>{product.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>unidades</div></div>
                   </div>
@@ -141,7 +229,7 @@ export function createInventoryPanels(shared) {
                   <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.choco2 }}><span>{coverage}% trazabilidad exacta</span><span style={{ color: T.coral }}>Ver figuras y sabores ›</span></div>
                 </Card>
               );})}
-              {inventory.products.length === 0 && <Empty icon="🍮" text="No hay producto terminado disponible para venta." />}
+              {inventory.products.length === 0 && <Empty icon="🍮" text="No hay presentaciones comerciales con producto terminado disponible." />}
             </div>
           </>
         )}
@@ -161,10 +249,11 @@ export function createInventoryPanels(shared) {
                   <tbody>
                     {inventory.reservations.map((reservation) => {
                       const order = orderById[reservation.orderId];
+                    const presentation = inventoryReservationPresentation(reservation);
                       return (
                         <tr key={reservation.id} className="border-t" style={{ borderColor: T.border }}>
                           <td className="px-3 py-2 text-xs font-bold">{reservation.orderId}</td>
-                          <td className="px-3 py-2 font-semibold">{reservation.nombre}</td>
+                          <td className="px-3 py-2"><div className="font-semibold">{presentation.primary}</div>{presentation.secondary && <div className="text-[10px] font-bold mt-0.5" style={{ color: T.choco2 }}>{presentation.secondary}</div>}</td>
                           <td className="px-3 py-2 font-bold">{reservation.cantidad}</td>
                           <td className="px-3 py-2 text-xs">{reservation.batchId ? `${reservation.batchId}${reservation.figuraLote ? ` · ${reservation.figuraLote}` : ""}` : "Sin lote detallado"}</td>
                           <td className="px-3 py-2"><Badge label={order?.estado || "Sin pedido"} /></td>
@@ -183,12 +272,15 @@ export function createInventoryPanels(shared) {
           <>
             <SectionTitle action={<Btn small kind="soft" onClick={() => go("Producción")}>Abrir Producción</Btn>}>Lotes que todavía no están disponibles</SectionTitle>
             <div className="grid lg:grid-cols-2 gap-3">
-              {inventory.inProcess.map((batch) => (
+              {inventory.inProcess.map((batch) => {
+                const presentation = physicalBatchPresentation(batch);
+                return (
                 <Card key={batch.id} className="p-4">
                   <div className="flex justify-between items-start gap-2">
                     <div>
-                      <div className="font-bold">{batch.id} · {batch.producto}</div>
-                      <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{batch.sabor} · {batch.gramaje || "sin gramaje"} · vence {batch.vence || "sin fecha"}</div>
+                      <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Lote {batch.id}</div>
+                      <div className="font-bold mt-0.5">{presentation.primary}</div>
+                      <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{presentation.secondary} · {batch.gramaje || "sin gramaje"}</div>
                     </div>
                     <Badge label={batch.estado} />
                   </div>
@@ -196,12 +288,9 @@ export function createInventoryPanels(shared) {
                     <span className="text-xs font-bold" style={{ color: T.choco2 }}>Unidades producidas</span>
                     <span className="display text-2xl font-semibold" style={{ color: T.choco }}>{batch.prod || 0}</span>
                   </div>
-                  <div className="text-xs font-semibold mt-2" style={{ color: T.choco2 }}>
-                    {Array.isArray(batch.figuras) && batch.figuras.length ? batch.figuras.map((figure) => `${figure.cant}× ${figure.figura}`).join(" · ") : batch.figura || "Sin figura detallada"}
-                  </div>
                 </Card>
-              ))}
-              {inventory.inProcess.length === 0 && <Empty icon="🧊" text="No hay lotes en preparación, congelación o reserva." />}
+              );})}
+              {inventory.inProcess.length === 0 && <Empty icon="🧊" text="No hay lotes en preparación o congelación." />}
             </div>
           </>
         )}
@@ -213,12 +302,15 @@ export function createInventoryPanels(shared) {
               Pendientes: {inventory.summary.imperfectPending} · Reaprovechadas/con destino: {inventory.summary.imperfectReused} · Descartadas: {inventory.summary.discarded}. Las reaprovechadas no se suman al producto disponible para venta.
             </div>
             <div className="grid lg:grid-cols-2 gap-3">
-              {inventory.imperfects.map((batch) => (
+              {inventory.imperfects.map((batch) => {
+                const presentation = physicalBatchPresentation(batch);
+                return (
                 <Card key={batch.id} className="p-4">
                   <div className="flex justify-between items-start gap-2">
                     <div>
-                      <div className="font-bold">{batch.id} · {batch.producto}</div>
-                      <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{batch.figura || "Sin figura"} · {batch.sabor || "Sin sabor"} · {batch.fecha}</div>
+                      <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Lote {batch.id}</div>
+                      <div className="font-bold mt-0.5">{presentation.primary}</div>
+                      <div className="text-xs mt-0.5" style={{ color: T.choco2 }}>{presentation.secondary} · {batch.fecha}</div>
                     </div>
                     <Badge label={batch.destinationRegistered ? "Con destino" : "Pendiente"} map={{ "Con destino": { bg: "#DDEBD9", fg: "#3F6B42" }, "Pendiente": { bg: "#FBE8C8", fg: "#96690F" } }} />
                   </div>
@@ -239,7 +331,7 @@ export function createInventoryPanels(shared) {
                     {batch.destinationRegistered ? `Destino: ${batch.destino}` : "Falta definir si se reaprovechan o se descartan."}
                   </div>
                 </Card>
-              ))}
+              );})}
               {inventory.imperfects.length === 0 && <Empty icon="✨" text="No hay imperfectas ni descartadas registradas." />}
             </div>
           </>
@@ -247,46 +339,17 @@ export function createInventoryPanels(shared) {
 
         {detalleFigura && (
           <Modal title={`Figura terminada · ${detalleFigura.figura}`} onClose={() => setDetalleFiguraNombre(null)} wide>
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-              <div>
-                <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Inventario exacto por figura</div>
-                <div className="display text-2xl font-semibold mt-0.5">{detalleFigura.figura}</div>
-                <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>Sabores vigentes disponibles para vender e imperfectas separadas por destino.</div>
-              </div>
-              <Badge label={detalleFigura.available > 0 ? "Disponible" : "Sin stock vendible"} map={{ Disponible: { bg: "#DDEBD9", fg: "#3F6B42" }, "Sin stock vendible": { bg: "#FBE8C8", fg: "#96690F" } }} />
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-              <Stat icon="✓" label="Para vender" value={detalleFigura.available} sub={`${detalleFigura.flavors.length} sabor(es)`} tone="#3F6B42" />
-              <Stat icon="🥤" label="Para malteadas" value={detalleFigura.imperfectForShakes} sub="destino ya definido" tone="#8A4D7A" />
-              <Stat icon="♻" label="Por decidir" value={detalleFigura.imperfectPending} sub="requieren destino" tone="#96690F" />
-              <Stat icon="×" label="Descartadas" value={detalleFigura.discarded} sub="no reutilizables" tone="#A03B2A" />
-            </div>
-
-            <Card className="p-4 mb-4" style={{ background: "linear-gradient(135deg,#FFF9F1,#F7ECD9)" }}>
-              <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: T.coral }}>Stock vendible</div><div className="display text-lg font-semibold">Todos los sabores de {detalleFigura.figura}</div></div><span className="text-xs font-extrabold" style={{ color: T.choco2 }}>{detalleFigura.available} unidades</span></div>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {detalleFigura.flavors.map((flavor) => <div key={flavor.sabor} className="rounded-2xl border p-3 flex items-start justify-between gap-3" style={{ borderColor: T.border, background: T.surface }}><div><div className="text-sm font-extrabold">{flavor.sabor}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{flavor.gramajes.length ? flavor.gramajes.map((grams) => `${grams} g`).join(" · ") : "Gramaje sin registrar"}{flavor.nextExpiration ? ` · vence primero ${flavor.nextExpiration}` : ""}</div></div><div className="text-right shrink-0"><div className="display text-2xl" style={{ color: "#3F6B42" }}>{flavor.available}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>disponibles</div></div></div>)}
-                {detalleFigura.flavors.length === 0 && <div className="sm:col-span-2 text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>No hay sabores vendibles de esta figura.</div>}
-              </div>
-            </Card>
-
-            <Card className="p-4">
-              <div className="flex items-center justify-between gap-3 mb-2"><div><div className="text-[10px] uppercase tracking-[.12em] font-extrabold" style={{ color: "#8A4D7A" }}>Reaprovechamiento</div><div className="display text-lg font-semibold">Imperfectas por sabor y lote</div></div><span className="text-xs font-extrabold" style={{ color: T.choco2 }}>{detalleFigura.imperfectTotal} registradas</span></div>
-              <div className="space-y-2">
-                {detalleFigura.imperfectBatches.map((batch, index) => <div key={`${batch.id}-${batch.sabor}-${index}`} className="rounded-2xl p-3 flex items-start justify-between gap-3" style={{ background: batch.forShakes ? "#F1DFEB" : batch.destinationRegistered ? "#EDF0E8" : "#FBE8C8" }}><div><div className="text-sm font-extrabold">{batch.sabor} · lote {batch.id}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{batch.forShakes ? "Para malteadas y crepas" : batch.destinationRegistered ? `Destino: ${batch.destino}` : "Destino pendiente"}{batch.fecha ? ` · ${batch.fecha}` : ""}</div></div><div className="text-right shrink-0"><div className="display text-2xl" style={{ color: batch.forShakes ? "#8A4D7A" : "#96690F" }}>{batch.imperfectas}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>imperfectas</div>{batch.descartadas > 0 && <div className="text-[9px] font-extrabold mt-0.5" style={{ color: "#A03B2A" }}>{batch.descartadas} descartadas</div>}</div></div>)}
-                {detalleFigura.imperfectBatches.length === 0 && <div className="text-sm font-semibold p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>Esta figura no tiene imperfectas registradas.</div>}
-              </div>
-            </Card>
+            <FinishedFigureDetailContent figure={detalleFigura} products={db.products} Card={Card} Stat={Stat} T={T} />
           </Modal>
         )}
 
         {detalleProducto && (
-          <Modal title={`Inventario · ${detalleProducto.nombre}`} onClose={() => setDetalleProductoId(null)} wide>
+          <Modal title={`Inventario por presentación · ${detalleProducto.nombre}`} onClose={() => setDetalleProductoId(null)} wide>
             <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
               <div>
-                <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Producto terminado</div>
-                <div className="display text-2xl font-semibold mt-0.5">{detalleProducto.nombre}</div>
+                <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Presentación comercial</div>
+                <div className="display text-2xl font-semibold mt-0.5">{[...new Set(detalleVariantes.map((variant) => variant.figura).filter(Boolean))].join(" · ") || "Figuras exactas pendientes"}</div>
+                <div className="text-xs font-bold mt-1" style={{ color: T.choco2 }}>Presentación comercial: {commercialFamilyLabel(detalleProducto)}</div>
                 <div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>Stock oficial después de reservas y cuarentena.</div>
               </div>
               <Badge label={detalleProducto.available > 0 ? "Disponible" : "Sin stock"} map={{ Disponible: { bg: "#DDEBD9", fg: "#3F6B42" }, "Sin stock": { bg: "#F6D4CD", fg: "#A03B2A" } }} />
@@ -306,11 +369,19 @@ export function createInventoryPanels(shared) {
                   const days = variant.vence ? diasEntre(hoyISO(), variant.vence) : null;
                   return <div key={`${variant.figura}-${variant.sabor}-${variant.gramajeG}`} className="rounded-2xl border p-3 flex items-start justify-between gap-3" style={{ borderColor: days != null && days <= 1 ? "#ECBBB1" : T.border, background: T.surface }}><div><div className="text-sm font-extrabold">{variant.figura} · {variant.sabor || "Sin sabor"}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{variant.gramajeG != null ? `${variant.gramajeG} g` : "Gramaje sin registrar"}{variant.vence ? ` · vence ${variant.vence}` : ""}</div></div><div className="text-right shrink-0"><div className="display text-2xl" style={{ color: T.coral }}>{variant.disponibles}</div><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>disponibles</div></div></div>;
                 })}
-                {detalleVariantes.length === 0 && <div className="sm:col-span-2 rounded-2xl p-4 text-sm font-semibold" style={{ background: "#FBE8C8", color: "#7A5410" }}>Todavía no hay unidades con figura y sabor verificables para este producto. El stock sin detalle no debe prometerse como una combinación exacta.</div>}
+                {detalleVariantes.length === 0 && <div className="sm:col-span-2 rounded-2xl p-4 text-sm font-semibold" style={{ background: "#FBE8C8", color: "#7A5410" }}>Todavía no hay unidades con figura y sabor verificables para esta presentación comercial. El stock sin detalle no debe prometerse como una combinación exacta.</div>}
               </div>
             </Card>
 
-            {detalleCuarentena.length > 0 && <Card className="p-4 mb-4" style={{ background: "#FFF5F2", borderColor: "#ECBBB1" }}><div className="text-xs font-extrabold" style={{ color: "#A03B2A" }}>Cuarentena por vencimiento</div><div className="space-y-1 mt-2">{detalleCuarentena.map((variant) => <div key={`${variant.figura}-${variant.sabor}-${variant.vence}`} className="text-xs font-semibold">{variant.disponibles}× {variant.figura} · {variant.sabor || "Sin sabor"} · venció {variant.vence}</div>)}</div></Card>}
+            {detalleCuarentena.length > 0 && <Card className="p-4 mb-4" style={{ background: "#FFF5F2", borderColor: "#ECBBB1" }}>
+              <div className="text-xs font-extrabold" style={{ color: "#A03B2A" }}>Cuarentena por vencimiento</div>
+              <div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>El desecho se aplica al lote y figura exactos; nunca al saldo agregado.</div>
+              <div className="space-y-2 mt-3">
+                {detalleLotesCuarentena.map((lot) => <div key={lot.id} className="rounded-xl p-3 flex items-center justify-between gap-3" style={{ background: T.surface, border: "1px solid #ECBBB1" }}><div><div className="text-xs font-extrabold">{lot.available}× {lot.figure} · {lot.flavor || "Sin sabor"}</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{lot.batchId}{lot.grams ? ` · ${lot.grams}` : ""} · venció {lot.expiry}</div></div>{puedeDesecharTerminado && <Btn small kind="danger" onClick={() => abrirDesechoTerminado(lot)}>Desechar</Btn>}</div>)}
+                {detalleCuarentenaSinLote > 0 && <div className="rounded-xl p-3 text-xs font-semibold" style={{ background: "#FBE8C8", color: "#7A5410" }}>{detalleCuarentenaSinLote} unidad(es) en cuarentena no tienen lote exacto y requieren conciliación; no se pueden desechar automáticamente.</div>}
+                {detalleLotesCuarentena.length === 0 && detalleCuarentena.map((variant) => <div key={`${variant.figura}-${variant.sabor}-${variant.vence}`} className="text-xs font-semibold">{variant.disponibles}× {variant.figura} · {variant.sabor || "Sin sabor"} · venció {variant.vence} · sin lote exacto</div>)}
+              </div>
+            </Card>}
 
             <div className="grid lg:grid-cols-2 gap-3">
               <Card className="p-4">
@@ -319,13 +390,29 @@ export function createInventoryPanels(shared) {
               </Card>
               <Card className="p-4">
                 <div className="text-xs font-extrabold mb-2" style={{ color: T.choco2 }}>LOTES EN PROCESO</div>
-                <div className="space-y-2">{detalleEnProceso.map((batch) => <div key={batch.id} className="rounded-xl p-2.5 flex items-center justify-between gap-3" style={{ background: "#EDF3F8" }}><div><div className="text-sm font-bold">{batch.id} · {batch.prod || 0} unidades</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>{batch.sabor || "Sin sabor"} · {Array.isArray(batch.figuras) && batch.figuras.length ? batch.figuras.map((row) => `${row.cant}× ${row.figura}`).join(" · ") : batch.figura || "Sin figura"}</div></div><Badge label={batch.estado} /></div>)}{detalleEnProceso.length === 0 && <div className="text-xs font-semibold" style={{ color: T.choco2 }}>No hay lotes activos de este producto.</div>}</div>
+                <div className="space-y-2">{detalleEnProceso.map((batch) => { const presentation = physicalBatchPresentation(batch); return <div key={batch.id} className="rounded-xl p-2.5 flex items-center justify-between gap-3" style={{ background: "#EDF3F8" }}><div><div className="text-sm font-bold">{presentation.primary} · {batch.prod || 0} unidades</div><div className="text-[10px] font-semibold" style={{ color: T.choco2 }}>Lote {batch.id} · {presentation.secondary}</div></div><Badge label={batch.estado} /></div>; })}{detalleEnProceso.length === 0 && <div className="text-xs font-semibold" style={{ color: T.choco2 }}>No hay lotes activos de esta presentación comercial.</div>}</div>
               </Card>
             </div>
 
-            {detalleImperfectas.length > 0 && <Card className="p-4 mt-3"><div className="text-xs font-extrabold mb-2" style={{ color: T.choco2 }}>IMPERFECTAS Y DESCARTADAS</div>{detalleImperfectas.map((batch) => <div key={batch.id} className="flex items-center justify-between gap-3 py-2 border-t first:border-0 text-xs" style={{ borderColor: T.border }}><span className="font-bold">{batch.id} · {batch.figura || "Sin figura"} · {batch.sabor || "Sin sabor"}</span><span style={{ color: T.choco2 }}>{batch.imperfectas} imperfectas · {batch.descartadas} descartadas</span></div>)}</Card>}
+            {detalleImperfectas.length > 0 && <Card className="p-4 mt-3"><div className="text-xs font-extrabold mb-2" style={{ color: T.choco2 }}>IMPERFECTAS Y DESCARTADAS</div>{detalleImperfectas.map((batch) => { const presentation = physicalBatchPresentation(batch); return <div key={batch.id} className="flex items-center justify-between gap-3 py-2 border-t first:border-0 text-xs" style={{ borderColor: T.border }}><span className="font-bold">{presentation.primary} · lote {batch.id}</span><span style={{ color: T.choco2 }}>{batch.imperfectas} imperfectas · {batch.descartadas} descartadas</span></div>; })}</Card>}
           </Modal>
         )}
+
+        {desechoTerminado && <Modal title="Desechar producto terminado" onClose={() => { if (!enviandoDesechoTerminado) setDesechoTerminado(null); }}>
+          <div data-testid="finished-inventory-disposal-modal">
+            <div className="rounded-2xl p-4 mb-4" style={{ background: "#FFF1ED", border: "1px solid #E9A08F" }}>
+              <div className="text-xs font-extrabold uppercase tracking-[.12em]" style={{ color: "#A03B2A" }}>Merma exacta y trazable</div>
+              <div className="display text-xl mt-1">{desechoTerminado.productName}</div>
+              <div className="text-sm mt-1" style={{ color: T.choco2 }}>Se retirarán <b>{desechoTerminado.available} unidades</b> de <b>{desechoTerminado.figure} · {desechoTerminado.flavor}</b>, lote <b>{desechoTerminado.batchId}</b>. Las reservas existentes no se modifican.</div>
+            </div>
+            <Field label="Motivo del desecho"><Input value={motivoDesechoTerminado} onChange={(event) => setMotivoDesechoTerminado(event.target.value)} placeholder="Ej: vencimiento, cadena de frío, olor o textura alterada" /></Field>
+            {errorDesechoTerminado && <div role="alert" className="rounded-xl px-3 py-2 mt-3 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errorDesechoTerminado}</div>}
+            <div className="flex gap-2 mt-4">
+              <BtnAsync kind="danger" disabled={enviandoDesechoTerminado} textoEnVuelo="Desechando…" onClick={confirmarDesechoTerminado}>Confirmar desecho</BtnAsync>
+              <Btn kind="ghost" disabled={enviandoDesechoTerminado} onClick={() => setDesechoTerminado(null)}>Conservar lote</Btn>
+            </div>
+          </div>
+        </Modal>}
       </div>
     );
   }
@@ -414,12 +501,15 @@ export function createInventoryPanels(shared) {
               </div>
               {group.attention && <div className="rounded-xl px-3 py-2 mt-3 text-xs font-bold" style={{ background: "#F6D4CD", color: "#A03B2A" }}>△ {[...new Set(group.rows.flatMap((row) => row.attentionReasons))].join(" · ")}</div>}
               <div className="mt-3 space-y-2">
-                {group.rows.map((row) => (
-                  <div key={row.id} className="rounded-xl border px-3 py-2.5 flex items-start justify-between gap-3" style={{ borderColor: T.border, background: T.surface }}>
-                    <div className="min-w-0"><div className="text-sm font-bold">{row.quantity}× {row.nombre}</div><div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{row.id} · {row.tipo === "producto" ? "Producto terminado" : "Insumo / empaque"} · {row.sourceLabel}</div></div>
-                    <time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{row.fecha}</time>
-                  </div>
-                ))}
+                {group.rows.map((row) => {
+                  const presentation = reservationPresentation(row);
+                  return (
+                    <div key={row.id} className="rounded-xl border px-3 py-2.5 flex items-start justify-between gap-3" style={{ borderColor: T.border, background: T.surface }}>
+                      <div className="min-w-0"><div className="text-sm font-bold">{row.quantity}× {presentation.primary}</div>{presentation.secondary && <div className="text-[10px] font-bold mt-0.5" style={{ color: T.choco2 }}>{presentation.secondary}</div>}<div className="text-[10px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{row.id} · {row.tipo === "producto" ? "Producto terminado" : "Insumo / empaque"} · {row.sourceLabel}</div></div>
+                      <time className="text-[10px] font-bold shrink-0" style={{ color: T.choco2 }}>{row.fecha}</time>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           ))}
@@ -890,6 +980,11 @@ export function createInventoryPanels(shared) {
 
             <div className="flex flex-wrap gap-2 pt-4 border-t" style={{ borderColor: T.border }}>
               {detalleEstado.supply.kind === "prepared" ? <Btn kind="soft" disabled={!detalleEstado.supply.canPrepare} onClick={() => abrirPreparacion(detalleInsumo)}>🥣 Preparar tanda</Btn> : <Btn kind="soft" onClick={() => abrirMovimiento(detalleInsumo, "Entrada")}>＋ Registrar compra</Btn>}
+              {detalleEstado.supply.kind === "prepared" && db.internalPreparationFormulaReady === true && <Btn kind="ghost" onClick={() => {
+                const subrecipeId = String(detalleEstado.supply.subrecipe.id);
+                setDetalleInsumoId(null);
+                go?.("Producción", { subrecipeId, manageKitchenSheet: true, source: "Inventario" });
+              }}>📖 Gestionar en Producción</Btn>}
               <Btn kind="ghost" onClick={() => abrirMovimiento(detalleInsumo, "Ajuste")}>Registrar otro movimiento</Btn>
               {!detalleEstado.lotesListos && detalleEstado.vencido && Number(detalleInsumo.stock) > 0 && ["Administrador","Cocina"].includes(user) && <Btn kind="danger" onClick={() => { setMotivoDesecho(`Vencido desde ${detalleInsumo.vence}`); setDesecharVencido({ itemId: detalleInsumo.id, itemName: detalleInsumo.nombre, available: Number(detalleInsumo.stock), unit: detalleInsumo.unidad, expiresAt: detalleInsumo.vence }); }}>Desechar vencido</Btn>}
             </div>
@@ -1027,15 +1122,29 @@ export function createInventoryPanels(shared) {
                 const tipoMov = form.tipo, nombreMov = it.nombre;
                 const suggestionIds = Array.isArray(form.suggestionIds) ? form.suggestionIds : [];
                 let inventoryUpdateMode = "legacy";
+                let compoundApplied = false;
                 setEnviando(true);
                 try {
                   if (form.tipo === "Entrada") {
                     const payload = { itemId: it.id, cant: +form.cant, costoTotal: +form.precio || 0, vence: form.vence || null, proveedor: form.proveedor, ubicacion: form.ubicacion, nota: form.nota };
                     if (db.inventoryMutationDeltaReady && db.inventoryLotsReady) {
-                      const intent = mutationIntent("entrada", payload);
+                      const intentPayload = suggestionIds.length
+                        ? { ...payload, suggestionIds: [...suggestionIds].sort() }
+                        : payload;
+                      const intent = mutationIntent(suggestionIds.length ? "entrada-con-sugerencias" : "entrada", intentPayload);
                       try {
                         const mutationGeneration = capturarGeneracionInventario();
-                        const response = await entradaInsumoLoteDelta(payload, intent.key);
+                        let response;
+                        if (suggestionIds.length) {
+                          try {
+                            const compound = await registrarCompraYAtenderSugerencias(payload, suggestionIds, intent.key);
+                            response = compound?.inventory;
+                            compoundApplied = true;
+                          } catch (error) {
+                            if (!isMissingRpcError(error)) throw error;
+                          }
+                        }
+                        if (!compoundApplied) response = await entradaInsumoLoteDelta(payload, intent.key);
                         mutationIntentKeysRef.current.delete(intent.fingerprint);
                         inventoryUpdateMode = await applyInventoryMutationOrReconcile(
                           response,
@@ -1079,7 +1188,7 @@ export function createInventoryPanels(shared) {
                   setEnviando(false);
                   return;
                 }
-                if (form.tipo === "Entrada" && suggestionIds.length) {
+                if (form.tipo === "Entrada" && suggestionIds.length && !compoundApplied) {
                   try {
                     await Promise.all(suggestionIds.map((suggestionId) => setSugerenciaEstado(suggestionId, "Atendida")));
                   } catch (error) {

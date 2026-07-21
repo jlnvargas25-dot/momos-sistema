@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyOrderDeltaBatchToDb, compareOrderDeltaVersions, normalizeOrderDeltaBatch,
+  applyOrderDeltaBatch, applyOrderDeltaBatchToDb, compareOrderDeltaVersions, normalizeOrderDeltaBatch,
 } from "./order-delta.js";
 
 function delta(orderId = "P-2000", version = "7") {
@@ -61,6 +61,23 @@ test("H71 descarta respuestas repetidas o antiguas sin tocar el estado", () => {
   assert.equal(result.status, "stale");
   assert.equal(db.orders[0].estado, "Empacado");
   assert.equal(compareOrderDeltaVersions("90071992547409930", "90071992547409929"), 1);
+});
+
+test("H88 aplica un pedido sin clonar ni mutar dominios ajenos", () => {
+  const unrelated = Array.from({ length: 25000 }, (_, id) => ({ id, payload: `row-${id}` }));
+  const db = {
+    orders: [{ id: "P-1000", estado: "Pagado", customerId: "C-1" }],
+    order_items: [], customers: [{ id: "C-1", nombre: "Antes" }], deliveries: [], evidences: [],
+    benefits: [], claims: [], inventory_reservations: [], production_suggestions: [], audit_logs: [],
+    packing_verifications: [], order_stage_assignments: [], order_line_progress: [], order_incidents: [],
+    order_dispatch_handoffs: [], orderDeltaVersions: {}, agencyStoryboards: unrelated,
+  };
+  const result = applyOrderDeltaBatch(db, envelope(delta("P-1000", "7")));
+  assert.equal(db.orders[0].estado, "Pagado");
+  assert.equal(db.orderDeltaVersions["P-1000"], undefined);
+  assert.equal(result.db.orders.find((row) => row.id === "P-1000").estado, "Listo para empaque");
+  assert.equal(result.db.agencyStoryboards, unrelated);
+  assert.equal(result.db.orderDeltaVersions["P-1000"], "7");
 });
 
 test("H71 falla cerrado ante contratos, versiones o duplicados inválidos", () => {
