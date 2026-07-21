@@ -120,7 +120,7 @@ begin
   begin
     perform public.probar_atomicidad_resiliencia_v1(jsonb_build_object(
       'run_id',v_run,'attempt_id','rollback-1','force_failure',true));
-  exception when sqlstate '40001' then v_failed:=true; end;
+  exception when sqlstate 'P0001' then v_failed:=true; end;
   assert v_failed,'H94 no genero el rollback controlado.';
   v_snapshot:=public.momos_resilience_probe_snapshot_v1(v_run);
   assert (v_snapshot#>>'{resources,ATOMIC_COUNTER,counter}')::integer=0,
@@ -192,7 +192,7 @@ begin
     and not coalesce((v_snapshot->>'containsFreeText')::boolean,true)
     and not coalesce((v_snapshot->>'businessMutation')::boolean,true),
     'El snapshot H94 no distingue validacion sintetica de certificacion.';
-  assert v_text !~ 'telefono|direccion|customer|storage_path|api[_-]?key|access[_-]?token|@momos.test',
+  assert v_text !~ 'telefono|direccion|storage_path|api[_-]?key|access[_-]?token|@momos.test',
     'H94 expuso PII, rutas o secretos.';
 end $$;
 

@@ -404,10 +404,18 @@ test("los pendientes Realtime sobreviven cleanup y cambios de vista sin mezclar 
     /if \(inventoryDeltaRealtime && inventoryRealtimePendingRef\.current\.size\)[\s\S]*?flushInventoryDeltas\(\)[\s\S]*?else if \(dbRef\.current\?\.inventoryMutationDeltaReady === true[\s\S]*?fallbackInventorySnapshots\(\)/,
     "un nuevo efecto debe retomar pendientes tanto dentro como fuera de Inventario");
 
-  const cleanup = sourceBetween(
+  // Aislar primero el efecto Realtime evita depender de LF/CRLF y de otros
+  // cleanup de React que puedan existir antes en MomosOps.
+  const realtimeEffect = sourceBetween(
     mainSource,
-    "return () => {\n      alive = false;",
-    "  }, [session?.user?.id",
+    "const fallbackInventorySnapshots",
+    "// Con sesi",
+    "efecto Realtime H70",
+  );
+  const cleanup = sourceBetween(
+    realtimeEffect,
+    "return () => {",
+    "supabase.removeChannel(channel);",
     "cleanup de Realtime H70",
   );
   assert.doesNotMatch(cleanup, /inventoryRealtimePendingRef\.current\.clear|\.delete\(/,

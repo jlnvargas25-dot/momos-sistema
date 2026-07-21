@@ -303,3 +303,32 @@ Aplicar únicamente después de confirmar `20260721_92_centro_salud_operativa`:
 de Supabase, pero no declara el respaldo recuperable. La certificación se obtiene
 únicamente después del simulacro mensual descrito en
 `docs/MOMOS-OPS-CONTINUIDAD-RUNBOOK.md`.
+
+## Hito 94 · certificación de concurrencia, carga y caos
+
+Aplicar únicamente después de confirmar `20260721_93_continuidad_recuperacion`:
+
+1. `../certificacion-concurrencia-caos-v1.sql` — instala un dominio sintético
+   aislado para probar idempotencia, respuesta perdida, última unidad, leases,
+   rollback atómico, lecturas paralelas, tormentas Realtime y conciliación sin
+   crear pedidos ni modificar inventario o finanzas.
+2. `../tests/test-certificacion-concurrencia-caos-v1.sql` — prueba contrato
+   cerrado, evidencia inmutable, RBAC, privacidad y separación estricta entre
+   “validado sintético” y “certificado en staging”; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–94; siempre hace rollback.
+
+`npm run test:resilience:synthetic` ejecuta concurrencia real contra Supabase
+con la service role desde un entorno privado. Por defecto solo puede emitir
+`Validado sintetico`. Para certificar staging se requieren tanto
+`MOMOS_H94_ENVIRONMENT=Staging` como
+`MOMOS_H94_ALLOW_STAGING=CERTIFY_NON_PRODUCTION`; nunca debe apuntar al proyecto
+de producción. Los probes solo escriben en las tablas privadas H94.
+
+La certificación real se ejecuta mediante
+`.github/workflows/staging-database-gate.yml`. El gate compara el ref de staging
+contra producción, valida la URL exacta, corre la cadena 01–94 y H93, repite la
+adversarial H94 con rollback, ejecuta el runner con 16 contendientes y exige en
+servidor un certificado fresco con cero invariantes. Sin los cinco secretos del
+environment `staging`, el flujo falla cerrado antes de instalar dependencias o
+abrir una corrida.

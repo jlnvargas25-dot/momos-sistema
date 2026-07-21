@@ -32,7 +32,8 @@
     "worker:health:check": "node scripts/operational-health-worker.mjs --once --health-only",
     "worker:continuity:observe": "node scripts/continuity-backup-worker.mjs",
     "mcp:agency": "node scripts/momos-agency-mcp.mjs",
-    "mcp:agency:health": "node scripts/momos-agency-mcp.mjs --self-test"
+    "mcp:agency:health": "node scripts/momos-agency-mcp.mjs --self-test",
+    "test:resilience:synthetic": "node scripts/operational-resilience-runner.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

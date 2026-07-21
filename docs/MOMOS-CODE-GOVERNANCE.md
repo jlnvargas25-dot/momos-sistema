@@ -46,10 +46,17 @@ de staging. Requiere un environment protegido `staging` con:
 
 - `STAGING_DATABASE_URL`;
 - `STAGING_PROJECT_REF`;
+- `STAGING_SUPABASE_URL`;
+- `STAGING_SUPABASE_SERVICE_ROLE_KEY`;
 - `PRODUCTION_PROJECT_REF`.
 
-El workflow rechaza refs iguales y ejecuta la aceptación ordenada y H93 dentro de
-transacciones con rollback. Nunca debe contener una URL de producción.
+El workflow rechaza refs iguales y exige que tanto la conexión PostgreSQL como la
+URL de Supabase pertenezcan al mismo proyecto de staging. Ejecuta la aceptación
+ordenada 01–94, H93 y la prueba adversarial H94 dentro de transacciones con
+rollback. Después corre el runner privado H94 en modo `Staging` y solo acepta un
+certificado fresco, con al menos 100 solicitudes y cero invariantes rotas. La
+service role de staging vive exclusivamente en el environment protegido; nunca
+debe configurarse con una clave o URL de producción.
 
 ## Observación diaria de backups
 

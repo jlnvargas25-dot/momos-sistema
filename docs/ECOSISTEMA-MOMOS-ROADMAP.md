@@ -212,6 +212,13 @@ Esta tabla debe actualizarse después de cada gate; nunca por percepción.
 - [ ] Carga sostenida, ráfaga y carrera por última unidad pasan con volumen representativo.
 - [ ] Caídas parciales se concilian sin doble cobro, pedido duplicado, sobreventa o pérdida silenciosa.
 
+**Avance H94:** la carga sintética aislada ya valida idempotencia, respuesta
+perdida, carrera por última unidad, leases, rollback, lecturas paralelas,
+tormentas Realtime y conciliación sin tocar el dominio comercial. El gate manual
+de staging ya exige proyectos y secretos separados y puede emitir el certificado
+servidor. Sigue pendiente ejecutarlo sobre un staging restaurado y representativo;
+la validación sintética de producción no sustituye esa evidencia.
+
 **Evidencia de cierre:** informe de carga firmado, SLO cumplidos y restauración/caos controlado aprobado.
 
 ### Gate 8 — Preparación comercial y lanzamiento

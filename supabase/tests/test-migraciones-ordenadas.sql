@@ -1400,4 +1400,37 @@ begin
 end $$;
 
 select 'TESTS_OK — migraciones ordenadas 01-93 PASS, rollback total' as resultado_h93;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260721_94_certificacion_concurrencia_caos')
+    and to_regclass('public.operational_resilience_runs') is not null
+    and to_regclass('public.operational_resilience_resources') is not null
+    and to_regclass('public.operational_resilience_receipts') is not null
+    and to_regclass('public.operational_resilience_scenarios') is not null
+    and to_regprocedure('public.iniciar_certificacion_resiliencia_v1(jsonb)') is not null
+    and to_regprocedure('public.finalizar_certificacion_resiliencia_v1(uuid)') is not null
+    and to_regprocedure('public.momos_resilience_snapshot_v1()') is not null,
+    'H94 no instalo la certificacion aislada de concurrencia y caos';
+  assert has_function_privilege('service_role','public.iniciar_certificacion_resiliencia_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.probar_idempotencia_resiliencia_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.probar_ultima_unidad_resiliencia_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.probar_lease_resiliencia_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.probar_atomicidad_resiliencia_v1(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.momos_resilience_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_resilience_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('authenticated','public.iniciar_certificacion_resiliencia_v1(jsonb)','EXECUTE')
+    and not has_table_privilege('authenticated','public.operational_resilience_runs','SELECT')
+    and not has_table_privilege('service_role','public.operational_resilience_receipts','SELECT'),
+    'H94 perdio RBAC o expuso evidencia privada';
+  assert position('IDEMPOTENT_REPLAY' in pg_get_functiondef(
+      'public.registrar_resultados_resiliencia_v1(jsonb)'::regprocedure))>0
+    and position('Validado sintetico' in pg_get_functiondef(
+      'public.finalizar_certificacion_resiliencia_v1(uuid)'::regprocedure))>0
+    and position('environment=''Staging''' in pg_get_functiondef(
+      'public.finalizar_certificacion_resiliencia_v1(uuid)'::regprocedure))>0,
+    'H94 confundio validacion sintetica con certificacion staging';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-94 PASS, rollback total' as resultado_h94;
 rollback;

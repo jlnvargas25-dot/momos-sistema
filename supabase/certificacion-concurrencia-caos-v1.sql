@@ -281,7 +281,9 @@ begin
   update public.operational_resilience_resources set counter=counter+1,version=version+1
     where run_id=v_run and resource_code='ATOMIC_COUNTER' returning counter into v_counter;
   if v_fail then
-    raise exception 'H94_CONTROLLED_ROLLBACK' using errcode='40001';
+    -- P0001 mantiene el rollback transaccional, pero evita que la capa de
+    -- infraestructura lo confunda con un fallo de serializacion reintentable.
+    raise exception 'H94_CONTROLLED_ROLLBACK' using errcode='P0001';
   end if;
   return jsonb_build_object('ok',true,'counter',v_counter,'businessMutation',false);
 end $$;

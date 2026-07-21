@@ -110,6 +110,28 @@ for (const required of [
   catch { fail(`Falta ${required}`); }
 }
 
+const stagingGate = await readFile(path.join(root, ".github", "workflows", "staging-database-gate.yml"), "utf8");
+for (const requiredFragment of [
+  "STAGING_PROJECT_REF",
+  "PRODUCTION_PROJECT_REF",
+  "STAGING_SUPABASE_URL",
+  "STAGING_SUPABASE_SERVICE_ROLE_KEY",
+  "01-94 PASS",
+  "test-certificacion-concurrencia-caos-v1.sql",
+  "MOMOS_H94_ENVIRONMENT: Staging",
+  "MOMOS_H94_ALLOW_STAGING: CERTIFY_NON_PRODUCTION",
+  "status='Certificado'",
+  "invariant_failures=0",
+]) {
+  if (!stagingGate.includes(requiredFragment)) fail(`El gate de staging perdió ${requiredFragment}`);
+}
+if (!stagingGate.includes('test "$STAGING_PROJECT_REF" != "$PRODUCTION_PROJECT_REF"')) {
+  fail("El gate de staging ya no separa staging de producción");
+}
+if (stagingGate.includes("secrets.SUPABASE_SERVICE_ROLE_KEY")) {
+  fail("El gate de staging reutiliza el nombre de la service role de producción");
+}
+
 if (failures.length) {
   process.stderr.write(`[repo-contracts] FAIL (${failures.length})\n- ${failures.join("\n- ")}\n`);
   process.exitCode = 1;
