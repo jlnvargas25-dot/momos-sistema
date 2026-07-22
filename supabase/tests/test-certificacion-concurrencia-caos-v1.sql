@@ -32,14 +32,19 @@ begin
 end $$;
 
 create temporary table h94_context(
-  run_id uuid,admin_auth uuid,orders_before bigint,movements_before bigint,batches_before bigint
+  run_id uuid,admin_auth uuid,orders_before bigint,movements_before bigint,batches_before bigint,
+  certification_valid_before boolean not null
 ) on commit drop;
-insert into h94_context(admin_auth,orders_before,movements_before,batches_before)
+insert into h94_context(
+  admin_auth,orders_before,movements_before,batches_before,certification_valid_before
+)
 select (select auth_id from public.users where activo and auth_id is not null
     and coalesce(roles,array[rol]) @> array['Administrador']::text[] order by id limit 1),
   (select count(*) from public.orders),
   (select count(*) from public.inventory_movements),
-  (select count(*) from public.production_batches);
+  (select count(*) from public.production_batches),
+  (select coalesce(resilience_certified_until>=clock_timestamp(),false)
+    from public.operational_health_state where singleton);
 grant all on table h94_context to service_role;
 grant select on table h94_context to authenticated;
 
@@ -184,14 +189,15 @@ begin
   v_snapshot:=public.momos_resilience_snapshot_v1(); v_text:=lower(v_snapshot::text);
   assert v_snapshot->>'contract'='momos.resilience.v1'
     and v_snapshot#>>'{latest,status}'='Validado sintetico'
-    and not coalesce((v_snapshot#>>'{certification,valid}')::boolean,true)
+    and coalesce((v_snapshot#>>'{certification,valid}')::boolean,false)
+      =(select certification_valid_before from h94_context)
     and coalesce((v_snapshot->>'isolated')::boolean,false)
     and not coalesce((v_snapshot->>'containsCustomerPii')::boolean,true)
     and not coalesce((v_snapshot->>'containsSecrets')::boolean,true)
     and not coalesce((v_snapshot->>'containsPaths')::boolean,true)
     and not coalesce((v_snapshot->>'containsFreeText')::boolean,true)
     and not coalesce((v_snapshot->>'businessMutation')::boolean,true),
-    'El snapshot H94 no distingue validacion sintetica de certificacion.';
+    'El snapshot H94 confundio la validacion sintetica con una certificacion nueva.';
   assert v_text !~ 'telefono|direccion|storage_path|api[_-]?key|access[_-]?token|@momos.test',
     'H94 expuso PII, rutas o secretos.';
 end $$;
