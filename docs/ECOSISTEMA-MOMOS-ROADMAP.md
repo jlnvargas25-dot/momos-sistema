@@ -1,0 +1,458 @@
+# Roadmap Maestro — Ecosistema MOMOS v1 comercial
+
+> Autoridad transversal para decidir si Pide MOMOS, MOMO OPS, Agencia MOMOS, Codex y los conectores están listos para operar con clientes reales. Este documento valida producto; no reemplaza la cadena técnica de migraciones ni reserva IDs.
+
+**Corte inicial:** 2026-07-19
+**Estado global:** En desarrollo avanzado · No listo todavía para lanzamiento comercial público
+**Decisión final:** humana, basada en evidencia de todos los gates
+
+## 1. Visión y promesa operativa
+
+El Ecosistema MOMOS v1 estará comercialmente terminado cuando una persona pueda:
+
+1. descubrir un producto realmente disponible;
+2. configurarlo y recibir un precio autoritativo;
+3. reservarlo, pagarlo una sola vez y obtener confirmación;
+4. seguir el pedido sin exponer datos privados;
+5. recibirlo, solicitar ayuda o reembolso y volver a comprar;
+6. llegar desde una campaña o contenido cuya contribución pueda medirse.
+
+Al mismo tiempo, el equipo MOMOS debe poder:
+
+1. producir, empacar y entregar sin sobreventa ni ambigüedad;
+2. conciliar dinero, inventario, pedidos y conectores;
+3. resolver fallos sin editar filas manualmente;
+4. conocer costo, ingreso, margen y aprendizaje;
+5. recuperar el sistema sin pérdida silenciosa;
+6. operar mediante permisos, procedimientos y responsables claros.
+
+## 2. Documentos subordinados
+
+- [PIDE-MOMOS.md](../PIDE-MOMOS.md): blueprint funcional del shop público.
+- [AGENCIA-MOMOS-ROADMAP.md](AGENCIA-MOMOS-ROADMAP.md): evolución creativa, comunidad, conectores y aprendizaje.
+- [AGENCIA-CREATIVE-PLAYBOOK.md](AGENCIA-CREATIVE-PLAYBOOK.md): estándar creativo MOMOS.
+- [H64-RENDIMIENTO-E2E.md](H64-RENDIMIENTO-E2E.md): rendimiento, snapshots, carga diferida y telemetría.
+- [HANDOFF.md](../HANDOFF.md): estado técnico detallado y decisiones históricas.
+
+En caso de conflicto:
+
+1. la base y migraciones aplicadas deciden hechos técnicos;
+2. MOMO OPS decide producto, operación, permisos, costos y resultados;
+3. este roadmap decide si el conjunto satisface el cierre comercial;
+4. ningún chat, mockup o documento aislado prueba que una capacidad está operativa.
+
+## 3. Estados canónicos
+
+| Estado | Significado | Evidencia mínima |
+|---|---|---|
+| Backlog | Necesidad reconocida | Alcance y responsable por asignar |
+| Diseñado | Contrato y riesgos definidos | Documento y criterios de aceptación |
+| Implementado | Código/esquema disponible | Diff y migración versionada si aplica |
+| Validado local | Funciona en entorno de desarrollo | Tests, build y evidencia reproducible |
+| Validado en staging | Integración completa en ambiente equivalente | E2E, seguridad y observabilidad |
+| Piloto real | Usado con alcance controlado | Operaciones conciliadas e incidentes cerrados |
+| Operativo | Proceso estable con responsables | SLO, alertas, manual y soporte |
+| Certificado para escala | Carga objetivo demostrada | p95/p99, errores, saturación y recuperación |
+
+Una capacidad solo avanza de estado con evidencia enlazada. “Existe la tabla”, “se ve la pantalla”, “el proveedor respondió” o “una prueba salió bien” no equivalen por sí solos a `Operativo`.
+
+## 4. Línea base auditada
+
+| Componente | Estado al corte | Evidencia y brecha principal |
+|---|---|---|
+| MOMO OPS | En desarrollo avanzado | Operación, trazabilidad, snapshots, Realtime y RBAC construidos; falta consolidación de release y certificación bajo carga |
+| Pide MOMOS | Diseñado | Blueprint completo; no existe todavía la aplicación pública E2E |
+| Pagos | Diseñado parcialmente | Sellos y campos base; faltan pasarela, tabla/eventos, webhooks, conciliación, reembolsos y contracargos |
+| Agencia MOMOS | En desarrollo avanzado | Identidad, briefs, producción, aprobación, QA y aprendizaje; falta simplificar experiencia y cerrar distribución/medición real |
+| Codex + MCP | Conectado con guardas | Lectura y propuestas gobernadas; no debe aprobarse a sí mismo ni ejecutar acciones externas por omisión |
+| Higgsfield | Conectado parcialmente | Autenticación y generación disponibles; el recorrido aprobado completo debe cerrarse y conciliarse |
+| Meta | Por conectar | Modelo, observatorio y dry-run de lectura; faltan credenciales, snapshots vivos y publicación autorizada |
+| TikTok | Por conectar | Modelo de distribución; faltan autenticación, worker, publicación/borrador y métricas |
+| Rendimiento frontend | Línea base parcial | 23/23 pruebas de rendimiento y build PASS; JS inicial excede levemente el presupuesto y Agencia se acerca a su límite de chunk |
+| Seguridad pública | Planificada | Buenas guardas internas; falta superficie pública, revisión independiente y pruebas adversariales del checkout |
+| Release engineering | Parcial | Existen suites y migraciones; falta convertir el árbol actual en una versión limpia, reproducible, etiquetada y desplegable |
+
+Esta tabla debe actualizarse después de cada gate; nunca por percepción.
+
+## 5. Gates obligatorios
+
+### Gate 0 — Alcance, autoridad y economía
+
+**Objetivo:** saber exactamente qué vende MOMOS, a quién, dónde, cuándo y bajo qué reglas.
+
+- [ ] Catálogo, variantes, empaques, precios, costos y canales tienen una sola fuente de verdad.
+- [ ] Zonas, tarifas, horarios, mínimos, franjas y capacidad están versionados.
+- [ ] Margen mínimo, descuentos, promociones y excepciones tienen dueño y límites.
+- [ ] Políticas de cancelación, reembolso, reclamo, entrega fallida y sustitución están aprobadas.
+- [ ] Roles de precio, inventario, pago, publicación, soporte y devolución están separados.
+- [ ] Objetivos comerciales, SLO y pico inicial esperado están declarados antes de las pruebas.
+- [ ] V1 y post-V1 están separados para impedir crecimiento infinito del alcance.
+
+**Evidencia de cierre:** contrato comercial aprobado, catálogo gobernado y matriz RACI/roles.
+
+### Gate 1 — Integridad técnica y release reproducible
+
+**Objetivo:** desplegar la misma versión de forma segura y repetible.
+
+- [ ] Worktree de release limpio y cambios ajenos preservados/consolidados.
+- [ ] Cadena de migraciones canónica, ordenada, idempotente y validada.
+- [ ] Desarrollo, staging y producción usan proyectos, dominios y secretos separados.
+- [ ] CI ejecuta tests, build, lint/format aplicable, chequeo SQL, seguridad y presupuesto de rendimiento.
+- [ ] Versiones, tags, changelog, feature flags y rollback están definidos.
+- [ ] Configuración y secretos no dependen de una máquina personal.
+- [ ] Datos semilla y fixtures no pueden confundirse con datos reales.
+- [ ] Dependencias críticas tienen política de actualización y rollback.
+
+**Evidencia de cierre:** release candidate desplegado desde cero en staging y rollback probado.
+
+### Gate 2 — Pide MOMOS y compra E2E
+
+**Objetivo:** cerrar el recorrido público sin confiar en el navegador.
+
+- [ ] Aplicación separada `shop`, optimizada para móvil, CDN y caché pública.
+- [ ] Catálogo, detalle, configurador, carrito, zona, dirección y franja.
+- [ ] Cotización autoritativa y versionada en servidor.
+- [ ] Reserva temporal con expiración efectiva y cuota antiacaparamiento.
+- [ ] Checkout como invitado; cuenta opcional después de la experiencia definida.
+- [ ] Pedido único mediante idempotencia aun con doble clic o reintento.
+- [ ] Estado público simplificado y tracking con token opaco/OTP.
+- [ ] Recuperación segura de checkout interrumpido.
+- [ ] Accesibilidad, teclado, lector de pantalla, contraste y conectividad lenta validados.
+- [ ] SEO, metadatos, imágenes responsivas y enlaces compartibles donde corresponda.
+
+**Evidencia de cierre:** E2E automatizado y compra piloto desde dispositivo real hasta pedido visible en OPS.
+
+### Gate 3 — Pagos, dinero y conciliación
+
+**Objetivo:** que cada peso pueda explicarse y ningún retry duplique efectos.
+
+- [ ] Pasarela elegida mediante criterios de cobertura, costo, soporte y conciliación.
+- [ ] Checkout alojado o tokenizado; MOMOS no almacena datos de tarjeta.
+- [ ] `payments` y `payment_events` separan intención, intento, confirmación, rechazo, reverso y reembolso.
+- [ ] Webhooks verifican firma, timestamp, ambiente, cuenta, moneda, monto y replay.
+- [ ] Identificador externo único e idempotencia por evento del proveedor.
+- [ ] Pago confirmado activa reserva/pedido de forma transaccional o conciliable.
+- [ ] Comisiones, descuentos, domicilio, ingresos y margen usan snapshots.
+- [ ] Reembolsos, reversos y contracargos tienen flujo, permisos y evidencia.
+- [ ] Cierre diario compara pasarela, pagos, pedidos e ingresos.
+- [ ] Excepciones `pago sin pedido`, `pedido sin pago` y `monto divergente` generan alerta y bandeja.
+
+**Evidencia de cierre:** conciliación exacta de todos los escenarios sandbox y piloto real controlado.
+
+### Gate 4 — Operación, entrega y postventa
+
+**Objetivo:** cumplir la promesa después del pago.
+
+- [ ] Inventario por variante/lote, reserva, consumo, liberación y vencimiento coherentes.
+- [ ] Capacidad de producción, empaque, entrega y franja limita la venta.
+- [ ] Cocina recibe solo pedidos autorizados para preparar.
+- [ ] Empaque y handoff logístico conservan evidencia y responsables.
+- [ ] Entrega, demora, mensajero cancelado y dirección problemática tienen contingencia.
+- [ ] Reclamos, compensaciones, cancelaciones y reembolsos están vinculados al pedido.
+- [ ] MomoBot puede ayudar sin escribir por ambigüedad y siempre escala a una persona.
+- [ ] Operadores resuelven incidentes mediante UI/RPC, nunca editando SQL.
+- [ ] Apertura, cierre, cambio de turno y caída de proveedor tienen procedimientos.
+
+**Evidencia de cierre:** simulacro completo y piloto real conciliado hasta entrega/postventa.
+
+### Gate 5 — Agencia, distribución y aprendizaje comercial
+
+**Objetivo:** convertir operación y creatividad en crecimiento medible.
+
+- [ ] Inicio Ejecutivo y flujos guiados simplifican creación, aprobación, publicación y análisis.
+- [ ] Biblioteca conserva producto, empaque, personajes, UGC, manos, locaciones, audio, derechos y consentimiento.
+- [ ] Codex formula hipótesis, ángulos y variantes; MOMO OPS sigue siendo fuente de verdad.
+- [ ] Higgsfield recibe únicamente paquetes y preflights aprobados; costo y resultado regresan al ledger.
+- [ ] Máster, QA, publicación y pauta tienen aprobaciones separadas.
+- [ ] Meta y TikTok cuentan con autenticación, health, idempotencia y conciliación.
+- [ ] Cada publicación conserva IDs externos y vínculo con campaña/creativo.
+- [ ] Métricas regresan automáticamente sin PII y se vinculan con pedidos pagados, margen y recompra.
+- [ ] Experimentos cambian una sola variable y requieren muestra/decisión humana.
+- [ ] Fórmulas ganadoras guardan elementos fijos, variables, restricciones, evidencia y vigencia.
+- [ ] Humanización y comunidad distinguen personas reales, actores, personajes y contenido sintético.
+
+**Evidencia de cierre:** campaña piloto completa desde brief hasta aprendizaje económico aprobado.
+
+### Gate 6 — Seguridad, privacidad y abuso
+
+**Objetivo:** abrir una superficie pública sin comprometer clientes, dinero ni operación.
+
+- [ ] Shop y OPS tienen roles, sesiones, RLS, dominios y permisos independientes.
+- [ ] El público no escribe tablas core; usa funciones/RPC de lista cerrada.
+- [ ] Precio, inventario, promoción, zona y capacidad se recalculan en servidor.
+- [ ] Funciones privilegiadas usan mínimo privilegio, `search_path` cerrado y grants explícitos.
+- [ ] Secretos no aparecen en `VITE_*`, bundles, Storage público, logs, errores o MCP.
+- [ ] Rate limiting y protección de bots cubren catálogo costoso, cotización, reserva, pago, tracking y OTP.
+- [ ] CSP, HSTS, CORS allowlist, protección de framing, validación de origen y CSRF aplicable.
+- [ ] Entradas y contenido de terceros usan esquemas, límites y escape seguro.
+- [ ] Tracking impide enumerar pedidos o confirmar existencia de clientes.
+- [ ] Archivos privados usan URLs firmadas y validación real de MIME/tamaño/hash.
+- [ ] PII se minimiza, redacta en observabilidad y conserva según finalidad/retención aprobada.
+- [ ] Consentimiento comercial, creativo y de IA permanece separado y revocable.
+- [ ] Escaneo de dependencias, secretos y vulnerabilidades bloquea hallazgos críticos.
+- [ ] Alertas cubren replay, fraude, exceso de reservas, elevación de privilegios y divergencias.
+- [ ] Revisión independiente y procedimiento de respuesta a incidentes completados.
+- [ ] Revisión profesional de privacidad, comercio y pagos antes de producción.
+
+**Evidencia de cierre:** threat model, suite adversarial, hallazgos críticos cerrados y aprobación independiente.
+
+### Gate 7 — Rendimiento, resiliencia y observabilidad
+
+**Objetivo:** demostrar capacidad y recuperación, no inferirlas del diseño.
+
+- [ ] Pide usa CDN/edge, caché versionada y endpoints públicos pequeños.
+- [ ] Consultas transaccionales tienen índices justificados con `EXPLAIN (ANALYZE, BUFFERS)`.
+- [ ] Connection pooling, timeouts, circuit breakers y backpressure están configurados.
+- [ ] Webhooks, notificaciones, expiraciones y conectores usan colas, leases, backoff y dead-letter.
+- [ ] Frontends cumplen presupuestos de bundle, imágenes, interacción y solicitudes iniciales.
+- [ ] Métricas p50/p95/p99, error, saturación, concurrencia y colas usan `trace_id` sin PII.
+- [ ] Dashboard diferencia frontend, función, base, Storage, pago, logística y conector.
+- [ ] SLO y presupuesto de error existen para catálogo, cotización, reserva, pago, pedido y tracking.
+- [ ] Backups, restauración, RPO, RTO y contingencias están documentados y probados.
+- [ ] Carga sostenida, ráfaga y carrera por última unidad pasan con volumen representativo.
+- [ ] Caídas parciales se concilian sin doble cobro, pedido duplicado, sobreventa o pérdida silenciosa.
+
+**H94/H99 certificados en staging:** la carga sintética aislada valida
+idempotencia, respuesta perdida, carrera por última unidad, leases, rollback,
+lecturas paralelas, tormentas Realtime y conciliación sin tocar el dominio
+comercial. El 22 de julio de 2026 el runner H99 ejecutó 2.000 solicitudes reales
+con 64 contendientes sobre el staging restaurado `mxrsmuqyesolkxoqvggl`: p50
+233,20 ms, p95 351,27 ms, p99 724,86 ms, p95 adversarial máximo 488,81 ms y
+cero invariantes rotas. Supabase selló la corrida como `Certificado` y
+reconciliada. El recibo sanitario versionado está en
+`docs/H99-STAGING-LOAD-2026-07-22.json`. Todavía falta una ventana sostenida de
+varios minutos/horas y tráfico sobre los recorridos comerciales reales antes de
+certificar escala alta.
+
+**H100 aplicado y validado en staging:** el primer recorrido interno con las RPC
+canónicas detectó que el relevo Empaque → Logística dependía de una resolución
+implícita de `digest()` y fallaba en el entorno restaurado. H100 reemplazó esa
+dependencia por SHA-256 nativo y repitió Pago → Cocina → Empaque → relevo físico
+→ En ruta → Entregado. Pasaron separación de roles, reintentos idempotentes,
+firma exacta de comanda, actualización CRM una sola vez, trazabilidad y RBAC. El
+ensayo terminó en rollback y la comprobación posterior encontró cero usuarios,
+clientes, pedidos, evidencias o domicilios sintéticos. El recibo está en
+`docs/H100-STAGING-INTERNAL-PILOT-2026-07-22.json`. Esto certifica el recorrido
+interno; todavía no certifica checkout público, webhook de pago, carga de Storage
+en este mismo ensayo, un cliente real ni tráfico alto sostenido.
+
+**H101 certificado en staging:** el recorrido con navegador real creó el pedido
+sintético `P-1066` y lo llevó por Recepción, Pago, Cocina, Empaque, verificación
+exacta, cuatro evidencias reales de Storage, relevo físico, Logística y Entrega.
+Se probaron cinco sesiones con permisos acumulables, recarga, reconexión Realtime
+y consola limpia. El ensayo detectó que Pedidos abierto como primera vista podía
+mostrar productos desactivados desde el catálogo semilla; el coordinador ahora
+hidrata Catálogos y Operativo antes de ofrecer el menú vendible, y la corrección
+se verificó en el mismo staging. Las credenciales sintéticas fueron revocadas y
+el recibo sin PII ni secretos está en
+`docs/H101-STAGING-UI-PILOT-2026-07-22.json`. No se tocó producción y esta
+certificación no sustituye un piloto con cliente real, checkout público, webhook
+de pago ni carga alta sostenida.
+
+**H102 aplicado y validado en staging, sin iniciar operación real:** MOMO OPS incorpora
+un contrato cerrado para una muestra de 1–20 pedidos ya pagados, con ventana y
+tope por pedido, cuatro firmas humanas, salud/resiliencia/recuperación vigentes,
+idempotencia durable y conciliación final de evidencia y margen. El controlador
+no crea pedidos, no cobra, no altera sus estados y nunca abre tráfico. La
+migración, adversarial y cadena 01–102 pasaron en el staging aislado y la
+comprobación sanitaria encontró cero pilotos, pedidos vinculados o eventos
+residuales. El recibo está en
+`docs/H102-STAGING-COMMERCIAL-PILOT-CONTROL-2026-07-22.json`. El piloto con
+clientes reales continúa pendiente y solo se marcará completo después de
+ejecutar la muestra y firmar su cierre humano.
+
+**H95 aplicado:** el Centro de Salud incorpora
+políticas SLO versionadas y una frontera privada e idempotente para telemetría agregada. Calcula disponibilidad,
+presupuesto de error, p50/p95/p99 por histograma, saturación, colas y vigencia en
+siete dominios sin guardar requests, rutas, actores, clientes, PII ni secretos.
+El monitor privado reportará su propia salud; los demás dominios quedan `Sin datos`
+hasta recibir evidencia real, en vez de presentarse como saludables por omisión.
+
+**H96 aplicado:** conecta evidencia real sin capturar datos del negocio. El
+navegador envía como máximo un lote agregado por minuto para Interfaz, RPC,
+Realtime y Storage; el worker privado mide Base de datos, Integraciones y el
+Monitor. Un evaluador idempotente abre o recupera alertas por presupuesto de
+error, p95, saturación, cola y telemetría vencida. Las alertas viven en una tabla
+privada y Configuración solo recibe el resumen necesario para actuar. La prueba
+real del monitor 1.2.1 confirmó dos ejecuciones consecutivas dentro del mismo
+minuto sin colisiones de recibos: 9 chequeos, 2 advertencias y 0 fallos, sin
+activar el modo de solo lectura.
+
+**H97 aplicado y validado:** endurece la certificación de recuperación. RPO y RTO ya no
+pueden ser declarados por un worker: el servidor los deriva del objetivo, el
+punto realmente restaurado, el inicio y el cierre. También exige evidencia
+separada de objetos Storage y replay, porque el backup de base no contiene los
+bytes de Storage. El 21 de julio de 2026 se observaron siete backups físicos
+diarios y PITR inactivo; por eso el RPO central de cinco minutos sigue sin estar
+observado de forma continua. La migración, su prueba adversarial, H93 y la cadena
+ordenada 01–97 pasaron en Supabase el 21 de julio de 2026. El simulacro real
+también quedó certificado: el backup físico `1171502694` se restauró en el
+proyecto aislado `mxrsmuqyesolkxoqvggl`, PostgreSQL pasó de creación a listo en
+3,97 minutos, se verificaron 50 objetos Storage (8.652.100 bytes) mediante
+SHA-256 y el replay exacto del punto objetivo cerró con cero eventos. El RPO del
+simulacro fue 0 minutos. Esta certificación prueba recuperabilidad integral; no
+sustituye PITR ni afirma cobertura permanente de cinco minutos entre backups.
+
+**Evidencia de cierre:** informe de carga firmado, SLO cumplidos y restauración/caos controlado aprobado.
+
+### Gate 8 — Preparación comercial y lanzamiento
+
+**Objetivo:** convertir software validado en una operación comercial sostenible.
+
+- [ ] Manuales por rol, entrenamiento y simulacros completados.
+- [ ] Horarios, zonas, canales de soporte y tiempos de respuesta publicados.
+- [ ] FAQ, mensajes transaccionales, errores y comunicaciones de contingencia aprobados.
+- [ ] Términos, privacidad, cancelaciones, devoluciones y tratamiento de datos revisados profesionalmente.
+- [ ] Analítica de producto mide embudo, abandono, pago, entrega, soporte y recompra.
+- [ ] Finanzas puede cerrar ventas, comisiones, devoluciones, costos y margen.
+- [ ] Propietarios y suplentes definidos para operación, tecnología, pagos, seguridad y marketing.
+- [ ] Piloto cerrado completa la muestra y ventana acordadas antes de abrir tráfico.
+- [ ] Incidentes del piloto están corregidos o aceptados explícitamente con mitigación.
+- [ ] Checklist final firmado por Producto, Operaciones, Finanzas y Seguridad/Privacidad.
+
+**Evidencia de cierre:** acta humana de lanzamiento y release estable desplegado.
+
+## 6. Trazabilidad canónica
+
+La cadena objetivo es:
+
+```text
+visit/session
+  → attribution touchpoint
+  → checkout session
+  → quote version
+  → inventory/capacity reservation
+  → payment intent
+  → signed provider event
+  → order
+  → production and lot consumption
+  → packing verification
+  → delivery handoff
+  → delivered/claim/refund
+  → campaign/creative/post measurement
+  → margin and repurchase
+```
+
+Cada transición conserva como mínimo:
+
+- `trace_id`, `correlation_id`, `causation_id`;
+- identificador interno y, cuando exista, externo;
+- tipo de evento, versión y fecha del origen;
+- actor/sistema y ambiente;
+- clave idempotente;
+- snapshot o hash de la verdad usada;
+- resultado, error tipificado y estado de conciliación;
+- enlace a evidencia sin incluir secretos ni PII innecesaria.
+
+## 7. Pruebas obligatorias de aceptación
+
+### Transacción y concurrencia
+
+- doble clic y retry de red;
+- dos webhooks iguales y eventos fuera de orden;
+- muchas sesiones intentando la última unidad;
+- reserva expirada durante pago;
+- pago confirmado después de expiración;
+- timeout antes y después de una posible escritura;
+- precio/promoción/stock alterados desde el navegador;
+- caída entre pago y creación del pedido.
+
+### Seguridad y privacidad
+
+- bypass de RLS/RBAC y funciones privilegiadas;
+- enumeración de pedido, cliente, token y OTP;
+- replay y firma inválida de webhook;
+- abuso de reserva, login, tracking y archivos;
+- XSS, CSRF aplicable, CORS, framing y exposición de secretos;
+- PII en logs, telemetría, MCP, errores y analítica;
+- acceso después de revocación o vencimiento de consentimiento.
+
+### Operación y recuperación
+
+- mensajero cancela, zona inválida y franja saturada;
+- producto agotado o vencido después de cotizar;
+- reembolso parcial/total y contracargo;
+- caída de pasarela, función, cola, worker, Storage y Realtime;
+- restauración desde backup y conciliación de eventos posteriores;
+- cierre de turno con excepciones pendientes.
+
+### Rendimiento
+
+- catálogo cacheado y no cacheado;
+- cotización, reserva, pago, pedido y tracking;
+- apertura de paneles internos durante tráfico público;
+- ráfaga, carga sostenida y recuperación;
+- volumen histórico representativo en pedidos, eventos, auditoría y métricas.
+
+Los objetivos numéricos se aprueban antes de ejecutar las pruebas. No se cambian después para hacer pasar el resultado.
+
+## 8. Bloqueadores absolutos de lanzamiento
+
+El ecosistema no puede declararse terminado si ocurre cualquiera de estos casos:
+
+- Pide MOMOS sigue siendo blueprint o mockup.
+- Un flujo principal requiere SQL manual.
+- Pago, pedido, reserva o inventario pueden divergir sin alerta/conciliación.
+- Existe riesgo conocido de doble cobro, doble pedido o sobreventa.
+- El tracking permite enumerar pedidos o exponer PII.
+- Hay secretos en cliente, repositorio, logs o MCP.
+- Meta/TikTok/Higgsfield se consideran cerrados solo porque autenticaron.
+- No existe staging equivalente o rollback probado.
+- No existe soporte para reclamos, reembolsos y fallos parciales.
+- No se ha ejecutado piloto real controlado.
+- No se han probado carga, seguridad y restauración.
+- Hay hallazgos críticos abiertos o responsables sin asignar.
+- La evidencia vive únicamente en conversaciones o memoria del equipo.
+
+## 9. Fuera del bloqueo de V1
+
+Estas capacidades pueden llegar después del lanzamiento si no comprometen el recorrido principal:
+
+- puntos/VIP y gamificación;
+- suscripciones;
+- recuperación avanzada de carrito;
+- recomendaciones personalizadas complejas;
+- app móvil nativa;
+- marketplace o múltiples marcas;
+- publicación o inversión autónoma;
+- voz/avatar avanzado para todos los flujos;
+- expansión geográfica y múltiples sedes, salvo que ya formen parte del lanzamiento.
+
+Cada capacidad post-V1 conserva seguridad, trazabilidad y gates propios.
+
+## 10. Secuencia de ejecución recomendada
+
+1. **Consolidar la base:** release reproducible, migraciones, ambientes y observabilidad mínima.
+2. **Construir la transacción:** Pide, cotización, reserva, pago, webhook, pedido y tracking.
+3. **Cerrar el cumplimiento:** capacidad, producción, empaque, entrega, soporte y reembolsos.
+4. **Cerrar crecimiento:** Higgsfield, Meta/TikTok, publicación, métricas, atribución y aprendizaje.
+5. **Endurecer:** seguridad, privacidad, abuso, carga, recuperación y revisión independiente.
+6. **Pilotar:** usuarios/pedidos reales con alcance controlado, soporte presente y conciliación diaria.
+7. **Lanzar:** aprobación humana y despliegue gradual con feature flags y límites.
+8. **Certificar escala:** aumentar tráfico únicamente después de observar SLO y capacidad real.
+
+## 11. Definición de terminado
+
+### Ecosistema MOMOS v1 comercialmente terminado
+
+Se declara únicamente cuando:
+
+- todos los Gates 0–8 están `Operativo` o cuentan con excepción humana documentada que no compromete seguridad, dinero, inventario, privacidad ni recorrido principal;
+- no existen bloqueadores absolutos;
+- el piloto real fue conciliado de punta a punta;
+- Producto, Operaciones, Finanzas y Seguridad/Privacidad firman el lanzamiento;
+- existe una release estable, restaurable y monitoreada;
+- el cliente puede completar el recorrido sin intervención técnica.
+
+### Certificado para tráfico alto
+
+Es una decisión posterior y separada. Requiere pico real esperado, volumen histórico, prueba al múltiplo acordado, p95/p99, error, saturación, capacidad operativa y recuperación demostrados. Nunca se deduce solo porque el sistema funciona con pocos usuarios.
+
+## 12. Mantenimiento del roadmap
+
+- Actualizar el corte y la tabla de línea base después de cada gate.
+- Enlazar evidencia reproducible: tests, reportes, dashboards, decisiones y runbooks.
+- No marcar una casilla por código sin despliegue o por despliegue sin operación.
+- No renumerar migraciones aplicadas ni reservar IDs desde este documento.
+- Toda excepción indica propietario, riesgo, mitigación, vencimiento y criterio de cierre.
+- Toda decisión de lanzamiento o escala queda firmada y fechada por una persona.

@@ -14,6 +14,10 @@
 -- llamando a _add_movement(...) directo con p_batch_id. Sí reusa _add_movement
 -- y _add_audit tal cual exige la regla dura de "ningún insert directo".
 --
+-- NOTA (Producción v2): set_lote_estado — la rama →Listo fue endurecida en
+-- rpc-produccion-v2.sql (guard de desmolde) — este archivo conserva la
+-- versión v1 histórica; la fuente vigente es v2.
+--
 -- NO EJECUTAR contra ninguna base desde acá — archivo de definición únicamente.
 -- ============================================================================
 
@@ -138,8 +142,9 @@ begin
   -- molde/ubicacion: si vienen y no existen en el catálogo, la FK de la tabla
   -- revienta el insert con el error de Postgres (paridad con la spec: "el FK lo valida solo").
 
-  v_vence := nullif(p->>'vence','')::date;
-  v_vence := coalesce(v_vence, v_fecha + 14);
+  -- El vencimiento de producto terminado nace al desmoldar; un lote en
+  -- preparación todavía no tiene vida útil corriendo.
+  v_vence := null;
   v_horas_congelacion := coalesce(nullif(p->>'horas_congelacion','')::numeric, 10);
 
   v_id := next_id('batch','L-',3);

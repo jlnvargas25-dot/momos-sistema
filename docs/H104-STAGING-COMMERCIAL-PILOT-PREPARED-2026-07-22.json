@@ -1,0 +1,69 @@
+{
+  "contract": "momos.commercial-pilot.prepared.staging.v1",
+  "capturedAt": "2026-07-22T06:43:52.247395Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "pilot": {
+    "id": "b402fd52-bb18-428d-91f5-34034f4128aa",
+    "key": "staging-closed-20260722-01",
+    "status": "Listo",
+    "version": 5,
+    "plannedOrders": 1,
+    "linkedOrders": 0,
+    "reconciledOrders": 0,
+    "maxOrderTotal": 100000,
+    "approvedSignoffs": 4,
+    "expiresAt": "2026-07-23T06:43:15.103296Z"
+  },
+  "signoffs": [
+    {
+      "area": "Producto",
+      "evidenceCode": "SCOPE_APPROVED",
+      "status": "Aprobado"
+    },
+    {
+      "area": "Operaciones",
+      "evidenceCode": "ROLES_TRAINED",
+      "status": "Aprobado"
+    },
+    {
+      "area": "Finanzas",
+      "evidenceCode": "CLOSE_READY",
+      "status": "Aprobado"
+    },
+    {
+      "area": "Seguridad y Privacidad",
+      "evidenceCode": "PRIVACY_REVIEWED",
+      "status": "Aprobado"
+    }
+  ],
+  "startAttempt": {
+    "result": "BLOCKED_SAFE",
+    "serverMessage": "Salud, resiliencia o recuperacion no permiten iniciar el piloto.",
+    "healthStatus": "Degradado",
+    "operationReadOnly": false,
+    "blockingIncidents": 1,
+    "continuityCertificationPresent": false
+  },
+  "blockingIncident": {
+    "key": "STALLED_PACKING_ORDERS",
+    "domain": "PEDIDOS",
+    "severity": "Alta",
+    "status": "Abierto",
+    "ownerRole": "Empaque",
+    "occurrences": 7
+  },
+  "effects": {
+    "eligiblePaidOrdersObserved": 10,
+    "orderLinked": false,
+    "orderStateChanged": false,
+    "publicTrafficOpened": false,
+    "externalExecution": false,
+    "productionMutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsFreeText": false
+  }
+}

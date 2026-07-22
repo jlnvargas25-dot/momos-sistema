@@ -65,15 +65,25 @@ on conflict (clave) do nothing;
 -- settings.figuras (MomosOps.jsx:228-236). DISCREPANCIA: la maqueta trae
 -- gramaje como texto "150 g" / "280 g"; el schema pide gramaje_g integer
 -- (línea 68) — se parsea el número y se descarta la unidad (siempre "g").
+--
+-- (Producción v2) gramaje_g refleja los pesos OFICIALES de la spec aprobada
+-- (ver rpc-produccion-v2.sql sección A.1). product_id NO va en este INSERT
+-- a propósito: figuras se siembra ANTES que products en el orden FK-seguro
+-- de este archivo (ver header, línea 11), así que 'PR01' todavía no existiría
+-- como fila de products en este punto del script — el UPDATE que asigna
+-- product_id va más abajo, inmediatamente después de sembrar products.
+-- OJO: este INSERT usa ON CONFLICT DO NOTHING — en una base YA sembrada no
+-- pisa filas existentes; los UPDATE de rpc-produccion-v2.sql son los que
+-- aplican el cambio de datos ahí. Este seed solo importa para deploys frescos.
 -- ---------------------------------------------------------------------------
 insert into figuras (nombre, especie, gramaje_g, activo) values
   ('Lizi',  'gato',  150, true),
-  ('Momo',  'gato',  150, true),
-  ('Toby',  'gato',  150, true),
-  ('Teo',   'gato',  280, true),
-  ('Max',   'perro', 150, true),
-  ('Rocco', 'perro', 150, true),
-  ('Danna', 'perro', 150, true)
+  ('Momo',  'gato',  180, true),
+  ('Toby',  'gato',  280, true),
+  ('Teo',   'gato',  250, true),
+  ('Max',   'perro', 180, true),
+  ('Rocco', 'perro', 180, true),
+  ('Danna', 'perro', 180, true)
 on conflict (nombre) do nothing;
 
 -- ---------------------------------------------------------------------------
@@ -193,6 +203,11 @@ insert into app_settings (clave, valor) values
   ('pedido_minimo', '25000'),
   ('pauta_mensual', '350000'),
   ('horas_congelacion', '10'),
+  ('demora_cocina_min', '15'),
+  ('demora_cocina_urgente_min', '30'),
+  ('demora_empaque_min', '10'),
+  ('demora_empaque_urgente_min', '20'),
+  ('demora_repeticion_min', '5'),
   ('relleno_fijo', '"Cheesecake con ganache"'),
   ('politicas', '"MOMOS no despacha ningún pedido sin pago confirmado: se requiere comprobante de transferencia (Nequi, Daviplata o Bancolombia) o el pago dentro de la app de Rappi. No se aceptan pagos en efectivo contra entrega. Reclamos por estado del producto: máximo 20 minutos después de recibido, salvo calidad o inocuidad. Un beneficio por pedido, no acumulable, no aplica sobre domicilio."')
 on conflict (clave) do nothing;
@@ -247,14 +262,14 @@ on conflict (id) do nothing;
 -- combo_size/empaque_item_id solo en combos (PR05-07).
 -- ---------------------------------------------------------------------------
 insert into products (id, nombre, cat, tipo, especie, precio, precio_rappi, costo, stock, prep, frio, lejano, activo, descr, combo_size, empaque_item_id) values
-  ('PR01', 'Momo Gatito 150 g',              'Momos Signature', 'momo',  'gato',  18000, 23000, 6800,  8,    20, true,  false, true, 'Figura de mousse helado en forma de gatito, base crocante y salsa a elección.', null, null),
-  ('PR02', 'Momo Perrito 150 g',             'Momos Signature', 'momo',  'perro', 18000, 23000, 6800,  6,    20, true,  false, true, 'Figura de mousse helado en forma de perrito, base crocante y salsa a elección.', null, null),
-  ('PR03', 'Momo grande 190 g',              'Momos Signature', 'momo',  'gato',  23000, 29000, 8900,  4,    25, true,  false, true, 'Momo de 190 g con doble salsa y relleno a elección.', null, null),
-  ('PR04', 'Momo premium 280 g',             'Momos Signature', 'momo',  'gato',  32000, 39000, 12500, 3,    30, true,  false, true, 'Momo premium 280 g con relleno doble, ideal para regalo.', null, null),
+  ('PR01', 'Momo Gatito',                    'Momos Signature', 'momo',  'gato',  18000, 23000, 6800,  8,    20, true,  false, true, 'Familia comercial de Lizi, Momo y Toby; la figura física define forma y gramaje.', null, null),
+  ('PR02', 'Momo Perrito',                   'Momos Signature', 'momo',  'perro', 18000, 23000, 6800,  6,    20, true,  false, true, 'Familia comercial de Max, Rocco y Danna; la figura física define forma y gramaje.', null, null),
+  ('PR03', 'Momo grande',                    'Momos Signature', 'momo',  'gato',  23000, 29000, 8900,  0,    25, true,  false, false, 'Presentación comercial en definición; no se ofrece hasta vincular una figura física canónica.', null, null),
+  ('PR04', 'Momo premium',                   'Momos Signature', 'momo',  'gato',  32000, 39000, 12500, 3,    30, true,  false, true, 'Familia comercial premium vinculada a Teo; la ficha de Cocina define su gramaje.', null, null),
   ('PR05', 'Caja x3 Momos',                  'Cajas y Combos',  'combo', null,    49000, 59000, 22500, null, 35, true,  false, true, 'Caja regalo con 3 momos surtidos, sticker y lazo. Disponibilidad según momos y cajas.', 3, 'I08'),
   ('PR06', 'Caja x4 Momos',                  'Cajas y Combos',  'combo', null,    63000, 75000, 29500, null, 40, true,  false, true, 'Caja regalo con 4 momos surtidos.', 4, 'I13'),
   ('PR07', 'Caja x6 Momos',                  'Cajas y Combos',  'combo', null,    89000, 105000, 43000, null, 45, true, false, true, 'Caja premium con 6 momos surtidos para celebraciones.', 6, 'I14'),
-  ('PR08', 'Cheesecake Momo cuchareable',    'Momos Cuchara',   'momo',  'gato',  15000, 19000, 5200,  12,   10, true,  true,  true, 'Cheesecake en vaso con figurita horizontal y salsa.', null, null),
+  ('PR08', 'Cheesecake Momo cuchareable',    'Momos Cuchara',   'pedido',null,    15000, 19000, 5200,  null, 10, true,  true,  true, 'Cheesecake en vaso preparado al momento, con sabor y salsa a elección.', null, null),
   ('PR09', 'Crepa Momo Nutella',             'Momos Antojos',   'pedido', null,   14000, 18000, 4800,  null, 12, false, true,  true, 'Crepa con Nutella, banano y topping de momo mini. Se prepara al momento.', null, null),
   ('PR10', 'Crepa Momo Oreo',                'Momos Antojos',   'pedido', null,   14000, 18000, 4600,  null, 12, false, true,  true, 'Crepa con crema de Oreo y galleta triturada. Se prepara al momento.', null, null),
   ('PR11', 'Malteada Oreo Momo',             'Momos Bebidas',   'pedido', null,   13000, 16500, 4200,  null, 8,  true,  false, true, 'Malteada cremosa de Oreo con crema batida.', null, null),
@@ -263,6 +278,21 @@ insert into products (id, nombre, cat, tipo, especie, precio, precio_rappi, cost
   ('PR14', 'Granizado de mango biche',       'Momos Bebidas',   'pedido', null,   9000,  12000, 2600,  null, 6,  true,  false, true, 'Granizado de mango biche con sal y limón opcional.', null, null),
   ('PR15', 'Granizado de durazno',           'Momos Bebidas',   'pedido', null,   9000,  12000, 2600,  null, 6,  true,  false, true, 'Granizado dulce de durazno.', null, null)
 on conflict (id) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- figuras.product_id (Producción v2)
+-- Mapeo figura→producto de la spec aprobada. Va ACÁ (no en el INSERT de
+-- figuras de más arriba) porque products recién existe a partir de este
+-- punto del script — ver nota en el bloque de figuras. UPDATE en vez de
+-- INSERT ... ON CONFLICT porque la columna se rellena sobre filas ya
+-- sembradas, no se crean filas nuevas. Idempotente por naturaleza (un UPDATE
+-- que fija siempre el mismo valor final es re-ejecutable sin efectos extra).
+-- PR03 queda sin figura: no se ofrece hasta que el negocio defina qué figura
+-- física/tamaño representa. PR08 es preparación al momento y nunca lleva figura.
+-- ---------------------------------------------------------------------------
+update figuras set product_id = 'PR01' where nombre in ('Lizi','Momo','Toby');
+update figuras set product_id = 'PR02' where nombre in ('Max','Rocco','Danna');
+update figuras set product_id = 'PR04' where nombre = 'Teo';
 
 -- ---------------------------------------------------------------------------
 -- combo_components

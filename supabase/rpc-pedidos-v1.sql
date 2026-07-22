@@ -154,6 +154,10 @@ end $$;
 -- _reserve_inventory: recorre TODOS los order_items del pedido y descuenta/
 -- reserva stock. Acumula faltantes → production_suggestions + audits
 -- agregados. Devuelve faltantes como jsonb (array de objetos).
+--
+-- EVOLUCIONADA en variantes-1b-fifo.sql (FIFO por variante) — el cuerpo
+-- desplegado vive allá; este archivo conserva la versión pre-1b como
+-- referencia histórica.
 -- ---------------------------------------------------------------------------
 create or replace function _reserve_inventory(p_order_id text) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -341,6 +345,10 @@ end $$;
 -- _release_reservations: libera reservas 'Reservada' del pedido devolviendo
 -- stock. 'producto' sin movement (paridad con la maqueta); 'empaque'/'insumo'
 -- con movement 'Entrada'. Devuelve cantidad de reservas liberadas.
+--
+-- EVOLUCIONADA en variantes-1b-fifo.sql (FIFO por variante) — el cuerpo
+-- desplegado vive allá; este archivo conserva la versión pre-1b como
+-- referencia histórica.
 -- ---------------------------------------------------------------------------
 create or replace function _release_reservations(p_order_id text) returns integer
 language plpgsql security definer set search_path = public as $$
@@ -430,7 +438,6 @@ declare
   v_faltantes jsonb := '[]'::jsonb;
   v_faltantes_linea jsonb;
   v_benefit record;
-  v_especie text;
   v_hija_product_id text;
   v_caja_num integer;
   v_slot_idx integer;
@@ -615,16 +622,18 @@ begin
               v_caja_num, v_slot_idx, v_prod.nombre;
           end if;
 
-          select especie into v_especie from figuras where nombre = v_slot->>'figura';
-          if v_especie is null then
-            raise exception 'Figura % no existe en el catálogo', v_slot->>'figura';
-          end if;
-          select cc.component_id into v_hija_product_id
-            from combo_components cc join products pr on pr.id = cc.component_id
-            where cc.combo_id = v_prod.id and pr.especie = v_especie
-            limit 1;
+          -- La especie es solo metadato visual. La hija exacta se resuelve por
+          -- la relación figura→presentación y luego se valida contra la caja.
+          select f.product_id into v_hija_product_id
+          from figuras f join products pr on pr.id=f.product_id
+          where f.nombre=v_slot->>'figura' and f.activo
+            and pr.activo and pr.tipo='momo' and pr.cat='Momos Signature';
           if v_hija_product_id is null then
-            raise exception 'No hay componente de especie % configurado para el combo %', v_especie, v_prod.nombre;
+            raise exception 'Figura % no existe o no tiene presentación comercial activa',v_slot->>'figura';
+          end if;
+          if not exists(select 1 from combo_components cc
+            where cc.combo_id=v_prod.id and cc.component_id=v_hija_product_id) then
+            raise exception 'El combo % no admite la presentación exacta de la figura %',v_prod.nombre,v_slot->>'figura';
           end if;
 
           v_parent_id := v_item_id;
@@ -831,8 +840,9 @@ begin
     (v_prev = 'Confirmado' and p_estado in ('Pendiente de pago','Pagado','Nuevo')) or
     (v_prev = 'Pendiente de pago' and p_estado in ('Pagado','Confirmado')) or
     (v_prev = 'Pagado' and p_estado in ('En producción','Pendiente de pago')) or
-    (v_prev = 'En producción' and p_estado in ('Empacado','Pagado')) or
-    (v_prev = 'Empacado' and p_estado in ('Listo para despacho','En ruta','En producción')) or
+    (v_prev = 'En producción' and p_estado in ('Listo para empaque','Pagado')) or
+    (v_prev = 'Listo para empaque' and p_estado in ('Empacado','En producción')) or
+    (v_prev = 'Empacado' and p_estado in ('Listo para despacho','En ruta','Listo para empaque')) or
     (v_prev = 'Listo para despacho' and p_estado in ('En ruta','Empacado')) or
     (v_prev = 'En ruta' and p_estado in ('Entregado','Listo para despacho')) or
     (v_prev = 'Reclamo' and p_estado = 'Entregado') or
@@ -844,7 +854,7 @@ begin
   end if;
 
   -- (3) gate de pago genérico
-  if p_estado in ('En producción','Empacado','Listo para despacho','En ruta','Entregado') and o.pagado_en is null then
+  if p_estado in ('En producción','Listo para empaque','Empacado','Listo para despacho','En ruta','Entregado') and o.pagado_en is null then
     raise exception 'MOMOS no produce ni despacha pedidos sin pago confirmado.';
   end if;
 
@@ -937,7 +947,7 @@ begin
   end if;
 
   -- [Red #7] cualquier transición: si operativo/entregado AND pagado_en AND NOT reservado → reservar
-  if p_estado in ('En producción','Empacado','Listo para despacho','En ruta','Entregado')
+  if p_estado in ('En producción','Listo para empaque','Empacado','Listo para despacho','En ruta','Entregado')
      and (case when p_estado = 'Pagado' then true else o.pagado_en is not null end)
      and not (case when p_estado = 'Pagado' then true else o.inventario_reservado end)
   then
@@ -1017,7 +1027,7 @@ begin
       if exists (
         select 1 from benefits where id = o.benefit_id and (
           estado = 'Reservado' or
-          (estado = 'Usado' and v_prev not in ('En producción','Empacado','Listo para despacho','En ruta','Entregado'))
+          (estado = 'Usado' and v_prev not in ('En producción','Listo para empaque','Empacado','Listo para despacho','En ruta','Entregado'))
         )
       ) then
         update benefits set estado = 'Activo', pedido_uso = null where id = o.benefit_id;

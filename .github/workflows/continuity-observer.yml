@@ -1,0 +1,43 @@
+name: MOMOS continuity observer
+
+on:
+  schedule:
+    - cron: "17 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: momos-continuity-observer
+  cancel-in-progress: false
+
+jobs:
+  observe-managed-backup:
+    name: continuity-observer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-continuity
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          package-manager-cache: false
+
+      - name: Install locked runtime
+        run: npm ci --omit=dev
+
+      - name: Observe managed backup without restoring it
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: npm run worker:continuity:observe

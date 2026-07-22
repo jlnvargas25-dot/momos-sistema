@@ -1,0 +1,100 @@
+{
+  "contract": "momos.commercial-pilot.closed.staging.v1",
+  "capturedAt": "2026-07-22T17:55:00Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "pilot": {
+    "id": "b402fd52-bb18-428d-91f5-34034f4128aa",
+    "key": "staging-closed-20260722-01",
+    "status": "Cerrado",
+    "version": 7,
+    "plannedOrders": 1,
+    "linkedOrders": 1,
+    "deliveredOrders": 1,
+    "reconciledOrders": 1,
+    "orderTotalCop": 44000,
+    "finalMarginCop": 26400,
+    "resultFingerprint": "266e657031d80957db9f25bc4a8aaa342afe9cb37ab3e19749bac05545db0996",
+    "startedAt": "2026-07-22T06:42:15.103295Z",
+    "closedAt": "2026-07-22T17:53:17.094682Z"
+  },
+  "recoveryCertification": {
+    "sourceEnvironment": "Production",
+    "sourceAccess": "READ_ONLY",
+    "drillId": "a0586c9f-7c82-4f4f-9159-970a348b2711",
+    "drillKey": "recovery-a0586c9f7c82df4fd159970a",
+    "backupKey": "supabase-1171502694",
+    "rpoMinutes": 0,
+    "rtoMinutes": 3.97,
+    "continuityCertifiedUntil": "2026-08-21T02:38:17.154Z",
+    "resilienceCertifiedUntil": "2026-08-21T04:15:27.0386Z",
+    "storageVerified": true,
+    "replayVerified": true
+  },
+  "order": {
+    "id": "P-1064",
+    "source": "restored paid staging order",
+    "finalStatus": "Entregado",
+    "packingVerified": true,
+    "dispatchHandoffAccepted": true,
+    "deliveryCompleted": true,
+    "openIncidents": 0,
+    "activeAssignments": 0,
+    "evidenceTypes": [
+      "Comprobante de pago",
+      "Caja abierta",
+      "Caja cerrada con sello",
+      "Entrega"
+    ],
+    "syntheticEvidence": {
+      "used": true,
+      "watermark": "STAGING - Evidencia sintetica de prueba cerrada",
+      "customerEvidence": false
+    }
+  },
+  "health": {
+    "status": "Degradado",
+    "operationReadOnly": false,
+    "blockingHighCriticalIncidents": 0,
+    "backupMonitoringEnabled": false,
+    "backupMonitoringReason": "disabled only in isolated staging; continuity is certified from an exact recovery drill",
+    "remainingNonBlockingIncident": {
+      "id": 2,
+      "checkCode": "STALE_CONNECTOR_HEARTBEATS",
+      "domain": "CONECTORES",
+      "severity": "Media",
+      "status": "Abierto",
+      "ownerRole": "Marketing/CRM"
+    },
+    "resolvedDuringPilot": [
+      {
+        "id": 49,
+        "checkCode": "BACKUP_RPO",
+        "resolutionCode": "ACEPTADO"
+      },
+      {
+        "id": 1,
+        "checkCode": "STALLED_PACKING_ORDERS",
+        "resolutionCode": "CORREGIDO"
+      }
+    ]
+  },
+  "atomicity": {
+    "firstDeliveryAttemptRolledBack": true,
+    "uploadedObjectCompensated": true,
+    "partialOrderMutationObserved": false,
+    "secondAttemptCommitted": true
+  },
+  "effects": {
+    "publicTrafficOpened": false,
+    "externalExecution": false,
+    "productionMutated": false,
+    "realCustomerPilotExecuted": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsFreeText": false
+  },
+  "conclusion": "PASS - controlled closed-loop commercial pilot completed in staging with one restored paid order, synthetic staging evidence, canonical packing and logistics handoff, delivery, financial reconciliation and immutable closure."
+}

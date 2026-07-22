@@ -1,0 +1,236 @@
+name: MOMOS staging database gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging:
+        description: Confirma que el destino es staging aislado, nunca producción
+        required: true
+        type: choice
+        options:
+          - NO
+          - STAGING
+
+permissions:
+  contents: read
+
+concurrency:
+  group: momos-staging-database-gate
+  cancel-in-progress: false
+
+jobs:
+  ordered-acceptance:
+    if: inputs.confirm_staging == 'STAGING'
+    name: staging-database-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Prove the target is isolated staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+        run: |
+          test -n "$STAGING_DATABASE_URL"
+          test -n "$STAGING_PROJECT_REF"
+          test -n "$STAGING_SUPABASE_URL"
+          test -n "$STAGING_SUPABASE_SERVICE_ROLE_KEY"
+          test -n "$PRODUCTION_PROJECT_REF"
+          test "$STAGING_PROJECT_REF" != "$PRODUCTION_PROJECT_REF"
+          case "$STAGING_DATABASE_URL" in
+            *"$STAGING_PROJECT_REF"*) ;;
+            *) echo "STAGING_DATABASE_URL no corresponde al proyecto staging sellado" >&2; exit 1 ;;
+          esac
+          case "$STAGING_SUPABASE_URL" in
+            "https://$STAGING_PROJECT_REF.supabase.co"|"https://$STAGING_PROJECT_REF.supabase.co/") ;;
+            *) echo "STAGING_SUPABASE_URL no corresponde al proyecto staging sellado" >&2; exit 1 ;;
+          esac
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          package-manager-cache: false
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Apply H102 closed commercial pilot contract to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/piloto-comercial-controlado-v1.sql
+
+      - name: Apply H103 creative advertising intelligence to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/inteligencia-creativa-publicitaria-v1.sql
+
+      - name: Apply H104 commercial pilot UI contract to staging
+
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/piloto-comercial-ui-v1.sql
+
+      - name: Apply H105 humanization and community to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/humanizacion-comunidad-v1.sql
+
+      - name: Apply H106 expanded visual library to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/biblioteca-visual-ampliada-v1.sql
+
+      - name: Run ordered acceptance with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
+          grep -q "01-106 PASS" "$RUNNER_TEMP/migrations.log"
+
+      - name: Run H102 closed commercial pilot adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-piloto-comercial-controlado-v1.sql | tee "$RUNNER_TEMP/commercial-pilot.log"
+          grep -q "H102 piloto cerrado" "$RUNNER_TEMP/commercial-pilot.log"
+
+      - name: Run H103 creative intelligence adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-inteligencia-creativa-publicitaria-v1.sql | tee "$RUNNER_TEMP/creative-intelligence.log"
+          grep -q "H103 fórmulas/versiones/Meta-TikTok" "$RUNNER_TEMP/creative-intelligence.log"
+
+      - name: Run H104 commercial pilot UI adversarial contracts
+
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-piloto-comercial-ui-v1.sql | tee "$RUNNER_TEMP/commercial-pilot-ui.log"
+          grep -q "H104 UI piloto/firmas/pedidos/salud" "$RUNNER_TEMP/commercial-pilot-ui.log"
+
+      - name: Run H105 humanization and community adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-humanizacion-comunidad-v1.sql | tee "$RUNNER_TEMP/humanization-community.log"
+          grep -q "H105 series/episodios/consentimiento/señales agregadas" "$RUNNER_TEMP/humanization-community.log"
+
+      - name: Run H106 expanded visual library adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-biblioteca-visual-ampliada-v1.sql | tee "$RUNNER_TEMP/visual-library.log"
+          grep -q "H106 sets/multivista/variantes/consentimiento" "$RUNNER_TEMP/visual-library.log"
+
+      - name: Run H100 internal operational pilot with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-piloto-operativo-e2e-v1.sql | tee "$RUNNER_TEMP/internal-pilot.log"
+          grep -q "H100 piloto operativo interno E2E" "$RUNNER_TEMP/internal-pilot.log"
+
+      - name: Run recovery contracts with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-continuidad-recuperacion-v1.sql | tee "$RUNNER_TEMP/recovery.log"
+          grep -q "H93 RPO/RTO" "$RUNNER_TEMP/recovery.log"
+
+      - name: Run isolated H94 adversarial contracts with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-certificacion-concurrencia-caos-v1.sql | tee "$RUNNER_TEMP/resilience-contracts.log"
+          grep -q "concurrencia/carga/caos aislado" "$RUNNER_TEMP/resilience-contracts.log"
+
+      - name: Run H95 observability contracts with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-observabilidad-slo-v1.sql | tee "$RUNNER_TEMP/slo-contracts.log"
+          grep -q "H95 SLO/percentiles/error-budget" "$RUNNER_TEMP/slo-contracts.log"
+
+      - name: Run H96 telemetry and alerts contracts with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-telemetria-operativa-alertas-v1.sql | tee "$RUNNER_TEMP/telemetry-alerts.log"
+          grep -q "H96 telemetria/sondas/alertas" "$RUNNER_TEMP/telemetry-alerts.log"
+
+      - name: Run H97 derived recovery evidence contracts with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-evidencia-recuperacion-derivada-v1.sql | tee "$RUNNER_TEMP/recovery-evidence.log"
+          grep -q "H97 RPO/RTO derivados" "$RUNNER_TEMP/recovery-evidence.log"
+
+      - name: Certify isolated concurrency and chaos in staging
+        env:
+          SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          MOMOS_H94_ENVIRONMENT: Staging
+          MOMOS_H94_ALLOW_STAGING: CERTIFY_NON_PRODUCTION
+          MOMOS_H94_CONCURRENCY: 64
+          MOMOS_H94_TARGET_REQUESTS: 2000
+        run: npm run test:resilience:synthetic
+
+      - name: Verify the server sealed a fresh staging certificate
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          begin
+            if not exists(
+              select 1
+              from public.operational_resilience_runs
+              where environment='Staging'
+                and status='Certificado'
+                and completed_at >= clock_timestamp()-interval '15 minutes'
+                and concurrency = 64
+                and target_request_count = 2000
+                and total_requests >= 2000
+                and invariant_failures=0
+                and result_fingerprint is not null
+            ) then
+              raise exception 'H94 no dejo un certificado staging fresco y reconciliado.';
+            end if;
+          end $$;
+          select 'STAGING_CERTIFIED - H94 concurrencia y caos PASS' as resultado;
+          SQL

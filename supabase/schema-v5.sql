@@ -42,7 +42,12 @@ begin
   insert into counters(clave, valor) values (p_clave, 1)
     on conflict (clave) do update set valor = counters.valor + 1
     returning valor into n;
-  return p_prefix || case when p_pad > 0 then lpad(n::text, p_pad, '0') else n::text end;
+  -- greatest(p_pad, length): lpad TRUNCA cuando el número excede el ancho
+  -- (lpad('100',2)='10' → colisión de PK con el id 10 histórico). El pad es
+  -- un MÍNIMO de ancho, jamás un tope — A01..A99, A100, A101… (hotfix
+  -- 2026-07-12, detectado por el dry-run de variantes Etapa 2 con el
+  -- contador de audits en 71).
+  return p_prefix || case when p_pad > 0 then lpad(n::text, greatest(p_pad, length(n::text)), '0') else n::text end;
 end $$;
 
 -- ---------- Usuarios y roles ----------
@@ -51,7 +56,7 @@ create table users (
   auth_id  uuid unique references auth.users(id), -- NUEVO: no existía en la maqueta
   nombre   text not null,
   email    text unique not null,
-  rol      text not null check (rol in ('Administrador','Cocina','Empaque','Logística','Marketing/CRM','Mensajero')),
+  rol      text not null check (rol in ('Administrador','Cajero','Coordinador de pedidos','Cocina','Empaque','Logística','Marketing/CRM','Mensajero')),
   -- 'Mensajero' (gancho ORQUESTACIÓN): identidad para deliveries.mensajero_user_id.
   -- OJO: NO crearles auth_id hasta la vista del mensajero (Fase 3) — staff_read hoy lee TODO.
   activo   boolean not null default true
@@ -67,6 +72,9 @@ create table figuras (
   especie text not null check (especie in ('gato','perro')),
   gramaje_g integer not null default 150 check (gramaje_g > 0),  -- era text "150 g" (la UI formatea)
   activo  boolean not null default true
+  -- product_id (Producción v2): FK a products, agregada más abajo vía ALTER
+  -- TABLE porque products todavía no existe en este punto del archivo —
+  -- ver sección "Producción" (alter table figuras add column product_id).
 );
 
 create table zonas (
@@ -102,8 +110,9 @@ create table catalog_values (
   primary key (categoria, valor)
 );
 
--- Config escalar (pedido_minimo, pauta_mensual, horas_congelacion, politicas,
--- relleno_fijo='Cheesecake con ganache', piso_volumen_semanal — §4 del diseño)
+-- Config escalar (pedido_minimo, pauta_mensual, horas_congelacion, tiempos de
+-- demora operativa, politicas, relleno_fijo='Cheesecake con ganache',
+-- piso_volumen_semanal — §4 del diseño)
 create table app_settings (
   clave text primary key,
   valor jsonb not null
@@ -250,7 +259,8 @@ create table creatives (
   estado           text not null default 'Idea' check (estado in
     ('Idea','En diseño','En revisión','Aprobado','Publicado','Ganador','Descartado')),
   responsable      text default '',
-  fecha_entrega    date,
+  fecha_entrega    date constraint creatives_fecha_entrega_finita
+    check (fecha_entrega is null or isfinite(fecha_entrega)),
   asset_url        text default '',
   notas            text default '',
   external_id      text,                           -- ad id / post id
@@ -259,7 +269,7 @@ create table creatives (
 
 create table content_posts (                       -- ex content_calendar
   id               text primary key,               -- CAL-01
-  fecha            date not null,
+  fecha            date not null constraint content_posts_fecha_finita check (isfinite(fecha)),
   hora             time not null default '12:00',
   canal            text not null check (canal in
     ('Instagram','Facebook','TikTok','WhatsApp','Rappi','Referidos','Influencer','Orgánico')),
@@ -275,7 +285,7 @@ create table content_posts (                       -- ex content_calendar
 
 create table metrics_daily (                       -- ex creative_results: LA ESCRIBE EL MCP/agente
   id          bigint generated always as identity primary key,
-  fecha       date not null,
+  fecha       date not null constraint metrics_daily_fecha_finita check (isfinite(fecha)),
   fuente      text not null check (fuente in ('mcp-meta','mcp-tiktok','manual')),
   campaign_id text references campaigns(id),
   creative_id text references creatives(id),
@@ -285,9 +295,62 @@ create table metrics_daily (                       -- ex creative_results: LA ES
   clicks      integer not null default 0,
   mensajes_wa integer not null default 0,
   gasto       numeric not null default 0,
-  unique (fecha, fuente, campaign_id, creative_id, post_id)
+  notas       text not null default '',
+  constraint metrics_daily_valores_validos check (
+    impresiones >= 0 and alcance >= 0 and clicks >= 0 and mensajes_wa >= 0
+    and gasto >= 0 and gasto::text not in ('NaN', 'Infinity', '-Infinity')
+  ),
+  constraint metrics_daily_tiene_dimension check (num_nonnulls(campaign_id, creative_id, post_id) >= 1)
   -- pedidos/ventas/margen NO van acá: se derivan de orders (v_campaign_metrics)
 );
+
+create unique index metrics_daily_dimensiones_dia_uq
+  on metrics_daily (fecha, fuente, campaign_id, creative_id, post_id)
+  nulls not distinct;
+
+-- Captura manual de la UI: una fila por creativo+día. El UNIQUE general de
+-- arriba admite duplicados con NULL; este índice hace idempotente el upsert.
+create unique index metrics_daily_manual_creative_dia_uq
+  on metrics_daily (fecha, creative_id)
+  where fuente = 'manual' and post_id is null;
+
+create or replace function validar_publicacion_creativo_campaign()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_campaign text;
+begin
+  if new.creative_id is null then return new; end if;
+  select campaign_id into v_campaign from creatives where id = new.creative_id for share;
+  if not found then raise exception 'El creativo % no existe', new.creative_id; end if;
+  if new.campaign_id is null then
+    new.campaign_id := v_campaign;
+  elsif new.campaign_id is distinct from v_campaign then
+    raise exception 'La publicación y el creativo deben pertenecer a la misma campaña';
+  end if;
+  return new;
+end $$;
+
+create trigger trg_content_posts_campaign_creative
+before insert or update of creative_id, campaign_id on content_posts
+for each row execute function validar_publicacion_creativo_campaign();
+
+create or replace function validar_cambio_campaign_creativo()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.campaign_id is distinct from old.campaign_id and exists (
+    select 1 from content_posts
+    where creative_id = old.id and campaign_id is distinct from new.campaign_id
+  ) then
+    raise exception 'No se puede cambiar la campaña: el creativo ya tiene publicaciones ligadas';
+  end if;
+  return new;
+end $$;
+
+create trigger trg_creatives_campaign_posts
+before update of campaign_id on creatives
+for each row execute function validar_cambio_campaign_creativo();
+
+revoke execute on function validar_publicacion_creativo_campaign() from public, anon, authenticated;
+revoke execute on function validar_cambio_campaign_creativo() from public, anon, authenticated;
 
 create table recommendations (                     -- LO QUE ESCRIBE CLAUDE
   id          bigint generated always as identity primary key,
@@ -383,7 +446,7 @@ create table orders (
   pago           text check (pago in ('Nequi','Daviplata','Bancolombia','Rappi (app)')),  -- Efectivo prohibido
   comprobante    boolean not null default false,
   estado         text not null default 'Nuevo' check (estado in
-    ('Nuevo','Confirmado','Pendiente de pago','Pagado','En producción','Empacado',
+    ('Nuevo','Confirmado','Pendiente de pago','Pagado','En producción','Listo para empaque','Empacado',
      'Listo para despacho','En ruta','Entregado','Cancelado','Reclamo')),
   obs            text default '',
   pagado_en      timestamptz,                      -- sello al confirmar pago
@@ -407,7 +470,7 @@ create table order_items (
   nombre         text not null,                    -- snapshot
   sabor  text default '', salsa text default '', relleno text default '', figura text default '',
   -- ↑ SNAPSHOTS a propósito (texto, sin FK): el histórico no se rompe si cambia el catálogo
-  cant           numeric not null check (cant > 0),
+  cant           numeric not null check (cant >= 1 and cant = trunc(cant)),
   precio         numeric not null default 0,       -- unitario snapshot (Rappi: precio_rappi)
   costo_unitario numeric not null default 0,       -- COGS CONGELADO al crear
   es_caja        boolean not null default false,   -- fila PADRE de combo
@@ -431,6 +494,35 @@ create table order_item_adiciones (                -- era order_items[].adicione
 );
 
 -- ---------- Producción ----------
+
+-- (Producción v2) figuras.product_id: mapeo figura→producto como DATO. Va
+-- acá (no en el create table figuras de más arriba) porque products recién
+-- existe a partir de este punto del archivo.
+alter table figuras add column if not exists product_id text references products(id);
+
+-- (Producción v2) corridas: el evento de producción visible para el usuario
+-- (sabor+relleno+salsa+figuras con cantidad). El servidor deriva de acá los
+-- lotes hijos reales (production_batches.corrida_id) agrupando por
+-- (producto, gramaje) — ver rpc-produccion-v2.sql sección B.
+-- OJO — sede_id SIN el FK a sedes(id) inline a propósito: la tabla `sedes`
+-- no existe en este archivo (nace en sedes-v1.sql, que se aplica DESPUÉS de
+-- schema-v5.sql en la cadena de dependencias). Cuando se aplica de punta a
+-- punta (schema-v5 → sedes-v1 → rpc-produccion-v2, el orden real), el FK se
+-- agrega ahí mismo con `alter table corridas add constraint ... references
+-- sedes(id)` — este espejo documenta la COLUMNA final, no reordena archivos.
+create table corridas (
+  id              text primary key,               -- CR-001
+  fecha           date not null,
+  sabor           text not null,
+  relleno         text default '',
+  salsa           text default '',
+  resp_user_id    text references users(id),
+  obs             text default '',
+  idempotency_key text unique,
+  sede_id         text not null default 'SEDE-01',  -- FK a sedes(id) se agrega en sedes-v1.sql
+  created_at      timestamptz not null default now()
+);
+
 create table production_batches (
   id           text primary key,                   -- L-018
   fecha        date not null,
@@ -449,7 +541,9 @@ create table production_batches (
   inicio_congelacion  timestamptz,
   molde        text references moldes(nombre),          -- gancho Fase 2: "molde X genera más imperfectos"
   ubicacion    text references ubicaciones_frio(nombre),-- gancho Fase 2: congelador/ubicación del lote
-  obs          text default ''
+  obs          text default '',
+  corrida_id   text references corridas(id),        -- (Producción v2) qué corrida generó este lote hijo
+  figuras      jsonb                                -- (Producción v2) composición: [{"figura":"Momo","cant":2}]
 );
 alter table inventory_movements add constraint mov_batch_fk foreign key (batch_id) references production_batches(id);
 
@@ -476,7 +570,7 @@ create table evidences (
   order_id     text not null references orders(id),
   tipo         text not null check (tipo in
     ('Pedido armado','Caja abierta','Caja cerrada con sello','Bolsa sellada','Comprobante de pago','Entrega')),
-  storage_path text not null,                      -- bucket `evidencias` (era url/dataURL — fix real del bug de cuota)
+  storage_path text not null unique,               -- bucket `evidencias`; una foto no se reutiliza entre pedidos
   fecha        timestamptz not null default now(),
   user_id      text references users(id)           -- NORMALIZADO (era nombre)
 );
@@ -650,8 +744,8 @@ create policy prod_update on production_batches for update to authenticated
 create policy sug_update on production_suggestions for update to authenticated
   using (current_rol() in ('Cocina','Empaque')) with check (current_rol() in ('Cocina','Empaque'));
 
--- Cualquier staff: sube evidencias y deja auditoría (nadie edita ni borra: solo admin)
-create policy evid_insert  on evidences  for insert to authenticated with check (is_staff());
+-- Evidencias solo se escriben por crear_evidencia(): valida Storage, pedido, ruta y rol.
+-- No crear una policy INSERT directa: permitiría fabricar filas sin archivo real.
 create policy audit_insert on audit_logs for insert to authenticated with check (is_staff());
 
 -- 4) claude_agent — el traficker (DISEÑO-TRAFICKER.md §3, traficker/AGENTE.md)
@@ -729,6 +823,7 @@ create view shop_mis_pedidos with (security_barrier) as
            when 'Pendiente de pago'   then 'Pedido recibido'
            when 'Pagado'              then 'Pago confirmado'
            when 'En producción'       then 'Preparando'
+           when 'Listo para empaque'  then 'Preparando'
            when 'Empacado'            then 'Preparando'
            when 'Listo para despacho' then 'Listo para despacho'
            when 'En ruta'             then 'En camino'

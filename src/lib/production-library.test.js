@@ -1,0 +1,75 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildProductionLibrary, defaultProductionProfile, productionProfilePayload,
+  productionProfileReadiness,
+} from "./production-library.js";
+
+const baseAsset = {
+  id: 1, status: "Activo", containsPeople: false, rightsStatus: "Propio",
+  readiness: { ready: true, reasons: [] },
+};
+
+test("un producto aprobado queda listo y conserva advertencia de escarcha", () => {
+  const result = productionProfileReadiness({
+    ...baseAsset,
+    productionProfile: { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado", sourceQuality: "Original con escarcha" },
+  });
+  assert.equal(result.ready, true);
+  assert.match(result.warnings[0], /escarcha/i);
+});
+
+test("manos y UGC exigen persona, derechos y consentimiento", () => {
+  const result = productionProfileReadiness({
+    ...baseAsset,
+    productionProfile: { ...defaultProductionProfile("Manos"), qaStatus: "Aprobado" },
+  });
+  assert.equal(result.ready, false);
+  assert.match(result.reasons.join(" "), /personas|autorización de imagen/i);
+  assert.match(result.reasons.join(" "), /canal y finalidad/i);
+});
+
+test("la biblioteca calcula vistas, locaciones y vacíos", () => {
+  const db = { brandProductionReady: true, brandMediaAssets: [
+    { ...baseAsset, productionProfile: { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado", viewAngle: "Frontal" } },
+    { ...baseAsset, id: 2, productionProfile: { ...defaultProductionProfile("Locación"), qaStatus: "Aprobado", locationName: "Cocina MOMOS" } },
+  ] };
+  const library = buildProductionLibrary(db);
+  assert.equal(library.summary.approved, 2);
+  assert.equal(library.summary.multiviewAngles, 1);
+  assert.equal(library.summary.locations, 1);
+  assert.ok(library.gaps.some((item) => item.componentType === "Manos"));
+});
+
+test("un paquete no aprueba si le falta el rol requerido", () => {
+  const profile = { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado" };
+  const library = buildProductionLibrary({
+    brandProductionReady: true,
+    brandMediaAssets: [{ ...baseAsset, productionProfile: profile }],
+    brandProductionPacks: [{ id: 4, status: "Borrador", requirements: { required_roles: ["Producto", "Identidad"] } }],
+    brandProductionPackAssets: [{ packId: 4, assetId: 1, role: "Producto", sequence: 1 }],
+  });
+  assert.equal(library.packs[0].readiness.ready, false);
+  assert.match(library.packs[0].readiness.reasons[0], /Identidad/);
+});
+
+test("el payload traduce la ficha a snake_case", () => {
+  const payload = productionProfilePayload({ ...defaultProductionProfile("Presentador UGC"), locationName: "  Casa creadora  ",
+    visualSetKey: " Momo-UGC-01 ", consentChannels: ["TikTok"], consentPurposes: ["Pauta"] });
+  assert.equal(payload.component_type, "Presentador UGC");
+  assert.equal(payload.location_name, "Casa creadora");
+  assert.equal(payload.consent_status, "Pendiente");
+  assert.equal(payload.visual_set_key, "momo-ugc-01");
+  assert.deepEqual(payload.consent_channels, ["TikTok"]);
+});
+
+test("agrupa multivistas del mismo sujeto sin mezclar variantes", () => {
+  const approved = { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado", visualSetKey: "momo-mango", variantLabel: "intacto" };
+  const library = buildProductionLibrary({ brandProductionReady: true, visualLibraryReady: true, brandMediaAssets: [
+    { ...baseAsset, productionProfile: { ...approved, viewAngle: "Frontal" } },
+    { ...baseAsset, id: 2, productionProfile: { ...approved, viewAngle: "Trasera", variantLabel: "bolsa" } },
+  ] });
+  assert.equal(library.visualSets.length, 1);
+  assert.equal(library.visualSets[0].hasFrontAndBack, true);
+  assert.deepEqual(library.visualSets[0].variants, ["intacto", "bolsa"]);
+});
