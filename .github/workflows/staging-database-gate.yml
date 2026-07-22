@@ -166,13 +166,20 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/calidad-maestra-biblioteca-ia-v1.sql
 
+      - name: Apply H111 clean visual master policy to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/politica-maestro-visual-limpio-v1.sql
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-110 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-111 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -246,6 +253,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-calidad-maestra-biblioteca-ia-v1.sql | tee "$RUNNER_TEMP/visual-quality.log"
           grep -q "H110 original inmutable" "$RUNNER_TEMP/visual-quality.log"
+
+      - name: Run H111 clean visual master adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-politica-maestro-visual-limpio-v1.sql | tee "$RUNNER_TEMP/clean-master.log"
+          grep -q "H111 original preservado" "$RUNNER_TEMP/clean-master.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:

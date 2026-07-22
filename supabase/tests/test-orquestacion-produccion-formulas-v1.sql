@@ -101,7 +101,7 @@ begin
     (v_asset,'Producto','Frontal','Intacto','Ninguna','Ninguna','Cuchara MOMOS de 14 cm',
       'Original limpio','Aprobado','No aplica',true,'h107-momo-master-'||v_suffix,v_actor.id,v_actor.id),
     (v_quarter,'Producto','Tres cuartos','Intacto','Ninguna','Ninguna','Cuchara MOMOS de 14 cm',
-      'Original limpio','Aprobado','No aplica',false,'h107-momo-master-'||v_suffix,v_actor.id,v_actor.id);
+      'Original limpio','Aprobado','No aplica',true,'h107-momo-master-'||v_suffix,v_actor.id,v_actor.id);
   v_pack_fp:=md5(jsonb_build_object('h107',v_suffix,'asset_id',v_asset,'quarter_asset_id',v_quarter)::text);
   insert into public.brand_production_packs(name,purpose,status,product_id,figure,channel,target_format,
     requirements,fingerprint,created_by,reviewed_by,reviewed_at,review_note)

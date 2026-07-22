@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildProductionLibrary, defaultProductionProfile, productionProfilePayload,
-  productionProfileReadiness, visualQualityReadiness, visualQualityReviewPayload,
+  cleanMasterReadiness, productionProfileReadiness, visualQualityReadiness, visualQualityReviewPayload,
   VISUAL_QUALITY_CHECKS,
 } from "./production-library.js";
 
@@ -111,4 +111,45 @@ test("el payload de revisión conserva taxonomía cerrada sin duplicados", () =>
   assert.deepEqual(payload.issues, ["Escarcha"]);
   assert.equal(payload.checks_completed.length, VISUAL_QUALITY_CHECKS.length);
   assert.equal(payload.review_notes, "Repetir la toma sin escarcha.");
+});
+
+test("H111 conserva escarcha como variante pero la excluye de generación", () => {
+  const qualityAssessment = {
+    status: "Variante artística", sourceCurrent: true, issues: ["Escarcha", "Condensación"],
+    recommendedAction: "Capturar máster limpio", usageReadiness: {
+      digital_content: { ready: true, reasons: [] },
+      image_generation: { ready: false, reasons: ["Escarcha."] },
+      video_generation: { ready: false, reasons: ["Escarcha."] },
+      element: { ready: false, reasons: ["Escarcha."] },
+    },
+  };
+  const frosted = { ...baseAsset, mediaType: "Foto", productionProfile: {
+    ...defaultProductionProfile("Producto"), qaStatus: "Aprobado", sourceQuality: "Original con escarcha", canonical: false,
+  }, qualityAssessment };
+  const state = cleanMasterReadiness(frosted);
+  const library = buildProductionLibrary({ brandProductionReady: true, visualQualityReady: true,
+    visualCleanMasterReady: true, brandMediaAssets: [frosted] });
+  assert.equal(state.className, "Variante artística");
+  assert.equal(state.ready, false);
+  assert.equal(library.summary.artisticFrost, 1);
+  assert.equal(library.generationReady.length, 0);
+});
+
+test("H111 solo habilita un restaurado canónico enlazado y certificado", () => {
+  const qualityAssessment = { status: "Aprobado", sourceCurrent: true, issues: [], recommendedAction: "Ninguna",
+    usageReadiness: { digital_content: { ready: true, reasons: [] }, image_generation: { ready: true, reasons: [] },
+      video_generation: { ready: true, reasons: [] }, element: { ready: true, reasons: [] } } };
+  const clean = { ...baseAsset, mediaType: "Foto", originalAssetId: 8, productionProfile: {
+    ...defaultProductionProfile("Producto"), qaStatus: "Aprobado", sourceQuality: "Restaurado", canonical: true,
+  }, qualityAssessment };
+  const state = cleanMasterReadiness(clean);
+  assert.equal(state.className, "Máster IA limpio");
+  assert.equal(state.ready, true);
+});
+
+test("el payload nunca declara canónica una fuente con escarcha", () => {
+  const payload = productionProfilePayload({ ...defaultProductionProfile("Producto"),
+    sourceQuality: "Original con escarcha", canonical: true, variantLabel: "" });
+  assert.equal(payload.canonical, false);
+  assert.equal(payload.variant_label, "Variante artística");
 });

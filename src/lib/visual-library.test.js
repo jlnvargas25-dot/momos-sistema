@@ -50,3 +50,31 @@ test("conserva la aptitud H110 separada para activo y set", () => {
   assert.equal(result.sets[0].ai_quality.ready, false);
   assert.equal(result.sets[0].assets[0].ai_quality.target_use, "Generación de video");
 });
+
+test("H111 separa una variante con escarcha de un máster limpio", () => {
+  const quality = { ready: false, target_use: "Generación de video",
+    reasons: ["La escarcha impide usar esta referencia como máster IA."], warnings: [],
+    status: "Variante artística", recommended_action: "Capturar máster limpio", source_current: true,
+    assessment_fingerprint: "d".repeat(32) };
+  const artistic = { ...asset({ source_quality: "Original con escarcha", canonical: false }), ai_quality: quality,
+    clean_master: { class: "Variante artística", ready: false, artistic_variant: true,
+      source_quality: "Original con escarcha", canonical: false, original_asset_id: null,
+      reasons: ["Conservar y capturar un máster limpio."], recommended_action: "Capturar máster limpio",
+      human_review_required: true, external_execution_allowed: false } };
+  const input = envelope([artistic]);
+  input.quality_contract_version = 2;
+  input.clean_master_policy_version = 1;
+  input.filters.target_use = "Generación de video";
+  const result = normalizeVisualLibrary(input);
+  assert.equal(result.clean_master_policy_version, 1);
+  assert.equal(result.sets[0].assets[0].clean_master.class, "Variante artística");
+  assert.equal(result.sets[0].assets[0].clean_master.ready, false);
+  assert.equal(result.sets[0].assets[0].production_profile.source_quality, "Original con escarcha");
+});
+
+test("H111 rechaza contratos v2 que omiten el estado de máster", () => {
+  const input = envelope();
+  input.quality_contract_version = 2;
+  input.clean_master_policy_version = 1;
+  assert.throws(() => normalizeVisualLibrary(input), /estado de máster limpio/);
+});

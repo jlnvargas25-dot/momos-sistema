@@ -1786,6 +1786,7 @@ export async function fetchCatalogos(options = {}) {
   let brandProductionReady = false;
   let visualLibraryReady = false;
   let visualQualityReady = false;
+  let visualCleanMasterReady = false;
   if (brandMediaReady) {
     const animationProbe = await capabilityResult("mundo_animado_disponible");
     const animationProbeMissing = animationProbe.error &&
@@ -1814,6 +1815,13 @@ export async function fetchCatalogos(options = {}) {
           && (visualQualityProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(visualQualityProbe.error.message || ""));
         if (visualQualityProbe.error && !visualQualityMissing) throw new Error(visualQualityProbe.error.message);
         visualQualityReady = !visualQualityMissing && visualQualityProbe.data === true;
+        if (visualQualityReady) {
+          const cleanMasterProbe = await capabilityResult("biblioteca_maestro_limpio_disponible");
+          const cleanMasterMissing = cleanMasterProbe.error
+            && (cleanMasterProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(cleanMasterProbe.error.message || ""));
+          if (cleanMasterProbe.error && !cleanMasterMissing) throw new Error(cleanMasterProbe.error.message);
+          visualCleanMasterReady = !cleanMasterMissing && cleanMasterProbe.data === true;
+        }
       }
     }
   }
@@ -1970,6 +1978,7 @@ export async function fetchCatalogos(options = {}) {
         id: row.id, assetId: row.asset_id, version: Number(row.version || 0), status: row.status,
         issues: row.issues || [], technicalSnapshot: row.technical_snapshot || {},
         usageReadiness: row.usage_readiness || {}, recommendedAction: nz(row.recommended_action),
+        cleanMasterState: row.clean_master_state || null,
         sourceCurrent: Boolean(row.source_current), assessmentFingerprint: nz(row.assessment_fingerprint),
         assessedAt: tsBogota(row.assessed_at),
       }]));
@@ -2159,7 +2168,7 @@ export async function fetchCatalogos(options = {}) {
     agencyProductionPreflightReady, agencyProductionPreflight,
     agencyGenerationAuthorizationReady, agencyGenerationAuthorizations,
     agencyHumanizationReady, agencyHumanization,
-    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, visualQualityReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, visualQualityReady, visualCleanMasterReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady,
     connectorPilotReady, connectorPilotReadiness, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,

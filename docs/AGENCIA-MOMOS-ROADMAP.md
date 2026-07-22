@@ -44,6 +44,11 @@
   Separa derechos de aptitud técnica, conserva el
   original, versiona revisiones y bloquea imagen, video o Elements deficientes
   en preflight, autorización y reclamo del worker.
+- **H111 · Política anti-escarcha:** implementada y certificada en staging en la
+  [corrida #15](https://github.com/jlnvargas25-dot/momos-sistema/actions/runs/29961545531).
+  Conserva la toma con escarcha/condensación como variante artística y exige un
+  máster limpio, canónico y enlazado para imagen, video y Elements. La evidencia
+  reproducible está en [`H111-STAGING-CLEAN-MASTER-2026-07-22.json`](H111-STAGING-CLEAN-MASTER-2026-07-22.json).
 - **Fase de experimentación cerrada:** Codex propondrá una sola variable; Agencia
   sellará control, retador, ventana y evidencia; Meta/TikTok aportarán señal y
   MOMO OPS conservará pedidos, ventas y margen.
@@ -440,6 +445,19 @@ publicación automática.
   certificó la cadena 01–110, los contratos adversariales H107–H110 y los gates
   de recuperación, observabilidad, telemetría y concurrencia sin tocar
   producción ni consumir créditos creativos.
+
+### Hito 111 — Política de máster visual limpio (implementado; certificación pendiente)
+
+- “Máster IA limpio”, “Variante artística” y “Pendiente de máster” son estados
+  distintos y visibles en Agencia MOMOS.
+- Escarcha y condensación pueden permanecer como material orgánico si el resto
+  de la revisión está aprobado, pero bloquean imagen IA, video y Elements.
+- Una restauración se sube como activo nuevo con `original_asset_id`; la foto
+  fuente, su huella y su historia permanecen intactas.
+- Producto, empaque y personaje solo pueden ser canónicos si su fuente es
+  `Original limpio` o `Restaurado`; la restauración exige vínculo al original.
+- El MCP entrega la clase, los motivos y la acción recomendada sin rutas, PII,
+  ejecución externa ni consumo de créditos.
 
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 

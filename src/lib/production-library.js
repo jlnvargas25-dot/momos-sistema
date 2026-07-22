@@ -59,7 +59,7 @@ export const PRODUCTION_PACK_STATUSES = Object.freeze([
 ]);
 
 export const VISUAL_QUALITY_ISSUES = Object.freeze([
-  "Desenfoque", "Escarcha", "Reflejo fuerte", "Oclusión", "Recorte incompleto",
+  "Desenfoque", "Escarcha", "Condensación", "Reflejo fuerte", "Oclusión", "Recorte incompleto",
   "Color o textura incorrectos", "Logo o texto ilegible", "Fondo contaminado",
   "Compresión visible", "Identidad o geometría inestable",
 ]);
@@ -102,6 +102,34 @@ export function visualQualityReadiness(asset = {}) {
     imageGeneration: qualityUse(assessment, "imageGeneration"),
     videoGeneration: qualityUse(assessment, "videoGeneration"),
     element: qualityUse(assessment, "element"),
+  };
+}
+
+export function cleanMasterReadiness(asset = {}) {
+  const serverState = asset.qualityAssessment?.cleanMasterState;
+  if (serverState) return {
+    className: serverState.class || "Pendiente de máster",
+    ready: Boolean(serverState.ready), artisticVariant: Boolean(serverState.artistic_variant ?? serverState.artisticVariant),
+    reasons: Array.isArray(serverState.reasons) ? serverState.reasons : [],
+    recommendedAction: serverState.recommended_action || serverState.recommendedAction || "Registrar dimensiones",
+    originalAssetId: serverState.original_asset_id ?? serverState.originalAssetId ?? asset.originalAssetId ?? null,
+  };
+  const profile = normalizedProfile(asset);
+  const quality = visualQualityReadiness(asset);
+  const frost = profile.sourceQuality === "Original con escarcha"
+    || quality.issues.some((issue) => ["Escarcha", "Condensación"].includes(issue));
+  const reasons = [];
+  if (frost) reasons.push("Escarcha o condensación: conservá esta versión y capturá un máster limpio.");
+  if (!frost && !profile.canonical) reasons.push("El activo no está declarado canónico.");
+  if (!frost && !["Original limpio", "Restaurado"].includes(profile.sourceQuality)) reasons.push("La fuente no califica como limpia.");
+  if (!frost && profile.sourceQuality === "Restaurado" && !asset.originalAssetId) reasons.push("La restauración no conserva vínculo con su original.");
+  if (!frost && !quality.videoGeneration.ready) reasons.push(...quality.videoGeneration.reasons);
+  const ready = !frost && reasons.length === 0;
+  return {
+    className: ready ? "Máster IA limpio" : frost ? "Variante artística" : "Pendiente de máster",
+    ready, artisticVariant: frost, reasons: [...new Set(reasons)],
+    recommendedAction: ready ? "Ninguna" : frost ? "Capturar máster limpio" : quality.recommendedAction,
+    originalAssetId: asset.originalAssetId ?? null,
   };
 }
 
@@ -170,7 +198,7 @@ export function productionProfileReadiness(asset = {}) {
   return { ready: reasons.length === 0, reasons: [...new Set(reasons)], warnings: [...new Set(warnings)], profile };
 }
 
-function packReadiness(pack, assetsById, links) {
+function packReadiness(pack, assetsById, links, cleanMasterGate = false) {
   const members = links.filter((link) => String(link.packId) === String(pack.id))
     .sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0))
     .map((link) => ({ ...link, asset: assetsById.get(String(link.assetId)) || null }));
@@ -182,6 +210,8 @@ function packReadiness(pack, assetsById, links) {
     else {
       const readiness = productionProfileReadiness(member.asset);
       if (!readiness.ready) reasons.push(`${member.role}: ${readiness.reasons[0]}`);
+      else if (cleanMasterGate && VISUAL_MEDIA_TYPES.has(member.asset.mediaType)
+        && !member.asset.cleanMasterState?.ready) reasons.push(`${member.role}: ${member.asset.cleanMasterState?.reasons?.[0] || "falta un máster IA limpio."}`);
     }
   });
   if (!members.length) reasons.push("El paquete todavía no tiene referencias.");
@@ -193,13 +223,16 @@ export function buildProductionLibrary(db = {}) {
     ...asset,
     productionReadiness: productionProfileReadiness(asset),
     aiReadiness: visualQualityReadiness(asset),
+    cleanMasterState: cleanMasterReadiness(asset),
   }));
   const active = assets.filter((asset) => asset.status === "Activo" && asset.productionProfile);
   const approved = active.filter((asset) => asset.productionReadiness.ready);
   const qualityGateEnabled = Boolean(db.visualQualityReady);
+  const cleanMasterGateEnabled = Boolean(db.visualCleanMasterReady);
   const generationReady = approved.filter((asset) => !qualityGateEnabled
     || !VISUAL_MEDIA_TYPES.has(asset.mediaType)
-    || asset.aiReadiness.videoGeneration.ready);
+    || (asset.aiReadiness.videoGeneration.ready
+      && (!cleanMasterGateEnabled || asset.cleanMasterState.ready)));
   const componentCoverage = PRODUCTION_COMPONENT_TYPES.map((componentType) => {
     const matches = active.filter((asset) => asset.productionProfile?.componentType === componentType);
     const ready = generationReady.filter((asset) => asset.productionProfile?.componentType === componentType);
@@ -209,7 +242,7 @@ export function buildProductionLibrary(db = {}) {
   const links = db.brandProductionPackAssets || [];
   const packs = (db.brandProductionPacks || []).map((pack) => ({
     ...pack,
-    readiness: packReadiness(pack, assetsById, links),
+    readiness: packReadiness(pack, assetsById, links, cleanMasterGateEnabled),
   }));
   const multiviewAngles = new Set(approved
     .filter((asset) => ["Producto", "Empaque", "Personaje"].includes(asset.productionProfile?.componentType))
@@ -232,7 +265,7 @@ export function buildProductionLibrary(db = {}) {
   })).sort((a, b) => a.key.localeCompare(b.key, "es"));
   return {
     ready: Boolean(db.brandProductionReady), expandedReady: Boolean(db.visualLibraryReady),
-    qualityReady: qualityGateEnabled,
+    qualityReady: qualityGateEnabled, cleanMasterReady: cleanMasterGateEnabled,
     assets, active, approved, generationReady, componentCoverage, packs, visualSets,
     gaps: componentCoverage.filter((item) => !item.ready),
     summary: {
@@ -248,6 +281,9 @@ export function buildProductionLibrary(db = {}) {
       videoReady: approved.filter((asset) => asset.aiReadiness.videoGeneration.ready).length,
       elementReady: approved.filter((asset) => asset.aiReadiness.element.ready).length,
       needsNewCapture: approved.filter((asset) => asset.aiReadiness.status === "Requiere nueva toma").length,
+      cleanMasters: approved.filter((asset) => asset.cleanMasterState.ready).length,
+      artisticFrost: active.filter((asset) => asset.cleanMasterState.artisticVariant).length,
+      cleanMasterPending: active.filter((asset) => !asset.cleanMasterState.ready && !asset.cleanMasterState.artisticVariant).length,
     },
   };
 }
@@ -268,13 +304,13 @@ export function productionProfilePayload(form = {}) {
     qa_notes: String(form.qaNotes || "").trim(),
     consent_status: form.consentStatus,
     visual_set_key: String(form.visualSetKey || "").trim().toLowerCase(),
-    variant_label: String(form.variantLabel || "").trim(),
+    variant_label: String(form.variantLabel || (form.sourceQuality === "Original con escarcha" ? "Variante artística" : "")).trim(),
     identity_visibility: form.identityVisibility || "No aplica",
     consent_channels: Array.isArray(form.consentChannels) ? form.consentChannels : [],
     consent_purposes: Array.isArray(form.consentPurposes) ? form.consentPurposes : [],
     consent_expires_at: form.consentExpiresAt || null,
     consent_ai_use: Boolean(form.consentAiUse),
-    canonical: Boolean(form.canonical),
+    canonical: form.sourceQuality === "Original con escarcha" ? false : Boolean(form.canonical),
   };
 }
 

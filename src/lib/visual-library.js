@@ -4,6 +4,8 @@ const COMPONENTS = new Set(["Producto", "Empaque", "Manos", "Presentador UGC", "
 const VIEWS = new Set(["No aplica", "Frontal", "Trasera", "Perfil izquierdo", "Perfil derecho", "Tres cuartos", "Superior", "Detalle / macro", "POV", "Plano general"]);
 const VISIBILITIES = new Set(["No aplica", "Manos sin rostro", "Rostro parcial", "Rostro identificable"]);
 const TARGET_USES = new Set(["Contenido digital", "Generación de imagen", "Generación de video", "Element"]);
+const SOURCE_QUALITIES = new Set(["Original limpio", "Original con escarcha", "Comprimido", "Restaurado", "Generado"]);
+const CLEAN_MASTER_CLASSES = new Set(["Máster IA limpio", "Variante artística", "Pendiente de máster"]);
 
 const object = (value, label) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} no es un objeto válido.`);
@@ -31,6 +33,33 @@ function normalizeQuality(value, label) {
   };
 }
 
+function normalizeCleanMaster(value, label) {
+  const state = object(value, label);
+  const className = String(state.class || "");
+  const sourceQuality = String(state.source_quality || "");
+  const reasons = Array.isArray(state.reasons) ? state.reasons.map(String) : [];
+  if (!CLEAN_MASTER_CLASSES.has(className) || !SOURCE_QUALITIES.has(sourceQuality)
+      || typeof state.ready !== "boolean" || typeof state.artistic_variant !== "boolean"
+      || typeof state.canonical !== "boolean" || reasons.length > 20
+      || reasons.some((reason) => reason.length > 240)) {
+    throw new Error(`${label} tiene un contrato inválido.`);
+  }
+  if (state.ready && (className !== "Máster IA limpio" || state.artistic_variant || !state.canonical)) {
+    throw new Error(`${label} declaró un máster contradictorio.`);
+  }
+  if (state.artistic_variant && (state.ready || className !== "Variante artística")) {
+    throw new Error(`${label} confundió una variante artística con el máster.`);
+  }
+  return {
+    class: className, ready: state.ready, artistic_variant: state.artistic_variant,
+    source_quality: sourceQuality, canonical: state.canonical,
+    original_asset_id: state.original_asset_id == null ? null : Number(state.original_asset_id),
+    reasons, recommended_action: String(state.recommended_action || "Registrar dimensiones"),
+    human_review_required: state.human_review_required !== false,
+    external_execution_allowed: false,
+  };
+}
+
 export function normalizeVisualLibrary(value) {
   const envelope = object(value, "La Biblioteca visual");
   assertMcpPayloadSafe(envelope);
@@ -45,6 +74,11 @@ export function normalizeVisualLibrary(value) {
     throw new Error("La Biblioteca visual perdió privacidad o revisión humana.");
   }
   if (!Array.isArray(envelope.sets) || envelope.sets.length > 50) throw new Error("La Biblioteca visual devolvió demasiados sets.");
+  const qualityContractVersion = Number(envelope.quality_contract_version || 0);
+  const cleanMasterPolicyVersion = Number(envelope.clean_master_policy_version || 0);
+  if (qualityContractVersion >= 2 && cleanMasterPolicyVersion !== 1) {
+    throw new Error("La Biblioteca visual perdió la versión de la política de máster limpio.");
+  }
   const sets = envelope.sets.map((rawSet) => {
     const set = object(rawSet, "Un set visual");
     const key = String(set.set_key || "").trim();
@@ -59,16 +93,20 @@ export function normalizeVisualLibrary(value) {
       if (!COMPONENTS.has(profile.component_type) || !VIEWS.has(profile.view_angle)
           || !VISIBILITIES.has(profile.identity_visibility)
           || String(profile.visual_set_key || "") !== (key.startsWith("asset:") ? "" : key)
-          || String(profile.variant_label || "").length > 80) throw new Error("Una ficha visual no coincide con su set.");
+          || String(profile.variant_label || "").length > 80
+          || (profile.source_quality != null && !SOURCE_QUALITIES.has(profile.source_quality))) throw new Error("Una ficha visual no coincide con su set.");
       if (["Manos", "Presentador UGC"].includes(profile.component_type) && profile.consent_valid !== true) {
         throw new Error("Un activo humano atravesó el MCP sin consentimiento válido.");
       }
       const aiQuality = rawAsset.ai_quality ? normalizeQuality(rawAsset.ai_quality, "La calidad del activo") : null;
-      return { ...normalizeBrandAsset(rawAsset), ai_quality: aiQuality, production_profile: {
+      const cleanMaster = rawAsset.clean_master ? normalizeCleanMaster(rawAsset.clean_master, "El estado de máster limpio") : null;
+      if (qualityContractVersion >= 2 && !cleanMaster) throw new Error("Un activo no declaró su estado de máster limpio.");
+      return { ...normalizeBrandAsset(rawAsset), ai_quality: aiQuality, clean_master: cleanMaster, production_profile: {
         component_type: profile.component_type, view_angle: profile.view_angle,
         physical_state: String(profile.physical_state || ""), interaction_type: String(profile.interaction_type || ""),
         visual_set_key: String(profile.visual_set_key || ""), variant_label: String(profile.variant_label || ""),
-        identity_visibility: profile.identity_visibility, canonical: Boolean(profile.canonical),
+        identity_visibility: profile.identity_visibility, source_quality: String(profile.source_quality || ""),
+        canonical: Boolean(profile.canonical),
         consent_valid: profile.consent_valid == null ? null : Boolean(profile.consent_valid),
       } };
     });
@@ -80,7 +118,8 @@ export function normalizeVisualLibrary(value) {
   if (Number(envelope.set_count) !== sets.length || Number(envelope.asset_count) !== assetCount) {
     throw new Error("La Biblioteca visual reportó conteos inconsistentes.");
   }
-  return { schema_version: envelope.schema_version, quality_contract_version: Number(envelope.quality_contract_version || 0),
+  return { schema_version: envelope.schema_version, quality_contract_version: qualityContractVersion,
+    clean_master_policy_version: cleanMasterPolicyVersion,
     filters: object(envelope.filters, "Los filtros visuales"),
     set_count: sets.length, asset_count: assetCount, sets, privacy: envelope.privacy,
     human_review_required: true, external_execution_allowed: false };
