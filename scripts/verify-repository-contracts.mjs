@@ -67,11 +67,16 @@ for (const reference of new Set(referencedSql)) {
 }
 
 const supabaseEntries = await readdir(path.join(root, "supabase"), { withFileTypes: true });
+// Los IDs cuentan SOLO en SQL ejecutable: un insert al ledger o un assert que
+// quedó comentado no es cadena ni es cobertura.
+const stripSqlComments = (sql) => sql
+  .replace(/\/\*[\s\S]*?\*\//g, " ")
+  .replace(/--[^\r\n]*/g, " ");
 const migrationOwners = new Map();
 for (const entry of supabaseEntries) {
   if (!entry.isFile() || !entry.name.endsWith(".sql")) continue;
   const file = path.join(root, "supabase", entry.name);
-  const sql = await readFile(file, "utf8");
+  const sql = stripSqlComments(await readFile(file, "utf8"));
   const pattern = /insert\s+into\s+public\.momos_ops_migrations\s*\([^)]*\)\s*values\s*\(\s*'([^']+)'/gis;
   for (const match of sql.matchAll(pattern)) {
     const owners = migrationOwners.get(match[1]) || [];
@@ -83,7 +88,7 @@ for (const [id, owners] of migrationOwners) {
   if (owners.length > 1) fail(`ID de migración duplicado ${id}: ${owners.join(", ")}`);
 }
 const orderedIds = [...migrationOwners.keys()].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-const acceptance = await readFile(path.join(root, "supabase", "tests", "test-migraciones-ordenadas.sql"), "utf8");
+const acceptance = stripSqlComments(await readFile(path.join(root, "supabase", "tests", "test-migraciones-ordenadas.sql"), "utf8"));
 if (orderedIds.length === 0) fail("No se detectaron entradas en public.momos_ops_migrations");
 else {
   // TODOS los IDs del ledger deben estar asertados en la aceptación, no solo
