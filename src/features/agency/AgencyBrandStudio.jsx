@@ -10,7 +10,7 @@ import {
   subirActivoMarca, declararLogoPrincipalMarca, archivarActivoMarca, actualizarMetadatosActivoMarca,
   eliminarActivoMarca, eliminarLogoOficialMarca, crearTrabajoCreativo, autorizarTrabajoCreativo,
   cancelarTrabajoCreativo, reintentarTrabajoCreativo, revisarSalidaCreativa, crearRevisionSalidaCreativa,
-  guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, clasificarActivoProduccion,
+  guardarReferenciaIntegracionAgencia, pausarIntegracionAgencia, prepararReanudacionIntegracionAgencia, clasificarActivoProduccion,
   crearPaqueteProduccion, crearTrabajoDesdePaqueteProduccion, resolverAprobacionHumanaMcp,
   revisarPaqueteProduccion,
 } from "../../lib/rpc";
@@ -606,6 +606,24 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
     } catch (error) { toast("error", error.message); }
   }
 
+  async function prepareIntegrationResume(integration) {
+    const acknowledgement = `PREPARAR ${integration.provider.toUpperCase()} EN STAGING SIN GENERAR NI PUBLICAR`;
+    const typed = window.prompt(`Para preparar ${integration.provider} en Staging, escribí exactamente:\n\n${acknowledgement}`);
+    if (typed == null) return;
+    const reason = window.prompt("Indicá el motivo operativo. Preparar no genera, no consume créditos y no publica.",
+      "Validación controlada del conector creativo antes del piloto.");
+    if (!reason) return;
+    try {
+      const result = await prepararReanudacionIntegracionAgencia({
+        request_key: `resume-${integration.provider.toLowerCase()}-${Date.now()}`,
+        provider: integration.provider, environment: "Staging", reason, acknowledgement: typed,
+      });
+      if (!result?.health_confirmation_required) throw new Error("El servidor no conservó la confirmación de salud obligatoria.");
+      toast("ok", `${integration.provider} quedó Configurada. Ejecutá ahora solo el health-check para confirmar; todavía no generó ni publicó.`);
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
   const mediaIcon = { Foto: "📷", Video: "🎬", Audio: "🎧", Logo: "✶", "Diseño": "🎨" };
   const summaryCards = libraryCollection === "Marca" ? [
     ["Archivos de marca", library.summary.brandAssets, "Separados de producto"],
@@ -826,7 +844,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
               <div className="flex flex-wrap gap-1.5">{integration.capabilities.map((capability) => <span key={capability} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{capability}</span>)}{integration.waiting > 0 && <span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: "#F3D7DC", color: "#8E4B5A" }}>{integration.waiting} esperando</span>}</div>
               {["Higgsfield", "Kling"].includes(integration.provider) && integration.bridgeInstalled && <div className="rounded-2xl px-3 py-2 mt-3 grid grid-cols-3 gap-2" style={{ background: "rgba(255,255,255,.72)" }}><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Worker</div><div className="text-[10px] font-bold truncate">{integration.workerVersion || "Sin versión"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Último intento</div><div className="text-[10px] font-bold">{integration.lastRun?.state || "Sin trabajos"}</div></div><div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Costo</div><div className="text-[10px] font-bold">{integration.lastRun ? fmt(integration.lastRun.actualCostCop || integration.lastRun.estimatedCostCop || 0) : "—"}</div></div></div>}
               {!integration.operational && <div className="rounded-2xl px-3 py-2 mt-3 text-[11px] font-bold" style={{ background: integration.needsAttention ? "#F6D4CD" : "#FFF2D8", color: tone.fg }}>Siguiente paso: {integration.reasons[0]}</div>}
-              <div className="flex flex-wrap gap-2 mt-3"><Btn small kind="soft" disabled={!integrationCenter.ready || !canConfigureIntegrations} onClick={() => setIntegrationEdit({ provider: integration.provider, environment: integration.environment, accountLabel: integration.accountLabel, externalAccountId: integration.externalAccountId })}>{integration.accountLabel ? "Editar referencia" : "Configurar cuenta"}</Btn>{integration.status === "Activa" && <Btn small kind="ghost" disabled={!canConfigureIntegrations} onClick={() => pauseIntegration(integration)}>Pausar</Btn>}</div>
+              <div className="flex flex-wrap gap-2 mt-3"><Btn small kind="soft" disabled={!integrationCenter.ready || !canConfigureIntegrations} onClick={() => setIntegrationEdit({ provider: integration.provider, environment: integration.environment, accountLabel: integration.accountLabel, externalAccountId: integration.externalAccountId })}>{integration.accountLabel ? "Editar referencia" : "Configurar cuenta"}</Btn>{integration.status === "Activa" && <Btn small kind="ghost" disabled={!canConfigureIntegrations} onClick={() => pauseIntegration(integration)}>Pausar</Btn>}{integration.status === "Pausada" && ["Higgsfield", "Kling"].includes(integration.provider) && <BtnAsync small disabled={!canConfigureIntegrations || !db.connectorPilotReady || !integration.canPrepareStaging} onClick={() => prepareIntegrationResume(integration)}>Preparar reanudación</BtnAsync>}</div>
             </article>;
           })}
         </div>

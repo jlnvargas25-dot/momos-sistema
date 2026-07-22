@@ -1219,6 +1219,12 @@ export async function pausarIntegracionAgencia(provider, reason) {
   return data;
 }
 
+export async function prepararReanudacionIntegracionAgencia(payload) {
+  const { data, error } = await supabase.rpc("preparar_reanudacion_integracion_agencia_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function prepararDryRunMeta(authorizationId, adAccountId, apiVersion = "v25.0") {
   const { data, error } = await supabase.rpc("preparar_dry_run_meta", {
     p_authorization_id: authorizationId, p_ad_account_id: adAccountId, p_api_version: apiVersion,

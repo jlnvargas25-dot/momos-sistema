@@ -1976,6 +1976,7 @@ export async function fetchCatalogos(options = {}) {
   // referencia de cuenta; los secretos permanecen en el runtime del servidor.
   let agencyIntegrationsReady = false; let agencyIntegrations = []; let creativeConnectorRuns = [];
   let higgsfieldConnectorReady = false; let klingConnectorReady = false;
+  let connectorPilotReady = false; let connectorPilotReadiness = null;
   if (creativeProductionReady) {
     const integrationsProbe = await capabilityResult("integraciones_agencia_disponibles");
     const integrationsProbeMissing = integrationsProbe.error &&
@@ -1993,6 +1994,16 @@ export async function fetchCatalogos(options = {}) {
         (klingProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(klingProbe.error.message || ""));
       if (klingProbe.error && !klingProbeMissing) throw new Error(klingProbe.error.message);
       klingConnectorReady = !klingProbeMissing && klingProbe.data === true;
+      const connectorPilotProbe = await capabilityResult("preparacion_piloto_conectores_disponible");
+      const connectorPilotMissing = connectorPilotProbe.error &&
+        (connectorPilotProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(connectorPilotProbe.error.message || ""));
+      if (connectorPilotProbe.error && !connectorPilotMissing) throw new Error(connectorPilotProbe.error.message);
+      connectorPilotReady = !connectorPilotMissing && connectorPilotProbe.data === true;
+      if (connectorPilotReady) {
+        const readinessResult = await supabase.rpc("momos_connector_pilot_readiness_v1");
+        if (readinessResult.error) throw new Error(readinessResult.error.message);
+        connectorPilotReadiness = readinessResult.data || null;
+      }
       const integrationsResult = await supabase.from("agency_integrations")
         .select(higgsfieldConnectorReady || klingConnectorReady
           ? "provider,kind,status,environment,account_label,external_account_id,capabilities,secret_configured,last_heartbeat_at,last_sync_at,last_error,configured_by,updated_at,worker_version,last_job_at,successful_jobs,failed_jobs"
@@ -2130,7 +2141,8 @@ export async function fetchCatalogos(options = {}) {
     agencyGenerationAuthorizationReady, agencyGenerationAuthorizations,
     agencyHumanizationReady, agencyHumanization,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
-    agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
+    agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady,
+    connectorPilotReady, connectorPilotReadiness, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,
     agencyGrowthReady, agencyGrowthPolicies, agencyGrowthSnapshots, agencyGrowthSelections,
     agencyCreativeFlowReady, agencyMasterReleases, agencyMasterReleaseEvents };

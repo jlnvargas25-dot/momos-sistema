@@ -13,6 +13,7 @@ import {
   normalizeHiggsfieldStatus,
   redactConnectorError,
 } from "../src/lib/higgsfield-connector.js";
+import { assertConnectorRuntime } from "../src/lib/connector-runtime-guard.js";
 
 const VERSION = "momos-higgsfield-worker/1.1.0";
 const ONCE = process.argv.includes("--once");
@@ -33,6 +34,13 @@ const COP_PER_CREDIT = Number(process.env.HIGGSFIELD_COP_PER_CREDIT);
 const MAX_OUTPUT_BYTES = 100 * 1024 * 1024;
 
 if (!SUPABASE_URL || !SERVICE_KEY) throw new Error("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en el entorno privado del worker.");
+const CONNECTOR_RUNTIME = assertConnectorRuntime({
+  supabaseUrl: SUPABASE_URL,
+  environment: process.env.MOMOS_CONNECTOR_ENVIRONMENT,
+  projectRef: process.env.MOMOS_CONNECTOR_PROJECT_REF,
+  stagingConfirmation: process.env.MOMOS_CONNECTOR_ALLOW_STAGING,
+  productionConfirmation: process.env.MOMOS_CONNECTOR_ALLOW_PRODUCTION,
+});
 if (process.platform === "win32" && !CUSTOM_HIGGSFIELD_BIN && !HIGGSFIELD_CLI_ENTRY) {
   throw new Error("No se pudo resolver el entrypoint del CLI Higgsfield. Define HIGGSFIELD_CLI_ENTRY en el runtime privado.");
 }
@@ -95,9 +103,10 @@ async function rpc(name, params = {}) {
 }
 
 async function reportHealth(status = "Activa", error = "", synced = false) {
-  return rpc("reportar_worker_higgsfield", {
+  return rpc("reportar_worker_higgsfield_v2", {
     p_worker_id: WORKER_ID, p_version: VERSION, p_status: status,
     p_error: redactConnectorError(error), p_synced: synced,
+    p_environment: CONNECTOR_RUNTIME.environment, p_project_ref: CONNECTOR_RUNTIME.projectRef,
   });
 }
 
@@ -231,6 +240,7 @@ async function cycle() {
     process.stdout.write(`[Higgsfield] Salud OK · CLI oficial · integración ${health?.status || "Activa"}\n`);
     return;
   }
+  if (["Pausada", "Configurada"].includes(health?.status)) return;
   await pollRuns();
   await dispatchOne();
 }

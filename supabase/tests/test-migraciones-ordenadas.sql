@@ -1759,5 +1759,36 @@ begin
     'H108 perdió separación de créditos/publicación o auditoría MCP';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-108 PASS, rollback total' as resultado_h108;
+select 'TESTS_OK - migraciones ordenadas 01-108 PASS, continúa H109' as resultado_h108;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_109_preparacion_piloto_conectores')
+    and to_regclass('public.agency_connector_runtime_seal') is not null
+    and to_regclass('public.agency_connector_resume_events') is not null,
+    'H109 no instaló aislamiento y evidencia de reanudación';
+  assert to_regprocedure('public.configurar_entorno_conectores_v1(jsonb)') is not null
+    and to_regprocedure('public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text)') is not null
+    and to_regprocedure('public.reportar_worker_kling_v2(text,text,text,text,boolean,text,text)') is not null
+    and to_regprocedure('public.preparar_reanudacion_integracion_agencia_v1(jsonb)') is not null
+    and to_regprocedure('public.momos_connector_pilot_readiness_v1()') is not null,
+    'H109 perdió una RPC canónica';
+  assert has_function_privilege('service_role','public.configurar_entorno_conectores_v1(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.preparar_reanudacion_integracion_agencia_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.momos_connector_pilot_readiness_v1()','EXECUTE')
+    and not has_function_privilege('service_role','public.reportar_worker_higgsfield(text,text,text,text,boolean)','EXECUTE')
+    and not has_table_privilege('authenticated','public.agency_connector_runtime_seal','SELECT')
+    and not has_table_privilege('service_role','public.agency_connector_resume_events','SELECT'),
+    'H109 perdió RBAC o conservó el heartbeat sin entorno';
+  assert position('credits_consumed_by_readiness' in pg_get_functiondef(
+      'public.momos_connector_pilot_readiness_v1()'::regprocedure))>0
+    and position('publication_allowed' in pg_get_functiondef(
+      'public.momos_connector_pilot_readiness_v1()'::regprocedure))>0
+    and position('project_ref_verified' in pg_get_functiondef(
+      'public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text)'::regprocedure))>0,
+    'H109 perdió cierre de créditos/publicación o verificación de project ref';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-109 PASS, rollback total' as resultado_h109;
 rollback;
