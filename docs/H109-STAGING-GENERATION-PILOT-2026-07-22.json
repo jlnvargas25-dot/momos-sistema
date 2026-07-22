@@ -1,0 +1,66 @@
+{
+  "contract": "momos.generation-pilot.staging.v1",
+  "capturedAt": "2026-07-22T19:29:37.4954519Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "execution": {
+    "method": "Supabase Management API",
+    "explicitUtf8Bytes": true,
+    "productionProjectRefBlocked": "csojbqpvujymesuvntxb",
+    "baseCommit": "045490af7e4ababc57b7738c5e105652da5ed710"
+  },
+  "migration": {
+    "id": "20260722_109_piloto_generacion_controlado",
+    "appliedAt": "2026-07-22T19:20:31.859736Z",
+    "sha256": "5e71f775a5aa4f3f19b5c590d2d09c9fdcb1ba214a13e56b2782d78e3a67b202",
+    "adversarialSha256": "005bfae0d08e27429fc5ecc418916760e30dc952450c8330aef6a3e7a62a2848",
+    "orderedAcceptanceSha256": "cf230df6147a78a6bcc299106bac95995183f1f9246187f074362c31875c0292",
+    "applied": true,
+    "idempotentRepairVerified": true
+  },
+  "acceptance": {
+    "singleTemporaryPilot": "PASS_WITH_ROLLBACK",
+    "generalQueueIsolation": "PASS_WITH_ROLLBACK",
+    "pilotLeaseAndReplayProtection": "PASS_WITH_ROLLBACK",
+    "zeroCostBeforeProviderDispatch": "PASS_WITH_ROLLBACK",
+    "privacyPublicationAndRbacGates": "PASS_WITH_ROLLBACK",
+    "orderedMigrations01To109": "PASS_WITH_ROLLBACK",
+    "localGeneralTests": "745_PASS",
+    "localPerformanceTests": "209_PASS",
+    "productionBuild": "PASS",
+    "performanceBudget": "PASS",
+    "repositoryContracts": "PASS",
+    "mcpHealth": "PASS",
+    "testRowsRemaining": 0
+  },
+  "runtime": {
+    "schema": "momos-generation-pilots/v1",
+    "persistedPilots": 0,
+    "activePilots": 0,
+    "pilotConnectorRuns": 0,
+    "humanAuthorizationRequired": true,
+    "workerMayClaimWithoutPilot": false,
+    "pilotWorkerModeAvailable": true,
+    "workerClaimedDuringCertification": false,
+    "creditsConsumedDuringCertification": false,
+    "providerCalledDuringCertification": false,
+    "publicationAllowed": false
+  },
+  "productionVerification": {
+    "readOnly": true,
+    "h109Applied": false,
+    "mutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsStoragePaths": false,
+    "containsStaffIdentity": false
+  },
+  "dependencyAudit": {
+    "highOrCritical": 0,
+    "moderate": 2,
+    "note": "npm audit reports the known @hono/node-server advisory through the MCP SDK; the available automatic fix is a breaking SDK downgrade and was not applied silently."
+  },
+  "conclusion": "PASS - H109 exige un permiso humano temporal y explícito para un único trabajo H108. La cola general no puede reclamarlo; solo un worker iniciado deliberadamente en modo piloto puede hacerlo. La certificación no llamó proveedores, no consumió créditos, no creó salidas y mantuvo la publicación bloqueada."
+}

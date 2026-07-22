@@ -399,8 +399,9 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - La operación es atómica e idempotente: revalida fórmula, paquete visual,
   identidad, kit oficial, conector saludable y tope de costo antes de crear un
   único trabajo dentro de la cola Kling/Higgsfield existente.
-- Autorizar habilita al worker para reclamar el trabajo; la propia autorización
-  no consume créditos, no llama el motor y no permite publicación.
+- Autorizar crea el trabajo protegido. Desde H109 ningún worker puede reclamarlo
+  sin un permiso piloto adicional; la autorización no consume créditos, no llama
+  el motor y no permite publicación.
 - MCP expone solamente el estado compacto y auditado de las autorizaciones. No
   puede autorizar, reclamar un worker, ejecutar un motor ni publicar.
 - La publicación conserva su revisión creativa, derechos y aprobación de
@@ -410,6 +411,26 @@ Siguiente fase operativa: ejecutar un piloto real controlado con un único traba
 autorizado, capturar recibo/costo/salida del worker existente y revisar el activo
 antes de cualquier distribución. No requiere ampliar permisos ni activar una
 publicación automática.
+
+### Hito 109 — Permiso temporal para piloto real (implementado)
+
+- Un trabajo H108 autorizado ya no entra a la cola general: necesita un permiso
+  H109 explícito, temporal, inmutable y ligado a ese trabajo, proveedor, huellas
+  y tope de costo exactos.
+- Solo puede existir un piloto `Armado`; un replay devuelve el mismo permiso y
+  un worker común no puede reclamarlo. Los workers actualizados mantienen dos
+  carriles separados: general y `--pilot`.
+- Armar no consume créditos, no crea una ejecución, no llama a Kling/Higgsfield
+  y no publica. El lease aparece únicamente cuando una persona inicia de forma
+  separada el worker piloto de una sola ejecución.
+- MCP expone `momos_generation_pilots` como lectura compacta, sin rutas, PII,
+  secretos ni identidad del equipo. No puede armar, cancelar, reclamar o ejecutar.
+- Después de generar, el activo sigue obligado a Revisión Creativa humana; la
+  distribución y publicación permanecen como un gate posterior independiente.
+
+Siguiente paso operativo: elegir un único H107 aprobado, autorizarlo con H108,
+armar H109 y, solo con una nueva confirmación humana que acepte el consumo real,
+ejecutar una vez el worker piloto correspondiente.
 
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 

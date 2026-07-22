@@ -482,8 +482,9 @@ Aplicar únicamente después de confirmar `20260722_107_orquestacion_produccion_
 1. `../autorizacion-generacion-preflight-v1.sql` — convierte un preflight H107
    aprobado en exactamente un trabajo creativo `Autorizado`, dentro de una sola
    transacción e idempotencia durable. Revalida fórmula, paquete, marca, conector
-   y tope de costo. El worker queda habilitado, pero la función no lo reclama,
-   no consume créditos y nunca autoriza publicación.
+   y tope de costo. Desde H109 el trabajo queda protegido y todavía no es
+   reclamable hasta armar un piloto; la función no consume créditos y nunca
+   autoriza publicación.
 2. `../tests/test-autorizacion-generacion-preflight-v1.sql` — prueba heartbeat
    vencido, confirmación humana ausente, replay, colisión, atomicidad, marca,
    costo, privacidad, inmutabilidad, MCP de solo lectura y RBAC; siempre rollback.
@@ -494,6 +495,26 @@ La autorización se realiza únicamente en la interfaz autenticada por una perso
 Administradora. MCP puede leer `momos_generation_authorizations`, pero no puede
 autorizar, ejecutar ni publicar. Kling/Higgsfield conservan sus leases, recibos y
 conciliación existentes; Distribución mantiene una aprobación posterior separada.
+
+## Hito 109 — Piloto de generación controlado
+
+Aplicar únicamente después de confirmar `20260722_108_autorizacion_generacion_preflight`:
+
+1. `../piloto-generacion-controlado-v1.sql` — añade un permiso temporal, único
+   e inmutable para un solo trabajo H108. Separa la cola general de la cola
+   piloto, exige un worker iniciado explícitamente con `--pilot`, conserva el
+   tope H108 y mantiene la publicación bloqueada.
+2. `../tests/test-piloto-generacion-controlado-v1.sql` — prueba confirmación,
+   replay, bypass de worker común, lease único, costo cero antes del proveedor,
+   privacidad, inmutabilidad, MCP de solo lectura y RBAC; siempre rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–109; siempre hace rollback.
+
+Armar el piloto no genera ni consume créditos. La única operación que puede
+contactar al proveedor es ejecutar manualmente uno de los scripts
+`worker:higgsfield:pilot:once` o `worker:kling:pilot:once`; eso requiere una
+confirmación humana separada fuera de la migración y de sus pruebas. La salida
+continúa sometida a Revisión Creativa y nunca se publica automáticamente.
 
 ## Hito 95 — observabilidad y SLO agregados
 

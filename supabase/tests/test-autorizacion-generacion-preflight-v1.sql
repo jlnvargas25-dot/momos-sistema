@@ -216,8 +216,14 @@ begin
     'H108 perdió huella, privacidad o separación de publicación.';
   assert exists(select 1 from jsonb_array_elements(v_snapshot#>'{snapshot,authorizations}') x
     where (x->>'job_id')::bigint=(select job_id from h108_context)
-      and x->>'job_status'='Autorizado' and (x->>'worker_may_claim')::boolean),
-    'H108 no expuso el trabajo autorizado al control seguro.';
+      and x->>'job_status'='Autorizado'
+      and ((not exists(select 1 from public.momos_ops_migrations
+              where id='20260722_109_piloto_generacion_controlado')
+            and (x->>'worker_may_claim')::boolean)
+        or (exists(select 1 from public.momos_ops_migrations
+              where id='20260722_109_piloto_generacion_controlado')
+            and not (x->>'worker_may_claim')::boolean))),
+    'H108 no expuso correctamente el trabajo autorizado y su gate H109.';
   v_log:=public.registrar_acceso_mcp_agencia(jsonb_build_object(
     'request_key','h108-log-'||pg_backend_pid(),'tool_name','momos_generation_authorizations',
     'mode','Lectura','status','OK','worker_id','h108-worker','subject_ref','generation-authorizations',
@@ -251,5 +257,5 @@ begin
   assert v_failed,'H108 permitió eliminar evidencia de autorización.';
 end $$;
 
-select 'TESTS_OK — H108 preflight→job atómico/idempotencia/marca/conector/costo/worker habilitado/no crédito/no publicación/MCP/RBAC PASS, rollback total' as resultado;
+select 'TESTS_OK — H108 preflight→job atómico/idempotencia/marca/conector/costo/gate H109/no crédito/no publicación/MCP/RBAC PASS, rollback total' as resultado;
 rollback;

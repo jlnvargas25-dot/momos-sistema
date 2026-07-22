@@ -15,9 +15,10 @@ import {
   normalizeKlingStatus,
 } from "../src/lib/kling-connector.js";
 
-const VERSION = "momos-kling-worker/1.0.0";
+const VERSION = "momos-kling-worker/1.1.0";
 const ONCE = process.argv.includes("--once");
 const HEALTH_ONLY = process.argv.includes("--health-only");
+const PILOT_ONLY = process.argv.includes("--pilot");
 const POLL_MS = Math.max(10_000, Number(process.env.KLING_POLL_MS || 30_000));
 const WORKER_ID = process.env.KLING_WORKER_ID || `${hostname()}-${process.pid}`;
 const API_KEY = String(process.env.KLING_API_KEY || "").trim();
@@ -142,7 +143,13 @@ function requestOptions(claim, media) {
 }
 
 async function dispatchOne() {
-  const claim = await rpc("reclamar_trabajo_kling", { p_worker_id: WORKER_ID, p_lease_seconds: 600 });
+  const claim = PILOT_ONLY
+    ? await rpc("reclamar_piloto_generacion_v1", {
+      p_provider: "Kling", p_worker_id: `pilot:${WORKER_ID}`, p_lease_seconds: 600,
+    })
+    : await rpc("reclamar_trabajo_creativo_general_v1", {
+      p_provider: "Kling", p_worker_id: WORKER_ID, p_lease_seconds: 600,
+    });
   if (!claim?.job) return false;
   let requestMayHaveBeenAccepted = false;
   try {

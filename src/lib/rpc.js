@@ -845,6 +845,20 @@ export async function autorizarGeneracionDesdePreflight(payload) {
   return data;
 }
 
+export async function armarPilotoGeneracion(payload) {
+  const { data, error } = await supabase.rpc("armar_piloto_generacion_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function cancelarPilotoGeneracion(pilotId, reason) {
+  const { data, error } = await supabase.rpc("cancelar_piloto_generacion_v1", {
+    p_pilot_id: Number(pilotId), p_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function proponerSerieHumanizacion(payload) {
   const { data, error } = await supabase.rpc("proponer_serie_humanizacion_v1", { p: payload });
   if (error) throw new Error(error.message);

@@ -9,6 +9,7 @@ import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta
 import { normalizeProductionActivityDelta } from "./production-delta.js";
 import { normalizeProductionPreflight } from "./production-preflight.js";
 import { normalizeGenerationAuthorizations } from "./generation-authorization.js";
+import { normalizeGenerationPilots } from "./generation-pilot.js";
 import { activeConfigurationFigureCatalog } from "./momos-domain-language.js";
 import { normalizeCreativeIntelligence } from "./creative-intelligence.js";
 import { normalizeHumanizationCommunity } from "./humanization-community.js";
@@ -1721,6 +1722,21 @@ export async function fetchCatalogos(options = {}) {
     agencyGenerationAuthorizations = normalizeGenerationAuthorizations(result.data);
   }
 
+  const generationPilotProbe = await capabilityResult("piloto_generacion_controlado_disponible");
+  const generationPilotProbeMissing = generationPilotProbe.error
+    && (generationPilotProbe.error.code === "PGRST202"
+      || /could not find the function|schema cache/i.test(generationPilotProbe.error.message || ""));
+  if (generationPilotProbe.error && !generationPilotProbeMissing) {
+    throw new Error(generationPilotProbe.error.message);
+  }
+  const agencyGenerationPilotReady = !generationPilotProbeMissing && generationPilotProbe.data === true;
+  let agencyGenerationPilots = null;
+  if (agencyGenerationPilotReady) {
+    const result = await supabase.rpc("momos_generation_pilots_v1");
+    if (result.error) throw new Error(result.error.message);
+    agencyGenerationPilots = normalizeGenerationPilots(result.data);
+  }
+
   const humanizationProbe = await capabilityResult("humanizacion_comunidad_disponible");
   const humanizationProbeMissing = humanizationProbe.error
     && (humanizationProbe.error.code === "PGRST202"
@@ -2128,6 +2144,7 @@ export async function fetchCatalogos(options = {}) {
     agencyCreativeIntelligenceReady, agencyCreativeIntelligence,
     agencyProductionPreflightReady, agencyProductionPreflight,
     agencyGenerationAuthorizationReady, agencyGenerationAuthorizations,
+    agencyGenerationPilotReady, agencyGenerationPilots,
     agencyHumanizationReady, agencyHumanization,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,

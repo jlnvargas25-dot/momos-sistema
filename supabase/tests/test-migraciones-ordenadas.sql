@@ -1759,5 +1759,37 @@ begin
     'H108 perdió separación de créditos/publicación o auditoría MCP';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-108 PASS, rollback total' as resultado_h108;
+select 'TESTS_OK - migraciones ordenadas 01-108 PASS, continúa H109' as resultado_h108;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_109_piloto_generacion_controlado')
+    and to_regclass('public.agency_generation_pilots') is not null,
+    'H109 no instaló el piloto controlado de generación';
+  assert to_regprocedure('public.piloto_generacion_controlado_disponible()') is not null
+    and to_regprocedure('public.armar_piloto_generacion_v1(jsonb)') is not null
+    and to_regprocedure('public.cancelar_piloto_generacion_v1(bigint,text)') is not null
+    and to_regprocedure('public.reclamar_trabajo_creativo_general_v1(text,text,integer)') is not null
+    and to_regprocedure('public.reclamar_piloto_generacion_v1(text,text,integer)') is not null
+    and to_regprocedure('public.momos_generation_pilots_v1()') is not null,
+    'H109 perdió una RPC canónica';
+  assert has_function_privilege('authenticated','public.armar_piloto_generacion_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.armar_piloto_generacion_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.reclamar_piloto_generacion_v1(text,text,integer)','EXECUTE')
+    and not has_function_privilege('authenticated','public.reclamar_piloto_generacion_v1(text,text,integer)','EXECUTE')
+    and not has_table_privilege('authenticated','public.agency_generation_pilots','SELECT')
+    and not has_table_privilege('service_role','public.agency_generation_pilots','SELECT'),
+    'H109 perdió RBAC o expuso la tabla privada';
+  assert exists(select 1 from pg_trigger where tgname='agency_generation_pilot_run_guard' and not tgisinternal)
+    and position('momos_generation_pilots' in pg_get_functiondef(
+      'public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0
+    and position('publication_allowed' in pg_get_functiondef(
+      'public.momos_generation_pilots_v1()'::regprocedure))>0
+    and position('credits_consumed_by_arm' in pg_get_functiondef(
+      'public.momos_generation_pilots_v1()'::regprocedure))>0,
+    'H109 perdió guard, auditoría MCP o separación de crédito/publicación';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-109 PASS, rollback total' as resultado_h109;
 rollback;

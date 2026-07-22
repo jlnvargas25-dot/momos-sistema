@@ -14,9 +14,10 @@ import {
   redactConnectorError,
 } from "../src/lib/higgsfield-connector.js";
 
-const VERSION = "momos-higgsfield-worker/1.1.0";
+const VERSION = "momos-higgsfield-worker/1.2.0";
 const ONCE = process.argv.includes("--once");
 const HEALTH_ONLY = process.argv.includes("--health-only");
+const PILOT_ONLY = process.argv.includes("--pilot");
 const POLL_MS = Math.max(10_000, Number(process.env.HIGGSFIELD_POLL_MS || 30_000));
 const WORKER_ID = process.env.HIGGSFIELD_WORKER_ID || `${hostname()}-${process.pid}`;
 const CUSTOM_HIGGSFIELD_BIN = String(process.env.HIGGSFIELD_BIN || "").trim();
@@ -132,7 +133,13 @@ function costArgs(createArgs) {
 }
 
 async function dispatchOne() {
-  const claim = await rpc("reclamar_trabajo_higgsfield", { p_worker_id: WORKER_ID, p_lease_seconds: 600 });
+  const claim = PILOT_ONLY
+    ? await rpc("reclamar_piloto_generacion_v1", {
+      p_provider: "Higgsfield", p_worker_id: `pilot:${WORKER_ID}`, p_lease_seconds: 600,
+    })
+    : await rpc("reclamar_trabajo_creativo_general_v1", {
+      p_provider: "Higgsfield", p_worker_id: WORKER_ID, p_lease_seconds: 600,
+    });
   if (!claim?.job) return false;
   const directory = path.join(tmpdir(), `momos-higgsfield-${claim.job.id}-${randomUUID()}`);
   await mkdir(directory, { recursive: false });
