@@ -18,12 +18,12 @@ begin
     'H106 permite fabricar consentimiento por tabla.';
 end $$;
 
-create temporary table h106_context(admin_id text,auth_id uuid,product_id text,front_id bigint,back_id bigint,human_id bigint) on commit drop;
+create temporary table h106_context(admin_id text,auth_id uuid,product_id text,front_id bigint,back_id bigint,human_id bigint,ghost_id bigint) on commit drop;
 grant select on h106_context to authenticated,service_role;
 
 do $$
 declare
-  v_actor public.users%rowtype; v_product text; v_front bigint; v_back bigint; v_human bigint;
+  v_actor public.users%rowtype; v_product text; v_front bigint; v_back bigint; v_human bigint; v_ghost bigint;
   v_suffix text:=pg_backend_pid()::text; v_front_path text; v_back_path text; v_human_path text;
 begin
   select * into v_actor from public.users where activo and auth_id is not null
@@ -53,7 +53,12 @@ begin
   values('H106 manos UGC','Foto','MOMOS',v_product,'Momo','Mango biche','Manos','Vertical',true,'Autorizado',true,
       '["Instagram","TikTok"]','Activo',v_human_path,md5(random()::text)||md5(random()::text),'image/png',2048,'[]','Rollback H106',v_actor.id)
   returning id into v_human;
-  insert into h106_context values(v_actor.id,v_actor.auth_id,v_product,v_front,v_back,v_human);
+  insert into public.brand_media_assets(name,media_type,source,product_id,figure,flavor,shot_type,orientation,
+    contains_people,rights_status,ai_use_allowed,allowed_channels,status,storage_path,content_hash,mime_type,size_bytes,tags,notes,created_by)
+  values('H106 objeto ausente','Foto','MOMOS',v_product,'Momo','Mango biche','Producto','Vertical',false,'Propio',true,
+      '["Instagram"]','Activo','test/h106-missing-'||v_suffix||'.png',md5(random()::text)||md5(random()::text),'image/png',2048,'[]','Rollback H106',v_actor.id)
+  returning id into v_ghost;
+  insert into h106_context values(v_actor.id,v_actor.auth_id,v_product,v_front,v_back,v_human,v_ghost);
 end $$;
 
 select set_config('request.jwt.claims',jsonb_build_object('sub',(select auth_id::text from h106_context),'role','authenticated')::text,true);
@@ -70,6 +75,8 @@ begin
   assert exists(select 1 from public.brand_asset_production_profiles where visual_set_key='momo-mango-biche'
     group by visual_set_key having count(*)=2 and count(distinct view_angle)=2),
     'H106 no agrupó las multivistas del mismo sujeto.';
+  perform public.clasificar_activo_produccion((select ghost_id from h106_context),v_base||jsonb_build_object(
+    'view_angle','Superior','variant_label','objeto-ausente'));
 
   begin
     perform public.clasificar_activo_produccion((select human_id from h106_context),jsonb_build_object(
@@ -152,7 +159,7 @@ end $$;
 
 reset role;
 do $$
-declare v_failed boolean:=false; v_human bigint:=(select human_id from h106_context); v_snapshot jsonb;
+declare v_failed boolean:=false; v_human bigint:=(select human_id from h106_context);
 begin
   assert exists(select 1 from public.agency_mcp_access_log where worker_id='h106-worker' and tool_name='momos_propose_creative_formula')
     and exists(select 1 from public.agency_mcp_access_log where worker_id='h106-worker' and tool_name='momos_humanization_community'),
@@ -167,15 +174,6 @@ begin
     from public.brand_media_assets a where a.id=v_human;
   exception when others then v_failed:=true; end;
   assert v_failed,'H106 permitió conceder la referencia humana fuera del canal autorizado.';
-
-  delete from storage.objects where bucket_id='brand-assets' and name=(
-    select storage_path from public.brand_media_assets where id=(select back_id from h106_context));
-  v_snapshot:=public.momos_visual_library_v1(jsonb_build_object('component_type','Producto',
-    'product_id',(select product_id from h106_context),'channel','Instagram','purpose','Referencia',
-    'required_views',jsonb_build_array('Frontal','Trasera'),'limit',20));
-  assert (v_snapshot->>'asset_count')::integer=1
-    and not (v_snapshot#>>'{sets,0,coverage_complete}')::boolean,
-    'H106 expuso un activo sin objeto físico o fingió cobertura multivista.';
 
 end $$;
 

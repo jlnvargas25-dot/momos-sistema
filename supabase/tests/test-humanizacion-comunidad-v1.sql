@@ -58,9 +58,16 @@ begin
   values(v_campaign,'H105 comunidad','Instagram','Branding',0,'Activa','meta','meta-h105-'||v_suffix);
   insert into public.creatives(id,campaign_id,titulo,canal,formato,estado,external_id)
   values(v_creative,v_campaign,'H105 producto real','Instagram','Reel','Publicado','creative-h105-'||v_suffix);
-  insert into public.content_posts(id,fecha,hora,canal,campaign_id,creative_id,titulo,estado,external_post_id)
-  values(v_post_one,current_date,'12:00','Instagram',v_campaign,v_creative,'H105 episodio uno','Publicado','ig-h105-a-'||v_suffix),
-        (v_post_two,current_date,'13:00','Instagram',v_campaign,v_creative,'H105 episodio dos','Publicado','ig-h105-b-'||v_suffix);
+  insert into public.content_posts(id,fecha,hora,canal,campaign_id,creative_id,titulo,estado)
+  values(v_post_one,current_date,'12:00','Instagram',v_campaign,v_creative,'H105 episodio uno','Programado'),
+        (v_post_two,current_date,'13:00','Instagram',v_campaign,v_creative,'H105 episodio dos','Programado');
+  insert into public.content_distributions(post_id,channel,status,checklist,prepared_by,
+    approved_by,approved_at,executed_by,published_at,external_post_id)
+  values(v_post_one,'Instagram','Publicada','{}',v_actor.id,v_actor.id,now(),v_actor.id,now(),'ig-h105-a-'||v_suffix),
+        (v_post_two,'Instagram','Publicada','{}',v_actor.id,v_actor.id,now(),v_actor.id,now(),'ig-h105-b-'||v_suffix);
+  update public.content_posts set estado='Publicado',
+    external_post_id=case id when v_post_one then 'ig-h105-a-'||v_suffix else 'ig-h105-b-'||v_suffix end
+  where id in (v_post_one,v_post_two);
   insert into public.metrics_daily(fecha,fuente,campaign_id,creative_id,post_id,impresiones,alcance,clicks,mensajes_wa,gasto,notas)
   values(current_date,'mcp-meta',v_campaign,v_creative,v_post_one,600,450,20,0,0,'H105 agregado'),
         (current_date,'mcp-meta',v_campaign,v_creative,v_post_two,400,300,12,0,0,'H105 agregado');

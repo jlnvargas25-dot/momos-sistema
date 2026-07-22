@@ -162,6 +162,53 @@ create index if not exists agency_community_signal_rollups_recent_idx
 create index if not exists agency_community_signal_rollups_episode_idx
   on public.agency_community_signal_rollups(episode_id,window_end desc,id desc);
 
+-- Reinstala los contratos textuales para que una reaplicación idempotente
+-- también repare defaults o constraints creados por un transporte no UTF-8.
+alter table public.agency_humanization_series
+  drop constraint if exists agency_humanization_series_emotional_territory_check,
+  drop constraint if exists agency_humanization_series_mode_check,
+  drop constraint if exists agency_humanization_series_status_check,
+  drop constraint if exists agency_humanization_series_check1;
+alter table public.agency_humanization_series
+  add constraint agency_humanization_series_emotional_territory_check check(emotional_territory in (
+    'Antojo','Ternura','Celebración','Compañía','Humor','Pertenencia')),
+  add constraint agency_humanization_series_mode_check check(mode in ('Orgánico','Pauta','Híbrido')),
+  add constraint agency_humanization_series_status_check check(status in (
+    'Propuesta','En revisión','Aprobada','Sustituida','Archivada','Descartada')),
+  add constraint agency_humanization_series_check1 check(
+    (status in ('Propuesta','En revisión') and reviewed_at is null)
+    or (status in ('Aprobada','Sustituida','Archivada','Descartada') and reviewed_at is not null));
+
+alter table public.agency_humanization_episodes
+  drop constraint if exists agency_humanization_episodes_story_kind_check,
+  drop constraint if exists agency_humanization_episodes_representation_check,
+  drop constraint if exists agency_humanization_episodes_status_check,
+  drop constraint if exists agency_humanization_episodes_check1;
+alter table public.agency_humanization_episodes
+  add constraint agency_humanization_episodes_story_kind_check check(story_kind in (
+    'Detrás de escena','Ritual de producto','Historia autorizada','UGC autorizado',
+    'Pregunta de comunidad','Personaje y mundo','Momento de equipo')),
+  add constraint agency_humanization_episodes_representation_check check(representation in (
+    'Persona real','Personaje ficticio','Recreación / actor','Contenido sintético',
+    'Producto real','Comunidad agregada')),
+  add constraint agency_humanization_episodes_status_check check(status in (
+    'Propuesta','En revisión','Aprobado','Archivado','Descartado')),
+  add constraint agency_humanization_episodes_check1 check(
+    (status in ('Propuesta','En revisión') and reviewed_at is null)
+    or (status in ('Aprobado','Archivado','Descartado') and reviewed_at is not null));
+
+alter table public.agency_community_signal_rollups
+  alter column outcome set default 'En revisión',
+  drop constraint if exists agency_community_signal_rollups_outcome_check,
+  drop constraint if exists agency_community_signal_rollups_check4;
+alter table public.agency_community_signal_rollups
+  add constraint agency_community_signal_rollups_outcome_check check(outcome in (
+    'En revisión','Conexión ganadora','Prometedora','Inconclusa','Agotada','Descartada')),
+  add constraint agency_community_signal_rollups_check4 check(
+    (outcome='En revisión' and decided_by is null and decided_at is null)
+    or (outcome<>'En revisión' and decided_by is not null and decided_at is not null
+      and length(btrim(decision_note)) between 20 and 600));
+
 alter table public.agency_humanization_series enable row level security;
 alter table public.agency_humanization_episodes enable row level security;
 alter table public.agency_humanization_episode_publications enable row level security;

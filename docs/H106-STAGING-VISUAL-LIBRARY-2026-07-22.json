@@ -1,0 +1,63 @@
+{
+  "contract": "momos.visual-library.staging.v1",
+  "capturedAt": "2026-07-22T18:10:04.245Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "execution": {
+    "method": "Supabase Management API",
+    "explicitUtf8Bytes": true,
+    "productionProjectRefBlocked": "csojbqpvujymesuvntxb",
+    "baseCommit": "180d913b47f2c4e84f91fc2b3382acbbb7b5d83f"
+  },
+  "migrations": [
+    {
+      "id": "20260722_105_humanizacion_comunidad",
+      "sha256": "678a9798b4679c63e39054cd90037b1d61eeaf5de2a443ad8d91f7730e8d4589",
+      "applied": true,
+      "idempotentRepairVerified": true
+    },
+    {
+      "id": "20260722_106_biblioteca_visual_ampliada",
+      "sha256": "a90150be4707115b6c9ffa2427619361a3c8c16aacbf2c3bed7abf35cdd66a6c",
+      "applied": true,
+      "idempotentRepairVerified": true
+    }
+  ],
+  "acceptance": {
+    "humanizationCommunity": "PASS_WITH_ROLLBACK",
+    "expandedVisualLibrary": "PASS_WITH_ROLLBACK",
+    "orderedMigrations01To106": "PASS_WITH_ROLLBACK",
+    "utf8ScopeValid": true,
+    "testRowsRemaining": 0
+  },
+  "runtime": {
+    "humanizationSchema": "momos-humanization-community/v1",
+    "visualLibrarySchema": "momos-visual-library/v1",
+    "serviceRoleCanReadVisualLibrary": true,
+    "authenticatedCannotBypassVisualLibrary": true,
+    "humanApprovalRequired": true,
+    "externalExecutionAllowed": false,
+    "visualSetsCurrentlyApproved": 0
+  },
+  "productionVerification": {
+    "readOnly": true,
+    "h105OrH106Rows": 0,
+    "mutated": false
+  },
+  "effects": {
+    "publicTrafficOpened": false,
+    "externalJobsDispatched": false,
+    "creativeCreditsConsumed": false,
+    "productionMutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsStoragePaths": false
+  },
+  "automation": {
+    "githubStagingEnvironmentConfigured": false,
+    "reason": "The repository has no GitHub staging environment or database connection secret yet; this certified run used the staging-only Supabase project directly."
+  },
+  "conclusion": "PASS - H105 and H106 are active in isolated staging; adversarial and ordered acceptance passed with rollback, REST projections remain read-only and production was not changed."
+}

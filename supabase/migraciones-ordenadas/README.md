@@ -454,6 +454,8 @@ Codex consulta `momos_visual_library` con canal y finalidad exactos. Recibe sets
 cobertura y huellas aprobadas; nunca rutas privadas, identidad de personas,
 evidencia legal, PII, secretos, publicación o ejecución externa.
 
+Certificación real de staging: `../../docs/H106-STAGING-VISUAL-LIBRARY-2026-07-22.json`.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:
