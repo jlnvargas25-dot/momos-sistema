@@ -60,6 +60,14 @@ p50/p95/p99 y la huella del servidor, pero no PII, secretos ni datos comerciales
 H100 recorre Pago, Cocina, Empaque, relevo físico, Logística y Entrega con las RPC
 canónicas; sus fixtures de evidencia no sustituyen la prueba de Storage H97 y el
 rollback se comprueba buscando cero filas sintéticas al terminar.
+H101 complementa el gate SQL con un piloto de interfaz sobre el mismo staging
+sellado. El lanzador obtiene únicamente la clave publicable para Vite; la service
+role permanece en el proceso privado que prepara y revoca cinco identidades
+sintéticas. El cierre exige pedido Entregado, evidencia de Pago/Empaque/Entrega,
+relevo aceptado, recarga Realtime sin pérdida, cero errores de consola, recibo
+sin PII/secretos y eliminación del archivo local de sesión. H101 no es una nueva
+migración: conserva la cadena 01–100 y certifica la integración del frontend.
+
 La service role de staging vive exclusivamente en el environment protegido;
 nunca debe configurarse con una clave o URL de producción.
 

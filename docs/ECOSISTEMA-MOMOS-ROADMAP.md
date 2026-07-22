@@ -236,6 +236,19 @@ clientes, pedidos, evidencias o domicilios sintéticos. El recibo está en
 interno; todavía no certifica checkout público, webhook de pago, carga de Storage
 en este mismo ensayo, un cliente real ni tráfico alto sostenido.
 
+**H101 certificado en staging:** el recorrido con navegador real creó el pedido
+sintético `P-1066` y lo llevó por Recepción, Pago, Cocina, Empaque, verificación
+exacta, cuatro evidencias reales de Storage, relevo físico, Logística y Entrega.
+Se probaron cinco sesiones con permisos acumulables, recarga, reconexión Realtime
+y consola limpia. El ensayo detectó que Pedidos abierto como primera vista podía
+mostrar productos desactivados desde el catálogo semilla; el coordinador ahora
+hidrata Catálogos y Operativo antes de ofrecer el menú vendible, y la corrección
+se verificó en el mismo staging. Las credenciales sintéticas fueron revocadas y
+el recibo sin PII ni secretos está en
+`docs/H101-STAGING-UI-PILOT-2026-07-22.json`. No se tocó producción y esta
+certificación no sustituye un piloto con cliente real, checkout público, webhook
+de pago ni carga alta sostenida.
+
 **H95 aplicado:** el Centro de Salud incorpora
 políticas SLO versionadas y una frontera privada e idempotente para telemetría agregada. Calcula disponibilidad,
 presupuesto de error, p50/p95/p99 por histograma, saturación, colas y vigencia en

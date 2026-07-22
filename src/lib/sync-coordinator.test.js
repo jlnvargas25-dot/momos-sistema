@@ -94,7 +94,7 @@ test("calcula TTL por dominio sin refrescar catálogos vigentes", async () => {
 test("una vista operativa no consulta Agencia y una vista comercial usa solo su contrato cerrado", () => {
   assert.deepEqual(syncDomainsForView("Produccion"), [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS]);
   assert.deepEqual(syncDomainsForView("Inventario terminado"), [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS]);
-  assert.deepEqual(syncDomainsForView("Pedidos"), [SYNC_DOMAINS.OPERATIONS]);
+  assert.deepEqual(syncDomainsForView("Pedidos"), [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS]);
   assert.deepEqual(syncDomainsForView("Productos"), [SYNC_DOMAINS.CATALOGS]);
   assert.deepEqual(syncDomainsForView("Finanzas"), [SYNC_DOMAINS.FINANCE]);
   assert.deepEqual(syncDomainsForView("Configuración"), [SYNC_DOMAINS.CONFIGURATION]);

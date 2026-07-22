@@ -1,0 +1,74 @@
+{
+  "contract": "momos.ui-operational-pilot.staging.v1",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "executedAt": "2026-07-22T05:28:12.604Z",
+  "result": "PASS",
+  "order": {
+    "id": "P-1066",
+    "finalStatus": "Entregado",
+    "paymentEvidence": true,
+    "paid": true,
+    "packingLineCount": 1,
+    "deliveryProvider": "Picap",
+    "deliveryStatus": "Entregado",
+    "physicalHandoff": "Aceptado"
+  },
+  "flow": {
+    "stages": [
+      "order-created",
+      "payment-confirmed",
+      "kitchen-started",
+      "kitchen-to-packing",
+      "packing-lines-verified",
+      "open-box-evidence",
+      "sealed-box-evidence",
+      "ready-for-dispatch",
+      "physical-handoff-accepted",
+      "in-route",
+      "delivery-evidence",
+      "delivered"
+    ],
+    "roleSessions": [
+      "Administrador",
+      "Cajero y Coordinador de pedidos",
+      "Cocina",
+      "Empaque",
+      "Logistica"
+    ],
+    "storageEvidenceTypes": [
+      "Comprobante de pago",
+      "Caja abierta",
+      "Caja cerrada con sello",
+      "Entrega"
+    ],
+    "realtimeReconnectPersisted": true,
+    "browserConsoleErrors": 0
+  },
+  "finding": {
+    "detected": "Pedidos abierto como primera vista podia conservar el catalogo semilla y mostrar productos desactivados.",
+    "fixed": "Pedidos hidrata Catalogos y Operativo antes de ofrecer el menu vendible.",
+    "verified": "El selector final mostro solo productos activos del catalogo canonico."
+  },
+  "cleanup": {
+    "syntheticProfiles": 5,
+    "credentialsRevoked": true,
+    "sessionFileRemoved": true,
+    "businessEvidencePreservedInStaging": true
+  },
+  "scope": {
+    "realBrowserUiCertified": true,
+    "realRoleSessionsCertified": true,
+    "realStorageUploadsCertified": true,
+    "productionTouched": false,
+    "realCustomerPilot": false,
+    "publicCheckoutCertified": false,
+    "paymentWebhookCertified": false,
+    "highTrafficCertified": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "usesSyntheticCustomer": true
+  }
+}

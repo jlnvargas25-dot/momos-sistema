@@ -11,9 +11,15 @@ export const SYNC_DOMAINS = Object.freeze({
 const KNOWN_DOMAINS = new Set(Object.values(SYNC_DOMAINS));
 
 const OPERATIONAL_VIEWS = new Set([
-  "pedidos", "empaque",
+  "empaque",
   "reclamos", "historial operativo", "clientes", "beneficios",
 ]);
+
+// Pedidos consulta el flujo vivo, pero al agendar también necesita el menú
+// vendible canónico (activo, precio, familia, figuras y combos). Tratarlo como
+// solo operativo deja el catálogo semilla en memoria y puede volver a ofrecer
+// productos que el servidor ya desactivó.
+const ORDER_ENTRY_VIEWS = new Set(["pedidos"]);
 
 const LOGISTICS_VIEWS = new Set(["domicilios"]);
 
@@ -62,6 +68,7 @@ function normalizedKey(value) {
 
 export function syncDomainsForView(view, _options = {}) {
   const key = normalizedKey(view);
+  if (ORDER_ENTRY_VIEWS.has(key)) return [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS];
   if (OPERATIONAL_VIEWS.has(key)) return [SYNC_DOMAINS.OPERATIONS];
   if (LOGISTICS_VIEWS.has(key)) return [SYNC_DOMAINS.LOGISTICS];
   if (FINANCE_VIEWS.has(key)) return [SYNC_DOMAINS.FINANCE];
