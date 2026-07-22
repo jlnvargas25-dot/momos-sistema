@@ -160,7 +160,8 @@ Esta tabla debe actualizarse después de cada gate; nunca por percepción.
 **Objetivo:** convertir operación y creatividad en crecimiento medible.
 
 - [ ] Inicio Ejecutivo y flujos guiados simplifican creación, aprobación, publicación y análisis.
-- [ ] Biblioteca conserva producto, empaque, personajes, UGC, manos, locaciones, audio, derechos y consentimiento.
+- [ ] Biblioteca conserva producto, empaque, personajes, UGC, manos, locaciones, audio, derechos, consentimiento, originales y linaje de versiones mejoradas.
+- [ ] Cada referencia distingue derechos de aptitud técnica para contenido, imagen IA, video IA y Elements; cambios de fuente invalidan la certificación.
 - [ ] Codex formula hipótesis, ángulos y variantes; MOMO OPS sigue siendo fuente de verdad.
 - [ ] Higgsfield recibe únicamente paquetes y preflights aprobados; costo y resultado regresan al ledger.
 - [ ] Máster, QA, publicación y pauta tienen aprobaciones separadas.

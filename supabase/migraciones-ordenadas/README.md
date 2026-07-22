@@ -514,6 +514,28 @@ privados. Administración solo prepara la reanudación en `Staging`; un
 health-check del worker v2 debe confirmarla después. Preparar o consultar salud
 no reclama trabajos, no llama generación, no consume créditos y no publica.
 
+## Hito 110 — Calidad maestra de Biblioteca para IA
+
+Aplicar únicamente después de confirmar `20260722_109_preparacion_piloto_conectores`:
+
+1. `../calidad-maestra-biblioteca-ia-v1.sql` — conserva cada original, registra
+   revisiones humanas append-only y calcula aptitud independiente para contenido
+   digital, generación de imagen, generación de video y Elements. Exige
+   dimensiones, derechos, QA, seis controles visuales, linaje de derivados y
+   cobertura multivista según el uso.
+2. `../tests/test-calidad-maestra-biblioteca-ia-v1.sql` — prueba escarcha,
+   resolución, nueva toma, multivista, inmutabilidad, RBAC, privacidad MCP y los
+   tres gates previos a ejecución; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–110; siempre hace rollback.
+
+La aprobación de derechos no equivale a calidad técnica. Codex consulta
+`momos_visual_library` con `target_use` y recibe motivos de remediación sin rutas
+privadas. Un preflight no puede aprobarse, una autorización no puede crearse y
+un worker no puede iniciar si las referencias dejaron de ser aptas. Revisar,
+subir una versión mejorada o consultar calidad no genera, no publica ni consume
+créditos.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

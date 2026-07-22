@@ -1792,5 +1792,36 @@ begin
     'H109 perdió cierre de créditos/publicación o verificación de project ref';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-109 PASS, rollback total' as resultado_h109;
+select 'TESTS_OK - migraciones ordenadas 01-109 PASS, continúa H110' as resultado_h109;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_110_calidad_maestra_biblioteca_ia')
+    and to_regclass('public.brand_visual_quality_assessments') is not null,
+    'H110 no instaló la evidencia append-only de calidad visual';
+  assert to_regprocedure('public.biblioteca_calidad_ia_disponible()') is not null
+    and to_regprocedure('public.biblioteca_calidad_ia_read_model_v1()') is not null
+    and to_regprocedure('public.revisar_calidad_activo_visual_v1(bigint,jsonb)') is not null
+    and to_regprocedure('public.estado_calidad_paquete_visual_v1(bigint,text)') is not null,
+    'H110 perdió una RPC canónica';
+  assert has_function_privilege('authenticated','public.revisar_calidad_activo_visual_v1(bigint,jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.revisar_calidad_activo_visual_v1(bigint,jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.biblioteca_calidad_ia_read_model_v1()','EXECUTE')
+    and not has_table_privilege('authenticated','public.brand_visual_quality_assessments','SELECT')
+    and not has_table_privilege('authenticated','public.brand_visual_quality_assessments','INSERT')
+    and not has_table_privilege('service_role','public.brand_visual_quality_assessments','SELECT'),
+    'H110 perdió RBAC o expuso la evidencia privada';
+  assert exists(select 1 from pg_trigger where tgname='agency_formula_plan_visual_quality_guard' and not tgisinternal)
+    and exists(select 1 from pg_trigger where tgname='agency_formula_authorization_visual_quality_guard' and not tgisinternal)
+    and exists(select 1 from pg_trigger where tgname='creative_job_visual_quality_guard' and not tgisinternal),
+    'H110 perdió uno de los tres gates de calidad antes de consumir créditos';
+  assert position('target_use' in pg_get_functiondef('public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('quality_contract_version' in pg_get_functiondef('public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('credits_consumed' in pg_get_functiondef('public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('external_execution_allowed' in pg_get_functiondef('public.momos_visual_library_v1(jsonb)'::regprocedure))>0,
+    'H110 perdió uso objetivo, calidad o cierre de ejecución externa';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-110 PASS, rollback total' as resultado_h110;
 rollback;

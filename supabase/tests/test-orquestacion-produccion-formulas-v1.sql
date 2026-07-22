@@ -24,7 +24,7 @@ end $$;
 
 create temporary table h107_context(
   admin_id text,auth_id uuid,product_id text,campaign_id text,creative_id text,
-  formula_id bigint,draft_formula_id bigint,pack_id bigint,asset_id bigint,
+  formula_id bigint,draft_formula_id bigint,pack_id bigint,asset_id bigint,quarter_asset_id bigint,
   plan_id bigint,jobs_before bigint
 ) on commit drop;
 grant select,update on h107_context to authenticated,service_role;
@@ -32,7 +32,7 @@ grant select,update on h107_context to authenticated,service_role;
 do $$
 declare
   v_actor public.users%rowtype; v_product text; v_campaign text; v_creative text;
-  v_formula bigint; v_draft bigint; v_pack bigint; v_asset bigint;
+  v_formula bigint; v_draft bigint; v_pack bigint; v_asset bigint; v_quarter bigint;
   v_suffix text:=pg_backend_pid()::text; v_path text; v_formula_snapshot jsonb;
   v_formula_fp text; v_pack_fp text;
 begin
@@ -78,32 +78,61 @@ begin
 
   v_path:='test/h107-momo-'||v_suffix||'.png';
   insert into storage.objects(bucket_id,name,metadata)
-  values('brand-assets',v_path,'{"mimetype":"image/png","size":4096}'::jsonb);
+  values('brand-assets',v_path,'{"mimetype":"image/png","size":250000}'::jsonb);
   insert into public.brand_media_assets(name,media_type,source,product_id,figure,flavor,shot_type,
     orientation,contains_people,rights_status,ai_use_allowed,allowed_channels,status,storage_path,
-    content_hash,mime_type,size_bytes,tags,notes,created_by)
+    content_hash,mime_type,size_bytes,width,height,tags,notes,created_by)
   values('H107 Momo frontal','Foto','MOMOS',v_product,'Momo','Mango biche','Producto','Vertical',
     false,'Propio',true,'["Instagram"]','Activo',v_path,md5(random()::text)||md5(random()::text),
-    'image/png',4096,'[]','Rollback H107',v_actor.id) returning id into v_asset;
+    'image/png',250000,1080,1920,'[]','Rollback H107',v_actor.id) returning id into v_asset;
+  v_path:='test/h107-momo-quarter-'||v_suffix||'.png';
+  insert into storage.objects(bucket_id,name,metadata)
+  values('brand-assets',v_path,'{"mimetype":"image/png","size":250000}'::jsonb);
+  insert into public.brand_media_assets(name,media_type,source,product_id,figure,flavor,shot_type,
+    orientation,contains_people,rights_status,ai_use_allowed,allowed_channels,status,storage_path,
+    content_hash,mime_type,size_bytes,width,height,tags,notes,created_by)
+  values('H107 Momo tres cuartos','Foto','MOMOS',v_product,'Momo','Mango biche','Producto','Vertical',
+    false,'Propio',true,'["Instagram"]','Activo',v_path,md5(random()::text)||md5(random()::text),
+    'image/png',250000,1080,1920,'[]','Rollback H107',v_actor.id) returning id into v_quarter;
   insert into public.brand_asset_production_profiles(asset_id,component_type,view_angle,physical_state,
-    interaction_type,hand_assignment,source_quality,qa_status,consent_status,canonical,created_by,updated_by)
-  values(v_asset,'Producto','Frontal','Intacto','Ninguna','Ninguna','Original limpio','Aprobado',
-    'No aplica',true,v_actor.id,v_actor.id);
-  v_pack_fp:=md5(jsonb_build_object('h107',v_suffix,'asset_id',v_asset)::text);
+    interaction_type,hand_assignment,scale_reference,source_quality,qa_status,consent_status,canonical,
+    visual_set_key,created_by,updated_by)
+  values
+    (v_asset,'Producto','Frontal','Intacto','Ninguna','Ninguna','Cuchara MOMOS de 14 cm',
+      'Original limpio','Aprobado','No aplica',true,'h107-momo-master-'||v_suffix,v_actor.id,v_actor.id),
+    (v_quarter,'Producto','Tres cuartos','Intacto','Ninguna','Ninguna','Cuchara MOMOS de 14 cm',
+      'Original limpio','Aprobado','No aplica',false,'h107-momo-master-'||v_suffix,v_actor.id,v_actor.id);
+  v_pack_fp:=md5(jsonb_build_object('h107',v_suffix,'asset_id',v_asset,'quarter_asset_id',v_quarter)::text);
   insert into public.brand_production_packs(name,purpose,status,product_id,figure,channel,target_format,
     requirements,fingerprint,created_by,reviewed_by,reviewed_at,review_note)
   values('H107 paquete '||v_suffix,'Referencias exactas para validar el preflight H107.','Aprobado',
     v_product,'Momo','Instagram','Reel 9:16','{"required_roles":["Producto"]}',v_pack_fp,
     v_actor.id,v_actor.id,clock_timestamp(),'Activo y derechos revisados.') returning id into v_pack;
   insert into public.brand_production_pack_assets(pack_id,asset_id,role,sequence,required,added_by)
-  values(v_pack,v_asset,'Producto',1,true,v_actor.id);
+  values
+    (v_pack,v_asset,'Producto',1,true,v_actor.id),
+    (v_pack,v_quarter,'Continuidad',2,true,v_actor.id);
   insert into h107_context values(v_actor.id,v_actor.auth_id,v_product,v_campaign,v_creative,
-    v_formula,v_draft,v_pack,v_asset,null,(select count(*) from public.creative_generation_jobs));
+    v_formula,v_draft,v_pack,v_asset,v_quarter,null,(select count(*) from public.creative_generation_jobs));
 end $$;
 
 select set_config('request.jwt.claims',jsonb_build_object(
   'sub',(select auth_id::text from h107_context),'role','authenticated')::text,true);
 set local role authenticated;
+
+do $$
+declare
+  v_checks jsonb:='["Enfoque y exposición","Identidad y geometría","Color y textura","Recorte y oclusiones","Logo y texto","Fondo y reflejos"]'::jsonb;
+begin
+  if to_regprocedure('public.revisar_calidad_activo_visual_v1(bigint,jsonb)') is not null then
+    perform public.revisar_calidad_activo_visual_v1((select asset_id from h107_context),
+      jsonb_build_object('issues','[]'::jsonb,'checks_completed',v_checks,
+        'review_notes','Referencia frontal limpia verificada para la prueba H107.'));
+    perform public.revisar_calidad_activo_visual_v1((select quarter_asset_id from h107_context),
+      jsonb_build_object('issues','[]'::jsonb,'checks_completed',v_checks,
+        'review_notes','Referencia tres cuartos limpia verificada para la prueba H107.'));
+  end if;
+end $$;
 
 do $$
 declare
