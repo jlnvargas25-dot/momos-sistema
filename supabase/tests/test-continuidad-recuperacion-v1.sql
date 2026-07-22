@@ -31,6 +31,7 @@ end $$;
 
 create temporary table h93_context(
   admin_id text not null,auth_id uuid not null,kitchen_id text not null,
+  backup_key text not null,
   backup_verified_before timestamptz
 ) on commit drop;
 
@@ -44,6 +45,7 @@ begin
   values('H93-C-'||v_suffix,'Cocina H93','h93-c-'||v_suffix||'@momos.test',
     'Cocina',array['Cocina']::text[],true);
   insert into h93_context values(v_admin.id,v_admin.auth_id,'H93-C-'||v_suffix,
+    'h93-managed-backup-'||v_suffix||'-'||txid_current()::text,
     (select last_backup_verified_at from public.operational_health_state where singleton));
 end $$;
 grant select on table h93_context to authenticated,service_role;
@@ -77,22 +79,23 @@ select set_config('request.jwt.claims','{"role":"service_role"}',true);
 
 do $$
 declare v_observation jsonb; v_failed boolean:=false;
+  v_backup_key text:=(select backup_key from h93_context);
   v_completed timestamptz:=clock_timestamp()-interval '60 minutes';
 begin
   v_observation:=public.registrar_observacion_backup_administrado_v1(jsonb_build_object(
-    'backup_key','h93-managed-backup-001','source','Supabase','status','Completado',
+    'backup_key',v_backup_key,'source','Supabase','status','Completado',
     'completed_at',v_completed,'pitr_enabled',true,'region_code','us-east-1'));
-  assert v_observation->>'backupKey'='h93-managed-backup-001'
+  assert v_observation->>'backupKey'=v_backup_key
     and coalesce((v_observation->>'observedOnly')::boolean,false)
     and not coalesce((v_observation->>'restored')::boolean,true)
     and coalesce((v_observation->>'containsSecrets')::boolean,true)=false,
     'H93 confundio observacion con restauracion.';
   perform public.registrar_observacion_backup_administrado_v1(jsonb_build_object(
-    'backup_key','h93-managed-backup-001','source','Supabase','status','Completado',
+    'backup_key',v_backup_key,'source','Supabase','status','Completado',
     'completed_at',v_completed,'pitr_enabled',true,'region_code','us-east-1'));
   begin
     perform public.registrar_observacion_backup_administrado_v1(jsonb_build_object(
-      'backup_key','h93-managed-backup-001','source','Supabase','status','Fallido',
+      'backup_key',v_backup_key,'source','Supabase','status','Fallido',
       'completed_at',v_completed,'pitr_enabled',true,'region_code','us-east-1'));
   exception when unique_violation then v_failed:=true; end;
   assert v_failed,'H93 permitio mutar la evidencia del mismo backup.';
@@ -110,6 +113,8 @@ select set_config('request.jwt.claims','{"role":"service_role"}',true);
 
 do $$
 declare v_failed boolean:=false; v_drill jsonb; v_payload jsonb;
+  v_backup_key text:=(select backup_key from h93_context);
+  v_suffix text:=replace((select backup_key from h93_context),'h93-managed-backup-','');
   v_h97 boolean:=exists(select 1 from public.momos_ops_migrations
     where id='20260721_97_evidencia_recuperacion_derivada');
   v_checks jsonb;
@@ -119,8 +124,8 @@ begin
     'payments',true,'receipts',true,'replay',true
   )||case when v_h97 then jsonb_build_object('storage',true) else '{}'::jsonb end;
   v_payload:=jsonb_build_object(
-    'id','93000000-0000-4000-8000-000000000001','drill_key','h93-drill-invalid-rto',
-    'backup_key','h93-managed-backup-001','status','Aprobado',
+    'id',gen_random_uuid(),'drill_key','h93-drill-invalid-rto-'||v_suffix,
+    'backup_key',v_backup_key,'status','Aprobado',
     'started_at',clock_timestamp()-interval '40 minutes','completed_at',clock_timestamp(),
     'checks',v_checks,'replay_status','Completado'
   )||case when v_h97 then jsonb_build_object(
@@ -134,8 +139,8 @@ begin
   exception when others then v_failed:=true; end;
   assert v_failed,'H93 aprobo un simulacro fuera del RTO.';
   v_payload:=jsonb_build_object(
-    'id','93000000-0000-4000-8000-000000000002','drill_key','h93-drill-approved-001',
-    'backup_key','h93-managed-backup-001','status','Aprobado',
+    'id',gen_random_uuid(),'drill_key','h93-drill-approved-'||v_suffix,
+    'backup_key',v_backup_key,'status','Aprobado',
     'started_at',clock_timestamp()-interval '25 minutes','completed_at',clock_timestamp(),
     'checks',v_checks,'replay_status','Completado'
   )||case when v_h97 then jsonb_build_object(
