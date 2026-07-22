@@ -67,6 +67,15 @@ jobs:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
 
+      - name: Reapply H93 scoped recovery contract and H97 extensions to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/continuidad-recuperacion-v1.sql
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/evidencia-recuperacion-derivada-v1.sql
+
       - name: Apply H102 closed commercial pilot contract to staging
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
