@@ -66,7 +66,7 @@ set local role authenticated;
 do $$
 declare
   v_checks jsonb:='["Enfoque y exposición","Identidad y geometría","Color y textura","Recorte y oclusiones","Logo y texto","Fondo y reflejos"]'::jsonb;
-  v_base jsonb; v_result jsonb; v_state jsonb; v_failed boolean:=false;
+  v_base jsonb; v_result jsonb; v_model jsonb; v_state jsonb; v_failed boolean:=false;
 begin
   v_base:=jsonb_build_object('component_type','Producto','view_angle','Frontal','physical_state','Intacto',
     'interaction_type','Ninguna','hand_assignment','Ninguna','qa_status','Aprobado',
@@ -89,14 +89,17 @@ begin
 
   v_result:=public.revisar_calidad_activo_visual_v1((select clean_id from h111_context),jsonb_build_object(
     'issues','[]'::jsonb,'checks_completed',v_checks,'review_notes','Derivado limpio verificado contra el original.'));
-  v_state:=public.estado_maestro_visual_limpio_v1((select clean_id from h111_context));
+  v_model:=public.biblioteca_calidad_ia_read_model_v1();
+  select q->'clean_master_state' into v_state from jsonb_array_elements(v_model) q
+    where (q->>'asset_id')::bigint=(select clean_id from h111_context);
   assert v_result->>'status'='Aprobado'
     and (v_result#>>'{usage_readiness,video_generation,ready}')::boolean
     and (v_state->>'ready')::boolean and v_state->>'class'='Máster IA limpio'
     and (v_state->>'original_asset_id')::bigint=(select original_id from h111_context),
     'H111 no certificó el derivado limpio enlazado.';
 
-  v_state:=public.estado_maestro_visual_limpio_v1((select original_id from h111_context));
+  select q->'clean_master_state' into v_state from jsonb_array_elements(v_model) q
+    where (q->>'asset_id')::bigint=(select original_id from h111_context);
   assert not (v_state->>'ready')::boolean and (v_state->>'artistic_variant')::boolean
     and v_state->>'class'='Variante artística',
     'H111 confundió la variante con escarcha con el máster limpio.';
