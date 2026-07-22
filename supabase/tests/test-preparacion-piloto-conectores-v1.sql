@@ -120,6 +120,8 @@ begin
 end $$;
 
 reset role;
+select set_config('request.jwt.claims',jsonb_build_object(
+  'sub',(select auth_id::text from h109_context),'role','authenticated')::text,true);
 set local role authenticated;
 do $$
 declare v_payload jsonb; v_result jsonb; v_duplicate jsonb; v_id bigint;
