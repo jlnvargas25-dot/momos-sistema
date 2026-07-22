@@ -1702,5 +1702,33 @@ begin
     'H106 perdió privacidad, cierre externo o auditoría H103/H105';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-106 PASS, rollback total' as resultado_h106;
+select 'TESTS_OK - migraciones ordenadas 01-106 PASS, continúa H107' as resultado_h106;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_107_orquestacion_produccion_formulas')
+    and to_regclass('public.agency_formula_production_plans') is not null,
+    'H107 no instaló la orquestación fórmula + paquete visual';
+  assert to_regprocedure('public.orquestacion_produccion_formulas_disponible()') is not null
+    and to_regprocedure('public.preparar_plan_produccion_formula_v1(jsonb)') is not null
+    and to_regprocedure('public.preparar_plan_produccion_formula_agente_v1(jsonb)') is not null
+    and to_regprocedure('public.revisar_plan_produccion_formula_v1(bigint,text,text)') is not null
+    and to_regprocedure('public.momos_production_preflight_v1()') is not null,
+    'H107 perdió una RPC canónica';
+  assert has_function_privilege('authenticated','public.momos_production_preflight_v1()','EXECUTE')
+    and has_function_privilege('service_role','public.momos_production_preflight_v1()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_production_preflight_v1()','EXECUTE')
+    and not has_table_privilege('authenticated','public.agency_formula_production_plans','SELECT')
+    and not has_table_privilege('service_role','public.agency_formula_production_plans','SELECT'),
+    'H107 perdió RBAC o expuso la tabla privada';
+  assert position('credits_consumed' in pg_get_functiondef('public.momos_production_preflight_v1()'::regprocedure))>0
+    and position('jobs_created' in pg_get_functiondef('public.momos_production_preflight_v1()'::regprocedure))>0
+    and position('external_execution_allowed' in pg_get_functiondef('public.momos_production_preflight_v1()'::regprocedure))>0
+    and position('publication_allowed' in pg_get_functiondef('public.momos_production_preflight_v1()'::regprocedure))>0
+    and position('momos_prepare_production_plan' in pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0,
+    'H107 perdió guardas cerradas o auditoría MCP';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-107 PASS, rollback total' as resultado_h107;
 rollback;

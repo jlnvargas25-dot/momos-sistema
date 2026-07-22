@@ -11,6 +11,7 @@ import { z } from "zod";
 import { normalizeCreativeIntelligence } from "../src/lib/creative-intelligence.js";
 import { normalizeHumanizationCommunity } from "../src/lib/humanization-community.js";
 import { normalizeVisualLibrary } from "../src/lib/visual-library.js";
+import { normalizeProductionPreflight } from "../src/lib/production-preflight.js";
 import {
   MOMOS_AGENCY_MCP_VERSION,
   buildAgencyMcpRun,
@@ -679,6 +680,36 @@ if (SELF_TEST) {
       channel: input.channel, purpose: input.purpose, required_views: input.requiredViews, limit: input.limit,
     } },
   )), { subject: input.visualSetKey ? `visual-set:${input.visualSetKey}` : "visual-library" }));
+
+  server.registerTool("momos_production_preflight", {
+    title: "Preflight creativo MOMOS",
+    description: "Lee planes sellados que unen fórmula aprobada, paquete visual, motor y costo. Nunca genera, consume créditos ni publica.",
+    inputSchema: z.object({}),
+  }, async (input) => governedTool("momos_production_preflight", input,
+    async () => normalizeProductionPreflight(await rpc("momos_production_preflight_v1"))));
+
+  server.registerTool("momos_prepare_production_plan", {
+    title: "Preparar plan creativo MOMOS",
+    description: "Propone un preflight fórmula + paquete visual para revisión humana. No crea trabajos ni llama motores externos.",
+    inputSchema: z.object({
+      planKey: z.string().trim().regex(/^[A-Za-z0-9_.:-]{8,120}$/),
+      formulaId: z.number().int().positive(), productionPackId: z.number().int().positive(),
+      provider: z.enum(["Higgsfield", "Kling"]),
+      operation: z.enum(["Generar imagen", "Generar video", "Editar"]),
+      modelLabel: z.string().trim().min(2).max(120),
+      durationSeconds: z.number().min(0).max(120), outputCount: z.number().int().min(1).max(4),
+      estimatedCostCop: z.number().positive(), maxCostCop: z.number().positive(),
+    }).strict(),
+  }, async (input) => governedTool("momos_prepare_production_plan", input, async () => {
+    if (!PROPOSALS_ENABLED) throw new Error("Las propuestas MCP están protegidas. Activá MOMOS_MCP_PROPOSALS_ENABLED=true en el entorno privado para registrarlas.");
+    return rpc("preparar_plan_produccion_formula_agente_v1", { p: {
+      plan_key: input.planKey, formula_id: input.formulaId,
+      production_pack_id: input.productionPackId, provider: input.provider,
+      operation: input.operation, model_label: input.modelLabel,
+      duration_seconds: input.durationSeconds, output_count: input.outputCount,
+      estimated_cost_cop: input.estimatedCostCop, max_cost_cop: input.maxCostCop,
+    } });
+  }, { mode: "Propuesta", subject: `formula:${input.formulaId}:pack:${input.productionPackId}` }));
 
   server.registerTool("momos_creative_context", {
     title: "Contexto creativo gobernado",
