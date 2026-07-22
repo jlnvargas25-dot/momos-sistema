@@ -24,10 +24,20 @@ consume `momos_continuity_snapshot_v1()`.
 - El último respaldo visible terminó el 21 de julio a las 09:34:09 UTC.
 - PITR aparecía disponible como add-on, pero no estaba activo.
 - El respaldo de base incluye metadatos de Storage, no los bytes de los objetos.
+- El backup físico exacto `1171502694` fue restaurado en el staging aislado
+  `mxrsmuqyesolkxoqvggl`.
+- El plano de control registró la creación a las `2026-07-22T02:34:19.210Z` y
+  PostgreSQL quedó listo a las `2026-07-22T02:38:17.154Z`: RTO derivado 3,97 min.
+- El objetivo y el punto restaurado fueron `2026-07-21T09:34:09.602Z`: RPO
+  derivado 0 min y replay idempotente de cero eventos.
+- Storage verificó 50 objetos, tres buckets y 8.652.100 bytes mediante SHA-256.
+- H93, H97 y la cadena ordenada 01–97 pasaron sobre el staging restaurado; la
+  evidencia estructurada quedó registrada en producción como certificada.
 
-Conclusión honesta: existe cobertura diaria observada, pero todavía no hay una
-prueba real que demuestre el RPO central de cinco minutos ni una recuperación
-completa de Storage. H97 evita presentar esa observación como certificación.
+Conclusión honesta: la recuperación completa de base, Storage y replay sí quedó
+probada y certificada. Como PITR continúa inactivo, la cobertura diaria observada
+todavía no demuestra que cualquier incidente arbitrario pierda como máximo cinco
+minutos de operación. H97 mantiene separados ambos hechos.
 
 ## Operación normal
 
@@ -56,7 +66,8 @@ aislado, sin conectores externos, cobros, publicaciones ni mensajes a clientes.
 
 1. Elegir un backup observado exacto.
 2. Registrar tres tiempos UTC ISO antes de actuar:
-   - `restore_started_at`: inicio del simulacro;
+   - `restore_started_at`: inicio esperado del simulacro; el registrador lo
+     contrasta con `created_at` oficial del proyecto de staging;
    - `recovery_target_at`: instante del negocio que se busca recuperar;
    - `restored_through_at`: último evento realmente presente después del replay.
 3. Confirmar que el ref y la URL de staging son distintos a producción.
@@ -85,6 +96,9 @@ aislado, sin conectores externos, cobros, publicaciones ni mensajes a clientes.
 7. Invocar manualmente `.github/workflows/continuity-recovery-drill.yml` con los
    tiempos y huellas anteriores. El workflow no crea ni restaura proyectos; solo
    valida el staging ya restaurado y registra evidencia estructurada.
+   El cierre deriva el inicio desde el proyecto de staging y el fin desde el primer
+   evento PostgreSQL `ready to accept connections`; no usa la hora de ejecución del
+   workflow ni permite declarar manualmente el RTO.
 8. Destruir staging únicamente después de conservar la bitácora administrativa.
 
 ### Cálculos H97

@@ -99,6 +99,10 @@ test("H97 certifica únicamente un staging aislado restaurado y no ejecuta resto
 test("H97 valida el backup exacto y no imprime credenciales ni manifiestos", () => {
   assert.match(recoveryRecorder, /database\/backups/i);
   assert.match(recoveryRecorder, /RECOVERY_EXACT_BACKUP_NOT_COMPLETED/i);
+  assert.match(recoveryRecorder, /analytics\/endpoints\/logs\.all/i);
+  assert.match(recoveryRecorder, /database system is ready to accept connections/i);
+  assert.match(recoveryRecorder, /RECOVERY_STAGING_STARTED_AT_DIVERGED/i);
+  assert.match(recoveryRecorder, /RECOVERY_STAGING_READY_EVIDENCE_MISSING/i);
   assert.match(recoveryRecorder, /registrar_observacion_backup_administrado_v1/i);
   assert.match(recoveryRecorder, /registrar_simulacro_recuperacion_v1/i);
   assert.match(recoveryRecorder, /deterministicUuid/i);

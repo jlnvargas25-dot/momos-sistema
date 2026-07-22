@@ -9,7 +9,7 @@ const STAGING_URL = env("STAGING_SUPABASE_URL").replace(/\/+$/, "");
 const STAGING_REF = env("STAGING_PROJECT_REF");
 const MANAGEMENT_TOKEN = env("SUPABASE_ACCESS_TOKEN");
 const BACKUP_ID = env("MOMOS_RECOVERY_BACKUP_ID");
-const RESTORE_STARTED_AT = env("MOMOS_RECOVERY_STARTED_AT");
+const EXPECTED_RESTORE_STARTED_AT = env("MOMOS_RECOVERY_STARTED_AT");
 const RECOVERY_TARGET_AT = env("MOMOS_RECOVERY_TARGET_AT");
 const RESTORED_THROUGH_AT = env("MOMOS_RECOVERY_RESTORED_THROUGH_AT");
 const STORAGE_FINGERPRINT = env("MOMOS_STORAGE_MANIFEST_SHA256").toLowerCase();
@@ -72,10 +72,12 @@ function validatePrivateContract() {
       || REPLAY_COUNT < 0) {
     throw new Error("RECOVERY_REPLAY_RECEIPT_INVALID");
   }
-  const started = parseInstant(RESTORE_STARTED_AT, "RECOVERY_STARTED_AT_INVALID");
   const target = parseInstant(RECOVERY_TARGET_AT, "RECOVERY_TARGET_AT_INVALID");
   const restored = parseInstant(RESTORED_THROUGH_AT, "RECOVERY_RESTORED_THROUGH_AT_INVALID");
-  if (!(restored <= target && target <= started && started <= Date.now() + 60_000)) {
+  const expectedStarted = EXPECTED_RESTORE_STARTED_AT
+    ? parseInstant(EXPECTED_RESTORE_STARTED_AT, "RECOVERY_STARTED_AT_INVALID")
+    : null;
+  if (!(restored <= target && target <= (expectedStarted ?? Date.now() + 60_000))) {
     throw new Error("RECOVERY_TIMELINE_INVALID");
   }
 }
@@ -109,9 +111,73 @@ async function readExactManagedBackup() {
   };
 }
 
+function postgresLogTimestamp(value) {
+  const microseconds = Number(value);
+  if (!Number.isFinite(microseconds) || microseconds < 1_000_000_000_000_000) return null;
+  const instant = new Date(Math.floor(microseconds / 1_000));
+  return Number.isFinite(instant.getTime()) ? instant.toISOString() : null;
+}
+
+async function readDerivedRestoreTimeline() {
+  const projectResponse = await fetch(`https://api.supabase.com/v1/projects/${STAGING_REF}`, {
+    method: "GET",
+    headers: { accept: "application/json", authorization: `Bearer ${MANAGEMENT_TOKEN}` },
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!projectResponse.ok) throw new Error(`RECOVERY_STAGING_PROJECT_HTTP_${projectResponse.status}`);
+  const project = await projectResponse.json();
+  if (String(project?.id || project?.ref || "") !== STAGING_REF
+      || String(project?.status || "") !== "ACTIVE_HEALTHY" || !project?.created_at) {
+    throw new Error("RECOVERY_STAGING_PROJECT_INVALID");
+  }
+  const startedAt = new Date(project.created_at).toISOString();
+  if (!Number.isFinite(Date.parse(startedAt))) throw new Error("RECOVERY_STAGING_STARTED_AT_INVALID");
+  if (EXPECTED_RESTORE_STARTED_AT
+      && Math.abs(Date.parse(EXPECTED_RESTORE_STARTED_AT) - Date.parse(startedAt)) > 1_000) {
+    throw new Error("RECOVERY_STAGING_STARTED_AT_DIVERGED");
+  }
+
+  const logEnd = new Date(Date.parse(startedAt) + 30 * 60_000).toISOString();
+  const logsUrl = new URL(
+    `https://api.supabase.com/v1/projects/${STAGING_REF}/analytics/endpoints/logs.all`,
+  );
+  logsUrl.searchParams.set("iso_timestamp_start", startedAt);
+  logsUrl.searchParams.set("iso_timestamp_end", logEnd);
+  logsUrl.searchParams.set(
+    "sql",
+    "select timestamp,event_message from postgres_logs order by timestamp asc limit 500",
+  );
+  const logsResponse = await fetch(logsUrl, {
+    method: "GET",
+    headers: { accept: "application/json", authorization: `Bearer ${MANAGEMENT_TOKEN}` },
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!logsResponse.ok) throw new Error(`RECOVERY_STAGING_LOGS_HTTP_${logsResponse.status}`);
+  const logs = await logsResponse.json();
+  if (logs?.error || !Array.isArray(logs?.result)) throw new Error("RECOVERY_STAGING_LOGS_INVALID");
+  const completedAt = logs.result
+    .filter((row) => /database system is ready to accept connections/i.test(String(row?.event_message || "")))
+    .map((row) => postgresLogTimestamp(row?.timestamp))
+    .filter(Boolean)
+    .sort()[0];
+  if (!completedAt || Date.parse(completedAt) < Date.parse(startedAt)
+      || Date.parse(completedAt) > Date.parse(logEnd)) {
+    throw new Error("RECOVERY_STAGING_READY_EVIDENCE_MISSING");
+  }
+  return { startedAt, completedAt };
+}
+
 async function main() {
   validatePrivateContract();
-  const backup = await readExactManagedBackup();
+  const [backup, timeline] = await Promise.all([
+    readExactManagedBackup(),
+    readDerivedRestoreTimeline(),
+  ]);
+  if (Date.parse(RECOVERY_TARGET_AT) > Date.parse(timeline.startedAt)) {
+    throw new Error("RECOVERY_TARGET_AFTER_RESTORE_STARTED");
+  }
   const supabase = createClient(PRODUCTION_URL, PRODUCTION_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -128,8 +194,8 @@ async function main() {
   );
   if (observationError || !observed?.ok) throw new Error("RECOVERY_BACKUP_OBSERVATION_FAILED");
 
-  const completedAt = new Date().toISOString();
-  const seed = [PRODUCTION_REF, BACKUP_ID, RESTORE_STARTED_AT, RECOVERY_TARGET_AT].join(":");
+  const completedAt = timeline.completedAt;
+  const seed = [PRODUCTION_REF, BACKUP_ID, timeline.startedAt, RECOVERY_TARGET_AT].join(":");
   const drillId = deterministicUuid(seed);
   const drillKey = `recovery-${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`;
   const { data, error } = await supabase.rpc("registrar_simulacro_recuperacion_v1", {
@@ -138,7 +204,7 @@ async function main() {
       drill_key: drillKey,
       backup_key: backup.backupKey,
       status: "Aprobado",
-      started_at: RESTORE_STARTED_AT,
+      started_at: timeline.startedAt,
       completed_at: completedAt,
       recovery_target_at: RECOVERY_TARGET_AT,
       restored_through_at: RESTORED_THROUGH_AT,

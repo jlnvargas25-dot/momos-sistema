@@ -15,7 +15,7 @@ on:
         required: true
         type: string
       restore_started_at:
-        description: Inicio UTC ISO exacto (ej. 2026-07-21T15:00:00.000Z)
+        description: Inicio UTC ISO esperado; se contrasta con created_at oficial de staging
         required: true
         type: string
       recovery_target_at:

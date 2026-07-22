@@ -242,9 +242,14 @@ punto realmente restaurado, el inicio y el cierre. También exige evidencia
 separada de objetos Storage y replay, porque el backup de base no contiene los
 bytes de Storage. El 21 de julio de 2026 se observaron siete backups físicos
 diarios y PITR inactivo; por eso el RPO central de cinco minutos sigue sin estar
-certificado. La migración, su prueba adversarial, H93 y la cadena ordenada
-01–97 pasaron en Supabase el 21 de julio de 2026. Falta crear un staging aislado,
-restaurar allí un backup representativo y ejecutar el simulacro real.
+observado de forma continua. La migración, su prueba adversarial, H93 y la cadena
+ordenada 01–97 pasaron en Supabase el 21 de julio de 2026. El simulacro real
+también quedó certificado: el backup físico `1171502694` se restauró en el
+proyecto aislado `mxrsmuqyesolkxoqvggl`, PostgreSQL pasó de creación a listo en
+3,97 minutos, se verificaron 50 objetos Storage (8.652.100 bytes) mediante
+SHA-256 y el replay exacto del punto objetivo cerró con cero eventos. El RPO del
+simulacro fue 0 minutos. Esta certificación prueba recuperabilidad integral; no
+sustituye PITR ni afirma cobertura permanente de cinco minutos entre backups.
 
 **Evidencia de cierre:** informe de carga firmado, SLO cumplidos y restauración/caos controlado aprobado.
 
