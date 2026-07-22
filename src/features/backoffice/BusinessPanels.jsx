@@ -13,6 +13,7 @@ import {
 import { PRODUCT_CATEGORY_EMOJI, PRODUCT_CATEGORY_ORDER } from "../../lib/product-categories.js";
 import { buildCanonicalFinishedStock } from "../../lib/canonical-stock.js";
 import { buildCanonicalPhysicalResults } from "../../lib/canonical-production-results.js";
+import CommercialPilotPanel from "./CommercialPilotPanel.jsx";
 
 export function createBusinessPanels(shared) {
   const { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, evaluateOperationalSloAlerts, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION } = shared;
@@ -2252,6 +2253,18 @@ export function createBusinessPanels(shared) {
           </div>
           {configMsg && <div className="text-xs font-bold mt-3" role="status" style={{ color: configMsg.startsWith("⚠️") ? "#A03B2A" : "#3F6B42" }}>{configMsg}</div>}
         </Card>
+        <CommercialPilotPanel
+          T={T}
+          Card={Card}
+          Btn={Btn}
+          BtnAsync={BtnAsync}
+          Modal={Modal}
+          Field={Field}
+          Input={Input}
+          Select={Select}
+          toast={toast}
+          createIdempotencyKey={createInventoryIdempotencyKey}
+        />
         <SectionTitle>🩺 Salud y continuidad de MOMO OPS</SectionTitle>
         <Card className="p-4" data-testid="operational-health-center" style={{ background: "linear-gradient(145deg, #fff, #FFF9F1)", borderColor: healthTone.border }}>
           <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">

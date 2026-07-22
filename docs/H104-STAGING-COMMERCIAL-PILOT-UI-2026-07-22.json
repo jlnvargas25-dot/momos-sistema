@@ -1,0 +1,39 @@
+{
+  "contract": "momos.staging-commercial-pilot-ui-receipt.v1",
+  "capturedAt": "2026-07-22T06:33:00Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "migrations": [
+    {
+      "id": "20260722_103_inteligencia_creativa_publicitaria",
+      "appliedAt": "2026-07-22T06:32:37.314937Z",
+      "utf8Verified": true
+    },
+    {
+      "id": "20260722_104_piloto_comercial_ui",
+      "appliedAt": "2026-07-22T06:32:56.337893Z",
+      "utf8Verified": true
+    }
+  ],
+  "validation": {
+    "h103Adversarial": "PASS",
+    "h104Adversarial": "PASS",
+    "orderedMigrations": "01-104 PASS",
+    "rollbackTotal": true,
+    "localQualityGate": "PASS",
+    "browserConsoleErrors": 0
+  },
+  "scope": {
+    "humanPilotPanelReady": true,
+    "realCustomerPilotExecuted": false,
+    "ordersCreated": 0,
+    "ordersMutatedByDeployment": 0,
+    "publicTrafficOpened": false,
+    "productionMutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsFreeText": false
+  }
+}

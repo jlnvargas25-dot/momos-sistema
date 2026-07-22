@@ -393,9 +393,28 @@ Aplicar únicamente después de confirmar
 
 H103 no publica, no crea anuncios y no cambia presupuesto. Codex y los
 conectores pueden proponer o medir; solo una persona de Agencia puede aprobar
-una fórmula y resolver el aprendizaje. H104 queda reservado al piloto comercial
-UI; humanización de marca y ampliación de la biblioteca visual continúan como
-H105/H106 sobre esta identidad creativa común.
+una fórmula y resolver el aprendizaje.
+
+## Hito 104 — interfaz humana del piloto comercial
+
+Aplicar únicamente después de confirmar
+`20260722_103_inteligencia_creativa_publicitaria`:
+
+1. `../piloto-comercial-ui-v1.sql` — expone una proyección compacta de las
+   muestras, las cuatro aprobaciones, los pedidos elegibles y vinculados, la
+   salud operativa y los permisos del rol. No expone PII, actores, evidencias,
+   notas o secretos y no agrega mutaciones nuevas.
+2. `../tests/test-piloto-comercial-ui-v1.sql` — prueba contrato mínimo, PII,
+   RBAC, tablas privadas, pedidos elegibles y rechazo anónimo; siempre hace
+   rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–104; siempre hace rollback.
+
+La interfaz vive en Configuración y solo opera los contratos cerrados de H102.
+Preparar una muestra no la inicia; iniciar no crea pedidos; vincular acepta
+únicamente IDs ya pagados que devuelve el servidor. El piloto real continúa
+desactivado hasta una autorización humana posterior. Humanización de marca y
+ampliación de la biblioteca visual continúan como H105/H106.
 
 ## Hito 95 — observabilidad y SLO agregados
 

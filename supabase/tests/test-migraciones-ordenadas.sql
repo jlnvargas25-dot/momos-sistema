@@ -1619,5 +1619,33 @@ begin
     'H103 mezcló retornos o perdió el cierre de ejecución externa';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-103 PASS, rollback total' as resultado_h103;
+select 'TESTS_OK - migraciones ordenadas 01-103 PASS, continúa H104' as resultado_h103;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_104_piloto_comercial_ui')
+    and to_regprocedure('public.momos_commercial_pilot_snapshot_v2()') is not null,
+    'H104 no instaló la vista humana del piloto comercial';
+  assert has_function_privilege('authenticated',
+      'public.momos_commercial_pilot_snapshot_v2()','EXECUTE')
+    and not has_function_privilege('anon',
+      'public.momos_commercial_pilot_snapshot_v2()','EXECUTE')
+    and not has_function_privilege('service_role',
+      'public.momos_commercial_pilot_snapshot_v2()','EXECUTE')
+    and not has_table_privilege('authenticated',
+      'public.commercial_pilot_signoffs','SELECT')
+    and not has_table_privilege('authenticated',
+      'public.commercial_pilot_orders','SELECT'),
+    'H104 perdió RBAC o expuso tablas privadas';
+  assert position('containsCustomerPii' in pg_get_functiondef(
+      'public.momos_commercial_pilot_snapshot_v2()'::regprocedure))>0
+    and position('publicTrafficOpened' in pg_get_functiondef(
+      'public.momos_commercial_pilot_snapshot_v2()'::regprocedure))>0
+    and position('eligibleOrders' in pg_get_functiondef(
+      'public.momos_commercial_pilot_snapshot_v2()'::regprocedure))>0,
+    'H104 perdió privacidad, cierre de tráfico o pedidos elegibles';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-104 PASS, rollback total' as resultado_h104;
 rollback;
