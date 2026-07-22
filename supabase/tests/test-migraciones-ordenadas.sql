@@ -1730,5 +1730,34 @@ begin
     'H107 perdió guardas cerradas o auditoría MCP';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-107 PASS, rollback total' as resultado_h107;
+select 'TESTS_OK - migraciones ordenadas 01-107 PASS, continúa H108' as resultado_h107;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_108_autorizacion_generacion_preflight')
+    and to_regclass('public.agency_formula_generation_authorizations') is not null,
+    'H108 no instaló la autorización de generación desde preflight';
+  assert to_regprocedure('public.autorizacion_generacion_preflight_disponible()') is not null
+    and to_regprocedure('public.autorizar_generacion_desde_preflight_v1(jsonb)') is not null
+    and to_regprocedure('public.momos_generation_authorizations_v1()') is not null,
+    'H108 perdió una RPC canónica';
+  assert has_function_privilege('authenticated','public.autorizar_generacion_desde_preflight_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.autorizar_generacion_desde_preflight_v1(jsonb)','EXECUTE')
+    and has_function_privilege('service_role','public.momos_generation_authorizations_v1()','EXECUTE')
+    and not has_table_privilege('authenticated','public.agency_formula_generation_authorizations','SELECT')
+    and not has_table_privilege('service_role','public.agency_formula_generation_authorizations','SELECT'),
+    'H108 perdió RBAC o expuso la tabla privada';
+  assert position('credits_consumed_by_authorization' in pg_get_functiondef(
+      'public.momos_generation_authorizations_v1()'::regprocedure))>0
+    and position('external_generation_authorized' in pg_get_functiondef(
+      'public.momos_generation_authorizations_v1()'::regprocedure))>0
+    and position('publication_allowed' in pg_get_functiondef(
+      'public.momos_generation_authorizations_v1()'::regprocedure))>0
+    and position('momos_generation_authorizations' in pg_get_functiondef(
+      'public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0,
+    'H108 perdió separación de créditos/publicación o auditoría MCP';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-108 PASS, rollback total' as resultado_h108;
 rollback;

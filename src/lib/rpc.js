@@ -839,6 +839,12 @@ export async function revisarPlanProduccionFormula(planId, status, note) {
   return data;
 }
 
+export async function autorizarGeneracionDesdePreflight(payload) {
+  const { data, error } = await supabase.rpc("autorizar_generacion_desde_preflight_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function proponerSerieHumanizacion(payload) {
   const { data, error } = await supabase.rpc("proponer_serie_humanizacion_v1", { p: payload });
   if (error) throw new Error(error.message);

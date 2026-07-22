@@ -475,6 +475,26 @@ preparar `momos_prepare_production_plan`. La persona revisa y aprueba dentro de
 Agencia MOMOS. Una futura ejecución seguirá necesitando autorización separada,
 conector saludable y las guardas de costo existentes.
 
+## Hito 108 — Autorización explícita de generación
+
+Aplicar únicamente después de confirmar `20260722_107_orquestacion_produccion_formulas`:
+
+1. `../autorizacion-generacion-preflight-v1.sql` — convierte un preflight H107
+   aprobado en exactamente un trabajo creativo `Autorizado`, dentro de una sola
+   transacción e idempotencia durable. Revalida fórmula, paquete, marca, conector
+   y tope de costo. El worker queda habilitado, pero la función no lo reclama,
+   no consume créditos y nunca autoriza publicación.
+2. `../tests/test-autorizacion-generacion-preflight-v1.sql` — prueba heartbeat
+   vencido, confirmación humana ausente, replay, colisión, atomicidad, marca,
+   costo, privacidad, inmutabilidad, MCP de solo lectura y RBAC; siempre rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–108; verifica la cadena 107 → 108 y siempre hace rollback.
+
+La autorización se realiza únicamente en la interfaz autenticada por una persona
+Administradora. MCP puede leer `momos_generation_authorizations`, pero no puede
+autorizar, ejecutar ni publicar. Kling/Higgsfield conservan sus leases, recibos y
+conciliación existentes; Distribución mantiene una aprobación posterior separada.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

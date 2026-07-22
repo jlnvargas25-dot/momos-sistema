@@ -12,6 +12,7 @@ import { normalizeCreativeIntelligence } from "../src/lib/creative-intelligence.
 import { normalizeHumanizationCommunity } from "../src/lib/humanization-community.js";
 import { normalizeVisualLibrary } from "../src/lib/visual-library.js";
 import { normalizeProductionPreflight } from "../src/lib/production-preflight.js";
+import { normalizeGenerationAuthorizations } from "../src/lib/generation-authorization.js";
 import {
   MOMOS_AGENCY_MCP_VERSION,
   buildAgencyMcpRun,
@@ -687,6 +688,13 @@ if (SELF_TEST) {
     inputSchema: z.object({}),
   }, async (input) => governedTool("momos_production_preflight", input,
     async () => normalizeProductionPreflight(await rpc("momos_production_preflight_v1"))));
+
+  server.registerTool("momos_generation_authorizations", {
+    title: "Autorizaciones de generación MOMOS",
+    description: "Lee qué preflights ya crearon un trabajo autorizado y su estado. Nunca autoriza, reclama workers, consume créditos ni publica.",
+    inputSchema: z.object({}),
+  }, async (input) => governedTool("momos_generation_authorizations", input,
+    async () => normalizeGenerationAuthorizations(await rpc("momos_generation_authorizations_v1"))));
 
   server.registerTool("momos_prepare_production_plan", {
     title: "Preparar plan creativo MOMOS",
