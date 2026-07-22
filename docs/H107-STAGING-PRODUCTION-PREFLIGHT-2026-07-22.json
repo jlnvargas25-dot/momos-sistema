@@ -1,0 +1,50 @@
+{
+  "contract": "momos.production-preflight.staging.v1",
+  "capturedAt": "2026-07-22T18:34:41.1707066Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "execution": {
+    "method": "Supabase Management API",
+    "explicitUtf8Bytes": true,
+    "productionProjectRefBlocked": "csojbqpvujymesuvntxb",
+    "baseCommit": "b5262b87f52cfae93bb6c1bb345176896cc2ae4f"
+  },
+  "migration": {
+    "id": "20260722_107_orquestacion_produccion_formulas",
+    "sha256": "9d1fd2aaf979c46439b52a5381883aac576bcccdf4169cd90a5be12d4f71a021",
+    "applied": true,
+    "idempotentRepairVerified": true
+  },
+  "acceptance": {
+    "formulaAndProductionPackPreflight": "PASS_WITH_ROLLBACK",
+    "approvalSupersessionWithoutEvidenceRewrite": "PASS_WITH_ROLLBACK",
+    "orderedMigrations01To107": "PASS_WITH_ROLLBACK",
+    "localGeneralTests": "739_PASS",
+    "localPerformanceTests": "204_PASS",
+    "productionBuild": "PASS",
+    "repositoryContracts": "PASS",
+    "testRowsRemaining": 0
+  },
+  "runtime": {
+    "schema": "momos-production-preflight/v1",
+    "snapshotRpcInstalled": true,
+    "persistedPlans": 0,
+    "humanApprovalRequired": true,
+    "creditsConsumed": false,
+    "jobsCreatedByH107": false,
+    "externalExecutionAllowed": false,
+    "publicationAllowed": false
+  },
+  "productionVerification": {
+    "readOnly": true,
+    "h107Rows": 0,
+    "mutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsStoragePaths": false,
+    "containsStaffIdentity": false
+  },
+  "conclusion": "PASS - H107 une fórmula creativa aprobada y paquete visual aprobado en un preflight sellado y revisable; no consume créditos, no crea trabajos, no ejecuta motores y no publica."
+}

@@ -456,6 +456,45 @@ evidencia legal, PII, secretos, publicación o ejecución externa.
 
 Certificación real de staging: `../../docs/H106-STAGING-VISUAL-LIBRARY-2026-07-22.json`.
 
+## Hito 107 — Orquestación de producción desde fórmulas
+
+Aplicar únicamente después de confirmar `20260722_106_biblioteca_visual_ampliada`:
+
+1. `../orquestacion-produccion-formulas-v1.sql` — une una fórmula H103 aprobada
+   con un paquete H61/H106 aprobado y vigente; sella motor, modelo, formato,
+   duración, cantidad de salidas, costo estimado y tope. Preparar o aprobar el
+   preflight nunca crea un trabajo, consume créditos, publica o pauta.
+2. `../tests/test-orquestacion-produccion-formulas-v1.sql` — intenta usar
+   fórmulas sin aprobar, paquetes incompatibles, PII, colisiones idempotentes,
+   reescritura, ejecución implícita y bypass RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–107; verifica la cadena 103 → 104 → 105 → 106 → 107.
+
+Codex puede leer `momos_production_preflight` y, con propuestas MCP habilitadas,
+preparar `momos_prepare_production_plan`. La persona revisa y aprueba dentro de
+Agencia MOMOS. Una futura ejecución seguirá necesitando autorización separada,
+conector saludable y las guardas de costo existentes.
+
+## Hito 108 — Autorización explícita de generación
+
+Aplicar únicamente después de confirmar `20260722_107_orquestacion_produccion_formulas`:
+
+1. `../autorizacion-generacion-preflight-v1.sql` — convierte un preflight H107
+   aprobado en exactamente un trabajo creativo `Autorizado`, dentro de una sola
+   transacción e idempotencia durable. Revalida fórmula, paquete, marca, conector
+   y tope de costo. El worker queda habilitado, pero la función no lo reclama,
+   no consume créditos y nunca autoriza publicación.
+2. `../tests/test-autorizacion-generacion-preflight-v1.sql` — prueba heartbeat
+   vencido, confirmación humana ausente, replay, colisión, atomicidad, marca,
+   costo, privacidad, inmutabilidad, MCP de solo lectura y RBAC; siempre rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–108; verifica la cadena 107 → 108 y siempre hace rollback.
+
+La autorización se realiza únicamente en la interfaz autenticada por una persona
+Administradora. MCP puede leer `momos_generation_authorizations`, pero no puede
+autorizar, ejecutar ni publicar. Kling/Higgsfield conservan sus leases, recibos y
+conciliación existentes; Distribución mantiene una aprobación posterior separada.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

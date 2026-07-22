@@ -46,7 +46,7 @@ test("H104 queda detrás de H103 y forma parte del gate de staging", async () =>
   assert.match(ordered, /migraciones ordenadas 01-104 PASS/);
   assert.match(workflow, /piloto-comercial-ui-v1\.sql/);
   assert.match(workflow, /test-piloto-comercial-ui-v1\.sql/);
-  assert.match(workflow, /01-106 PASS/);
+  assert.match(workflow, /01-108 PASS/);
 });
 
 test("H104 conserva un recibo de staging sin fingir el piloto real", async () => {

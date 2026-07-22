@@ -112,13 +112,27 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/biblioteca-visual-ampliada-v1.sql
 
+      - name: Apply H107 formula production orchestration to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/orquestacion-produccion-formulas-v1.sql
+
+      - name: Apply H108 explicit generation authorization to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/autorizacion-generacion-preflight-v1.sql
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-106 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-108 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -160,6 +174,22 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-biblioteca-visual-ampliada-v1.sql | tee "$RUNNER_TEMP/visual-library.log"
           grep -q "H106 sets/multivista/variantes/consentimiento" "$RUNNER_TEMP/visual-library.log"
+
+      - name: Run H107 formula production orchestration adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-orquestacion-produccion-formulas-v1.sql | tee "$RUNNER_TEMP/formula-production.log"
+          grep -q "preflight/costo/idempotencia/no cr" "$RUNNER_TEMP/formula-production.log"
+
+      - name: Run H108 generation authorization adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-autorizacion-generacion-preflight-v1.sql | tee "$RUNNER_TEMP/generation-authorization.log"
+          grep -q "marca/conector/costo/worker habilitado" "$RUNNER_TEMP/generation-authorization.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:

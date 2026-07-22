@@ -379,6 +379,38 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 
 > Contratos técnicos: `20260722_105_humanizacion_comunidad` y `20260722_106_biblioteca_visual_ampliada`. La cadena canónica aplica H103 → H104 → H105 → H106.
 
+### Hito 107 — Orquestación de producción desde fórmulas (implementado)
+
+- Una fórmula H103 aprobada y un paquete visual H61/H106 aprobado se unen en un
+  preflight versionado e inmutable con canal, formato, motor, modelo, duración,
+  cantidad de salidas, costo estimado y tope máximo.
+- El servidor revalida producto, figura, canal, huellas, derechos y preparación
+  del paquete tanto al crear como al aprobar el preflight.
+- Codex dispone de lectura y propuesta MCP de lista cerrada. La propuesta queda
+  visible en el Laboratorio de fórmulas para revisión humana.
+- Guardas permanentes: cero créditos, cero trabajos creados, cero ejecución
+  externa y cero publicación durante preparación y aprobación del preflight.
+
+### Hito 108 — Autorización humana de generación (implementado)
+
+- Solo Administración puede convertir un preflight H107 aprobado y vigente en
+  un trabajo creativo `Autorizado`, mediante confirmación explícita y criterio
+  humano documentado.
+- La operación es atómica e idempotente: revalida fórmula, paquete visual,
+  identidad, kit oficial, conector saludable y tope de costo antes de crear un
+  único trabajo dentro de la cola Kling/Higgsfield existente.
+- Autorizar habilita al worker para reclamar el trabajo; la propia autorización
+  no consume créditos, no llama el motor y no permite publicación.
+- MCP expone solamente el estado compacto y auditado de las autorizaciones. No
+  puede autorizar, reclamar un worker, ejecutar un motor ni publicar.
+- La publicación conserva su revisión creativa, derechos y aprobación de
+  Distribución como un gate posterior independiente.
+
+Siguiente fase operativa: ejecutar un piloto real controlado con un único trabajo
+autorizado, capturar recibo/costo/salida del worker existente y revisar el activo
+antes de cualquier distribución. No requiere ampliar permisos ni activar una
+publicación automática.
+
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 
 **Objetivo:** lanzar Pide MOMOS como una interfaz pública rápida y resiliente sobre la misma verdad operativa de MOMO OPS, con trazabilidad auditable desde la primera visita hasta pago, producción, entrega, atribución y recompra. Este programa no se considerará listo por tener pantallas: exige contratos transaccionales, seguridad, observabilidad y carga verificadas.
