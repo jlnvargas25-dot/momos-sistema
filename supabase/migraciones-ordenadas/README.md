@@ -436,6 +436,24 @@ Codex puede leer y proponer series o episodios. Solo una persona puede aprobar,
 vincular una publicación o convertir señales agregadas en aprendizaje. El MCP
 no responde, contacta, publica, reutiliza UGC ni cambia presupuesto.
 
+## Hito 106 — Biblioteca visual ampliada
+
+Aplicar únicamente después de confirmar `20260722_105_humanizacion_comunidad`:
+
+1. `../biblioteca-visual-ampliada-v1.sql` — agrupa originales aprobados en sets
+   multivista y variantes; sella para personas el nivel de identificación,
+   permiso de IA, canales, finalidades y vigencia. Extiende la huella de cada
+   referencia para que un cambio de consentimiento invalide el grant temporal.
+2. `../tests/test-biblioteca-visual-ampliada-v1.sql` — intenta cruzar canales,
+   usar finalidades no autorizadas, aceptar permisos vencidos, exponer PII/rutas
+   o fabricar decisiones; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–106; el gate aplica y verifica 103 → 104 → 105 → 106.
+
+Codex consulta `momos_visual_library` con canal y finalidad exactos. Recibe sets,
+cobertura y huellas aprobadas; nunca rutas privadas, identidad de personas,
+evidencia legal, PII, secretos, publicación o ejecución externa.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

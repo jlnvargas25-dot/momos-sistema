@@ -1677,5 +1677,30 @@ begin
     'H105 perdió privacidad, evidencia o cierre externo';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-105 PASS, rollback total' as resultado_h105;
+select 'TESTS_OK - migraciones ordenadas 01-105 PASS, continúa H106' as resultado_h105;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations where id='20260722_106_biblioteca_visual_ampliada')
+    and to_regprocedure('public.biblioteca_visual_ampliada_disponible()') is not null
+    and to_regprocedure('public.momos_visual_library_v1(jsonb)') is not null
+    and exists(select 1 from information_schema.columns where table_schema='public'
+      and table_name='brand_asset_production_profiles' and column_name='visual_set_key')
+    and exists(select 1 from information_schema.columns where table_schema='public'
+      and table_name='brand_asset_production_profiles' and column_name='consent_purposes'),
+    'H106 no instaló sets, alcances o proyección visual';
+  assert has_function_privilege('service_role','public.momos_visual_library_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated','public.momos_visual_library_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.momos_visual_library_v1(jsonb)','EXECUTE')
+    and not has_table_privilege('authenticated','public.brand_asset_production_profiles','UPDATE'),
+    'H106 perdió RBAC o permitió fabricar consentimiento';
+  assert position('contains_storage_paths' in pg_get_functiondef('public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('contains_people_identity' in pg_get_functiondef('public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('external_execution_allowed' in pg_get_functiondef('public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('momos_propose_creative_formula' in pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0
+    and position('momos_humanization_community' in pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0,
+    'H106 perdió privacidad, cierre externo o auditoría H103/H105';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-106 PASS, rollback total' as resultado_h106;
 rollback;

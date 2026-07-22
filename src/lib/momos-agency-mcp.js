@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 const FORBIDDEN_KEY = /(api[_-]?key|access[_-]?token|refresh[_-]?token|app[_-]?secret|password|service[_-]?role|authorization)/i;
 
-export const MOMOS_AGENCY_MCP_VERSION = "1.4.0";
+export const MOMOS_AGENCY_MCP_VERSION = "1.5.0";
 
 export const MOMOS_AGENCY_MCP_TOOLS = Object.freeze([
   "momos_health",
@@ -13,6 +13,7 @@ export const MOMOS_AGENCY_MCP_TOOLS = Object.freeze([
   "momos_humanization_community",
   "momos_propose_humanization_series",
   "momos_propose_humanization_episode",
+  "momos_visual_library",
   "momos_creative_context",
   "momos_search_brand_assets",
   "momos_get_brand_asset_reference",
@@ -199,7 +200,7 @@ export function creativeContextRpc(kind) {
   return routes[normalized];
 }
 
-function normalizeBrandAsset(value, { allowStoragePath = false } = {}) {
+export function normalizeBrandAsset(value, { allowStoragePath = false } = {}) {
   const asset = asObject(value, "El activo de marca");
   if (!allowStoragePath && Object.keys(asset).some((key) => BRAND_ASSET_INTERNAL_FIELDS.test(key))) {
     throw new Error("La búsqueda de Biblioteca expuso un campo interno.");

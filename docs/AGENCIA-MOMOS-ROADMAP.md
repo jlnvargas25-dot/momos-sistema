@@ -33,9 +33,10 @@
   equipo, comunidad, personajes y producto real en series y episodios
   trazables; reutiliza consentimiento y derechos de Biblioteca, distingue
   persona/actor/personaje/sintético y recibe solo señales agregadas.
-- **H106 · Biblioteca visual ampliada:** manos, presentadores UGC, vista trasera,
-  locaciones, empaque, producto, personajes, audio, start/end frames y
-  continuidad; cada activo con uso, canal, vigencia y permiso de IA.
+- **H106 · Biblioteca visual ampliada:** integrada después de H105. Agrupa
+  manos, presentadores UGC, vistas traseras, locaciones, empaque, producto,
+  personajes y audio en sets/variantes; cada persona queda limitada por nivel
+  de identificación, canal, finalidad, vigencia y permiso específico de IA.
 - **Fase de orquestación de producción:** una fórmula aprobada podrá crear un
   paquete de producción y un preflight de motor, pero nunca consumir créditos,
   publicar o pautar sin su aprobación humana específica.
@@ -376,7 +377,7 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 
 **Criterio de cierre operativo:** la implementación técnica H105 ya exige dos episodios aprobados y publicados antes de declarar una conexión ganadora. El programa se cerrará operacionalmente cuando una serie real cumpla ese recorrido con señales de un conector activo y decisión humana, sin exponer PII ni ejecutar acciones externas por omisión.
 
-> Contrato técnico: `20260722_105_humanizacion_comunidad`. La cadena canónica y reproducible aplica H103 → H104 → H105.
+> Contratos técnicos: `20260722_105_humanizacion_comunidad` y `20260722_106_biblioteca_visual_ampliada`. La cadena canónica aplica H103 → H104 → H105 → H106.
 
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 

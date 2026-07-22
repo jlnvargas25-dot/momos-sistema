@@ -96,13 +96,20 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/humanizacion-comunidad-v1.sql
 
+      - name: Apply H106 expanded visual library to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/biblioteca-visual-ampliada-v1.sql
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-105 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-106 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -136,6 +143,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-humanizacion-comunidad-v1.sql | tee "$RUNNER_TEMP/humanization-community.log"
           grep -q "H105 series/episodios/consentimiento/señales agregadas" "$RUNNER_TEMP/humanization-community.log"
+
+      - name: Run H106 expanded visual library adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-biblioteca-visual-ampliada-v1.sql | tee "$RUNNER_TEMP/visual-library.log"
+          grep -q "H106 sets/multivista/variantes/consentimiento" "$RUNNER_TEMP/visual-library.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:

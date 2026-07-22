@@ -21,7 +21,7 @@ test("el MCP publica una superficie pequeña y sin SQL libre", () => {
     "momos_health", "momos_agency_snapshot", "momos_meta_observatory",
     "momos_creative_intelligence", "momos_propose_creative_formula",
     "momos_humanization_community", "momos_propose_humanization_series",
-    "momos_propose_humanization_episode",
+    "momos_propose_humanization_episode", "momos_visual_library",
     "momos_creative_context", "momos_search_brand_assets",
     "momos_get_brand_asset_reference", "momos_submit_proposals",
     "momos_request_human_approval", "momos_get_human_approval",
@@ -39,6 +39,8 @@ test("el MCP publica una superficie pequeña y sin SQL libre", () => {
   assert.match(runtime, /proponer_serie_humanizacion_agente_v1/);
   assert.match(runtime, /proponer_episodio_humanizacion_agente_v1/);
   assert.match(runtime, /Nunca recibe comentarios, perfiles o mensajes crudos/);
+  assert.match(runtime, /momos_visual_library_v1/);
+  assert.match(runtime, /mode: "Propuesta"/);
 });
 
 const approvalPrompt = "UGC vertical: muestra la bolsa MOMOS, saca a Max, lo presenta a cámara y prueba una cucharada.";

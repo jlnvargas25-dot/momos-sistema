@@ -25,7 +25,8 @@ test("manos y UGC exigen persona, derechos y consentimiento", () => {
     productionProfile: { ...defaultProductionProfile("Manos"), qaStatus: "Aprobado" },
   });
   assert.equal(result.ready, false);
-  assert.equal(result.reasons.length, 3);
+  assert.match(result.reasons.join(" "), /personas|autorización de imagen/i);
+  assert.match(result.reasons.join(" "), /canal y finalidad/i);
 });
 
 test("la biblioteca calcula vistas, locaciones y vacíos", () => {
@@ -53,8 +54,22 @@ test("un paquete no aprueba si le falta el rol requerido", () => {
 });
 
 test("el payload traduce la ficha a snake_case", () => {
-  const payload = productionProfilePayload({ ...defaultProductionProfile("Presentador UGC"), locationName: "  Casa creadora  " });
+  const payload = productionProfilePayload({ ...defaultProductionProfile("Presentador UGC"), locationName: "  Casa creadora  ",
+    visualSetKey: " Momo-UGC-01 ", consentChannels: ["TikTok"], consentPurposes: ["Pauta"] });
   assert.equal(payload.component_type, "Presentador UGC");
   assert.equal(payload.location_name, "Casa creadora");
   assert.equal(payload.consent_status, "Pendiente");
+  assert.equal(payload.visual_set_key, "momo-ugc-01");
+  assert.deepEqual(payload.consent_channels, ["TikTok"]);
+});
+
+test("agrupa multivistas del mismo sujeto sin mezclar variantes", () => {
+  const approved = { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado", visualSetKey: "momo-mango", variantLabel: "intacto" };
+  const library = buildProductionLibrary({ brandProductionReady: true, visualLibraryReady: true, brandMediaAssets: [
+    { ...baseAsset, productionProfile: { ...approved, viewAngle: "Frontal" } },
+    { ...baseAsset, id: 2, productionProfile: { ...approved, viewAngle: "Trasera", variantLabel: "bolsa" } },
+  ] });
+  assert.equal(library.visualSets.length, 1);
+  assert.equal(library.visualSets[0].hasFrontAndBack, true);
+  assert.deepEqual(library.visualSets[0].variants, ["intacto", "bolsa"]);
 });

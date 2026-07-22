@@ -1751,6 +1751,7 @@ export async function fetchCatalogos(options = {}) {
   let mundoAnimadoReady = false;
   let officialLogoDeletionReady = false;
   let brandProductionReady = false;
+  let visualLibraryReady = false;
   if (brandMediaReady) {
     const animationProbe = await capabilityResult("mundo_animado_disponible");
     const animationProbeMissing = animationProbe.error &&
@@ -1767,6 +1768,13 @@ export async function fetchCatalogos(options = {}) {
       (brandProductionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(brandProductionProbe.error.message || ""));
     if (brandProductionProbe.error && !brandProductionMissing) throw new Error(brandProductionProbe.error.message);
     brandProductionReady = !brandProductionMissing && brandProductionProbe.data === true;
+    if (brandProductionReady) {
+      const visualLibraryProbe = await capabilityResult("biblioteca_visual_ampliada_disponible");
+      const visualLibraryMissing = visualLibraryProbe.error
+        && (visualLibraryProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(visualLibraryProbe.error.message || ""));
+      if (visualLibraryProbe.error && !visualLibraryMissing) throw new Error(visualLibraryProbe.error.message);
+      visualLibraryReady = !visualLibraryMissing && visualLibraryProbe.data === true;
+    }
   }
   let creativeProductionReady = false; let creativeReviewReady = false; let creativeIterationReady = false;
   if (brandMediaReady) {
@@ -1887,7 +1895,9 @@ export async function fetchCatalogos(options = {}) {
     if (brandProductionReady) {
       const productionResults = await Promise.all([
         supabase.from("brand_asset_production_profiles")
-          .select("asset_id,component_type,view_angle,physical_state,interaction_type,hand_assignment,location_name,light_direction,scale_reference,continuity_notes,source_quality,qa_status,qa_notes,consent_status,canonical,created_by,created_at,updated_by,updated_at"),
+          .select(visualLibraryReady
+            ? "asset_id,component_type,view_angle,physical_state,interaction_type,hand_assignment,location_name,light_direction,scale_reference,continuity_notes,source_quality,qa_status,qa_notes,consent_status,visual_set_key,variant_label,identity_visibility,consent_channels,consent_purposes,consent_expires_at,consent_ai_use,canonical,created_by,created_at,updated_by,updated_at"
+            : "asset_id,component_type,view_angle,physical_state,interaction_type,hand_assignment,location_name,light_direction,scale_reference,continuity_notes,source_quality,qa_status,qa_notes,consent_status,canonical,created_by,created_at,updated_by,updated_at"),
         supabase.from("brand_production_packs")
           .select("id,name,purpose,version,status,product_id,figure,channel,target_format,description,requirements,fingerprint,created_by,created_at,reviewed_by,reviewed_at,review_note")
           .neq("status", "Archivado").order("created_at", { ascending: false }).limit(100),
@@ -1905,6 +1915,10 @@ export async function fetchCatalogos(options = {}) {
         lightDirection: nz(row.light_direction), scaleReference: nz(row.scale_reference),
         continuityNotes: nz(row.continuity_notes), sourceQuality: row.source_quality,
         qaStatus: row.qa_status, qaNotes: nz(row.qa_notes), consentStatus: row.consent_status,
+        visualSetKey: nz(row.visual_set_key), variantLabel: nz(row.variant_label),
+        identityVisibility: nz(row.identity_visibility, "No aplica"),
+        consentChannels: row.consent_channels || [], consentPurposes: row.consent_purposes || [],
+        consentExpiresAt: nz(row.consent_expires_at), consentAiUse: Boolean(row.consent_ai_use),
         canonical: row.canonical, createdBy: row.created_by, createdAt: tsBogota(row.created_at),
         updatedBy: row.updated_by, updatedAt: tsBogota(row.updated_at),
       }]));
@@ -2080,7 +2094,7 @@ export async function fetchCatalogos(options = {}) {
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
     agencyCreativeIntelligenceReady, agencyCreativeIntelligence,
     agencyHumanizationReady, agencyHumanization,
-    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,
     agencyGrowthReady, agencyGrowthPolicies, agencyGrowthSnapshots, agencyGrowthSelections,

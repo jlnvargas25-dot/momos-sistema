@@ -10,6 +10,7 @@ import ffprobeStatic from "ffprobe-static";
 import { z } from "zod";
 import { normalizeCreativeIntelligence } from "../src/lib/creative-intelligence.js";
 import { normalizeHumanizationCommunity } from "../src/lib/humanization-community.js";
+import { normalizeVisualLibrary } from "../src/lib/visual-library.js";
 import {
   MOMOS_AGENCY_MCP_VERSION,
   buildAgencyMcpRun,
@@ -579,7 +580,7 @@ if (SELF_TEST) {
         visual_style: input.formula.visualStyle, camera_pattern: input.formula.cameraPattern,
       },
     } },
-  ), { subject: `creative-formula:${input.formulaKey}` }));
+  ), { mode: "Propuesta", subject: `creative-formula:${input.formulaKey}` }));
 
   server.registerTool("momos_humanization_community", {
     title: "Humanización y Comunidad MOMOS",
@@ -625,7 +626,7 @@ if (SELF_TEST) {
         allowed_variables: input.editorialContract.allowedVariables, restrictions: input.editorialContract.restrictions,
       },
     } },
-  ), { subject: `humanization-series:${input.seriesKey}` }));
+  ), { mode: "Propuesta", subject: `humanization-series:${input.seriesKey}` }));
 
   server.registerTool("momos_propose_humanization_episode", {
     title: "Proponer episodio humano MOMOS",
@@ -656,7 +657,28 @@ if (SELF_TEST) {
         single_variable: input.episodeContract.singleVariable, cta: input.episodeContract.cta,
         synthetic_disclosure: input.episodeContract.syntheticDisclosure, privacy_note: input.episodeContract.privacyNote },
     } },
-  ), { subject: `humanization-episode:${input.seriesId}:${input.episodeKey}` }));
+  ), { mode: "Propuesta", subject: `humanization-episode:${input.seriesId}:${input.episodeKey}` }));
+
+  server.registerTool("momos_visual_library", {
+    title: "Sets y cobertura visual MOMOS",
+    description: "Consulta multivistas, variantes y referencias aprobadas para un canal y una finalidad exactos. No expone rutas, identidad de personas ni evidencia legal.",
+    inputSchema: z.object({
+      componentType: z.enum(["Producto", "Empaque", "Manos", "Presentador UGC", "Locación", "Movimiento", "Marca", "Audio", "Personaje"]).optional(),
+      visualSetKey: z.string().trim().regex(/^[a-z0-9][a-z0-9._:-]{2,79}$/).optional(),
+      productId: z.string().trim().max(80).default(""), figure: z.string().trim().max(80).default(""),
+      flavor: z.string().trim().max(80).default(""),
+      channel: z.enum(BRAND_ASSET_CHANNELS),
+      purpose: z.enum(["Referencia", "Storyboard", "Generación", "Edición", "Revisión", "Orgánico", "Pauta"]),
+      requiredViews: z.array(z.enum(["Frontal", "Trasera", "Perfil izquierdo", "Perfil derecho", "Tres cuartos", "Superior", "Detalle / macro", "POV", "Plano general"])).max(10).default([]),
+      limit: z.number().int().min(1).max(50).default(20),
+    }).strict(),
+  }, async (input) => governedTool("momos_visual_library", input, async () => normalizeVisualLibrary(await rpc(
+    "momos_visual_library_v1", { p: {
+      component_type: input.componentType || null, visual_set_key: input.visualSetKey || null,
+      product_id: input.productId || null, figure: input.figure || null, flavor: input.flavor || null,
+      channel: input.channel, purpose: input.purpose, required_views: input.requiredViews, limit: input.limit,
+    } },
+  )), { subject: input.visualSetKey ? `visual-set:${input.visualSetKey}` : "visual-library" }));
 
   server.registerTool("momos_creative_context", {
     title: "Contexto creativo gobernado",
