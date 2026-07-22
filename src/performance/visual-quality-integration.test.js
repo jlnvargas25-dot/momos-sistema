@@ -58,11 +58,15 @@ test("la portada de Agencia muestra H110 y abre directamente la revisión visual
 });
 
 test("Agencia convierte la brecha visual en un plan de captura accionable", () => {
-  assert.match(panel, /Plan de tomas oficial/);
-  assert.match(panel, /Completá cada figura una sola vez/);
+  assert.match(panel, /productionWorkspace/);
+  assert.match(panel, /Tomas por hacer/);
+  assert.match(panel, /Activos listos/);
+  assert.match(panel, /Paquetes para generar contenido/);
+  assert.match(panel, /Completá las fotos de cada figura/);
   assert.match(panel, /Subir \{capture\.nextView\.toLocaleLowerCase\("es"\)\}/);
   assert.match(panel, /openFigureCapture/);
   assert.match(panel, /figura-\$\{slug\}/);
+  assert.match(panel, /Ver control técnico/);
 });
 
 test("H110 pertenece a la cadena y al gate aislado de staging", () => {
