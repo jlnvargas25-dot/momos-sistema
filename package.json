@@ -32,6 +32,8 @@
     "worker:health:check": "node scripts/operational-health-worker.mjs --once --health-only",
     "worker:continuity:observe": "node scripts/continuity-backup-worker.mjs",
     "worker:continuity:certify": "node scripts/continuity-recovery-recorder.mjs",
+    "worker:continuity:restore-storage": "node scripts/continuity-storage-restore.mjs",
+    "worker:continuity:seal-replay": "node scripts/continuity-replay-receipt.mjs",
     "mcp:agency": "node scripts/momos-agency-mcp.mjs",
     "mcp:agency:health": "node scripts/momos-agency-mcp.mjs --self-test",
     "test:resilience:synthetic": "node scripts/operational-resilience-runner.mjs"

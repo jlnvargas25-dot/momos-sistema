@@ -67,7 +67,18 @@ aislado, sin conectores externos, cobros, publicaciones ni mensajes a clientes.
 1. Restaurar el backup de base en staging mediante el procedimiento oficial de Supabase.
 2. Aplicar únicamente migraciones posteriores incluidas en la cadena ordenada.
 3. Restaurar los objetos Storage desde la copia externa y comparar el manifiesto SHA-256.
+   El restaurador privado e idempotente se ejecuta con
+   `npm run worker:continuity:restore-storage`. Recibe las URL, refs y claves
+   `service_role` de producción y staging únicamente por variables de entorno,
+   descarga y compara cada objeto, reutiliza los que ya son idénticos y escribe
+   un recibo agregado sin rutas, nombres de archivo ni secretos. Nunca guardar
+   las claves en el repositorio ni en el archivo de resultado.
 4. Reproducir eventos posteriores con sus claves idempotentes y sellar el recibo.
+   Cuando el objetivo de recuperación coincide exactamente con el último instante
+   restaurado no existe una ventana posterior que reproducir. En ese único caso,
+   `npm run worker:continuity:seal-replay` genera un recibo determinista de cero
+   eventos. Si los instantes difieren, el comando falla y obliga a usar el ledger
+   real de eventos; nunca permite declarar cero por conveniencia.
 5. Ejecutar exactamente ocho verificaciones: migraciones, pedidos, inventario,
    reservas, pagos, recibos, replay y Storage.
 6. Ejecutar las pruebas H93 y H97, la cadena 01–97, contratos y build.
