@@ -44,9 +44,11 @@
   Separa derechos de aptitud técnica, conserva el
   original, versiona revisiones y bloquea imagen, video o Elements deficientes
   en preflight, autorización y reclamo del worker.
-- **H111 · Política anti-escarcha:** implementada, pendiente de certificación en
-  staging. Conserva la toma con escarcha/condensación como variante artística y
-  exige un máster limpio, canónico y enlazado para imagen, video y Elements.
+- **H111 · Política anti-escarcha:** implementada y certificada en staging en la
+  [corrida #15](https://github.com/jlnvargas25-dot/momos-sistema/actions/runs/29961545531).
+  Conserva la toma con escarcha/condensación como variante artística y exige un
+  máster limpio, canónico y enlazado para imagen, video y Elements. La evidencia
+  reproducible está en [`H111-STAGING-CLEAN-MASTER-2026-07-22.json`](H111-STAGING-CLEAN-MASTER-2026-07-22.json).
 - **Fase de experimentación cerrada:** Codex propondrá una sola variable; Agencia
   sellará control, retador, ventana y evidencia; Meta/TikTok aportarán señal y
   MOMO OPS conservará pedidos, ventas y margen.

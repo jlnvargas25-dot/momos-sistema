@@ -1,0 +1,72 @@
+{
+  "contract": "momos.clean-visual-master.staging.v1",
+  "capturedAt": "2026-07-22T22:06:46.7213325Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "execution": {
+    "method": "GitHub Actions isolated staging database gate",
+    "runId": 29961545531,
+    "jobId": 89063474562,
+    "runUrl": "https://github.com/jlnvargas25-dot/momos-sistema/actions/runs/29961545531",
+    "commit": "08249efe807569b40866044076e3db335edbcf0a",
+    "branch": "codex/visual-clean-master-policy",
+    "durationSeconds": 106,
+    "productionProjectRefBlocked": "csojbqpvujymesuvntxb"
+  },
+  "migration": {
+    "id": "20260722_111_politica_maestro_visual_limpio",
+    "sha256": "6f6fe44ea4bf18530a7c57da065c9670d838feaf41c267386b450fa9831ae0c0",
+    "adversarialSha256": "0e382dbc5f4ca2e79c4af064ebfa0fdc516d693b18224a611bddb427dea6af28",
+    "orderedAcceptanceSha256": "412daecb2054915bed4fe2b03c7ba9c177dd7df53ff6f40106a682b01bdc01ee",
+    "workflowSha256": "be083264b6cd93caf5ba3d81d017ef3e12cf979bebf3f0616a01412ee1f639c5",
+    "applied": true,
+    "idempotentRepairVerified": true
+  },
+  "acceptance": {
+    "orderedMigrations01To111": "PASS_WITH_ROLLBACK",
+    "h107MultiviewPreflight": "PASS_WITH_ROLLBACK",
+    "h108GenerationAuthorization": "PASS_WITH_ROLLBACK",
+    "h109ConnectorIsolation": "PASS_WITH_ROLLBACK",
+    "h110VisualQuality": "PASS_WITH_ROLLBACK",
+    "h111CleanVisualMaster": "PASS_WITH_ROLLBACK",
+    "recoveryObservabilityTelemetry": "PASS_WITH_ROLLBACK",
+    "isolatedConcurrencyAndChaos": "PASS",
+    "repositoryContracts": "PASS",
+    "localNodeTests": "PASS",
+    "localPerformanceIntegration": "213_PASS",
+    "productionBuild": "PASS",
+    "performanceBudget": "PASS",
+    "testRowsRemaining": 0
+  },
+  "runtime": {
+    "schema": "momos-visual-library/v1",
+    "qualityContractVersion": 2,
+    "cleanMasterPolicyVersion": 1,
+    "frostAndCondensationRemainAsArtisticVariants": true,
+    "frostAndCondensationBlockedForImageVideoAndElements": true,
+    "canonicalAiMastersMustBeCleanOrRestored": true,
+    "restoredMastersRequireOriginalLineage": true,
+    "existingQualityAssessmentsAreRevalidated": true,
+    "preflightAuthorizationAndWorkerClaimFailClosed": true,
+    "internalClassifierRemainsPrivate": true,
+    "humanReviewRequired": true
+  },
+  "effects": {
+    "publicTrafficOpened": false,
+    "externalJobsDispatched": false,
+    "creativeCreditsConsumed": false,
+    "contentPublished": false,
+    "productionMutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsStoragePaths": false
+  },
+  "dependencyAudit": {
+    "highOrCritical": 0,
+    "moderate": 2,
+    "note": "The known @hono/node-server advisory remains transitive through the MCP SDK; the available automatic command is breaking and was not applied silently."
+  },
+  "conclusion": "PASS - H111 is active and certified in isolated staging. Frost or condensation remains available only as an artistic variant; image, video and Elements require a canonical clean or linked restored master. No credits, publication, external jobs or production changes occurred."
+}
