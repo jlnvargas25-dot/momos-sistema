@@ -1014,4 +1014,70 @@ begin
 end $$;
 
 select 'TESTS_OK — migraciones ordenadas 01-77 PASS, rollback total' as resultado;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260721_p01_pide_fundaciones')
+    and to_regclass('public.quotes') is not null
+    and to_regclass('public.checkout_sessions') is not null
+    and to_regclass('public.checkout_holds') is not null
+    and to_regclass('public.checkout_hold_lotes') is not null
+    and to_regclass('public.payments') is not null
+    and to_regclass('public.payment_events') is not null
+    and to_regclass('public.pide_demand_events') is not null
+    and to_regclass('public.pide_demand_snapshots') is not null
+    and to_regclass('public.order_tracking_tokens') is not null
+    and to_regclass('public.order_attributions') is not null
+    and to_regprocedure('public.pide_demand_snapshot_v1()') is not null
+    and to_regprocedure('public.sellar_pide_demand_snapshot_v1(integer)') is not null
+    and to_regprocedure('public.purgar_checkout_efimero_v1(integer)') is not null
+    and to_regprocedure('public._pide_liberar_holds_vencidos(text)') is not null
+    and to_regprocedure('public._pide_anonimizar_checkout(uuid)') is not null
+    and to_regprocedure('public._pide_checkout_holds_guard()') is not null
+    and to_regprocedure('public._pide_payments_guard()') is not null
+    and to_regprocedure('public._pide_tracking_tokens_guard()') is not null,
+    'P01 no instaló las fundaciones de Pide';
+  assert exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='benefits'
+        and column_name='hold_quote_id')
+    and exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='products'
+        and column_name='pide_hold_fraccion')
+    and not exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='inventory_reservations'
+        and column_name='expira'),
+    'P01 no agregó hold_quote_id/pide_hold_fraccion o no retiró el gancho muerto';
+  assert position('Pide' in pg_get_constraintdef((select oid from pg_constraint
+      where conrelid='public.orders'::regclass and conname='orders_canal_check')))>0
+    and position('Pide' in pg_get_constraintdef((select oid from pg_constraint
+      where conrelid='public.customers'::regclass and conname='customers_canal_check')))>0
+    and position('Pide MOMOS' in pg_get_constraintdef((select oid from pg_constraint
+      where conrelid='public.orders'::regclass and conname='orders_origen_detalle_check')))>0
+    and position('Pasarela (web)' in pg_get_constraintdef((select oid from pg_constraint
+      where conrelid='public.orders'::regclass and conname='orders_pago_check')))>0
+    and position('Temporal' in pg_get_constraintdef((select oid from pg_constraint
+      where conrelid='public.inventory_reservations'::regclass
+        and conname='inventory_reservations_estado_check')))=0,
+    'P01 no recreó los CHECK del canal Pide o dejó vivo el gancho Temporal';
+  assert not has_table_privilege('authenticated','public.quotes','SELECT')
+    and not has_table_privilege('anon','public.quotes','SELECT')
+    and not has_table_privilege('anon','public.quotes','INSERT')
+    and not has_table_privilege('service_role','public.payments','SELECT')
+    and not has_table_privilege('authenticated','public.order_tracking_tokens','SELECT')
+    and not has_table_privilege('authenticated','public.order_attributions','SELECT')
+    and not has_table_privilege('anon','public.order_attributions','INSERT')
+    and has_function_privilege('service_role','public.sellar_pide_demand_snapshot_v1(integer)','EXECUTE')
+    and has_function_privilege('service_role','public.purgar_checkout_efimero_v1(integer)','EXECUTE')
+    and has_function_privilege('authenticated','public.pide_demand_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('anon','public.pide_demand_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('authenticated','public.sellar_pide_demand_snapshot_v1(integer)','EXECUTE'),
+    'P01 perdió deny-all o RBAC';
+  assert position('pide_demand_events' in pg_get_functiondef(
+      'public.cierre_lecturas_pii_disponible()'::regprocedure))>0
+    and position('checkout_holds' in pg_get_functiondef(
+      'public.cierre_lecturas_pii_disponible()'::regprocedure))>0,
+    'P01 no amplió el perímetro H89 a las tablas Pide';
+end $$;
+
+select 'TESTS_OK — carril Pide P01 fundaciones PASS, rollback total' as resultado_p01;
 rollback;

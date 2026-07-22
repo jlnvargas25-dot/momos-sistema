@@ -127,3 +127,47 @@ Si el preflight informa que falta `lote_figuras`, la base todavía no tiene la
 cadena previa de variantes. En ese caso no continúes con este paquete: primero
 deben verificarse y aplicar, en ese orden, `variantes-v1.sql`,
 `variantes-1b-fifo.sql` y `variantes-2-cola.sql`.
+
+## Carril Pide · P01 fundaciones
+
+Pide MOMOS comparte el MISMO ledger `public.momos_ops_migrations` con OPS, pero
+avanza por un carril propio con prefijo `p`: los hitos OPS usan IDs numéricos
+(`20260721_93_...`, "H") y los de Pide usan `20260721_pNN_...` ("P"), así la
+colisión de identificadores es imposible. El orden real entre carriles lo da
+`applied_at`, no el nombre del archivo ni el ID. El preflight de P01 se ancla en
+`20260721_93_continuidad_recuperacion` (último hito verificado en la base viva)
+más comprobaciones de objetos y de las definiciones EXACTAS de los CHECK vivos
+vía `pg_get_constraintdef`, y NO exige los hitos OPS 94-97: viven en otra rama y
+los dos carriles se aplican en orden libre entre sí.
+
+Regla de aplicación: primero confirmar que `20260721_93_continuidad_recuperacion`
+aparece en el ledger de la base viva; después pasa el gate de siempre —
+revisión adversarial del SQL y aprobación explícita de Jorge antes de tocar la
+base. Un preflight que falla significa que la base se movió respecto de lo
+verificado: se investiga, jamás se fuerza.
+
+P01 NO toca funciones del core OPS: el cableado de
+`_pide_liberar_holds_vencidos` dentro de `_reserve_inventory` y de las RPC
+públicas llega en P03 — hacerlo en P01 cruzaría el carril OPS.
+
+Requisito sellado para la revisión de P03: el FIFO del hold JAMÁS emite una
+fila con `batch_id` null habiendo consumido `lote_figuras`. El escape
+`batch_id` null existe solo para stock legítimamente sin lote, y ese supuesto
+debe confirmarse contra el dominio antes de aplicar P03.
+
+### Pendientes de decisión (Jorge)
+
+- Gate de contratos: el verificador vive solo en la rama OPS — ¿portarlo al
+  carril Pide o correrlo en el merge?
+- Valores comerciales de los seeds de `app_settings`
+  (`pide_hold_ttl_minutos`, `pide_hold_extension_minutos`,
+  `pide_hold_stock_fraccion`, `pide_purga_checkout_horas`,
+  `pide_tracking_expira_dias`): los actuales son técnicos, no aprobados.
+- Sumar `order_tracking_tokens` al guard H89 en P04 (requiere tocar la lista
+  cerrada de la spec §1.9).
+- `k=3` del snapshot de demanda y `franja` fuera de sus dimensiones.
+- Pasarela concreta: el slug de proveedor de `payments` queda abierto.
+
+60. `../pide-fundaciones-v1.sql` — §1 completo de la superficie pública: canal `Pide` en los CHECK vivos, retiro del gancho muerto `Temporal`/`expira`, tablas `quotes`, `checkout_sessions`, `checkout_holds` + `checkout_hold_lotes` (extensión exactly-once y terminales selladas por trigger), `payments` + `payment_events` (UNIQUE parcial Iniciado/Aprobado), `order_attributions`, demanda con snapshot sellado k≥3 por `creado_at`, tracking v4, `benefits.hold_quote_id`, techos anti-acaparamiento, RLS deny-all, perímetro H89 ampliado y purga en dos fases (DELETE 24–72 h).
+61. `../tests/test-pide-fundaciones-v1.sql` — adversarial: CHECKs nuevos y viejos, deny-all real por rol (4 verbos), UNIQUE parciales de idempotencia, extensión exactly-once, estados terminales, hold veneno aislado, liberación de holds vencidos con orden global de locks, payment_events idempotentes, anonimización con re-saneo de atribución, FK RESTRICT, guard H89 y k≥3 del snapshot de demanda; siempre hace rollback.
+62. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente (cadena OPS del snapshot local + sección P01); siempre hace rollback.
