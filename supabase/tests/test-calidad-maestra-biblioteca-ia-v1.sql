@@ -26,7 +26,8 @@ begin
 end $$;
 
 create temporary table h110_context(
-  admin_id text,auth_id uuid,product_id text,front_id bigint,quarter_id bigint,frost_id bigint,pack_id bigint
+  admin_id text,auth_id uuid,product_id text,front_id bigint,quarter_id bigint,frost_id bigint,pack_id bigint,
+  h111_ready boolean
 ) on commit drop;
 grant select,update on h110_context to authenticated,service_role;
 
@@ -61,7 +62,8 @@ begin
   values('H110 Max con escarcha','Foto','MOMOS',v_product,'Max','','Producto','Vertical',false,'Propio',true,
     '["Instagram","TikTok"]','Activo','test/h110-frost-'||v_suffix||'.jpg',md5(random()::text)||md5(random()::text),
     'image/jpeg',66009,null,null,'[]','Rollback H110',v_actor.id) returning id into v_frost;
-  insert into h110_context values(v_actor.id,v_actor.auth_id,v_product,v_front,v_quarter,v_frost,null);
+  insert into h110_context values(v_actor.id,v_actor.auth_id,v_product,v_front,v_quarter,v_frost,null,
+    exists(select 1 from public.momos_ops_migrations where id='20260722_111_politica_maestro_visual_limpio'));
 end $$;
 
 select set_config('request.jwt.claims',jsonb_build_object(
@@ -89,10 +91,10 @@ begin
     'issues',jsonb_build_array('Escarcha','Compresión visible'),'checks_completed',v_checks,
     'review_notes','La escarcha tapa textura y geometría; se necesita una nueva toma limpia.'));
   assert (
-      (not exists(select 1 from public.momos_ops_migrations where id='20260722_111_politica_maestro_visual_limpio')
+      (not (select h111_ready from h110_context)
         and v_result->>'status'='Requiere nueva toma' and v_result->>'recommended_action'='Nueva toma')
       or
-      (exists(select 1 from public.momos_ops_migrations where id='20260722_111_politica_maestro_visual_limpio')
+      ((select h111_ready from h110_context)
         and v_result->>'status' in ('Variante artística','Requiere mejora')
         and v_result->>'recommended_action' in ('Capturar máster limpio','Registrar dimensiones'))
     ) and not (v_result#>>'{usage_readiness,video_generation,ready}')::boolean,
@@ -160,7 +162,7 @@ begin
     'purpose','Generación','target_use','Generación de video','required_views',jsonb_build_array('Frontal','Tres cuartos'),'limit',20));
   assert v_snapshot->>'schema_version'='momos-visual-library/v1'
     and (v_snapshot->>'quality_contract_version')::integer=case
-      when exists(select 1 from public.momos_ops_migrations where id='20260722_111_politica_maestro_visual_limpio') then 2 else 1 end
+      when (select h111_ready from h110_context) then 2 else 1 end
     and (v_snapshot#>>'{sets,0,ai_quality,ready}')::boolean
     and (v_snapshot#>>'{sets,0,assets,0,ai_quality,source_current}')::boolean,
     'H110 no entregó a Codex la aptitud exacta del set.';
