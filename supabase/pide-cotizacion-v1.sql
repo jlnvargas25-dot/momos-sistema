@@ -395,7 +395,9 @@ begin
   if coalesce(p->>'canal','')<>'pide' then
     return public._pide_error('ENTRADA_INVALIDA','Canal no reconocido.');
   end if;
-  if jsonb_typeof(p->'items')<>'array'
+  -- Trampa de NULL (bug real cazado en staging): jsonb_typeof(NULL)<>'array'
+  -- evalúa a NULL, no a true — sin el IS NULL explícito, "sin items" pasaba.
+  if p->'items' is null or jsonb_typeof(p->'items')<>'array'
      or jsonb_array_length(p->'items')<1 then
     return public._pide_error('ENTRADA_INVALIDA','La cotización necesita al menos un producto.');
   end if;
@@ -449,7 +451,9 @@ begin
     -- (rpc-pedidos-v1.sql:594-647 combos con boxes/slots y salsa obligatoria;
     -- :690-693 línea simple con figura/sabor/salsa del item).
     if v_prod.tipo='combo' then
-      if jsonb_typeof(v_item->'boxes')<>'array'
+      -- Misma trampa de NULL: sin el IS NULL, un combo SIN boxes pasaba con
+      -- cajas vacías (bug real cazado por el ensayo en staging).
+      if v_item->'boxes' is null or jsonb_typeof(v_item->'boxes')<>'array'
          or jsonb_array_length(v_item->'boxes')<>v_cantidad then
         return public._pide_error('ENTRADA_INVALIDA','Cada combo necesita sus cajas completas.');
       end if;

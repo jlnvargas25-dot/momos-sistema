@@ -279,6 +279,10 @@ begin
     'items',jsonb_build_array(v_item),
     'zona',v_zona,'franja',v_franja,'fecha_entrega',(current_date+2)::text));
   assert v_q->>'error'='ENTRADA_INVALIDA','Aceptó una solicitud sin canal.';
+  -- items ausentes (trampa de NULL: jsonb_typeof(NULL)<>'array' es NULL, no true)
+  v_q:=public.cotizar_pedido_v1(jsonb_build_object('canal','pide',
+    'zona',v_zona,'franja',v_franja,'fecha_entrega',(current_date+2)::text));
+  assert v_q->>'error'='ENTRADA_INVALIDA','Aceptó una solicitud sin items.';
 end $$;
 
 -- 4) Dominio canónico: producto apagado, figura ajena, sabor/salsa inventados,
@@ -417,17 +421,23 @@ begin
   v_orden:='P02-O-'||v_sfx;
   -- Semántica REAL: orders.fecha = fecha operativa de creación (staff);
   -- la ENTREGA viaja en fecha_entrega+franja (contrato sellado para P04).
+  -- enforce_order_intake_role() exige rol activo (hallazgo del ensayo): el
+  -- DML de setup corre con claims LIMPIOS (dueño), como el fixture de P01.
+  perform set_config('request.jwt.claims','',true);
   insert into public.orders(id,fecha,hora,canal,customer_id,estado,zona,franja,fecha_entrega)
   values(v_orden,current_date,current_time,'Pide',
     (select valor from p02_ids where clave='cliente'),'Nuevo',
     (select valor from p02_ids where clave='zona'),v_chica,current_date+2);
+  perform set_config('request.jwt.claims','{"role":"anon"}',true);
   v_q:=public.cotizar_pedido_v1(jsonb_build_object('canal','pide',
     'items',jsonb_build_array(v_item),
     'zona',(select valor from p02_ids where clave='zona'),'franja',v_chica,
     'fecha_entrega',(current_date+2)::text));
   assert v_q->>'error'='SIN_CAPACIDAD_FRANJA','No cortó la franja llena (con colchón).';
-  -- el mismo pedido Cancelado libera el cupo
+  -- el mismo pedido Cancelado libera el cupo (update con claims limpios)
+  perform set_config('request.jwt.claims','',true);
   update public.orders set estado='Cancelado' where id=v_orden;
+  perform set_config('request.jwt.claims','{"role":"anon"}',true);
   v_q:=public.cotizar_pedido_v1(jsonb_build_object('canal','pide',
     'items',jsonb_build_array(v_item),
     'zona',(select valor from p02_ids where clave='zona'),'franja',v_chica,
@@ -538,7 +548,8 @@ begin
     and (select benefit_id from public.quotes
       where id=(v_q->>'quote_id')::uuid) is null,
     'Un beneficio con mínimo no alcanzado se aplicó o se ancló igual.';
-  update public.benefits set minimo=null where id='P02-B-'||v_sfx;
+  -- benefits.minimo es NOT NULL default 0 (verdad del dominio): restore a 0.
+  update public.benefits set minimo=0 where id='P02-B-'||v_sfx;
 end $$;
 reset role;
 
