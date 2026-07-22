@@ -6,6 +6,7 @@ import {
 } from "./kitchen-voice.js";
 import { batchPresentation, commercialFamilyLabel, isCommercialFamilyProduct } from "./momos-domain-language.js";
 import { buildCanonicalPhysicalResults, canonicalBatchPhysicalResult } from "./canonical-production-results.js";
+import { parseOperationalTimestamp } from "./operational-time.js";
 
 const UNPAID = new Set(["Nuevo", "Confirmado", "Pendiente de pago"]);
 const ACTIVE_BATCH_STATES = new Set(["En preparación", "Congelando"]);
@@ -89,9 +90,9 @@ function describeOrder(order, catalogs) {
 
 function freezingStatus(batch, now) {
   if (batch.estado !== "Congelando" || !batch.inicioCongelacion) return "";
-  const start = new Date(text(batch.inicioCongelacion).replace(" ", "T"));
-  if (Number.isNaN(start.getTime())) return " Su cronómetro de congelación está activo.";
-  const target = start.getTime() + number(batch.horasCongelacion) * 60 * 60 * 1000;
+  const startedAt = parseOperationalTimestamp(batch.inicioCongelacion);
+  if (startedAt === null) return " Su cronómetro de congelación está activo.";
+  const target = startedAt + number(batch.horasCongelacion) * 60 * 60 * 1000;
   const remaining = Math.max(0, Math.ceil((target - now) / 60000));
   if (remaining <= 0) return " Ya cumplió el tiempo objetivo de congelación; revisalo antes de desmoldar.";
   const hours = Math.floor(remaining / 60);
