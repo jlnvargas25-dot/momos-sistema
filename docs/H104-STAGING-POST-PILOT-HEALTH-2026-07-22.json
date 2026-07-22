@@ -1,0 +1,54 @@
+{
+  "contract": "momos.commercial-pilot.post-health.staging.v1",
+  "capturedAt": "2026-07-22T18:00:31.384192Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "health": {
+    "status": "Saludable",
+    "operationReadOnly": false,
+    "lastCheckedAt": "2026-07-22T18:00:06.661838Z",
+    "blockingHighCriticalIncidents": 0,
+    "activeStaleConnectors": 0,
+    "continuityCertifiedUntil": "2026-08-21T02:38:17.154Z",
+    "resilienceCertifiedUntil": "2026-08-21T04:15:27.0386Z"
+  },
+  "connectorCorrection": {
+    "reason": "Workers are intentionally offline after the closed staging pilot; inactive runtimes must not remain declared active.",
+    "changes": [
+      {
+        "provider": "Higgsfield",
+        "previousStatus": "Activa",
+        "currentStatus": "Pausada",
+        "secretConfigurationPreserved": true
+      },
+      {
+        "provider": "Kling",
+        "previousStatus": "Activa",
+        "currentStatus": "Pausada",
+        "secretConfigurationPreserved": true
+      }
+    ],
+    "metaStatus": "Por conectar",
+    "metaWorkerActivated": false,
+    "externalJobsDispatched": false
+  },
+  "incident": {
+    "id": 2,
+    "checkCode": "STALE_CONNECTOR_HEARTBEATS",
+    "severity": "Media",
+    "status": "Resuelto",
+    "resolutionCode": "CORREGIDO",
+    "resolvedAt": "2026-07-22T18:00:31.384192Z"
+  },
+  "effects": {
+    "productionMutated": false,
+    "publicTrafficOpened": false,
+    "externalExecution": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsFreeText": false
+  },
+  "conclusion": "PASS - staging returned to healthy state without fabricating worker heartbeats or activating Meta."
+}
