@@ -31,10 +31,10 @@ test("H100 queda dentro del gate staging y de la cadena ordenada", async () => {
     readFile(orderedUrl, "utf8"), readFile(workflowUrl, "utf8"),
   ]);
   assert.match(ordered, /20260722_100_piloto_operativo_interno/);
-  assert.match(ordered, /migraciones ordenadas 01-100 PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-102 PASS/);
   assert.match(workflow, /test-piloto-operativo-e2e-v1\.sql/);
   assert.match(workflow, /H100 piloto operativo interno E2E/);
-  assert.match(workflow, /01-100 PASS/);
+  assert.match(workflow, /01-102 PASS/);
 });
 
 test("H100 conserva evidencia sanitaria y alcance honesto", async () => {

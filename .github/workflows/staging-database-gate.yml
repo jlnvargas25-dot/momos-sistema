@@ -67,13 +67,28 @@ jobs:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
 
+      - name: Apply H102 closed commercial pilot contract to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/piloto-comercial-controlado-v1.sql
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-100 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-102 PASS" "$RUNNER_TEMP/migrations.log"
+
+      - name: Run H102 closed commercial pilot adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-piloto-comercial-controlado-v1.sql | tee "$RUNNER_TEMP/commercial-pilot.log"
+          grep -q "H102 piloto cerrado" "$RUNNER_TEMP/commercial-pilot.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:

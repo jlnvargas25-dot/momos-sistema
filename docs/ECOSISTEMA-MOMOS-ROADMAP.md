@@ -249,6 +249,18 @@ el recibo sin PII ni secretos está en
 certificación no sustituye un piloto con cliente real, checkout público, webhook
 de pago ni carga alta sostenida.
 
+**H102 aplicado y validado en staging, sin iniciar operación real:** MOMO OPS incorpora
+un contrato cerrado para una muestra de 1–20 pedidos ya pagados, con ventana y
+tope por pedido, cuatro firmas humanas, salud/resiliencia/recuperación vigentes,
+idempotencia durable y conciliación final de evidencia y margen. El controlador
+no crea pedidos, no cobra, no altera sus estados y nunca abre tráfico. La
+migración, adversarial y cadena 01–102 pasaron en el staging aislado y la
+comprobación sanitaria encontró cero pilotos, pedidos vinculados o eventos
+residuales. El recibo está en
+`docs/H102-STAGING-COMMERCIAL-PILOT-CONTROL-2026-07-22.json`. El piloto con
+clientes reales continúa pendiente y solo se marcará completo después de
+ejecutar la muestra y firmar su cierre humano.
+
 **H95 aplicado:** el Centro de Salud incorpora
 políticas SLO versionadas y una frontera privada e idempotente para telemetría agregada. Calcula disponibilidad,
 presupuesto de error, p50/p95/p99 por histograma, saturación, colas y vigencia en

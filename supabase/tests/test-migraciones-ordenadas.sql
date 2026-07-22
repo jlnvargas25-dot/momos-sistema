@@ -1543,5 +1543,42 @@ begin
     'H100 conserva la dependencia fragil de pgcrypto.digest';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-100 PASS, rollback total' as resultado_h100;
+select 'TESTS_OK - migraciones ordenadas 01-100 PASS, continua H102' as resultado_h100;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_102_piloto_comercial_controlado')
+    and to_regclass('public.commercial_pilot_runs') is not null
+    and to_regclass('public.commercial_pilot_signoffs') is not null
+    and to_regclass('public.commercial_pilot_orders') is not null
+    and to_regclass('public.commercial_pilot_events') is not null,
+    'H102 no instaló el piloto comercial controlado';
+  assert to_regprocedure('public.preparar_piloto_comercial_v1(jsonb)') is not null
+    and to_regprocedure('public.firmar_piloto_comercial_v1(uuid,text,text,bigint)') is not null
+    and to_regprocedure('public.iniciar_piloto_comercial_v1(uuid,bigint,text)') is not null
+    and to_regprocedure('public.vincular_pedido_piloto_comercial_v1(uuid,text,uuid)') is not null
+    and to_regprocedure('public.conciliar_pedido_piloto_comercial_v1(uuid,text)') is not null
+    and to_regprocedure('public.cerrar_piloto_comercial_v1(uuid,bigint)') is not null
+    and to_regprocedure('public.momos_commercial_pilot_snapshot_v1()') is not null,
+    'H102 perdió una RPC canónica';
+  assert has_function_privilege('authenticated',
+      'public.momos_commercial_pilot_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('anon',
+      'public.momos_commercial_pilot_snapshot_v1()','EXECUTE')
+    and not has_table_privilege('authenticated',
+      'public.commercial_pilot_orders','SELECT')
+    and not has_table_privilege('service_role',
+      'public.commercial_pilot_orders','SELECT'),
+    'H102 perdió RBAC o expuso tablas privadas';
+  assert position('publicTrafficOpened' in pg_get_functiondef(
+      'public.iniciar_piloto_comercial_v1(uuid,bigint,text)'::regprocedure))>0
+    and position('resilience_certified_until' in pg_get_functiondef(
+      'public.iniciar_piloto_comercial_v1(uuid,bigint,text)'::regprocedure))>0
+    and position('continuity_certified_until' in pg_get_functiondef(
+      'public.iniciar_piloto_comercial_v1(uuid,bigint,text)'::regprocedure))>0,
+    'H102 perdió cierre de tráfico o gates de salud y recuperación';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-102 PASS, rollback total' as resultado_h102;
 rollback;

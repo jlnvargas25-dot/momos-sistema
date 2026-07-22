@@ -118,7 +118,7 @@ jobs:
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/ordered.log"
-          grep -q "01-100 PASS" "$RUNNER_TEMP/ordered.log"
+          grep -q "01-102 PASS" "$RUNNER_TEMP/ordered.log"
 
       - name: Challenge continuity and derived evidence contracts
         env:

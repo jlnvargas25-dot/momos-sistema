@@ -354,6 +354,25 @@ El recibo `docs/H100-STAGING-INTERNAL-PILOT-2026-07-22.json` declara de forma
 explícita lo que el ensayo no cubre: checkout público, webhook de pago, cliente
 real, carga de archivos y tráfico alto sostenido.
 
+## Hito 102 — piloto comercial controlado
+
+Aplicar después de confirmar `20260722_100_piloto_operativo_interno`:
+
+1. `../piloto-comercial-controlado-v1.sql` — instala el contrato privado para
+   una muestra cerrada de 1–20 pedidos ya pagados, cuatro firmas humanas, salud
+   y recuperación vigentes, idempotencia durable y conciliación de evidencia y
+   margen. No crea pedidos, no cobra y nunca abre tráfico.
+2. `../tests/test-piloto-comercial-controlado-v1.sql` — intenta abrir Producción
+   sin confirmación, iniciar sin firmas o en solo lectura, vincular un pedido no
+   pagado, repetirlo, exponer PII y saltar RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–102; siempre hace rollback.
+
+H101 fue una certificación de interfaz en staging, no una migración de esquema.
+Por eso la cadena de migraciones salta de H100 a H102. Aplicar H102 tampoco
+ejecuta un piloto real: la operación sigue pendiente hasta que el equipo apruebe
+una ventana y vincule pedidos reales ya pagados.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

@@ -83,7 +83,7 @@ test("H97 adversarial rompe métricas declaradas, cronología, Storage e inmutab
   assert.match(derivedAdversarial, /RPO derivado mayor al objetivo/i);
   assert.match(derivedAdversarial, /permitió reescribir una evidencia ya sellada/i);
   assert.match(derivedAdversarial, /rollback;\s*$/i);
-  assert.match(ordered, /migraciones ordenadas 01-100 PASS/i);
+  assert.match(ordered, /migraciones ordenadas 01-102 PASS/i);
 });
 
 test("H97 certifica únicamente un staging aislado restaurado y no ejecuta restore", () => {

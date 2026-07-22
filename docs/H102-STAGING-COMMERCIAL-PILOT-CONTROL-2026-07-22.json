@@ -1,0 +1,31 @@
+{
+  "contract": "momos.commercial-pilot-control.staging.v1",
+  "capturedAt": "2026-07-22T05:52:00Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "migration": {
+    "id": "20260722_102_piloto_comercial_controlado",
+    "applied": true
+  },
+  "validation": {
+    "adversarial": "PASS",
+    "orderedMigrations": "01-102 PASS",
+    "rolledBack": true,
+    "remainingPilots": 0,
+    "remainingLinkedOrders": 0,
+    "remainingEvents": 0
+  },
+  "scope": {
+    "closedSampleControllerReady": true,
+    "realCustomerPilotExecuted": false,
+    "publicTrafficOpened": false,
+    "publicCheckoutCertified": false,
+    "paymentWebhookCertified": false,
+    "productionMutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsFreeText": false
+  }
+}
