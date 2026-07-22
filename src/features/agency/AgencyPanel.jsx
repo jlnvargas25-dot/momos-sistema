@@ -11,6 +11,7 @@ import { fetchBrandIdentity } from "../../lib/brand-identity-api";
 import { buildCommercialLearning } from "../../lib/commercial-learning";
 import { projectAgencyDbWithOperationalFacts } from "../../lib/agency-operational-facts";
 import { buildCreativePackage } from "../../lib/creative-package";
+import { buildProductionLibrary } from "../../lib/production-library";
 import { activeFigureCatalog, commercialFamilyLabel, figureProductId, isCommercialFamilyProduct } from "../../lib/momos-domain-language";
 import {
   registrarContactoCliente, crearCampana, editarCampana, setCampanaEstado, crearCreativo, crearPublicacion,
@@ -477,6 +478,8 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
     || growthEngine.modes.find((mode) => mode.id === growthEngine.recommendedModeId)
     || growthEngine.modes[0];
   const brandIdentity = useMemo(() => buildBrandIdentityView(brandIdentityDto, db.agencyBrandProfile), [brandIdentityDto, db.agencyBrandProfile]);
+  const visualProductionLibrary = useMemo(() => buildProductionLibrary(db), [db]);
+  const visualQualityPending = visualProductionLibrary.approved.filter((asset) => !asset.aiReadiness.videoGeneration.ready).length;
 
   async function loadBrandIdentity({ includeHistory = false, signAssets = false } = {}) {
     const requestId = ++brandIdentityRequestRef.current;
@@ -781,6 +784,7 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
     identity: [
       { id: "identity-overview", icon: "✦", eyebrow: "Fuente oficial", title: "Identidad de marca MOMOS", description: "Logo, paleta, tipografía, voz y reglas de uso reunidas en una versión aprobada.", metric: brandIdentity.logos.length, metricLabel: "logos oficiales", tone: brandIdentity.ready ? "green" : "gold" },
       { id: "creative-library", icon: "🎨", eyebrow: "Archivos originales", title: "Biblioteca creativa", description: "Fotos, videos, logos y referencias con derechos y trazabilidad.", metric: (db.brandMediaAssets || []).length, metricLabel: "archivos", tone: "coral" },
+      { id: "visual-quality", icon: "🎬", eyebrow: "Calidad para IA", title: "Activos listos para crear", description: "Verificá qué fotos sirven para imagen, video y Elements, y cuáles necesitan una nueva toma.", metric: visualProductionLibrary.summary.videoReady, metricLabel: "aptos para video", tone: visualQualityPending > 0 ? "gold" : "green" },
     ],
     strategy: [
       { id: "strategy-humanization", icon: "♡", eyebrow: "Conexión de marca", title: "Humanización y Comunidad", description: "Series, episodios y señales reales sin testimonios inventados ni datos personales.", metric: Number(db.agencyHumanization?.summary?.approved_series || 0), metricLabel: "series activas", tone: "rose" },
@@ -815,11 +819,16 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
         <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b" style={{ borderColor: T.border, background: T.surface }}>
           <div className="flex items-start gap-3 min-w-0"><span className="w-10 h-10 rounded-2xl grid place-items-center text-lg shrink-0" style={{ background: T.coralSoft }}>✦</span><div><div className="flex flex-wrap items-center gap-2"><span className="text-[9px] font-extrabold tracking-[.18em] uppercase" style={{ color: T.coral }}>MOMO OPS Intelligence</span><span className="rounded-full px-2 py-0.5 text-[8px] font-extrabold" style={{ background: settings.paused ? "#F6D4CD" : "#DDEBD9", color: settings.paused ? "#A03B2A" : "#315B35" }}>{settings.paused ? "Pausada" : "Protegida"}</span></div><h2 className="display text-xl font-semibold mt-0.5 mb-0">Tu agencia comercial</h2><p className="text-xs mt-1 mb-0 max-w-2xl" style={{ color: T.choco2 }}>Elegí qué quieres lograr. MOMOS prepara una propuesta y vos aprobás el resultado.</p></div></div>
           <div className="flex flex-col gap-2 shrink-0">
-            <div className="grid grid-cols-3 gap-2">{[["✓","Marca"],["✓","Revisión"],["✓","Datos reales"]].map(([value,label]) => <div key={label} className="rounded-xl border px-3 py-2 text-center min-w-[72px]" style={{ borderColor: T.border, background: "#FFFDFC" }}><div className="display text-lg font-semibold" style={{ color: "#3F6B42" }}>{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
+            <div className="grid grid-cols-4 gap-2">{[["✓","Marca"],["✓","Revisión"],["✓","Datos reales"],[db.visualQualityReady ? visualProductionLibrary.summary.videoReady : "—","Video IA"]].map(([value,label]) => <div key={label} className="rounded-xl border px-3 py-2 text-center min-w-[64px]" style={{ borderColor: T.border, background: "#FFFDFC" }}><div className="display text-lg font-semibold" style={{ color: label === "Video IA" && visualQualityPending > 0 ? "#9A6410" : "#3F6B42" }}>{value}</div><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div></div>)}</div>
             <button type="button" aria-label="Abrir Biblioteca de fotos, videos y marca" onClick={() => openBrandLibrary()} className="w-full rounded-xl border px-3 py-2.5 flex items-center gap-3 text-left transition hover:-translate-y-px hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1" style={{ borderColor: "#E9A18F", background: "#FFF5F0", "--tw-ring-color": T.coral }}>
               <span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: T.coralSoft }} aria-hidden="true">🖼️</span>
               <span className="flex-1 min-w-0"><span className="block text-xs font-extrabold" style={{ color: T.choco }}>Abrir Biblioteca</span><span className="block text-[9px]" style={{ color: T.choco2 }}>Fotos, videos, logos y marca · {(db.brandMediaAssets || []).filter((asset) => asset.status === "Activo").length} activos</span></span>
               <span className="text-base font-bold" style={{ color: T.coral }} aria-hidden="true">›</span>
+            </button>
+            <button type="button" aria-label="Revisar calidad de fotos y videos para inteligencia artificial" onClick={() => openBrandLibrary({ section: "Activos de producción" })} className="w-full rounded-xl border px-3 py-2.5 flex items-center gap-3 text-left transition hover:-translate-y-px hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1" style={{ borderColor: db.visualQualityReady ? "#B8D3B2" : "#E7C078", background: db.visualQualityReady ? "#F4FAF2" : "#FFF9EC", "--tw-ring-color": db.visualQualityReady ? "#6B956D" : "#C58B24" }}>
+              <span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: db.visualQualityReady ? "#DDEBD9" : "#FFF0CE" }} aria-hidden="true">🎬</span>
+              <span className="flex-1 min-w-0"><span className="block text-xs font-extrabold" style={{ color: T.choco }}>Calidad para IA</span><span className="block text-[9px]" style={{ color: T.choco2 }}>{db.visualQualityReady ? `${visualProductionLibrary.summary.videoReady} aptos para video · ${visualQualityPending} por revisar` : "Conectar revisión maestra H110"}</span></span>
+              <span className="text-base font-bold" style={{ color: db.visualQualityReady ? "#3F6B42" : "#9A6410" }} aria-hidden="true">›</span>
             </button>
           </div>
         </div>
@@ -836,7 +845,7 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
           <div className="rounded-2xl border px-4 py-3 mb-4 flex items-start gap-3" style={{ borderColor: T.border, background: T.vainilla }}><span className="w-8 h-8 rounded-xl grid place-items-center shrink-0" style={{ background: T.surface }}>{activeAdvancedArea.icon}</span><div><div className="display text-base font-semibold">{advancedAreaCopy[advancedArea][0]}</div><div className="text-[10px] mt-0.5" style={{ color: T.choco2 }}>{advancedAreaCopy[advancedArea][1]}</div></div></div>
 
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-5" aria-label={`Herramientas de ${activeAdvancedArea.label}`}>
-            {activeAdvancedModules.map((module) => <AgencyAdvancedModuleCard key={module.id} {...module} status={module.metric > 0 ? "Con información" : "Listo para usar"} onOpen={() => { if (module.id === "creative-library") setBrandStudioIntent({ key: Date.now(), collection: "Marca" }); setAdvancedDetail(module.id); }} />)}
+            {activeAdvancedModules.map((module) => <AgencyAdvancedModuleCard key={module.id} {...module} status={module.metric > 0 ? "Con información" : "Listo para usar"} onOpen={() => { if (module.id === "creative-library") openBrandLibrary(); else if (module.id === "visual-quality") openBrandLibrary({ section: "Activos de producción" }); else setAdvancedDetail(module.id); }} />)}
           </div>
           <div className="rounded-2xl border px-4 py-3 text-[10px] flex items-start gap-2" style={{ borderColor: T.border, background: "#FFF9F1", color: T.choco2 }}><span aria-hidden="true">💡</span><span><b style={{ color: T.choco }}>Vista limpia:</b> cada tarjeta muestra solo lo necesario. Abrila para consultar datos, evidencia y controles completos.</span></div>
 

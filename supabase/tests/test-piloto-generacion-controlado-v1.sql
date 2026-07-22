@@ -79,10 +79,10 @@ begin
   values('brand-assets',v_path,'{"mimetype":"image/png","size":4096}'::jsonb);
   insert into public.brand_media_assets(name,media_type,source,product_id,figure,flavor,shot_type,
     orientation,contains_people,rights_status,ai_use_allowed,allowed_channels,status,storage_path,
-    content_hash,mime_type,size_bytes,tags,notes,created_by)
+    content_hash,mime_type,size_bytes,width,height,tags,notes,created_by)
   values('H109 Momo frontal','Foto','MOMOS',v_product,'Momo','Mango biche','Producto','Vertical',
     false,'Propio',true,'["Instagram"]','Activo',v_path,md5(random()::text)||md5(random()::text),
-    'image/png',4096,'[]','Rollback H109',v_actor.id) returning id into v_asset;
+    'image/png',250000,1080,1920,'[]','Rollback H109',v_actor.id) returning id into v_asset;
   insert into public.brand_asset_production_profiles(asset_id,component_type,view_angle,physical_state,
     interaction_type,hand_assignment,source_quality,qa_status,consent_status,canonical,created_by,updated_by)
   values(v_asset,'Producto','Frontal','Intacto','Ninguna','Ninguna','Original limpio','Aprobado',
@@ -134,7 +134,9 @@ select set_config('request.jwt.claims',jsonb_build_object(
 set local role authenticated;
 
 do $$
-declare v_kit bigint; v_item record;
+declare
+  v_kit bigint; v_item record;
+  v_quality_checks jsonb:='["Enfoque y exposición","Identidad y geometría","Color y textura","Recorte y oclusiones","Logo y texto","Fondo y reflejos"]'::jsonb;
 begin
   v_kit:=(public.preparar_kit_identidad_marca(
     'Kit íntegro y temporal para certificar H109 con rollback total.') ->> 'kit_id')::bigint;
@@ -145,6 +147,15 @@ begin
     'principal','Cualquiera','{}'::text[],48,0.25);
   perform public.activar_kit_identidad_marca(v_kit,
     'Logo, colores, derechos y perfil revisados para la prueba H109.');
+  -- H110-Q puede estar instalado en bases que ya endurecieron la calidad visual.
+  -- La prueba conserva compatibilidad con una cadena nueva sin H110-Q, pero cuando
+  -- el gate existe certifica la referencia sintética mediante la RPC humana real.
+  if to_regprocedure('public.revisar_calidad_activo_visual_v1(bigint,jsonb)') is not null then
+    perform public.revisar_calidad_activo_visual_v1((select asset_id from h109_context),jsonb_build_object(
+      'issues','[]'::jsonb,
+      'checks_completed',v_quality_checks,
+      'review_notes','Referencia Full HD sintética verificada para rollback H109.'));
+  end if;
   perform public.autorizar_trabajo_creativo((select job_id from h109_context),8000);
 end $$;
 

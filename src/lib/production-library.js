@@ -58,7 +58,52 @@ export const PRODUCTION_PACK_STATUSES = Object.freeze([
   "Borrador", "En revisión", "Aprobado", "Archivado",
 ]);
 
+export const VISUAL_QUALITY_ISSUES = Object.freeze([
+  "Desenfoque", "Escarcha", "Reflejo fuerte", "Oclusión", "Recorte incompleto",
+  "Color o textura incorrectos", "Logo o texto ilegible", "Fondo contaminado",
+  "Compresión visible", "Identidad o geometría inestable",
+]);
+
+export const VISUAL_QUALITY_CHECKS = Object.freeze([
+  "Enfoque y exposición", "Identidad y geometría", "Color y textura",
+  "Recorte y oclusiones", "Logo y texto", "Fondo y reflejos",
+]);
+
+export const VISUAL_TARGET_USES = Object.freeze({
+  digitalContent: { key: "digital_content", label: "Contenido digital" },
+  imageGeneration: { key: "image_generation", label: "Generación de imagen" },
+  videoGeneration: { key: "video_generation", label: "Generación de video" },
+  element: { key: "element", label: "Element" },
+});
+
 const HUMAN_COMPONENTS = new Set(["Manos", "Presentador UGC"]);
+const VISUAL_MEDIA_TYPES = new Set(["Foto", "Video", "Logo"]);
+
+function qualityUse(assessment, use) {
+  const config = VISUAL_TARGET_USES[use];
+  const state = assessment?.usageReadiness?.[config?.key];
+  const sourceCurrent = assessment?.sourceCurrent !== false;
+  const reasons = Array.isArray(state?.reasons) ? state.reasons : [];
+  if (!config) return { ready: false, reasons: ["El uso visual solicitado no existe."] };
+  if (!assessment) return { ready: false, reasons: ["Falta la revisión maestra de calidad para IA."] };
+  if (!sourceCurrent) return { ready: false, reasons: ["La ficha cambió después de la última revisión de calidad."] };
+  return { ready: Boolean(state?.ready), reasons, label: config.label };
+}
+
+export function visualQualityReadiness(asset = {}) {
+  const assessment = asset.qualityAssessment || null;
+  return {
+    assessed: Boolean(assessment),
+    status: assessment?.status || "Pendiente",
+    recommendedAction: assessment?.recommendedAction || "Registrar dimensiones",
+    issues: Array.isArray(assessment?.issues) ? assessment.issues : [],
+    technical: assessment?.technicalSnapshot || {},
+    digitalContent: qualityUse(assessment, "digitalContent"),
+    imageGeneration: qualityUse(assessment, "imageGeneration"),
+    videoGeneration: qualityUse(assessment, "videoGeneration"),
+    element: qualityUse(assessment, "element"),
+  };
+}
 
 function normalizedProfile(asset = {}) {
   const profile = asset.productionProfile || {};
@@ -147,12 +192,17 @@ export function buildProductionLibrary(db = {}) {
   const assets = (db.brandMediaAssets || []).map((asset) => ({
     ...asset,
     productionReadiness: productionProfileReadiness(asset),
+    aiReadiness: visualQualityReadiness(asset),
   }));
   const active = assets.filter((asset) => asset.status === "Activo" && asset.productionProfile);
   const approved = active.filter((asset) => asset.productionReadiness.ready);
+  const qualityGateEnabled = Boolean(db.visualQualityReady);
+  const generationReady = approved.filter((asset) => !qualityGateEnabled
+    || !VISUAL_MEDIA_TYPES.has(asset.mediaType)
+    || asset.aiReadiness.videoGeneration.ready);
   const componentCoverage = PRODUCTION_COMPONENT_TYPES.map((componentType) => {
     const matches = active.filter((asset) => asset.productionProfile?.componentType === componentType);
-    const ready = matches.filter((asset) => asset.productionReadiness.ready);
+    const ready = generationReady.filter((asset) => asset.productionProfile?.componentType === componentType);
     return { componentType, count: matches.length, approved: ready.length, ready: ready.length > 0 };
   });
   const assetsById = new Map(assets.map((asset) => [String(asset.id), asset]));
@@ -177,10 +227,13 @@ export function buildProductionLibrary(db = {}) {
   const visualSets = [...visualSetsByKey.values()].map((set) => ({
     ...set, views: [...set.views], variants: [...set.variants],
     hasFrontAndBack: set.views.has("Frontal") && set.views.has("Trasera"),
+    videoReadyAssets: set.assets.filter((asset) => asset.aiReadiness.videoGeneration.ready).length,
+    elementReadyAssets: set.assets.filter((asset) => asset.aiReadiness.element.ready).length,
   })).sort((a, b) => a.key.localeCompare(b.key, "es"));
   return {
     ready: Boolean(db.brandProductionReady), expandedReady: Boolean(db.visualLibraryReady),
-    assets, active, approved, componentCoverage, packs, visualSets,
+    qualityReady: qualityGateEnabled,
+    assets, active, approved, generationReady, componentCoverage, packs, visualSets,
     gaps: componentCoverage.filter((item) => !item.ready),
     summary: {
       profiled: active.length,
@@ -191,6 +244,10 @@ export function buildProductionLibrary(db = {}) {
       visualSets: visualSets.length,
       frontBackSets: visualSets.filter((set) => set.hasFrontAndBack).length,
       approvedPacks: packs.filter((pack) => pack.status === "Aprobado" && pack.readiness.ready).length,
+      imageReady: approved.filter((asset) => asset.aiReadiness.imageGeneration.ready).length,
+      videoReady: approved.filter((asset) => asset.aiReadiness.videoGeneration.ready).length,
+      elementReady: approved.filter((asset) => asset.aiReadiness.element.ready).length,
+      needsNewCapture: approved.filter((asset) => asset.aiReadiness.status === "Requiere nueva toma").length,
     },
   };
 }
@@ -231,6 +288,16 @@ export function defaultProductionProfile(componentType = "Producto") {
     visualSetKey: "", variantLabel: "", identityVisibility: HUMAN_COMPONENTS.has(componentType)
       ? (componentType === "Manos" ? "Manos sin rostro" : "Rostro identificable") : "No aplica",
     consentChannels: [], consentPurposes: [], consentExpiresAt: "", consentAiUse: false,
-    canonical: false,
+    canonical: false, qualityReviewEnabled: false, qualityIssues: [],
+    qualityChecksCompleted: [], qualityReviewNotes: "",
+  };
+}
+
+export function visualQualityReviewPayload(form = {}) {
+  return {
+    issues: Array.isArray(form.qualityIssues) ? [...new Set(form.qualityIssues)] : [],
+    checks_completed: Array.isArray(form.qualityChecksCompleted)
+      ? [...new Set(form.qualityChecksCompleted)] : [],
+    review_notes: String(form.qualityReviewNotes || "").trim(),
   };
 }

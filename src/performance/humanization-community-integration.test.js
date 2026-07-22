@@ -55,5 +55,5 @@ test("H105 queda gobernado por aceptación y staging sin tocar producción", () 
   assert.match(ordered, /01-105 PASS/);
   assert.match(workflow, /humanizacion-comunidad-v1\.sql/);
   assert.match(workflow, /test-humanizacion-comunidad-v1\.sql/);
-  assert.match(workflow, /01-109 PASS/);
+  assert.match(workflow, /01-111 PASS/);
 });

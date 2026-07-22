@@ -131,6 +131,24 @@ function adaptAgencyRow(row) {
   ]));
 }
 
+function adaptVisualQualityAssessment(row = {}) {
+  const assessment = adaptAgencyRow(row);
+  return {
+    ...assessment,
+    id: assessment.id,
+    assetId: assessment.assetId,
+    version: Number(assessment.version || 0),
+    status: assessment.status || "Pendiente",
+    issues: Array.isArray(assessment.issues) ? assessment.issues : [],
+    technicalSnapshot: assessment.technicalSnapshot || {},
+    usageReadiness: assessment.usageReadiness || {},
+    recommendedAction: assessment.recommendedAction || "Registrar dimensiones",
+    sourceCurrent: assessment.sourceCurrent !== false,
+    assessmentFingerprint: assessment.assessmentFingerprint || "",
+    assessedAt: tsBogota(assessment.assessedAt),
+  };
+}
+
 export function adaptAgencySnapshotEnvelope(snapshot) {
   if (!snapshot || typeof snapshot !== "object" || Number(snapshot.version) !== 1) {
     throw new Error("El snapshot de Agencia no tiene una versión compatible.");
@@ -391,10 +409,35 @@ export async function fetchAgencySnapshots(scopes = AGENCY_SNAPSHOT_SCOPES) {
 export async function fetchAgencyCatalogos() {
   const agency = await fetchAgencySnapshots();
   if (!agency) return null;
+  // H110 es un contrato compacto y sin rutas, PII ni secretos. H66/H67 no
+  // incluían todavía esta proyección; leerla únicamente al abrir Agencia
+  // mantiene el arranque operativo liviano y hace visible la calidad real de
+  // cada original sin volver a hidratar la Biblioteca completa.
+  let qualityReady = Boolean(agency.visualQualityReady);
+  let qualityAssessments = [];
+  if (!qualityReady) {
+    const qualityResult = await supabase.rpc("biblioteca_calidad_ia_read_model_v1");
+    const qualityMissing = qualityResult.error && (qualityResult.error.code === "PGRST202"
+      || /could not find the function|schema cache/i.test(qualityResult.error.message || ""));
+    if (qualityResult.error && !qualityMissing) throw new Error(qualityResult.error.message);
+    qualityReady = !qualityMissing;
+    if (qualityReady) {
+      if (!Array.isArray(qualityResult.data)) throw new Error("La calidad visual de Agencia devolvió un contrato incompatible.");
+      qualityAssessments = qualityResult.data.map(adaptVisualQualityAssessment);
+    }
+  }
+  const qualityByAsset = new Map(qualityAssessments.map((assessment) => [String(assessment.assetId), assessment]));
+  const brandMediaAssets = (agency.brandMediaAssets || []).map((asset) => ({
+    ...asset,
+    qualityAssessment: qualityByAsset.get(String(asset.id)) || asset.qualityAssessment || null,
+  }));
   const scopeMeta = Object.values(agency.agencySnapshotScopes || {});
   const serverTimes = scopeMeta.map((item) => String(item?.serverTime || "")).filter(Boolean).sort();
   return {
     ...agency,
+    brandMediaAssets,
+    visualLibraryReady: Boolean(agency.visualLibraryReady || qualityReady),
+    visualQualityReady: qualityReady,
     agencySnapshotReady: true,
     agencyOperationalFactsReady: hasAgencyOperationalFacts(agency.agencyOperationalFacts),
     // runtime-telemetry clasifica por prefijo para no acoplarse a cada
@@ -1801,6 +1844,7 @@ export async function fetchCatalogos(options = {}) {
   let officialLogoDeletionReady = false;
   let brandProductionReady = false;
   let visualLibraryReady = false;
+  let visualQualityReady = false;
   if (brandMediaReady) {
     const animationProbe = await capabilityResult("mundo_animado_disponible");
     const animationProbeMissing = animationProbe.error &&
@@ -1823,6 +1867,13 @@ export async function fetchCatalogos(options = {}) {
         && (visualLibraryProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(visualLibraryProbe.error.message || ""));
       if (visualLibraryProbe.error && !visualLibraryMissing) throw new Error(visualLibraryProbe.error.message);
       visualLibraryReady = !visualLibraryMissing && visualLibraryProbe.data === true;
+      if (visualLibraryReady) {
+        const visualQualityProbe = await capabilityResult("biblioteca_calidad_ia_disponible");
+        const visualQualityMissing = visualQualityProbe.error
+          && (visualQualityProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(visualQualityProbe.error.message || ""));
+        if (visualQualityProbe.error && !visualQualityMissing) throw new Error(visualQualityProbe.error.message);
+        visualQualityReady = !visualQualityMissing && visualQualityProbe.data === true;
+      }
     }
   }
   let creativeProductionReady = false; let creativeReviewReady = false; let creativeIterationReady = false;
@@ -1953,10 +2004,13 @@ export async function fetchCatalogos(options = {}) {
         supabase.from("brand_production_pack_assets")
           .select("pack_id,asset_id,role,sequence,required,notes,added_by,added_at")
           .order("pack_id", { ascending: false }).order("sequence", { ascending: true }).limit(500),
+        visualQualityReady
+          ? supabase.rpc("biblioteca_calidad_ia_read_model_v1")
+          : Promise.resolve({ data: [], error: null }),
       ]);
       const productionError = productionResults.find((result) => result.error);
       if (productionError) throw new Error(productionError.error.message);
-      const [profileRows, packRows, packAssetRows] = productionResults.map((result) => result.data || []);
+      const [profileRows, packRows, packAssetRows, qualityRows] = productionResults.map((result) => result.data || []);
       const profileByAsset = new Map(profileRows.map((row) => [String(row.asset_id), {
         assetId: row.asset_id, componentType: row.component_type, viewAngle: row.view_angle,
         physicalState: row.physical_state, interactionType: row.interaction_type,
@@ -1971,8 +2025,16 @@ export async function fetchCatalogos(options = {}) {
         canonical: row.canonical, createdBy: row.created_by, createdAt: tsBogota(row.created_at),
         updatedBy: row.updated_by, updatedAt: tsBogota(row.updated_at),
       }]));
+      const qualityByAsset = new Map((Array.isArray(qualityRows) ? qualityRows : []).map((row) => [String(row.asset_id), {
+        id: row.id, assetId: row.asset_id, version: Number(row.version || 0), status: row.status,
+        issues: row.issues || [], technicalSnapshot: row.technical_snapshot || {},
+        usageReadiness: row.usage_readiness || {}, recommendedAction: nz(row.recommended_action),
+        sourceCurrent: Boolean(row.source_current), assessmentFingerprint: nz(row.assessment_fingerprint),
+        assessedAt: tsBogota(row.assessed_at),
+      }]));
       brandMediaAssets = brandMediaAssets.map((asset) => ({
         ...asset, productionProfile: profileByAsset.get(String(asset.id)) || null,
+        qualityAssessment: qualityByAsset.get(String(asset.id)) || null,
       }));
       brandProductionPacks = packRows.map((row) => ({
         id: row.id, name: row.name, purpose: row.purpose, version: Number(row.version), status: row.status,
@@ -2146,7 +2208,7 @@ export async function fetchCatalogos(options = {}) {
     agencyGenerationAuthorizationReady, agencyGenerationAuthorizations,
     agencyGenerationPilotReady, agencyGenerationPilots,
     agencyHumanizationReady, agencyHumanization,
-    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
+    distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, visualQualityReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,
     agencyGrowthReady, agencyGrowthPolicies, agencyGrowthSnapshots, agencyGrowthSelections,

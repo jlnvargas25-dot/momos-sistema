@@ -41,8 +41,8 @@ test("Codex recibe sets seguros y la UI puede administrarlos", () => {
 
 test("H106 queda en la cadena y en el gate aislado de staging", () => {
   assert.match(ordered, /20260722_106_biblioteca_visual_ampliada/);
-  assert.match(ordered, /01-109 PASS/);
+  assert.match(ordered, /01-111 PASS/);
   assert.match(workflow, /biblioteca-visual-ampliada-v1\.sql/);
   assert.match(workflow, /test-biblioteca-visual-ampliada-v1\.sql/);
-  assert.match(workflow, /01-109 PASS/);
+  assert.match(workflow, /01-111 PASS/);
 });

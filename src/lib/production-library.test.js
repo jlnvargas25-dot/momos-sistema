@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildProductionLibrary, defaultProductionProfile, productionProfilePayload,
-  productionProfileReadiness,
+  productionProfileReadiness, visualQualityReadiness, visualQualityReviewPayload,
+  VISUAL_QUALITY_CHECKS,
 } from "./production-library.js";
 
 const baseAsset = {
@@ -72,4 +73,42 @@ test("agrupa multivistas del mismo sujeto sin mezclar variantes", () => {
   assert.equal(library.visualSets.length, 1);
   assert.equal(library.visualSets[0].hasFrontAndBack, true);
   assert.deepEqual(library.visualSets[0].variants, ["intacto", "bolsa"]);
+});
+
+test("separa permiso de IA de aptitud técnica para video", () => {
+  const pending = visualQualityReadiness({ ...baseAsset, width: null, height: null });
+  assert.equal(pending.videoGeneration.ready, false);
+  assert.match(pending.videoGeneration.reasons[0], /revisión maestra/i);
+
+  const ready = visualQualityReadiness({ ...baseAsset, qualityAssessment: {
+    status: "Aprobado", sourceCurrent: true, issues: [], recommendedAction: "Ninguna",
+    usageReadiness: {
+      digital_content: { ready: true, reasons: [] }, image_generation: { ready: true, reasons: [] },
+      video_generation: { ready: true, reasons: [] }, element: { ready: false, reasons: ["Falta canon."] },
+    },
+  } });
+  assert.equal(ready.videoGeneration.ready, true);
+  assert.equal(ready.element.ready, false);
+});
+
+test("el gate H110 excluye referencias no certificadas de la cobertura para generación", () => {
+  const approvedProfile = { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado" };
+  const library = buildProductionLibrary({ brandProductionReady: true, visualQualityReady: true, brandMediaAssets: [
+    { ...baseAsset, mediaType: "Foto", productionProfile: approvedProfile },
+    { ...baseAsset, id: 2, mediaType: "Audio", productionProfile: { ...defaultProductionProfile("Audio"), qaStatus: "Aprobado" } },
+  ] });
+  assert.equal(library.approved.length, 2);
+  assert.equal(library.generationReady.length, 1);
+  assert.equal(library.summary.videoReady, 0);
+});
+
+test("el payload de revisión conserva taxonomía cerrada sin duplicados", () => {
+  const payload = visualQualityReviewPayload({
+    qualityIssues: ["Escarcha", "Escarcha"],
+    qualityChecksCompleted: [...VISUAL_QUALITY_CHECKS, VISUAL_QUALITY_CHECKS[0]],
+    qualityReviewNotes: "  Repetir la toma sin escarcha.  ",
+  });
+  assert.deepEqual(payload.issues, ["Escarcha"]);
+  assert.equal(payload.checks_completed.length, VISUAL_QUALITY_CHECKS.length);
+  assert.equal(payload.review_notes, "Repetir la toma sin escarcha.");
 });

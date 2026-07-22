@@ -64,10 +64,10 @@ test("H109 tiene adversarial, cadena ordenada y gate remoto", async () => {
   assert.match(adversarial, /nunca llama proveedores/i);
   assert.match(adversarial, /consumió, generó o autorizó publicación/i);
   assert.match(ordered, /20260722_109_piloto_generacion_controlado/);
-  assert.match(ordered, /migraciones ordenadas 01-109 PASS/);
+  assert.match(ordered, /migraciones ordenadas 01-111 PASS/);
   assert.match(workflow, /piloto-generacion-controlado-v1\.sql/);
   assert.match(workflow, /test-piloto-generacion-controlado-v1\.sql/);
-  assert.match(workflow, /01-109 PASS/);
+  assert.match(workflow, /01-111 PASS/);
   assert.match(workflow, /STAGING_PROJECT_REF.*!=.*PRODUCTION_PROJECT_REF/is);
 });
 

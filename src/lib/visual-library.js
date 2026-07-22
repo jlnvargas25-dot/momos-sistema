@@ -3,11 +3,33 @@ import { assertMcpPayloadSafe, normalizeBrandAsset } from "./momos-agency-mcp.js
 const COMPONENTS = new Set(["Producto", "Empaque", "Manos", "Presentador UGC", "Locación", "Movimiento", "Marca", "Audio", "Personaje"]);
 const VIEWS = new Set(["No aplica", "Frontal", "Trasera", "Perfil izquierdo", "Perfil derecho", "Tres cuartos", "Superior", "Detalle / macro", "POV", "Plano general"]);
 const VISIBILITIES = new Set(["No aplica", "Manos sin rostro", "Rostro parcial", "Rostro identificable"]);
+const TARGET_USES = new Set(["Contenido digital", "Generación de imagen", "Generación de video", "Element"]);
 
 const object = (value, label) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} no es un objeto válido.`);
   return value;
 };
+
+function normalizeQuality(value, label) {
+  const quality = object(value, label);
+  if (!TARGET_USES.has(quality.target_use) || typeof quality.ready !== "boolean") {
+    throw new Error(`${label} tiene un contrato inválido.`);
+  }
+  const reasons = Array.isArray(quality.reasons) ? quality.reasons.map(String) : [];
+  const warnings = Array.isArray(quality.warnings) ? quality.warnings.map(String) : [];
+  if (reasons.length > 50 || warnings.length > 20 || reasons.some((item) => item.length > 240)
+      || warnings.some((item) => item.length > 240)) throw new Error(`${label} excede sus límites.`);
+  return {
+    ready: quality.ready, target_use: quality.target_use, reasons, warnings,
+    status: String(quality.status || "Pendiente"),
+    recommended_action: String(quality.recommended_action || "Registrar dimensiones"),
+    source_current: quality.source_current == null ? null : Boolean(quality.source_current),
+    assessment_fingerprint: String(quality.assessment_fingerprint || ""),
+    available_ready_views: Array.isArray(quality.available_ready_views)
+      ? [...new Set(quality.available_ready_views.map(String))] : [],
+    asset_count: Number(quality.asset_count || 0), ready_asset_count: Number(quality.ready_asset_count || 0),
+  };
+}
 
 export function normalizeVisualLibrary(value) {
   const envelope = object(value, "La Biblioteca visual");
@@ -41,7 +63,8 @@ export function normalizeVisualLibrary(value) {
       if (["Manos", "Presentador UGC"].includes(profile.component_type) && profile.consent_valid !== true) {
         throw new Error("Un activo humano atravesó el MCP sin consentimiento válido.");
       }
-      return { ...normalizeBrandAsset(rawAsset), production_profile: {
+      const aiQuality = rawAsset.ai_quality ? normalizeQuality(rawAsset.ai_quality, "La calidad del activo") : null;
+      return { ...normalizeBrandAsset(rawAsset), ai_quality: aiQuality, production_profile: {
         component_type: profile.component_type, view_angle: profile.view_angle,
         physical_state: String(profile.physical_state || ""), interaction_type: String(profile.interaction_type || ""),
         visual_set_key: String(profile.visual_set_key || ""), variant_label: String(profile.variant_label || ""),
@@ -49,14 +72,16 @@ export function normalizeVisualLibrary(value) {
         consent_valid: profile.consent_valid == null ? null : Boolean(profile.consent_valid),
       } };
     });
+    const aiQuality = set.ai_quality ? normalizeQuality(set.ai_quality, "La calidad del set") : null;
     return { set_key: key, component_type: set.component_type, available_views: [...new Set(set.available_views)],
-      coverage_complete: Boolean(set.coverage_complete), assets };
+      coverage_complete: Boolean(set.coverage_complete), ai_quality: aiQuality, assets };
   });
   const assetCount = sets.reduce((total, set) => total + set.assets.length, 0);
   if (Number(envelope.set_count) !== sets.length || Number(envelope.asset_count) !== assetCount) {
     throw new Error("La Biblioteca visual reportó conteos inconsistentes.");
   }
-  return { schema_version: envelope.schema_version, filters: object(envelope.filters, "Los filtros visuales"),
+  return { schema_version: envelope.schema_version, quality_contract_version: Number(envelope.quality_contract_version || 0),
+    filters: object(envelope.filters, "Los filtros visuales"),
     set_count: sets.length, asset_count: assetCount, sets, privacy: envelope.privacy,
     human_review_required: true, external_execution_allowed: false };
 }

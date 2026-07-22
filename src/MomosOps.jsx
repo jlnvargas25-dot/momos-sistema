@@ -3834,6 +3834,8 @@ export default function MomosOps() {
       d.mundoAnimadoReady = Boolean(cat.mundoAnimadoReady);
       d.officialLogoDeletionReady = Boolean(cat.officialLogoDeletionReady);
       d.brandProductionReady = Boolean(cat.brandProductionReady);
+      d.visualLibraryReady = Boolean(cat.visualLibraryReady);
+      d.visualQualityReady = Boolean(cat.visualQualityReady);
       d.brandProductionPacks = cat.brandProductionPacks || [];
       d.brandProductionPackAssets = cat.brandProductionPackAssets || [];
       d.creativeProductionReady = Boolean(cat.creativeProductionReady);

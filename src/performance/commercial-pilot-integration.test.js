@@ -56,7 +56,7 @@ test("H102 adversarial, cadena y staging permanecen cerrados", async () => {
   assert.match(ordered, /migraciones ordenadas 01-102 PASS/);
   assert.match(workflow, /piloto-comercial-controlado-v1\.sql/);
   assert.match(workflow, /test-piloto-comercial-controlado-v1\.sql/);
-  assert.match(workflow, /01-109 PASS/);
+  assert.match(workflow, /01-111 PASS/);
   assert.match(workflow, /STAGING_PROJECT_REF.*!=.*PRODUCTION_PROJECT_REF/is);
 });
 

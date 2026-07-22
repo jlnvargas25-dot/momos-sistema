@@ -664,7 +664,7 @@ if (SELF_TEST) {
 
   server.registerTool("momos_visual_library", {
     title: "Sets y cobertura visual MOMOS",
-    description: "Consulta multivistas, variantes y referencias aprobadas para un canal y una finalidad exactos. No expone rutas, identidad de personas ni evidencia legal.",
+    description: "Consulta multivistas, variantes y aptitud separada para contenido digital, imagen IA, video IA o Element. Los bloqueos se muestran para corregir la fuente. No expone rutas, identidad de personas ni evidencia legal; nunca genera ni consume créditos.",
     inputSchema: z.object({
       componentType: z.enum(["Producto", "Empaque", "Manos", "Presentador UGC", "Locación", "Movimiento", "Marca", "Audio", "Personaje"]).optional(),
       visualSetKey: z.string().trim().regex(/^[a-z0-9][a-z0-9._:-]{2,79}$/).optional(),
@@ -672,6 +672,7 @@ if (SELF_TEST) {
       flavor: z.string().trim().max(80).default(""),
       channel: z.enum(BRAND_ASSET_CHANNELS),
       purpose: z.enum(["Referencia", "Storyboard", "Generación", "Edición", "Revisión", "Orgánico", "Pauta"]),
+      targetUse: z.enum(["Contenido digital", "Generación de imagen", "Generación de video", "Element"]).default("Contenido digital"),
       requiredViews: z.array(z.enum(["Frontal", "Trasera", "Perfil izquierdo", "Perfil derecho", "Tres cuartos", "Superior", "Detalle / macro", "POV", "Plano general"])).max(10).default([]),
       limit: z.number().int().min(1).max(50).default(20),
     }).strict(),
@@ -679,7 +680,8 @@ if (SELF_TEST) {
     "momos_visual_library_v1", { p: {
       component_type: input.componentType || null, visual_set_key: input.visualSetKey || null,
       product_id: input.productId || null, figure: input.figure || null, flavor: input.flavor || null,
-      channel: input.channel, purpose: input.purpose, required_views: input.requiredViews, limit: input.limit,
+      channel: input.channel, purpose: input.purpose, target_use: input.targetUse,
+      required_views: input.requiredViews, limit: input.limit,
     } },
   )), { subject: input.visualSetKey ? `visual-set:${input.visualSetKey}` : "visual-library" }));
 

@@ -14,8 +14,9 @@ import {
   klingUnitsToCop,
   normalizeKlingStatus,
 } from "../src/lib/kling-connector.js";
+import { assertConnectorRuntime } from "../src/lib/connector-runtime-guard.js";
 
-const VERSION = "momos-kling-worker/1.1.0";
+const VERSION = "momos-kling-worker/1.2.0";
 const ONCE = process.argv.includes("--once");
 const HEALTH_ONLY = process.argv.includes("--health-only");
 const PILOT_ONLY = process.argv.includes("--pilot");
@@ -45,6 +46,13 @@ function isSupabaseServerKey(value) {
 }
 
 if (!SUPABASE_URL || !SERVICE_KEY) throw new Error("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en el entorno privado del worker.");
+const CONNECTOR_RUNTIME = assertConnectorRuntime({
+  supabaseUrl: SUPABASE_URL,
+  environment: process.env.MOMOS_CONNECTOR_ENVIRONMENT,
+  projectRef: process.env.MOMOS_CONNECTOR_PROJECT_REF,
+  stagingConfirmation: process.env.MOMOS_CONNECTOR_ALLOW_STAGING,
+  productionConfirmation: process.env.MOMOS_CONNECTOR_ALLOW_PRODUCTION,
+});
 let supabaseEndpoint;
 try { supabaseEndpoint = new URL(SUPABASE_URL); }
 catch { throw new Error("SUPABASE_URL debe ser la URL completa del proyecto, por ejemplo https://proyecto.supabase.co."); }
@@ -77,12 +85,14 @@ async function rpc(name, params = {}) {
 }
 
 async function reportHealth(status = "Activa", error = "", synced = false) {
-  return rpc("reportar_worker_kling", {
+  return rpc("reportar_worker_kling_v2", {
     p_worker_id: WORKER_ID,
     p_version: VERSION,
     p_status: status,
     p_error: redactConnectorError(error),
     p_synced: synced,
+    p_environment: CONNECTOR_RUNTIME.environment,
+    p_project_ref: CONNECTOR_RUNTIME.projectRef,
   });
 }
 

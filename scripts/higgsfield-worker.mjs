@@ -9,12 +9,15 @@ import {
   extractHiggsfieldCredits,
   extractHiggsfieldJobId,
   extractHiggsfieldOutputUrl,
+  findHiggsfieldReconciliationCandidates,
   higgsfieldCreditsToCop,
+  higgsfieldProviderMatchShape,
   normalizeHiggsfieldStatus,
   redactConnectorError,
 } from "../src/lib/higgsfield-connector.js";
+import { assertConnectorRuntime } from "../src/lib/connector-runtime-guard.js";
 
-const VERSION = "momos-higgsfield-worker/1.2.0";
+const VERSION = "momos-higgsfield-worker/1.4.0";
 const ONCE = process.argv.includes("--once");
 const HEALTH_ONLY = process.argv.includes("--health-only");
 const PILOT_ONLY = process.argv.includes("--pilot");
@@ -34,6 +37,13 @@ const COP_PER_CREDIT = Number(process.env.HIGGSFIELD_COP_PER_CREDIT);
 const MAX_OUTPUT_BYTES = 100 * 1024 * 1024;
 
 if (!SUPABASE_URL || !SERVICE_KEY) throw new Error("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en el entorno privado del worker.");
+const CONNECTOR_RUNTIME = assertConnectorRuntime({
+  supabaseUrl: SUPABASE_URL,
+  environment: process.env.MOMOS_CONNECTOR_ENVIRONMENT,
+  projectRef: process.env.MOMOS_CONNECTOR_PROJECT_REF,
+  stagingConfirmation: process.env.MOMOS_CONNECTOR_ALLOW_STAGING,
+  productionConfirmation: process.env.MOMOS_CONNECTOR_ALLOW_PRODUCTION,
+});
 if (process.platform === "win32" && !CUSTOM_HIGGSFIELD_BIN && !HIGGSFIELD_CLI_ENTRY) {
   throw new Error("No se pudo resolver el entrypoint del CLI Higgsfield. Define HIGGSFIELD_CLI_ENTRY en el runtime privado.");
 }
@@ -47,6 +57,53 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const clean = (value) => String(value ?? "").trim();
+const sha256Text = (value) => createHash("sha256").update(String(value ?? ""), "utf8").digest("hex");
+
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
+  }
+  return value;
+}
+
+const sha256Shape = (value) => sha256Text(JSON.stringify(stableValue(value)));
+
+function commandValue(args, flag) {
+  const index = args.indexOf(flag);
+  return index >= 0 ? clean(args[index + 1]) : "";
+}
+
+function buildDispatchMetadata(claim, command, media, credits) {
+  const promptSha256 = sha256Text(commandValue(command.args, "--prompt"));
+  const sourceSha256 = sha256Shape(media.map((item) => clean(item.content_hash)).filter(Boolean));
+  const providerShape = higgsfieldProviderMatchShape({
+    model: command.model,
+    promptSha256,
+    aspectRatio: command.aspectRatio,
+    durationSeconds: commandValue(command.args, "--duration"),
+    resolution: commandValue(command.args, "--resolution"),
+  });
+  const providerMatchFingerprint = sha256Shape(providerShape);
+  const requestFingerprint = sha256Shape({
+    job_id: Number(claim.job.id),
+    provider_match_fingerprint: providerMatchFingerprint,
+    source_sha256: sourceSha256,
+    estimated_credits: Number(credits),
+  });
+  return {
+    model: command.model,
+    kind: command.kind,
+    aspect_ratio: command.aspectRatio,
+    duration_seconds: Number(commandValue(command.args, "--duration") || 0),
+    resolution: commandValue(command.args, "--resolution"),
+    estimated_credits: Number(credits),
+    prompt_sha256: promptSha256,
+    source_sha256: sourceSha256,
+    provider_match_fingerprint: providerMatchFingerprint,
+    request_fingerprint: requestFingerprint,
+  };
+}
 
 function parseCliJson(stdout) {
   const text = clean(stdout);
@@ -96,9 +153,11 @@ async function rpc(name, params = {}) {
 }
 
 async function reportHealth(status = "Activa", error = "", synced = false) {
-  return rpc("reportar_worker_higgsfield", {
+  return rpc("reportar_worker_higgsfield_v2", {
     p_worker_id: WORKER_ID, p_version: VERSION, p_status: status,
     p_error: redactConnectorError(error), p_synced: synced,
+    p_environment: CONNECTOR_RUNTIME.environment,
+    p_project_ref: CONNECTOR_RUNTIME.projectRef,
   });
 }
 
@@ -160,8 +219,10 @@ async function dispatchOne() {
     }
     // Persistimos la intención antes del request externo. Una caída dura desde
     // aquí deja el run bloqueado para conciliación y nunca duplica el despacho.
-    await rpc("marcar_despacho_higgsfield", {
+    const dispatchMetadata = buildDispatchMetadata(claim, command, media, credits);
+    await rpc("preparar_despacho_higgsfield", {
       p_run_id: claim.run_id, p_lease_token: claim.lease_token,
+      p_estimated_cost_cop: estimatedCop, p_metadata: dispatchMetadata,
     });
     providerRequestStarted = true;
     const created = await runCli(command.args, 120_000);
@@ -169,7 +230,7 @@ async function dispatchOne() {
     await rpc("confirmar_despacho_higgsfield", {
       p_run_id: claim.run_id, p_lease_token: claim.lease_token,
       p_provider_job_id: providerJobId, p_estimated_cost_cop: estimatedCop,
-      p_metadata: { model: command.model, kind: command.kind, aspect_ratio: command.aspectRatio, estimated_credits: credits },
+      p_metadata: dispatchMetadata,
     });
     return true;
   } catch (error) {
@@ -232,12 +293,50 @@ async function pollRuns() {
   }
 }
 
+async function reconcileUncertainRuns() {
+  const { data: runs, error } = await supabase.from("creative_connector_runs")
+    .select("id,job_id,lease_token,metadata,estimated_cost_cop,started_at")
+    .eq("provider", "Higgsfield").eq("state", "Incierto").order("started_at").limit(10);
+  if (error) throw new Error(error.message);
+  if (!(runs || []).length) return;
+  const listing = await runCli(["generate", "list", "--size", "100", "--json", "--no-color"], 60_000);
+  for (const run of runs || []) {
+    try {
+      const candidates = findHiggsfieldReconciliationCandidates(
+        listing, run.metadata, run.started_at, sha256Shape, sha256Text,
+      );
+      if (candidates.length !== 1) continue;
+      const candidate = candidates[0];
+      const status = normalizeHiggsfieldStatus(candidate);
+      if (!(status === "Completado" || status.startsWith("En gener" ) || status === "Fallido")) continue;
+      await rpc("conciliar_despacho_higgsfield", {
+        p_run_id: run.id,
+        p_lease_token: run.lease_token,
+        p_provider_job_id: extractHiggsfieldJobId(candidate),
+        p_evidence: {
+          request_fingerprint: run.metadata?.request_fingerprint,
+          provider_match_fingerprint: run.metadata?.provider_match_fingerprint,
+          provider_created_at: candidate.created_at,
+          provider_status: clean(candidate.status).toLowerCase(),
+        },
+      });
+      if (status === "Completado") {
+        await uploadCompletedRun({ ...run, provider_job_id: extractHiggsfieldJobId(candidate) }, candidate);
+      }
+    } catch (reconciliationError) {
+      await reportHealth("Con error", redactConnectorError(reconciliationError), false).catch(() => {});
+    }
+  }
+}
+
 async function cycle() {
   const health = await verifyHiggsfieldSession();
   if (HEALTH_ONLY) {
     process.stdout.write(`[Higgsfield] Salud OK · CLI oficial · integración ${health?.status || "Activa"}\n`);
     return;
   }
+  if (health?.status === "Pausada") return;
+  await reconcileUncertainRuns();
   await pollRuns();
   await dispatchOne();
 }

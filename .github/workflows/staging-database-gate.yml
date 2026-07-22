@@ -112,7 +112,7 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/biblioteca-visual-ampliada-v1.sql
 
-      - name: Apply H107-H109 controlled generation chain to staging
+      - name: Apply H107-H111 controlled generation chain to staging
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
@@ -121,7 +121,15 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/autorizacion-generacion-preflight-v1.sql
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/preparacion-piloto-conectores-v1.sql
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/piloto-generacion-controlado-v1.sql
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/formatos-video-produccion-v1.sql
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/calidad-maestra-biblioteca-ia-v1.sql
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/higgsfield-conciliacion-v1.sql
 
       - name: Run ordered acceptance with rollback
         env:
@@ -129,7 +137,7 @@ jobs:
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-109 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-111 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -172,7 +180,7 @@ jobs:
             --file=supabase/tests/test-biblioteca-visual-ampliada-v1.sql | tee "$RUNNER_TEMP/visual-library.log"
           grep -q "H106 sets/multivista/variantes/consentimiento" "$RUNNER_TEMP/visual-library.log"
 
-      - name: Run H107-H109 controlled generation adversarial contracts
+      - name: Run H107-H111 controlled generation adversarial contracts
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
@@ -183,8 +191,20 @@ jobs:
             --file=supabase/tests/test-autorizacion-generacion-preflight-v1.sql | tee "$RUNNER_TEMP/generation-authorization.log"
           grep -q "H108 preflight" "$RUNNER_TEMP/generation-authorization.log"
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-preparacion-piloto-conectores-v1.sql | tee "$RUNNER_TEMP/connector-runtime-seal.log"
+          grep -q "aislamiento/proyecto/entorno/reanudación/health" "$RUNNER_TEMP/connector-runtime-seal.log"
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-piloto-generacion-controlado-v1.sql | tee "$RUNNER_TEMP/generation-pilot.log"
           grep -q "H109 permiso temporal" "$RUNNER_TEMP/generation-pilot.log"
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-formatos-video-produccion-v1.sql | tee "$RUNNER_TEMP/video-formats.log"
+          grep -q "Video 4:3 contrato cerrado" "$RUNNER_TEMP/video-formats.log"
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-calidad-maestra-biblioteca-ia-v1.sql | tee "$RUNNER_TEMP/visual-quality.log"
+          grep -q "original inmutable/calidad/dimensiones/multivista" "$RUNNER_TEMP/visual-quality.log"
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-higgsfield-conciliacion-v1.sql | tee "$RUNNER_TEMP/higgsfield-reconciliation.log"
+          grep -q "Higgsfield costo/huella/incierto/conciliación" "$RUNNER_TEMP/higgsfield-reconciliation.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:

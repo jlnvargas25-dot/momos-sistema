@@ -500,14 +500,18 @@ conciliación existentes; Distribución mantiene una aprobación posterior separ
 
 Aplicar únicamente después de confirmar `20260722_108_autorizacion_generacion_preflight`:
 
-1. `../piloto-generacion-controlado-v1.sql` — añade un permiso temporal, único
+1. `../preparacion-piloto-conectores-v1.sql` — sella proyecto y entorno de los
+   workers, instala los heartbeats v2 y deja los RPC heredados sin permiso.
+2. `../tests/test-preparacion-piloto-conectores-v1.sql` — prueba aislamiento,
+   reanudación humana, health y RBAC; siempre rollback.
+3. `../piloto-generacion-controlado-v1.sql` — añade un permiso temporal, único
    e inmutable para un solo trabajo H108. Separa la cola general de la cola
    piloto, exige un worker iniciado explícitamente con `--pilot`, conserva el
    tope H108 y mantiene la publicación bloqueada.
-2. `../tests/test-piloto-generacion-controlado-v1.sql` — prueba confirmación,
+4. `../tests/test-piloto-generacion-controlado-v1.sql` — prueba confirmación,
    replay, bypass de worker común, lease único, costo cero antes del proveedor,
    privacidad, inmutabilidad, MCP de solo lectura y RBAC; siempre rollback.
-3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+5. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
    01–109; siempre hace rollback.
 
 Armar el piloto no genera ni consume créditos. La única operación que puede
@@ -515,6 +519,44 @@ contactar al proveedor es ejecutar manualmente uno de los scripts
 `worker:higgsfield:pilot:once` o `worker:kling:pilot:once`; eso requiere una
 confirmación humana separada fuera de la migración y de sus pruebas. La salida
 continúa sometida a Revisión Creativa y nunca se publica automáticamente.
+
+## Hito 110 — Video 4:3 para locaciones y puntos de venta
+
+Aplicar únicamente después de confirmar `20260722_109_piloto_generacion_controlado`:
+
+1. `../formatos-video-produccion-v1.sql` — agrega `Video 4:3` a la lista cerrada
+   de formatos creativos. No abre formatos arbitrarios, no crea trabajos y no
+   consume créditos.
+2. `../tests/test-formatos-video-produccion-v1.sql` — prueba contrato cerrado y
+   RBAC; siempre rollback.
+3. `../calidad-maestra-biblioteca-ia-v1.sql` — instala la revisión humana
+   versionada, dimensiones, cobertura multivista y gates de calidad antes de
+   autorizar o reclamar una generación. Este despliegue histórico conserva el
+   ID `20260722_110_calidad_maestra_biblioteca_ia` y convive con el formato 4:3.
+4. `../tests/test-calidad-maestra-biblioteca-ia-v1.sql` — prueba originales,
+   calidad, multivista, gates y RBAC; siempre rollback.
+5. `../tests/test-migraciones-ordenadas.sql` — aceptación vigente 01–110 y
+   H110-Q.
+
+## Hito 111 — Conciliación segura de Higgsfield
+
+Aplicar únicamente después de confirmar `20260722_110_formato_video_cuatro_tres`:
+
+1. `../higgsfield-conciliacion-v1.sql` — sella costo, parámetros y huellas antes
+   del POST; un resultado incierto conserva la autorización y bloquea cualquier
+   reenvío. La conciliación exige una identidad externa única, la misma huella y
+   una hora de creación compatible.
+2. `../tests/test-higgsfield-conciliacion-v1.sql` — prueba respuesta perdida,
+   PII, huella ajena, duplicado, idempotencia, auditoría y RBAC; siempre rollback
+   y nunca llama a Higgsfield.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación vigente 01–111.
+
+El worker compara el historial de Higgsfield por prompt, modelo, formato,
+duración, resolución y ventana temporal. Solo una coincidencia exacta puede
+conciliarse; cero o varias coincidencias permanecen bloqueadas para revisión.
+Los workers usan exclusivamente los heartbeats v2 sellados por proyecto y
+entorno; H111 no vuelve a exponer los RPC heredados. Ni H110 ni H111 generan,
+publican o consumen créditos.
 
 ## Hito 95 — observabilidad y SLO agregados
 

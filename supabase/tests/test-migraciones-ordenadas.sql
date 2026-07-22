@@ -114,7 +114,9 @@ begin
   assert not has_function_privilege('authenticated','public.marcar_despacho_kling(bigint,uuid,text,numeric,jsonb)','EXECUTE'), 'inicio de despacho Kling privado expuesto';
   assert not has_function_privilege('authenticated','public.conciliar_despacho_kling(bigint,uuid,text)','EXECUTE'), 'conciliación Kling privada expuesta';
   assert not has_function_privilege('authenticated','public.registrar_salida_kling(bigint,uuid,jsonb)','EXECUTE'), 'salida Kling privada expuesta';
-  assert has_function_privilege('service_role','public.reportar_worker_kling(text,text,text,text,boolean)','EXECUTE'), 'worker Kling sin permiso de salud';
+  assert has_function_privilege('service_role','public.reportar_worker_kling_v2(text,text,text,text,boolean,text,text)','EXECUTE')
+    and not has_function_privilege('service_role','public.reportar_worker_kling(text,text,text,text,boolean)','EXECUTE'),
+    'worker Kling no conserva el heartbeat v2 sellado o expuso el legado';
   assert has_function_privilege('service_role','public.reclamar_trabajo_kling(text,integer)','EXECUTE'), 'worker Kling sin permiso de cola';
   assert public.revision_creativa_disponible(), 'falta sonda de revisión creativa';
   assert has_function_privilege('authenticated','public.revisar_salida_creativa(bigint,text,text)','EXECUTE'), 'falta revisión humana de salidas IA';
@@ -1764,6 +1766,16 @@ select 'TESTS_OK - migraciones ordenadas 01-108 PASS, continúa H109' as resulta
 do $$
 begin
   assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_109_preparacion_piloto_conectores')
+    and to_regprocedure('public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text)') is not null
+    and to_regprocedure('public.reportar_worker_kling_v2(text,text,text,text,boolean,text,text)') is not null,
+    'H109-S no instaló el runtime sellado de conectores';
+  assert has_function_privilege('service_role',
+      'public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text)','EXECUTE')
+    and not has_function_privilege('service_role',
+      'public.reportar_worker_higgsfield(text,text,text,text,boolean)','EXECUTE'),
+    'H109-S perdió el heartbeat sellado o expuso el legado';
+  assert exists(select 1 from public.momos_ops_migrations
       where id='20260722_109_piloto_generacion_controlado')
     and to_regclass('public.agency_generation_pilots') is not null,
     'H109 no instaló el piloto controlado de generación';
@@ -1791,5 +1803,69 @@ begin
     'H109 perdió guard, auditoría MCP o separación de crédito/publicación';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-109 PASS, rollback total' as resultado_h109;
+select 'TESTS_OK - migraciones ordenadas 01-109 PASS, continúa H110' as resultado_h109;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_110_formato_video_cuatro_tres')
+    and position('''Video 4:3''' in pg_get_functiondef(
+      'public.crear_trabajo_creativo(jsonb)'::regprocedure))>0,
+    'H110 no instaló el formato cerrado Video 4:3';
+  assert has_function_privilege('authenticated',
+      'public.crear_trabajo_creativo(jsonb)','EXECUTE')
+    and not has_function_privilege('anon',
+      'public.crear_trabajo_creativo(jsonb)','EXECUTE'),
+    'H110 perdió RBAC del trabajo creativo';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-110 PASS, continúa H111' as resultado_h110;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_110_calidad_maestra_biblioteca_ia')
+    and to_regprocedure('public.revisar_calidad_activo_visual_v1(bigint,jsonb)') is not null
+    and to_regprocedure('public.estado_calidad_paquete_visual_v1(bigint,text)') is not null,
+    'H110-Q no instaló la revisión maestra de calidad visual';
+  assert exists(select 1 from pg_trigger
+      where tgname='agency_formula_authorization_visual_quality_guard' and not tgisinternal)
+    and has_function_privilege('authenticated',
+      'public.revisar_calidad_activo_visual_v1(bigint,jsonb)','EXECUTE')
+    and not has_table_privilege('authenticated',
+      'public.brand_visual_quality_assessments','INSERT'),
+    'H110-Q perdió el gate de autorización o su RBAC';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas H110-Q PASS, continúa H111' as resultado_h110q;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_111_conciliacion_higgsfield')
+    and to_regprocedure('public.preparar_despacho_higgsfield(bigint,uuid,numeric,jsonb)') is not null
+    and to_regprocedure('public.conciliar_despacho_higgsfield(bigint,uuid,text,jsonb)') is not null,
+    'H111 no instaló preparación y conciliación Higgsfield';
+  assert has_function_privilege('service_role',
+      'public.preparar_despacho_higgsfield(bigint,uuid,numeric,jsonb)','EXECUTE')
+    and has_function_privilege('service_role',
+      'public.conciliar_despacho_higgsfield(bigint,uuid,text,jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated',
+      'public.preparar_despacho_higgsfield(bigint,uuid,numeric,jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated',
+      'public.conciliar_despacho_higgsfield(bigint,uuid,text,jsonb)','EXECUTE'),
+    'H111 perdió RBAC del worker privado';
+  assert has_function_privilege('service_role',
+      'public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text)','EXECUTE')
+    and not has_function_privilege('service_role',
+      'public.reportar_worker_higgsfield(text,text,text,text,boolean)','EXECUTE'),
+    'H111 no preservó el runtime sellado del conector';
+  assert position('retry_blocked' in pg_get_functiondef(
+      'public.fallar_trabajo_higgsfield(bigint,uuid,text,boolean)'::regprocedure))>0
+    and position('provider_match_fingerprint' in pg_get_functiondef(
+      'public.conciliar_despacho_higgsfield(bigint,uuid,text,jsonb)'::regprocedure))>0,
+    'H111 perdió bloqueo de reintento o huella de conciliación';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-111 PASS, rollback total' as resultado_h111;
 rollback;

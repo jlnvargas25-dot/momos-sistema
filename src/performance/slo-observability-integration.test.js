@@ -76,6 +76,6 @@ test("H95 queda en la aceptación y en el gate aislado de staging", async () => 
   assert.match(ordered, /20260721_95_observabilidad_slo/);
   assert.match(ordered, /migraciones ordenadas 01-95 PASS/);
   assert.match(workflow, /test-observabilidad-slo-v1\.sql/);
-  assert.match(workflow, /01-109 PASS/);
+  assert.match(workflow, /01-111 PASS/);
   assert.match(contracts, /test-observabilidad-slo-v1\.sql/);
 });

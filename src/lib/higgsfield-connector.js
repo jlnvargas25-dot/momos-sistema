@@ -106,6 +106,51 @@ export function extractHiggsfieldJobId(payload) {
   return id;
 }
 
+export function higgsfieldProviderMatchShape({ model, promptSha256, aspectRatio, durationSeconds, resolution } = {}) {
+  return {
+    model: clean(model).toLowerCase(),
+    prompt_sha256: clean(promptSha256).toLowerCase(),
+    aspect_ratio: clean(aspectRatio),
+    duration_seconds: Number(durationSeconds || 0),
+    resolution: clean(resolution).toLowerCase(),
+  };
+}
+
+export function higgsfieldListJobs(payload) {
+  if (Array.isArray(payload)) return payload.filter((item) => item && typeof item === "object");
+  for (const key of ["jobs", "generations", "results", "data"]) {
+    if (Array.isArray(payload?.[key])) return payload[key].filter((item) => item && typeof item === "object");
+  }
+  return [];
+}
+
+export function higgsfieldCandidateShape(candidate = {}, hashText) {
+  const params = candidate?.params && typeof candidate.params === "object" ? candidate.params : {};
+  if (typeof hashText !== "function") throw new Error("Falta la función de huella para conciliar Higgsfield.");
+  return higgsfieldProviderMatchShape({
+    model: params.model || candidate.job_type,
+    promptSha256: hashText(clean(params.prompt)),
+    aspectRatio: params.aspect_ratio,
+    durationSeconds: params.duration,
+    resolution: params.resolution || params.quality,
+  });
+}
+
+export function findHiggsfieldReconciliationCandidates(payload, expected, startedAt, hashShape, hashText) {
+  if (typeof hashShape !== "function" || typeof hashText !== "function") {
+    throw new Error("Faltan funciones de huella para conciliar Higgsfield.");
+  }
+  const started = new Date(startedAt).getTime();
+  if (!Number.isFinite(started)) throw new Error("La conciliación Higgsfield no tiene hora de despacho válida.");
+  const expectedFingerprint = clean(expected?.provider_match_fingerprint).toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(expectedFingerprint)) throw new Error("Falta la huella exacta del despacho Higgsfield.");
+  return higgsfieldListJobs(payload).filter((candidate) => {
+    const created = new Date(candidate?.created_at).getTime();
+    if (!Number.isFinite(created) || created < started - 30_000 || created > started + 15 * 60_000) return false;
+    return hashShape(higgsfieldCandidateShape(candidate, hashText)) === expectedFingerprint;
+  });
+}
+
 export function extractHiggsfieldOutputUrl(payload) {
   const value = firstKey(payload, ["result_url", "resultUrl", "output_url", "outputUrl", "download_url", "downloadUrl", "url"]);
   const url = clean(value);

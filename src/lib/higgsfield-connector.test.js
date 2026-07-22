@@ -1,16 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   buildHiggsfieldCreateArgs,
   extractHiggsfieldCredits,
   extractHiggsfieldJobId,
   extractHiggsfieldOutputUrl,
+  findHiggsfieldReconciliationCandidates,
   higgsfieldAspectRatio,
   higgsfieldCreditsToCop,
   higgsfieldModelForJob,
+  higgsfieldProviderMatchShape,
   normalizeHiggsfieldStatus,
   redactConnectorError,
 } from "./higgsfield-connector.js";
+
+const sha256Text = (value) => createHash("sha256").update(String(value ?? ""), "utf8").digest("hex");
+const sha256Shape = (value) => sha256Text(JSON.stringify(value));
 
 const imageJob = { operation: "Generar imagen", targetFormat: "Post 4:5", prompt: "Momo Oreo sobre fondo rosa", negativePrompt: "texto deformado" };
 const videoJob = { operation: "Generar video", targetFormat: "Reel 9:16", prompt: "Close-up de producto", outputSpec: { durationSeconds: 7 } };
@@ -54,10 +60,32 @@ test("rechaza modelos inyectados y trabajos sin prompt", () => {
 
 test("normaliza respuestas variables del CLI sin aceptar salida insegura", () => {
   assert.equal(extractHiggsfieldJobId({ data: { job_id: "hf-123" } }), "hf-123");
+  assert.equal(extractHiggsfieldJobId({ jobs: [{ id: "hf-array-456" }] }), "hf-array-456");
   assert.equal(normalizeHiggsfieldStatus({ state: "in_progress" }), "En generación");
   assert.equal(normalizeHiggsfieldStatus({ result: { status: "succeeded" } }), "Completado");
   assert.equal(extractHiggsfieldOutputUrl({ result: { download_url: "https://cdn.higgsfield.ai/out.mp4" } }), "https://cdn.higgsfield.ai/out.mp4");
   assert.throws(() => extractHiggsfieldOutputUrl({ url: "http://inseguro.test/out.mp4" }), /salida HTTPS/);
+});
+
+test("concilia una respuesta perdida solo con una coincidencia exacta y temporal", () => {
+  const prompt = "Movimiento natural de la isla MOMOS";
+  const expectedShape = higgsfieldProviderMatchShape({
+    model: "seedance_2_0_fast", promptSha256: sha256Text(prompt),
+    aspectRatio: "4:3", durationSeconds: 5, resolution: "720p",
+  });
+  const expected = { provider_match_fingerprint: sha256Shape(expectedShape) };
+  const payload = [
+    { id: "hf-exacto", created_at: "2026-07-22T20:09:43.507Z", status: "completed",
+      params: { model: "seedance_2_0_fast", prompt, aspect_ratio: "4:3", duration: 5, resolution: "720p" } },
+    { id: "hf-otro-formato", created_at: "2026-07-22T20:09:44.000Z", status: "completed",
+      params: { model: "seedance_2_0_fast", prompt, aspect_ratio: "9:16", duration: 5, resolution: "720p" } },
+    { id: "hf-viejo", created_at: "2026-07-22T19:00:00.000Z", status: "completed",
+      params: { model: "seedance_2_0_fast", prompt, aspect_ratio: "4:3", duration: 5, resolution: "720p" } },
+  ];
+  const matches = findHiggsfieldReconciliationCandidates(
+    payload, expected, "2026-07-22T20:09:40.000Z", sha256Shape, sha256Text,
+  );
+  assert.deepEqual(matches.map((item) => item.id), ["hf-exacto"]);
 });
 
 test("convierte créditos a COP y falla cerrado cuando no existe tasa", () => {
