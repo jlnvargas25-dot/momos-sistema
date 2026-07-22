@@ -1,12 +1,12 @@
 # Continuidad y recuperación de MOMO OPS
 
-Este runbook distingue tres evidencias que no son equivalentes:
+Este runbook separa tres evidencias que nunca deben confundirse:
 
-1. **Backup observado:** Supabase informa que el respaldo existe.
-2. **Restauración probada:** el respaldo fue restaurado en un proyecto de staging aislado.
-3. **Recuperación certificada:** la restauración, conciliación y replay cumplieron RPO y RTO.
+1. **Backup observado:** Supabase informa que el respaldo de base existe.
+2. **Restauración probada:** ese respaldo fue restaurado en un proyecto de staging aislado.
+3. **Recuperación certificada:** base, Storage y replay pasaron las verificaciones y los tiempos derivados cumplieron RPO/RTO.
 
-Nunca se marca un respaldo como recuperable solo porque aparece en la consola.
+Ver un backup en la consola no demuestra que pueda recuperarse la operación completa.
 
 ## Objetivos vigentes
 
@@ -18,39 +18,80 @@ Nunca se marca un respaldo como recuperable solo porque aparece en la consola.
 La política canónica vive en `operational_continuity_policy`; la interfaz solo
 consume `momos_continuity_snapshot_v1()`.
 
+## Estado verificado el 21 de julio de 2026
+
+- Supabase mostró siete backups físicos diarios, del 15 al 21 de julio.
+- El último respaldo visible terminó el 21 de julio a las 09:34:09 UTC.
+- PITR aparecía disponible como add-on, pero no estaba activo.
+- El respaldo de base incluye metadatos de Storage, no los bytes de los objetos.
+
+Conclusión honesta: existe cobertura diaria observada, pero todavía no hay una
+prueba real que demuestre el RPO central de cinco minutos ni una recuperación
+completa de Storage. H97 evita presentar esa observación como certificación.
+
 ## Operación normal
 
-1. Ejecutar `npm run worker:continuity:observe` bajo el supervisor privado.
+1. Ejecutar `npm run worker:continuity:observe` bajo un supervisor privado.
 2. Configurar `SUPABASE_ACCESS_TOKEN` con alcance mínimo `backups_read`, además de
    `SUPABASE_URL`, `SUPABASE_PROJECT_REF` y la service role privada requerida por
-   la RPC de observación. Ninguna credencial entra al navegador o al repositorio.
-3. El worker consulta por `GET` el plano de administración de Supabase y registra solamente
+   la RPC. Ninguna credencial entra al navegador o al repositorio.
+3. El worker consulta `GET /v1/projects/{ref}/database/backups` y registra solo
    identificador, fecha, estado, región y disponibilidad de PITR.
 4. El Centro de Salud muestra **observado**, nunca **certificado**, hasta completar
-   un simulacro real.
-5. Conservar exportación cifrada diaria fuera del proyecto principal. La clave de
-   cifrado nunca vive en el navegador, la base o el repositorio.
+   un simulacro real H97.
+5. Mantener una copia cifrada externa de los objetos Storage con manifiesto
+   SHA-256 y cantidad de objetos. El backup de base no sustituye esta copia.
+6. Mantener un recibo sellado del replay de eventos posteriores al punto restaurado.
 
-El workflow `.github/workflows/continuity-observer.yml` puede ejecutar esta
-observación diariamente desde el environment protegido `production-continuity`.
-Su éxito prueba lectura y registro de evidencia; no prueba restauración.
+El workflow `.github/workflows/continuity-observer.yml` hace la observación diaria
+desde el environment protegido `production-continuity`. Su éxito solo prueba
+lectura y registro de evidencia.
 
 ## Simulacro mensual de restauración
 
 Responsable: Administrador técnico. Entorno obligatorio: proyecto de staging
-aislado, sin conectores externos ni mensajes a clientes.
+aislado, sin conectores externos, cobros, publicaciones ni mensajes a clientes.
 
-1. Elegir un backup observado y registrar hora de inicio.
-2. Restaurarlo en staging siguiendo el procedimiento oficial de Supabase.
-3. Aplicar únicamente migraciones posteriores que estén en la cadena ordenada.
-4. Reproducir recibos idempotentes y eventos posteriores al punto restaurado.
-5. Ejecutar las siete verificaciones: migraciones, pedidos, inventario, reservas,
-   pagos, recibos y replay.
-6. Medir pérdida máxima observada y tiempo total de recuperación.
-7. Registrar el resultado con `registrar_simulacro_recuperacion_v1` desde el
-   proceso privado. Solo un resultado conforme puede certificar continuidad.
-8. Destruir staging después de guardar la evidencia estructurada y la bitácora
-   administrativa correspondiente.
+### Preparación
+
+1. Elegir un backup observado exacto.
+2. Registrar tres tiempos UTC ISO antes de actuar:
+   - `restore_started_at`: inicio del simulacro;
+   - `recovery_target_at`: instante del negocio que se busca recuperar;
+   - `restored_through_at`: último evento realmente presente después del replay.
+3. Confirmar que el ref y la URL de staging son distintos a producción.
+4. Crear o seleccionar el manifiesto externo de Storage y el recibo de replay.
+
+### Restauración y verificación
+
+1. Restaurar el backup de base en staging mediante el procedimiento oficial de Supabase.
+2. Aplicar únicamente migraciones posteriores incluidas en la cadena ordenada.
+3. Restaurar los objetos Storage desde la copia externa y comparar el manifiesto SHA-256.
+4. Reproducir eventos posteriores con sus claves idempotentes y sellar el recibo.
+5. Ejecutar exactamente ocho verificaciones: migraciones, pedidos, inventario,
+   reservas, pagos, recibos, replay y Storage.
+6. Ejecutar las pruebas H93 y H97, la cadena 01–97, contratos y build.
+7. Invocar manualmente `.github/workflows/continuity-recovery-drill.yml` con los
+   tiempos y huellas anteriores. El workflow no crea ni restaura proyectos; solo
+   valida el staging ya restaurado y registra evidencia estructurada.
+8. Destruir staging únicamente después de conservar la bitácora administrativa.
+
+### Cálculos H97
+
+- `RPO = recovery_target_at - restored_through_at`.
+- `RTO = completed_at - restore_started_at`.
+
+El servidor calcula ambos valores. El llamador no puede enviarlos. Para certificar:
+
+- la cronología debe ser físicamente posible;
+- las ocho verificaciones deben ser verdaderas;
+- Storage debe tener manifiesto SHA-256 y al menos un objeto verificado;
+- replay debe tener recibo SHA-256, incluso si reprodujo cero eventos;
+- RPO debe ser menor o igual a 5 minutos;
+- RTO debe ser menor o igual a 30 minutos.
+
+Una prueba fallida o una certificación anterior sin evidencia derivada deja el
+estado como no certificado, conservando la evidencia histórica para auditoría.
 
 ## Incidente: Supabase o base de datos
 
@@ -59,54 +100,52 @@ aislado, sin conectores externos ni mensajes a clientes.
 3. Cocina, Empaque y Logística trabajan desde esa copia sin editarla.
 4. Cada acción manual usa `registrar_accion_contingencia_v1` con UUID,
    dispositivo y secuencia local únicos.
-5. Restaurar en staging, verificar, y solo después promover el entorno reparado.
-6. Conciliar una por una las acciones manuales; nunca reejecutarlas en bloque sin
-   verificar los recibos existentes.
-7. Ejecutar el Centro de Salud. Desactivar solo lectura únicamente cuando no haya
-   incidentes críticos activos.
+5. Restaurar y verificar en staging antes de promover un entorno reparado.
+6. Conciliar cada acción manual; nunca reejecutar un lote sin revisar recibos.
+7. Desactivar Solo lectura solo cuando el Centro de Salud no tenga críticos activos.
 
 ## Incidente: Realtime
 
-Mantener la base operativa. El coordinador cae a polling dirigido; no se debe
-reiniciar ni duplicar una acción ya confirmada. Si la respuesta se perdió, usar el
-mismo identificador idempotente y verificar el recibo antes de reintentar.
+Mantener la base operativa. El coordinador cae a polling dirigido. Si una respuesta
+se perdió, reutilizar el mismo identificador idempotente y consultar el recibo antes
+de reintentar.
 
 ## Incidente: Storage
 
-Bloquear nuevas evidencias o activos, pero no alterar pedidos ya confirmados.
-Conservar el identificador de carga. Ejecutar reconciliación Storage–registro y
-resolver huérfanos por compensación; nunca borrar objetos directamente por SQL.
+Bloquear nuevas evidencias o activos, sin alterar pedidos confirmados. Conservar el
+identificador de carga. Reconciliar Storage y registros mediante API; nunca borrar
+objetos directamente por SQL.
 
 ## Incidente: conector externo incierto
 
-No reintentar automáticamente. Consultar primero por clave idempotente al
-proveedor. Marcar como conciliado únicamente con evidencia del estado remoto.
+No reintentar automáticamente. Consultar primero la clave idempotente en el
+proveedor y conciliar solo con evidencia del estado remoto.
 
 ## Incidente: migración defectuosa
 
-1. Entrar en solo lectura.
+1. Entrar en Solo lectura.
 2. No editar manualmente el manifiesto de migraciones.
 3. Restaurar el backup previo en staging y ejecutar la cadena ordenada.
 4. Preparar una migración correctiva hacia adelante. Un rollback destructivo en
    producción requiere restauración probada y aprobación explícita.
 
-## Eliminación accidental o catálogo corrupto
-
-No reconstruir saldos a mano. Restaurar en staging, ejecutar auditorías canónicas
-de figuras, lotes, reservas y resultados físicos, y comparar huellas antes de
-promover. Conservar los identificadores históricos aunque la entidad quede
-archivada.
-
 ## Evidencia mínima de cierre
 
-- backup y fecha usados;
-- RPO y RTO observados;
-- siete verificaciones booleanas aprobadas;
-- replay completado;
-- incidentes cerrados;
+- backup exacto y fecha usados;
+- objetivo, punto restaurado, inicio y fin del simulacro;
+- RPO y RTO derivados por servidor;
+- ocho verificaciones booleanas aprobadas;
+- huella y conteo de Storage;
+- huella y conteo de replay;
 - acciones de contingencia conciliadas;
 - cadena ordenada y pruebas adversariales aprobadas;
-- responsable y fecha de la próxima práctica.
+- responsable y fecha del próximo simulacro.
 
 Sin esa evidencia, el estado correcto es **observado** o **degradado**, nunca
 **recuperación certificada**.
+
+## Referencias oficiales
+
+- [Supabase Database Backups](https://supabase.com/docs/guides/platform/backups)
+- [Supabase Management API](https://supabase.com/docs/reference/api/getting-started)
+- [Supabase Storage: descarga y migración de objetos](https://supabase.com/docs/guides/storage/management/download-objects)

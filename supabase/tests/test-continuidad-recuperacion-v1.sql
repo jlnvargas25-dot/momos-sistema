@@ -77,7 +77,7 @@ select set_config('request.jwt.claims','{"role":"service_role"}',true);
 
 do $$
 declare v_observation jsonb; v_failed boolean:=false;
-  v_completed timestamptz:=clock_timestamp()-interval '2 minutes';
+  v_completed timestamptz:=clock_timestamp()-interval '60 minutes';
 begin
   v_observation:=public.registrar_observacion_backup_administrado_v1(jsonb_build_object(
     'backup_key','h93-managed-backup-001','source','Supabase','status','Completado',
@@ -109,38 +109,51 @@ set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 
 do $$
-declare v_failed boolean:=false; v_drill jsonb; v_checks jsonb:=jsonb_build_object(
-  'migrations',true,'orders',true,'inventory',true,'reservations',true,
-  'payments',true,'receipts',true,'replay',true);
+declare v_failed boolean:=false; v_drill jsonb; v_payload jsonb;
+  v_h97 boolean:=exists(select 1 from public.momos_ops_migrations
+    where id='20260721_97_evidencia_recuperacion_derivada');
+  v_checks jsonb;
 begin
+  v_checks:=jsonb_build_object(
+    'migrations',true,'orders',true,'inventory',true,'reservations',true,
+    'payments',true,'receipts',true,'replay',true
+  )||case when v_h97 then jsonb_build_object('storage',true) else '{}'::jsonb end;
+  v_payload:=jsonb_build_object(
+    'id','93000000-0000-4000-8000-000000000001','drill_key','h93-drill-invalid-rto',
+    'backup_key','h93-managed-backup-001','status','Aprobado',
+    'started_at',clock_timestamp()-interval '40 minutes','completed_at',clock_timestamp(),
+    'checks',v_checks,'replay_status','Completado'
+  )||case when v_h97 then jsonb_build_object(
+    'recovery_target_at',clock_timestamp()-interval '41 minutes',
+    'restored_through_at',clock_timestamp()-interval '45 minutes',
+    'storage_manifest_fingerprint',repeat('a',64),'storage_object_count',10,
+    'replay_receipt_fingerprint',repeat('b',64),'replayed_event_count',2
+  ) else jsonb_build_object('observed_rpo_minutes',4,'observed_rto_minutes',31) end;
   begin
-    perform public.registrar_simulacro_recuperacion_v1(jsonb_build_object(
-      'id','93000000-0000-4000-8000-000000000001','drill_key','h93-drill-invalid-rto',
-      'backup_key','h93-managed-backup-001','status','Aprobado',
-      'started_at',clock_timestamp()-interval '40 minutes','completed_at',clock_timestamp(),
-      'observed_rpo_minutes',4,'observed_rto_minutes',31,'checks',v_checks,
-      'replay_status','Completado'));
+    perform public.registrar_simulacro_recuperacion_v1(v_payload);
   exception when others then v_failed:=true; end;
   assert v_failed,'H93 aprobo un simulacro fuera del RTO.';
-  v_drill:=public.registrar_simulacro_recuperacion_v1(jsonb_build_object(
+  v_payload:=jsonb_build_object(
     'id','93000000-0000-4000-8000-000000000002','drill_key','h93-drill-approved-001',
     'backup_key','h93-managed-backup-001','status','Aprobado',
     'started_at',clock_timestamp()-interval '25 minutes','completed_at',clock_timestamp(),
-    'observed_rpo_minutes',4,'observed_rto_minutes',25,'checks',v_checks,
-    'replay_status','Completado'));
+    'checks',v_checks,'replay_status','Completado'
+  )||case when v_h97 then jsonb_build_object(
+    'recovery_target_at',clock_timestamp()-interval '26 minutes',
+    'restored_through_at',clock_timestamp()-interval '30 minutes',
+    'storage_manifest_fingerprint',repeat('a',64),'storage_object_count',10,
+    'replay_receipt_fingerprint',repeat('b',64),'replayed_event_count',2
+  ) else jsonb_build_object('observed_rpo_minutes',4,'observed_rto_minutes',25) end;
+  v_drill:=public.registrar_simulacro_recuperacion_v1(v_payload);
   assert coalesce((v_drill->>'certified')::boolean,false)
     and (v_drill->>'rpoMinutes')::numeric=4 and (v_drill->>'rtoMinutes')::numeric=25
     and coalesce((v_drill->>'containsCustomerPii')::boolean,true)=false
     and coalesce((v_drill->>'containsFreeText')::boolean,true)=false,
     'H93 no sello el simulacro conforme.';
   v_failed:=false;
+  v_payload:=jsonb_set(v_payload,'{status}','"Fallido"'::jsonb);
   begin
-    perform public.registrar_simulacro_recuperacion_v1(jsonb_build_object(
-      'id','93000000-0000-4000-8000-000000000002','drill_key','h93-drill-approved-001',
-      'backup_key','h93-managed-backup-001','status','Fallido',
-      'started_at',clock_timestamp()-interval '25 minutes','completed_at',clock_timestamp(),
-      'observed_rpo_minutes',4,'observed_rto_minutes',25,'checks',v_checks,
-      'replay_status','Completado'));
+    perform public.registrar_simulacro_recuperacion_v1(v_payload);
   exception when unique_violation then v_failed:=true; end;
   assert v_failed,'H93 permitio reescribir el simulacro sellado.';
 end $$;

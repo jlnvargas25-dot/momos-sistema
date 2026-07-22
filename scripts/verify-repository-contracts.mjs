@@ -116,7 +116,7 @@ for (const requiredFragment of [
   "PRODUCTION_PROJECT_REF",
   "STAGING_SUPABASE_URL",
   "STAGING_SUPABASE_SERVICE_ROLE_KEY",
-  "01-96 PASS",
+  "01-97 PASS",
   "test-certificacion-concurrencia-caos-v1.sql",
   "test-observabilidad-slo-v1.sql",
   "test-telemetria-operativa-alertas-v1.sql",

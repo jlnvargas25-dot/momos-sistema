@@ -371,3 +371,22 @@ una vez por minuto y nunca bloquea una acción operativa si la observabilidad no
 está disponible. Cada proceso abre su propio espacio idempotente para que un
 reinicio o una comprobación manual dentro del mismo minuto no choque con otra
 medición que tenga un histograma de latencia distinto.
+
+## Hito 97 — evidencia de recuperación derivada
+
+Aplicar únicamente después de confirmar `20260721_96_telemetria_alertas`:
+
+1. `../evidencia-recuperacion-derivada-v1.sql` — reemplaza RPO/RTO declarados
+   por cálculos de servidor, exige cronología posible, añade manifiestos sellados
+   para Storage y replay y revoca la presentación de certificaciones antiguas sin
+   esa evidencia. El contrato público continúa siendo `momos.continuity.v1`.
+2. `../tests/test-evidencia-recuperacion-derivada-v1.sql` — intenta falsificar
+   tiempos, omitir Storage, exceder RPO, reescribir evidencia y ampliar RBAC;
+   siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–97; siempre hace rollback.
+
+La migración no restaura ni elimina nada. Un Administrador técnico restaura
+primero un backup en staging aislado y después ejecuta manualmente
+`.github/workflows/continuity-recovery-drill.yml`. El workflow valida la cadena,
+las pruebas H93/H97, Storage y replay antes de registrar el resultado compacto.

@@ -4,8 +4,12 @@ import { readFile } from "node:fs/promises";
 
 const migration = await readFile(new URL("../../supabase/continuidad-recuperacion-v1.sql", import.meta.url), "utf8");
 const adversarial = await readFile(new URL("../../supabase/tests/test-continuidad-recuperacion-v1.sql", import.meta.url), "utf8");
+const derivedMigration = await readFile(new URL("../../supabase/evidencia-recuperacion-derivada-v1.sql", import.meta.url), "utf8");
+const derivedAdversarial = await readFile(new URL("../../supabase/tests/test-evidencia-recuperacion-derivada-v1.sql", import.meta.url), "utf8");
 const ordered = await readFile(new URL("../../supabase/tests/test-migraciones-ordenadas.sql", import.meta.url), "utf8");
 const worker = await readFile(new URL("../../scripts/continuity-backup-worker.mjs", import.meta.url), "utf8");
+const recoveryRecorder = await readFile(new URL("../../scripts/continuity-recovery-recorder.mjs", import.meta.url), "utf8");
+const recoveryWorkflow = await readFile(new URL("../../.github/workflows/continuity-recovery-drill.yml", import.meta.url), "utf8");
 const runbook = await readFile(new URL("../../docs/MOMOS-OPS-CONTINUIDAD-RUNBOOK.md", import.meta.url), "utf8");
 const rpc = await readFile(new URL("../lib/rpc.js", import.meta.url), "utf8");
 const businessPanels = await readFile(new URL("../features/backoffice/BusinessPanels.jsx", import.meta.url), "utf8");
@@ -58,4 +62,45 @@ test("Configuración no presenta un backup observado como recuperable", () => {
   assert.match(businessPanels, /Recuperación comprobada/);
   assert.match(businessPanels, /Simulacro pendiente/);
   assert.doesNotMatch(businessPanels, />Respaldo recuperable</);
+});
+
+test("H97 deriva RPO/RTO y exige evidencia separada de Storage y replay", () => {
+  assert.match(derivedMigration, /extract\(epoch from \(v_target-v_restored_through\)\)/i);
+  assert.match(derivedMigration, /extract\(epoch from \(v_completed-v_started\)\)/i);
+  assert.match(derivedMigration, /storage_manifest_fingerprint/i);
+  assert.match(derivedMigration, /replay_receipt_fingerprint/i);
+  assert.match(derivedMigration, /exactamente ocho verificaciones booleanas/i);
+  assert.match(derivedMigration, /databaseOnly',true/i);
+  assert.match(derivedMigration, /evidenceDerived/i);
+  assert.doesNotMatch(derivedMigration, /p->>'observed_rpo_minutes'/i);
+  assert.doesNotMatch(derivedMigration, /p->>'observed_rto_minutes'/i);
+});
+
+test("H97 adversarial rompe métricas declaradas, cronología, Storage e inmutabilidad", () => {
+  assert.match(derivedAdversarial, /aceptó RPO\/RTO autodeclarados/i);
+  assert.match(derivedAdversarial, /cronología físicamente imposible/i);
+  assert.match(derivedAdversarial, /sin verificar objetos Storage/i);
+  assert.match(derivedAdversarial, /RPO derivado mayor al objetivo/i);
+  assert.match(derivedAdversarial, /permitió reescribir una evidencia ya sellada/i);
+  assert.match(derivedAdversarial, /rollback;\s*$/i);
+  assert.match(ordered, /migraciones ordenadas 01-97 PASS/i);
+});
+
+test("H97 certifica únicamente un staging aislado restaurado y no ejecuta restore", () => {
+  assert.match(recoveryWorkflow, /RESTORED_ISOLATED_STAGING/i);
+  assert.match(recoveryWorkflow, /STORAGE_OBJECTS_RESTORED_AND_HASHED/i);
+  assert.match(recoveryWorkflow, /REPLAY_COMPLETED_IDEMPOTENTLY/i);
+  assert.match(recoveryWorkflow, /STAGING_PROJECT_REF.*!=.*PRODUCTION_PROJECT_REF/is);
+  assert.match(recoveryWorkflow, /test-evidencia-recuperacion-derivada-v1\.sql/i);
+  assert.doesNotMatch(recoveryWorkflow, /database\/backups\/restore|restore-pitr|delete project/i);
+  assert.equal(packageJson.scripts["worker:continuity:certify"], "node scripts/continuity-recovery-recorder.mjs");
+});
+
+test("H97 valida el backup exacto y no imprime credenciales ni manifiestos", () => {
+  assert.match(recoveryRecorder, /database\/backups/i);
+  assert.match(recoveryRecorder, /RECOVERY_EXACT_BACKUP_NOT_COMPLETED/i);
+  assert.match(recoveryRecorder, /registrar_observacion_backup_administrado_v1/i);
+  assert.match(recoveryRecorder, /registrar_simulacro_recuperacion_v1/i);
+  assert.match(recoveryRecorder, /deterministicUuid/i);
+  assert.doesNotMatch(recoveryRecorder, /process\.(?:stdout|stderr)\.write\([^)]*(?:PRODUCTION_KEY|MANAGEMENT_TOKEN|STORAGE_FINGERPRINT|REPLAY_FINGERPRINT)/i);
 });

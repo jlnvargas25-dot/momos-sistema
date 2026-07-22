@@ -52,7 +52,7 @@ de staging. Requiere un environment protegido `staging` con:
 
 El workflow rechaza refs iguales y exige que tanto la conexión PostgreSQL como la
 URL de Supabase pertenezcan al mismo proyecto de staging. Ejecuta la aceptación
-ordenada 01–95, H93 y las pruebas adversariales H94/H95 dentro de transacciones con
+ordenada 01–97, H93 y las pruebas adversariales H94–H97 dentro de transacciones con
 rollback. Después corre el runner privado H94 en modo `Staging` y solo acepta un
 certificado fresco, con al menos 100 solicitudes y cero invariantes rotas. La
 service role de staging vive exclusivamente en el environment protegido; nunca
@@ -75,6 +75,18 @@ se imprime ni se guarda como artifact.
 
 Observar un backup no certifica recuperación. El simulacro mensual y la evidencia
 RPO/RTO siguen el procedimiento de `MOMOS-OPS-CONTINUIDAD-RUNBOOK.md`.
+
+## Certificación mensual de recuperación
+
+`continuity-recovery-drill.yml` nunca crea, restaura ni destruye un proyecto. Se
+ejecuta solo después de una restauración manual en el environment protegido
+`recovery-staging`. Exige refs distintos, cadena 01–97, H93/H97, manifiesto
+SHA-256 de Storage y recibo SHA-256 del replay. H97 calcula RPO y RTO desde los
+timestamps sellados y registra únicamente el resultado compacto en producción.
+
+Además de los secretos privados de producción y staging, el environment requiere
+un token de Management API con `backups_read`. No requiere `backups_write` porque
+el workflow no tiene autoridad para restaurar o destruir infraestructura.
 
 ## Secuencia de release
 

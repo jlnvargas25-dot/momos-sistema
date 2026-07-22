@@ -1482,5 +1482,42 @@ begin
     'H96 perdio contratos cerrados o privacidad';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-96 PASS, rollback total' as resultado_h96;
+select 'TESTS_OK - migraciones ordenadas 01-96 PASS, continua H97' as resultado_h96;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260721_97_evidencia_recuperacion_derivada')
+    and exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='operational_recovery_drills'
+        and column_name='recovery_target_at')
+    and exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='operational_recovery_drills'
+        and column_name='storage_manifest_fingerprint')
+    and exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='operational_recovery_drills'
+        and column_name='replay_receipt_fingerprint'),
+    'H97 no instaló evidencia derivada de recuperación, Storage y replay';
+  assert has_function_privilege('service_role',
+      'public.registrar_simulacro_recuperacion_v1(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated',
+      'public.momos_continuity_snapshot_v1()','EXECUTE')
+    and not has_function_privilege('authenticated',
+      'public.registrar_simulacro_recuperacion_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon',
+      'public.momos_continuity_snapshot_v1()','EXECUTE')
+    and not has_table_privilege('authenticated',
+      'public.operational_recovery_drills','SELECT'),
+    'H97 perdió RBAC o expuso evidencia privada';
+  assert position('recovery_target_at' in pg_get_functiondef(
+      'public.registrar_simulacro_recuperacion_v1(jsonb)'::regprocedure))>0
+    and position('storage_manifest_fingerprint' in pg_get_functiondef(
+      'public.registrar_simulacro_recuperacion_v1(jsonb)'::regprocedure))>0
+    and position('evidenceDerived' in pg_get_functiondef(
+      'public.momos_continuity_snapshot_v1()'::regprocedure))>0
+    and position('databaseOnly' in pg_get_functiondef(
+      'public.momos_continuity_snapshot_v1()'::regprocedure))>0,
+    'H97 perdió derivación temporal o el contrato compacto honesto';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-97 PASS, rollback total' as resultado_h97;
 rollback;
