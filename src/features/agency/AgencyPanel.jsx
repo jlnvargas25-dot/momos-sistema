@@ -50,6 +50,7 @@ export function createAgencyPanel(shared) {
   const LazyAgencyCreativeSuite = lazy(() => import("./AgencyCreativeSuite").then((module) => ({ default: module.createAgencyCreativeSuite(shared) })));
   const LazyAgencyMetaSuite = lazy(() => import("./AgencyMetaSuite").then((module) => ({ default: module.createAgencyMetaSuite(shared) })));
   const LazyAgencyFormulaLab = lazy(() => import("./AgencyFormulaLab").then((module) => ({ default: module.createAgencyFormulaLab(shared) })));
+  const LazyAgencyHumanizationHub = lazy(() => import("./AgencyHumanizationHub").then((module) => ({ default: module.createAgencyHumanizationHub(shared) })));
   const agencySectionFallback = <div className="rounded-2xl border p-5 text-sm font-bold" style={{ borderColor: T.border, background: T.vainilla, color: T.choco2 }}>Cargando esta herramienta de Agencia MOMOS…</div>;
 
 /* ================= CRECIMIENTO MOMOS 🌱 =================
@@ -782,6 +783,7 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
       { id: "creative-library", icon: "🎨", eyebrow: "Archivos originales", title: "Biblioteca creativa", description: "Fotos, videos, logos y referencias con derechos y trazabilidad.", metric: (db.brandMediaAssets || []).length, metricLabel: "archivos", tone: "coral" },
     ],
     strategy: [
+      { id: "strategy-humanization", icon: "♡", eyebrow: "Conexión de marca", title: "Humanización y Comunidad", description: "Series, episodios y señales reales sin testimonios inventados ni datos personales.", metric: Number(db.agencyHumanization?.summary?.approved_series || 0), metricLabel: "series activas", tone: "rose" },
       { id: "strategy-opportunities", icon: "✦", eyebrow: "Radar comercial", title: "Oportunidades para crecer", description: "Recomendaciones explicadas con ventas, clientes, stock y contenido real.", metric: intelligence.recommendations.length, metricLabel: "oportunidades", tone: "coral" },
       { id: "strategy-scenarios", icon: "▣", eyebrow: "Antes de invertir", title: "Comparar alternativas", description: "Revisá escenarios y sus alertas sin cambiar campañas ni presupuesto.", metric: (db.agencyMetaInvestmentScenarios || []).length, metricLabel: "escenarios", tone: "gold" },
       { id: "strategy-brain", icon: "🧠", eyebrow: "Propuestas protegidas", title: "Cerebro de Agencia MOMOS", description: "Propuestas trazables que el equipo puede aprobar o descartar.", metric: orchestrator.summary.pending, metricLabel: "por revisar", tone: "rose" },
@@ -935,6 +937,8 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
           </Modal>}
 
           {advancedDetail === "results-formulas" && <Modal title="Fórmulas ganadoras y memoria creativa" onClose={() => setAdvancedDetail(null)} extraWide><Suspense fallback={agencySectionFallback}><LazyAgencyFormulaLab db={db} refrescar={refrescar} /></Suspense></Modal>}
+
+          {advancedDetail === "strategy-humanization" && <Modal title="Humanización y Comunidad MOMOS" onClose={() => setAdvancedDetail(null)} extraWide><Suspense fallback={agencySectionFallback}><LazyAgencyHumanizationHub db={db} refrescar={refrescar} /></Suspense></Modal>}
 
           {advancedDetail === "results-learning" && <Modal title="Qué funcionó y qué conviene repetir" onClose={() => setAdvancedDetail(null)} extraWide><div className="mt-2 mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>

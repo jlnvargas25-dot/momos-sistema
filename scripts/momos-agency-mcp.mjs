@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import ffprobeStatic from "ffprobe-static";
 import { z } from "zod";
 import { normalizeCreativeIntelligence } from "../src/lib/creative-intelligence.js";
+import { normalizeHumanizationCommunity } from "../src/lib/humanization-community.js";
 import {
   MOMOS_AGENCY_MCP_VERSION,
   buildAgencyMcpRun,
@@ -579,6 +580,83 @@ if (SELF_TEST) {
       },
     } },
   ), { subject: `creative-formula:${input.formulaKey}` }));
+
+  server.registerTool("momos_humanization_community", {
+    title: "Humanización y Comunidad MOMOS",
+    description: "Lee series, episodios y señales agregadas. Nunca recibe comentarios, perfiles o mensajes crudos; tampoco responde, contacta o publica.",
+    inputSchema: z.object({}),
+  }, async (input) => governedTool("momos_humanization_community", input,
+    async () => normalizeHumanizationCommunity(await rpc("momos_humanization_community_v1"))));
+
+  server.registerTool("momos_propose_humanization_series", {
+    title: "Proponer serie humana MOMOS",
+    description: "Crea una propuesta editorial versionada para revisión humana. No aprueba, produce, publica ni reutiliza UGC.",
+    inputSchema: z.object({
+      proposalKey: z.string().trim().regex(/^[A-Za-z0-9_.:-]{8,120}$/),
+      seriesKey: z.string().trim().regex(/^[A-Za-z0-9_.:-]{3,100}$/),
+      name: z.string().trim().min(3).max(160), purpose: z.string().trim().min(10).max(500),
+      protagonist: z.enum(["Equipo", "Comunidad", "Personajes MOMOS", "Producto real"]),
+      emotionalTerritory: z.enum(["Antojo", "Ternura", "Celebración", "Compañía", "Humor", "Pertenencia"]),
+      mode: z.enum(["Orgánico", "Pauta", "Híbrido"]),
+      channel: z.enum(["Instagram", "Facebook", "TikTok", "YouTube", "WhatsApp", "Web"]),
+      sourceFormulaId: z.number().int().positive().optional(),
+      editorialContract: z.object({
+        audience: z.string().trim().min(2).max(500), hook: z.string().trim().min(2).max(500),
+        narrativeFormula: z.string().trim().min(2).max(500), ritual: z.string().trim().min(2).max(500),
+        tone: z.string().trim().min(2).max(500), format: z.string().trim().min(2).max(500),
+        evidence: z.string().trim().min(2).max(500), cta: z.string().trim().min(2).max(500),
+        frequency: z.string().trim().min(2).max(500),
+        fixedElements: z.array(z.string().trim().min(2).max(180)).min(1).max(12),
+        allowedVariables: z.array(z.string().trim().min(2).max(180)).min(1).max(12),
+        restrictions: z.array(z.string().trim().min(2).max(180)).min(1).max(12),
+      }).strict(),
+    }).strict(),
+  }, async (input) => governedTool("momos_propose_humanization_series", input, async () => rpc(
+    "proponer_serie_humanizacion_agente_v1", { p: {
+      proposal_key: input.proposalKey, series_key: input.seriesKey, name: input.name, purpose: input.purpose,
+      protagonist: input.protagonist, emotional_territory: input.emotionalTerritory, mode: input.mode,
+      channel: input.channel, source_formula_id: input.sourceFormulaId ?? null,
+      editorial_contract: {
+        audience: input.editorialContract.audience, hook: input.editorialContract.hook,
+        narrative_formula: input.editorialContract.narrativeFormula, ritual: input.editorialContract.ritual,
+        tone: input.editorialContract.tone, format: input.editorialContract.format,
+        evidence: input.editorialContract.evidence, cta: input.editorialContract.cta,
+        frequency: input.editorialContract.frequency, fixed_elements: input.editorialContract.fixedElements,
+        allowed_variables: input.editorialContract.allowedVariables, restrictions: input.editorialContract.restrictions,
+      },
+    } },
+  ), { subject: `humanization-series:${input.seriesKey}` }));
+
+  server.registerTool("momos_propose_humanization_episode", {
+    title: "Proponer episodio humano MOMOS",
+    description: "Propone un episodio dentro de una serie aprobada. Personas y UGC seguirán bloqueados hasta validar paquete, derechos y consentimiento en MOMO OPS.",
+    inputSchema: z.object({
+      proposalKey: z.string().trim().regex(/^[A-Za-z0-9_.:-]{8,120}$/),
+      episodeKey: z.string().trim().regex(/^[A-Za-z0-9_.:-]{3,120}$/),
+      seriesId: z.number().int().positive(), title: z.string().trim().min(3).max(180),
+      storyKind: z.enum(["Detrás de escena", "Ritual de producto", "Historia autorizada", "UGC autorizado", "Pregunta de comunidad", "Personaje y mundo", "Momento de equipo"]),
+      representation: z.enum(["Persona real", "Personaje ficticio", "Recreación / actor", "Contenido sintético", "Producto real", "Comunidad agregada"]),
+      productionPackId: z.number().int().positive().optional(), sourceFormulaId: z.number().int().positive().optional(),
+      sourceBriefId: z.number().int().positive().optional(), sourceCreativeId: z.string().trim().min(1).max(100).optional(),
+      episodeContract: z.object({
+        angle: z.string().trim().min(2).max(500), hook: z.string().trim().min(2).max(500),
+        storyArc: z.string().trim().min(2).max(500), proof: z.string().trim().min(2).max(500),
+        singleVariable: z.string().trim().min(2).max(500), cta: z.string().trim().min(2).max(500),
+        syntheticDisclosure: z.string().trim().max(300).default(""), privacyNote: z.string().trim().min(2).max(500),
+      }).strict(),
+    }).strict(),
+  }, async (input) => governedTool("momos_propose_humanization_episode", input, async () => rpc(
+    "proponer_episodio_humanizacion_agente_v1", { p: {
+      proposal_key: input.proposalKey, episode_key: input.episodeKey, series_id: input.seriesId,
+      title: input.title, story_kind: input.storyKind, representation: input.representation,
+      production_pack_id: input.productionPackId ?? null, source_formula_id: input.sourceFormulaId ?? null,
+      source_brief_id: input.sourceBriefId ?? null, source_creative_id: input.sourceCreativeId ?? null,
+      episode_contract: { angle: input.episodeContract.angle, hook: input.episodeContract.hook,
+        story_arc: input.episodeContract.storyArc, proof: input.episodeContract.proof,
+        single_variable: input.episodeContract.singleVariable, cta: input.episodeContract.cta,
+        synthetic_disclosure: input.episodeContract.syntheticDisclosure, privacy_note: input.episodeContract.privacyNote },
+    } },
+  ), { subject: `humanization-episode:${input.seriesId}:${input.episodeKey}` }));
 
   server.registerTool("momos_creative_context", {
     title: "Contexto creativo gobernado",

@@ -9,6 +9,7 @@ import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta
 import { normalizeProductionActivityDelta } from "./production-delta.js";
 import { activeConfigurationFigureCatalog } from "./momos-domain-language.js";
 import { normalizeCreativeIntelligence } from "./creative-intelligence.js";
+import { normalizeHumanizationCommunity } from "./humanization-community.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -1687,6 +1688,19 @@ export async function fetchCatalogos(options = {}) {
     agencyCreativeIntelligence = normalizeCreativeIntelligence(result.data);
   }
 
+  const humanizationProbe = await capabilityResult("humanizacion_comunidad_disponible");
+  const humanizationProbeMissing = humanizationProbe.error
+    && (humanizationProbe.error.code === "PGRST202"
+      || /could not find the function|schema cache/i.test(humanizationProbe.error.message || ""));
+  if (humanizationProbe.error && !humanizationProbeMissing) throw new Error(humanizationProbe.error.message);
+  const agencyHumanizationReady = !humanizationProbeMissing && humanizationProbe.data === true;
+  let agencyHumanization = null;
+  if (agencyHumanizationReady) {
+    const result = await supabase.rpc("momos_humanization_community_v1");
+    if (result.error) throw new Error(result.error.message);
+    agencyHumanization = normalizeHumanizationCommunity(result.data);
+  }
+
   const distributionProbe = await capabilityResult("distribucion_comercial_disponible");
   const distributionProbeMissing = distributionProbe.error &&
     (distributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(distributionProbe.error.message || ""));
@@ -2065,6 +2079,7 @@ export async function fetchCatalogos(options = {}) {
     agencyMetaAuthorizationReady, agencyMetaInvestmentAuthorizations, agencyMetaInvestmentExecutionJobs,
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
     agencyCreativeIntelligenceReady, agencyCreativeIntelligence,
+    agencyHumanizationReady, agencyHumanization,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,

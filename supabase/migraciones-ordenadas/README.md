@@ -416,6 +416,26 @@ Preparar una muestra no la inicia; iniciar no crea pedidos; vincular acepta
 desactivado hasta una autorización humana posterior. Humanización de marca y
 ampliación de la biblioteca visual continúan como H105/H106.
 
+## Hito 105 — Humanización y Comunidad
+
+H105 se aplica después de la cadena H103 → H104. Aunque H104 pertenece al
+piloto comercial UI y no aporta datos a Humanización, exigir la cadena completa
+mantiene una sola secuencia canónica, auditable y reproducible:
+
+1. `../humanizacion-comunidad-v1.sql` — crea series y episodios versionados,
+   reutiliza Biblioteca de Producción para consentimiento y derechos, enlaza la
+   publicación exacta y acepta de Meta/TikTok solamente conteos y temas
+   agregados. No almacena comentarios, perfiles, mensajes o PII crudos.
+2. `../tests/test-humanizacion-comunidad-v1.sql` — rompe payloads con PII,
+   testimonios sin consentimiento, UGC no autorizado, señales crudas,
+   autoaprobación y falsos ganadores; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–105; el gate aplica y verifica 103 → 104 → 105 en ese orden.
+
+Codex puede leer y proponer series o episodios. Solo una persona puede aprobar,
+vincular una publicación o convertir señales agregadas en aprendizaje. El MCP
+no responde, contacta, publica, reutiliza UGC ni cambia presupuesto.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

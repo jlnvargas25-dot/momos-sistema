@@ -1647,5 +1647,35 @@ begin
     'H104 perdió privacidad, cierre de tráfico o pedidos elegibles';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-104 PASS, rollback total' as resultado_h104;
+select 'TESTS_OK - migraciones ordenadas 01-104 PASS, continúa H105' as resultado_h104;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations where id='20260722_105_humanizacion_comunidad')
+    and to_regclass('public.agency_humanization_series') is not null
+    and to_regclass('public.agency_humanization_episodes') is not null
+    and to_regclass('public.agency_humanization_episode_publications') is not null
+    and to_regclass('public.agency_community_signal_rollups') is not null,
+    'H105 no instaló Humanización y Comunidad';
+  assert to_regprocedure('public.proponer_serie_humanizacion_v1(jsonb)') is not null
+    and to_regprocedure('public.proponer_serie_humanizacion_agente_v1(jsonb)') is not null
+    and to_regprocedure('public.proponer_episodio_humanizacion_v1(jsonb)') is not null
+    and to_regprocedure('public.proponer_episodio_humanizacion_agente_v1(jsonb)') is not null
+    and to_regprocedure('public.registrar_senal_comunidad_conector_v1(jsonb)') is not null
+    and to_regprocedure('public.momos_humanization_community_v1()') is not null,
+    'H105 perdió una RPC canónica';
+  assert has_function_privilege('authenticated','public.momos_humanization_community_v1()','EXECUTE')
+    and has_function_privilege('service_role','public.momos_humanization_community_v1()','EXECUTE')
+    and not has_function_privilege('anon','public.momos_humanization_community_v1()','EXECUTE')
+    and not has_table_privilege('authenticated','public.agency_humanization_series','SELECT')
+    and not has_table_privilege('service_role','public.agency_community_signal_rollups','SELECT'),
+    'H105 perdió RBAC o expuso tablas privadas';
+  assert position('contains_raw_comments' in pg_get_functiondef('public.momos_humanization_community_v1()'::regprocedure))>0
+    and position('can_reply' in pg_get_functiondef('public.momos_humanization_community_v1()'::regprocedure))>0
+    and position('views_alone_can_win' in pg_get_functiondef('public.momos_humanization_community_v1()'::regprocedure))>0
+    and position('external_execution_allowed' in pg_get_functiondef('public.momos_humanization_community_v1()'::regprocedure))>0,
+    'H105 perdió privacidad, evidencia o cierre externo';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-105 PASS, rollback total' as resultado_h105;
 rollback;

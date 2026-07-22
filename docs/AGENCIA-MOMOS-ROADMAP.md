@@ -23,15 +23,16 @@
 
 ### Evolución aprobada — Agencia como memoria determinística del ciclo
 
-- **H103 · inteligencia creativa publicitaria:** implementado en rama aislada.
+- **H103 · inteligencia creativa publicitaria:** integrado en la cadena canónica.
   Fórmulas versionadas enlazadas a creativos existentes, medición común
   Meta/TikTok, ROAS de plataforma, ROAS interno y retorno sobre margen
   separados, decisión humana y consulta segura desde Codex.
-- **H104 · piloto comercial UI:** permanece en el carril operativo/comercial y
-  consume la memoria H103 sin redefinirla.
-- **H105 · Humanización y Comunidad:** convertir equipo, comunidad, personajes y
-  producto real en series editoriales trazables. Consentimiento, derechos y
-  distinción persona/actor/personaje/sintético serán obligatorios.
+- **H104 · piloto comercial UI:** integrado después de H103; permanece en el
+  carril operativo/comercial y consume la memoria creativa sin redefinirla.
+- **H105 · Humanización y Comunidad:** integrado después de H104. Convierte
+  equipo, comunidad, personajes y producto real en series y episodios
+  trazables; reutiliza consentimiento y derechos de Biblioteca, distingue
+  persona/actor/personaje/sintético y recibe solo señales agregadas.
 - **H106 · Biblioteca visual ampliada:** manos, presentadores UGC, vista trasera,
   locaciones, empaque, producto, personajes, audio, start/end frames y
   continuidad; cada activo con uso, canal, vigencia y permiso de IA.
@@ -354,7 +355,7 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Archivos previstos: `supabase/mcp-biblioteca-creativa-v1.sql`, `supabase/tests/test-mcp-biblioteca-creativa-v1.sql`, `scripts/momos-agency-mcp.mjs`, contratos/pruebas locales y actualización de la cadena ordenada.
 - **Validación cerrada:** SQL H54 aplicado; adversarial específico y aceptación ordenada 01–54 PASS con rollback total; suite **453/453 PASS**, build Vite PASS y gateway JS sin errores de sintaxis. Una sesión MCP previa debe reiniciarse antes de probar la nueva herramienta con un original real.
 
-### Programa funcional futuro — Humanización y Comunidad MOMOS
+### Hito 105 — Humanización y Comunidad MOMOS (implementación técnica validada)
 
 **Objetivo:** convertir la cercanía de MOMOS en una capacidad editorial, comunitaria y medible dentro de Agencia, sin confundir humanización con testimonios fabricados, exposición de datos personales o publicación automática.
 
@@ -364,7 +365,7 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Las **series editoriales reutilizables** conservarán nombre, propósito, fórmula narrativa, frecuencia, protagonistas permitidos, hook, rituales, tono, formato, referencias obligatorias, variantes admitidas, CTA, estado y vigencia. Cada episodio mantendrá vínculo exacto con brief, contrato, storyboard, activos, publicación y resultados.
 - La Biblioteca de producción aportará manos, presentadores UGC, locaciones, producto, empaque, personajes y audio. Rostro, voz, manos identificables, historias de clientes y UGC exigirán derechos, consentimiento específico, canal, finalidad y vigencia antes de entrar en un paquete de producción.
 - El sistema distinguirá explícitamente **persona real**, **personaje ficticio**, **recreación/actor** y **contenido sintético**. Nunca presentará un avatar, actor o testimonio generado como cliente real; la IA servirá para ampliar narrativa y producción, no para fabricar confianza.
-- Una futura **Bandeja de Comunidad** podrá recibir comentarios, preguntas, menciones y UGC desde conectores oficiales de Meta y TikTok. La primera fase será de lectura, clasificación y propuesta: Codex o el agente podrá sugerir respuestas o convertir señales agregadas en briefs, pero no responder, contactar, publicar ni reutilizar material sin decisión humana y permisos vigentes.
+- La primera **Bandeja de Comunidad** recibe de Meta/TikTok únicamente conteos y temas de lista cerrada: nunca comentarios, perfiles o mensajes crudos. Codex puede consultar y proponer; no puede responder, contactar, publicar ni reutilizar material.
 - Pide MOMOS y MOMO OPS aportarán únicamente hechos permitidos: ocasiones, productos, recompra, franjas, zonas agregadas, pedidos pagados y margen. Los datos personales no cruzarán al MCP; una historia individual requerirá consentimiento y selección humana independiente.
 - Codex funcionará como laboratorio: propondrá ángulos, hooks, formatos y variaciones de una sola variable. Agencia conservará el experimento; Higgsfield u otro motor producirá solo después del preflight; MOMO OPS sellará costo, publicación, métricas, pedidos y margen; una persona decidirá si el resultado se convierte en fórmula reutilizable.
 - Las métricas de vínculo incluirán comentarios significativos, respuestas, compartidos, guardados, menciones, UGC autorizado, conversación recurrente, asociación con personajes, visitas, recompra y pedidos pagados. Vistas o estética por sí solas no podrán declarar una fórmula ganadora.
@@ -373,9 +374,9 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Dependencias: perfil de marca activo, Biblioteca/activos de producción, consentimiento y derechos, contratos de retención, motor `marca-comunidad`, Pide MOMOS para señales de cliente y conectores Meta/TikTok para conversación y medición reales.
 - Guardas permanentes: `external_execution=false` por defecto; consentimiento verificable; separación Orgánico/Pauta; sin PII en MCP; sin contacto, respuesta, publicación, inversión o reutilización automática; aprobación humana separada para historia, activo, pieza, publicación y aprendizaje.
 
-**Criterio de cierre:** el programa se considerará implementado cuando una serie aprobada pueda producir al menos dos episodios trazables, recibir señales reales de una plataforma conectada, vincular resultados agregados con MOMO OPS, cerrar una prueba de una sola variable y convertir —mediante decisión humana— el resultado en una fórmula versionada, sin exponer PII ni ejecutar acciones externas por omisión.
+**Criterio de cierre operativo:** la implementación técnica H105 ya exige dos episodios aprobados y publicados antes de declarar una conexión ganadora. El programa se cerrará operacionalmente cuando una serie real cumpla ese recorrido con señales de un conector activo y decisión humana, sin exponer PII ni ejecutar acciones externas por omisión.
 
-> Este programa no reserva un número de migración. Su secuencia técnica se asignará al implementarlo, después de comprobar el último ID aplicado en `public.momos_ops_migrations`.
+> Contrato técnico: `20260722_105_humanizacion_comunidad`. La cadena canónica y reproducible aplica H103 → H104 → H105.
 
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 

@@ -825,6 +825,50 @@ export async function resolverMedicionFormulaCreativa(measurementId, outcome, no
   return data;
 }
 
+export async function proponerSerieHumanizacion(payload) {
+  const { data, error } = await supabase.rpc("proponer_serie_humanizacion_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revisarSerieHumanizacion(seriesId, status, note) {
+  const { data, error } = await supabase.rpc("revisar_serie_humanizacion_v1", {
+    p_series_id: Number(seriesId), p_status: status, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function proponerEpisodioHumanizacion(payload) {
+  const { data, error } = await supabase.rpc("proponer_episodio_humanizacion_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revisarEpisodioHumanizacion(episodeId, status, note) {
+  const { data, error } = await supabase.rpc("revisar_episodio_humanizacion_v1", {
+    p_episode_id: Number(episodeId), p_status: status, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function vincularEpisodioHumanizacionPublicacion(episodeId, postId, note) {
+  const { data, error } = await supabase.rpc("vincular_episodio_humanizacion_publicacion_v1", {
+    p_episode_id: Number(episodeId), p_post_id: String(postId || "").trim(), p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverSenalComunidad(signalId, outcome, note) {
+  const { data, error } = await supabase.rpc("resolver_senal_comunidad_v1", {
+    p_signal_id: Number(signalId), p_outcome: outcome, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 /* Biblioteca Inteligente de Marca + Estudio Creativo (migración 20).
    El navegador calcula la huella del archivo; Storage conserva el original
    privado y la RPC valida que objeto, tipo, tamaño, derechos y fila coincidan. */
