@@ -49,6 +49,7 @@ export function createAgencyPanel(shared) {
   const LazyAgencyBrandStudio = lazy(() => import("./AgencyBrandStudio").then((module) => ({ default: module.createAgencyBrandStudio(shared) })));
   const LazyAgencyCreativeSuite = lazy(() => import("./AgencyCreativeSuite").then((module) => ({ default: module.createAgencyCreativeSuite(shared) })));
   const LazyAgencyMetaSuite = lazy(() => import("./AgencyMetaSuite").then((module) => ({ default: module.createAgencyMetaSuite(shared) })));
+  const LazyAgencyFormulaLab = lazy(() => import("./AgencyFormulaLab").then((module) => ({ default: module.createAgencyFormulaLab(shared) })));
   const agencySectionFallback = <div className="rounded-2xl border p-5 text-sm font-bold" style={{ borderColor: T.border, background: T.vainilla, color: T.choco2 }}>Cargando esta herramienta de Agencia MOMOS…</div>;
 
 /* ================= CRECIMIENTO MOMOS 🌱 =================
@@ -792,6 +793,7 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
       { id: "creative-library", icon: "🎨", eyebrow: "Marca y archivos", title: "Biblioteca creativa", description: "Briefs, versiones y reglas de marca con todo el detalle disponible al abrir.", metric: (db.agencyCreativeVersions || []).length, metricLabel: "versiones", tone: "green" },
     ],
     results: [
+      { id: "results-formulas", icon: "✦", eyebrow: "Memoria creativa", title: "Fórmulas ganadoras", description: "Versioná lo que funciona y compará Meta/TikTok con ventas y margen reales.", metric: Number(db.agencyCreativeIntelligence?.summary?.winners || 0), metricLabel: "ganadoras", tone: "coral" },
       { id: "results-learning", icon: "📈", eyebrow: "Aprendizaje comercial", title: "Qué funcionó", description: "Ventas, gasto y pedidos ligados a cada publicación sin inventar ganadores.", metric: learning.summary.conclusive, metricLabel: "conclusiones", tone: "green" },
       { id: "results-meta", icon: "◎", eyebrow: "Lectura de plataformas", title: "Resultados de Meta", description: "Snapshots y métricas verificables en modo de solo lectura.", metric: learning.summary.published, metricLabel: "publicadas", tone: "blue" },
       { id: "results-incrementality", icon: "⇄", eyebrow: "Impacto real", title: "Incrementalidad", description: "Separá correlación de ventas que realmente produjo la campaña.", metric: learning.summary.winners, metricLabel: "ganadoras", tone: "rose" },
@@ -931,6 +933,8 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
           </div>
           {visibleRecommendations.length === 0 && <Empty icon="✦" text="No hay oportunidades en este frente hoy. El radar seguirá cruzando operación, clientes y campañas." />}
           </Modal>}
+
+          {advancedDetail === "results-formulas" && <Modal title="Fórmulas ganadoras y memoria creativa" onClose={() => setAdvancedDetail(null)} extraWide><Suspense fallback={agencySectionFallback}><LazyAgencyFormulaLab db={db} refrescar={refrescar} /></Suspense></Modal>}
 
           {advancedDetail === "results-learning" && <Modal title="Qué funcionó y qué conviene repetir" onClose={() => setAdvancedDetail(null)} extraWide><div className="mt-2 mb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>

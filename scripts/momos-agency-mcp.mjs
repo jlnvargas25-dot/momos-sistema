@@ -8,6 +8,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { createClient } from "@supabase/supabase-js";
 import ffprobeStatic from "ffprobe-static";
 import { z } from "zod";
+import { normalizeCreativeIntelligence } from "../src/lib/creative-intelligence.js";
 import {
   MOMOS_AGENCY_MCP_VERSION,
   buildAgencyMcpRun,
@@ -534,6 +535,50 @@ if (SELF_TEST) {
     description: "Lee el contexto gobernado del Observatorio Meta. No crea, pausa, publica ni cambia presupuesto.",
     inputSchema: z.object({}),
   }, async (input) => governedTool("momos_meta_observatory", input, async () => rpc("obtener_contexto_meta_agente")));
+
+  server.registerTool("momos_creative_intelligence", {
+    title: "Memoria creativa y publicitaria MOMOS",
+    description: "Lee fórmulas versionadas y separa ROAS de plataforma, ROAS interno y retorno sobre margen. No publica, pauta ni declara ganadores.",
+    inputSchema: z.object({}),
+  }, async (input) => governedTool("momos_creative_intelligence", input,
+    async () => normalizeCreativeIntelligence(await rpc("momos_creative_intelligence_v1"))));
+
+  server.registerTool("momos_propose_creative_formula", {
+    title: "Proponer fórmula creativa MOMOS",
+    description: "Crea únicamente una propuesta versionada para revisión humana. Nunca la aprueba, publica, pauta o ejecuta.",
+    inputSchema: z.object({
+      proposalKey: z.string().trim().regex(/^[A-Za-z0-9_.:-]{8,120}$/),
+      formulaKey: z.string().trim().regex(/^[A-Za-z0-9_.:-]{3,100}$/),
+      name: z.string().trim().min(3).max(160),
+      mode: z.enum(["Pauta", "Orgánico", "Híbrido"]),
+      sourceCreativeId: z.string().trim().min(1).max(100),
+      sourceCreativeVersionId: z.number().int().positive().optional(),
+      retentionScriptId: z.number().int().positive().optional(),
+      formula: z.object({
+        hook: z.string().trim().min(2).max(700),
+        narrativeStructure: z.string().trim().min(2).max(700),
+        humanization: z.string().trim().min(2).max(700),
+        proof: z.string().trim().min(2).max(700),
+        offer: z.string().trim().min(2).max(700),
+        cta: z.string().trim().min(2).max(700),
+        visualStyle: z.string().trim().min(2).max(700),
+        cameraPattern: z.string().trim().min(2).max(700),
+      }).strict(),
+    }).strict(),
+  }, async (input) => governedTool("momos_propose_creative_formula", input, async () => rpc(
+    "proponer_formula_creativa_agente_v1", { p: {
+      proposal_key: input.proposalKey, formula_key: input.formulaKey, name: input.name,
+      mode: input.mode, source_creative_id: input.sourceCreativeId,
+      source_creative_version_id: input.sourceCreativeVersionId ?? null,
+      retention_script_id: input.retentionScriptId ?? null,
+      formula_snapshot: {
+        hook: input.formula.hook, narrative_structure: input.formula.narrativeStructure,
+        humanization: input.formula.humanization, proof: input.formula.proof,
+        offer: input.formula.offer, cta: input.formula.cta,
+        visual_style: input.formula.visualStyle, camera_pattern: input.formula.cameraPattern,
+      },
+    } },
+  ), { subject: `creative-formula:${input.formulaKey}` }));
 
   server.registerTool("momos_creative_context", {
     title: "Contexto creativo gobernado",

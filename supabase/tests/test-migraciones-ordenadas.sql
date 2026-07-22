@@ -1580,5 +1580,44 @@ begin
     'H102 perdió cierre de tráfico o gates de salud y recuperación';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-102 PASS, rollback total' as resultado_h102;
+select 'TESTS_OK - migraciones ordenadas 01-102 PASS, continúa H103' as resultado_h102;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_103_inteligencia_creativa_publicitaria')
+    and to_regclass('public.agency_creative_formulas') is not null
+    and to_regclass('public.agency_creative_formula_measurements') is not null,
+    'H103 no instaló inteligencia creativa publicitaria';
+  assert to_regprocedure('public.proponer_formula_creativa_v1(jsonb)') is not null
+    and to_regprocedure('public.proponer_formula_creativa_agente_v1(jsonb)') is not null
+    and to_regprocedure('public.revisar_formula_creativa_v1(bigint,text,text)') is not null
+    and to_regprocedure('public.medir_formula_creativa_v1(jsonb)') is not null
+    and to_regprocedure('public.medir_formula_creativa_conector_v1(jsonb)') is not null
+    and to_regprocedure('public.resolver_medicion_formula_creativa_v1(bigint,text,text)') is not null
+    and to_regprocedure('public.momos_creative_intelligence_v1()') is not null,
+    'H103 perdió una RPC canónica';
+  assert has_function_privilege('authenticated',
+      'public.momos_creative_intelligence_v1()','EXECUTE')
+    and has_function_privilege('service_role',
+      'public.momos_creative_intelligence_v1()','EXECUTE')
+    and not has_function_privilege('anon',
+      'public.momos_creative_intelligence_v1()','EXECUTE')
+    and not has_table_privilege('authenticated',
+      'public.agency_creative_formulas','SELECT')
+    and not has_table_privilege('service_role',
+      'public.agency_creative_formula_measurements','SELECT'),
+    'H103 perdió RBAC o expuso tablas privadas';
+  assert position('platform_roas' in pg_get_functiondef(
+      'public.momos_creative_intelligence_v1()'::regprocedure))>0
+    and position('internal_roas' in pg_get_functiondef(
+      'public.momos_creative_intelligence_v1()'::regprocedure))>0
+    and position('contribution_return' in pg_get_functiondef(
+      'public.momos_creative_intelligence_v1()'::regprocedure))>0
+    and position('external_execution_allowed' in pg_get_functiondef(
+      'public.momos_creative_intelligence_v1()'::regprocedure))>0,
+    'H103 mezcló retornos o perdió el cierre de ejecución externa';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-103 PASS, rollback total' as resultado_h103;
 rollback;

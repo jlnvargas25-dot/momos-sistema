@@ -8,6 +8,7 @@ import { normalizeOrderDeltaBatch } from "./order-delta.js";
 import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta.js";
 import { normalizeProductionActivityDelta } from "./production-delta.js";
 import { activeConfigurationFigureCatalog } from "./momos-domain-language.js";
+import { normalizeCreativeIntelligence } from "./creative-intelligence.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -1671,6 +1672,21 @@ export async function fetchCatalogos(options = {}) {
       errorMessage: nz(row.error_message), updatedAt: tsBogota(row.updated_at) }));
   }
 
+  const creativeIntelligenceProbe = await capabilityResult("inteligencia_creativa_publicitaria_disponible");
+  const creativeIntelligenceProbeMissing = creativeIntelligenceProbe.error
+    && (creativeIntelligenceProbe.error.code === "PGRST202"
+      || /could not find the function|schema cache/i.test(creativeIntelligenceProbe.error.message || ""));
+  if (creativeIntelligenceProbe.error && !creativeIntelligenceProbeMissing) {
+    throw new Error(creativeIntelligenceProbe.error.message);
+  }
+  const agencyCreativeIntelligenceReady = !creativeIntelligenceProbeMissing && creativeIntelligenceProbe.data === true;
+  let agencyCreativeIntelligence = null;
+  if (agencyCreativeIntelligenceReady) {
+    const result = await supabase.rpc("momos_creative_intelligence_v1");
+    if (result.error) throw new Error(result.error.message);
+    agencyCreativeIntelligence = normalizeCreativeIntelligence(result.data);
+  }
+
   const distributionProbe = await capabilityResult("distribucion_comercial_disponible");
   const distributionProbeMissing = distributionProbe.error &&
     (distributionProbe.error.code === "PGRST202" || /could not find the function|schema cache/i.test(distributionProbe.error.message || ""));
@@ -2048,6 +2064,7 @@ export async function fetchCatalogos(options = {}) {
     agencyMetaInvestmentReady, agencyMetaInvestmentScenarios,
     agencyMetaAuthorizationReady, agencyMetaInvestmentAuthorizations, agencyMetaInvestmentExecutionJobs,
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
+    agencyCreativeIntelligenceReady, agencyCreativeIntelligence,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,
     agencyBrandGovernanceReady, agencyBrandProfile, agencyBrandGateBindings,

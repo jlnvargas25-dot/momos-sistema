@@ -373,6 +373,30 @@ Por eso la cadena de migraciones salta de H100 a H102. Aplicar H102 tampoco
 ejecuta un piloto real: la operación sigue pendiente hasta que el equipo apruebe
 una ventana y vincule pedidos reales ya pagados.
 
+## Hito 103 — inteligencia creativa publicitaria
+
+Aplicar únicamente después de confirmar
+`20260722_102_piloto_comercial_controlado`:
+
+1. `../inteligencia-creativa-publicitaria-v1.sql` — enlaza cada fórmula con el
+   creativo y la versión existentes, deriva rendimiento de métricas, pedidos y
+   margen canónicos, separa ROAS de plataforma, ROAS interno y retorno sobre
+   margen, y publica una memoria segura para Codex. Meta y TikTok comparten el
+   mismo contrato, pero una señal ausente nunca se convierte en cero ni en una
+   atribución inventada.
+2. `../tests/test-inteligencia-creativa-publicitaria-v1.sql` — prueba contrato
+   cerrado, PII, versionado, idempotencia, inmutabilidad, separación de retornos,
+   rechazo de ganadores sin ventas, decisión humana y RBAC; siempre hace
+   rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–103; siempre hace rollback.
+
+H103 no publica, no crea anuncios y no cambia presupuesto. Codex y los
+conectores pueden proponer o medir; solo una persona de Agencia puede aprobar
+una fórmula y resolver el aprendizaje. H104 queda reservado al piloto comercial
+UI; humanización de marca y ampliación de la biblioteca visual continúan como
+H105/H106 sobre esta identidad creativa común.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

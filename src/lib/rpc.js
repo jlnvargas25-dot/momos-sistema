@@ -797,6 +797,34 @@ export async function revisarVersionCreativaAgencia(versionId, status, feedback 
   return data;
 }
 
+export async function proponerFormulaCreativa(payload) {
+  const { data, error } = await supabase.rpc("proponer_formula_creativa_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revisarFormulaCreativa(formulaId, status, note) {
+  const { data, error } = await supabase.rpc("revisar_formula_creativa_v1", {
+    p_formula_id: Number(formulaId), p_status: status, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function medirFormulaCreativa(payload) {
+  const { data, error } = await supabase.rpc("medir_formula_creativa_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function resolverMedicionFormulaCreativa(measurementId, outcome, note) {
+  const { data, error } = await supabase.rpc("resolver_medicion_formula_creativa_v1", {
+    p_measurement_id: Number(measurementId), p_outcome: outcome, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 /* Biblioteca Inteligente de Marca + Estudio Creativo (migración 20).
    El navegador calcula la huella del archivo; Storage conserva el original
    privado y la RPC valida que objeto, tipo, tamaño, derechos y fila coincidan. */

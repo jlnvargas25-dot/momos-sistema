@@ -19,6 +19,7 @@ import {
 test("el MCP publica una superficie pequeña y sin SQL libre", () => {
   assert.deepEqual(MOMOS_AGENCY_MCP_TOOLS, [
     "momos_health", "momos_agency_snapshot", "momos_meta_observatory",
+    "momos_creative_intelligence", "momos_propose_creative_formula",
     "momos_creative_context", "momos_search_brand_assets",
     "momos_get_brand_asset_reference", "momos_submit_proposals",
     "momos_request_human_approval", "momos_get_human_approval",
@@ -31,6 +32,8 @@ test("el MCP publica una superficie pequeña y sin SQL libre", () => {
   assert.match(runtime, /replaceAll\(BRAND_REFERENCE_DIR, "\[ruta local redactada\]"\)/);
   assert.doesNotMatch(runtime, /local_path\s*:/);
   assert.doesNotMatch(runtime, /local-temporary-file/);
+  assert.match(runtime, /proponer_formula_creativa_agente_v1/);
+  assert.match(runtime, /Nunca la aprueba, publica, pauta o ejecuta/);
 });
 
 const approvalPrompt = "UGC vertical: muestra la bolsa MOMOS, saca a Max, lo presenta a cámara y prueba una cucharada.";

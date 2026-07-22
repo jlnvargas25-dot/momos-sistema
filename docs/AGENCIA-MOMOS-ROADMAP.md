@@ -21,6 +21,37 @@
 
 > Estado de la cadena técnica al 2026-07-17: los pasos 01–56 están aplicados y validados. H54 corresponde a Biblioteca Creativa vía MCP, H55 a Identidad de Marca operable y H56 a Data Sync y rendimiento. Las etiquetas históricas H48B y “H49 Mutación Meta” describen frentes de producto y no cambian esta secuencia técnica.
 
+### Evolución aprobada — Agencia como memoria determinística del ciclo
+
+- **H103 · inteligencia creativa publicitaria:** implementado en rama aislada.
+  Fórmulas versionadas enlazadas a creativos existentes, medición común
+  Meta/TikTok, ROAS de plataforma, ROAS interno y retorno sobre margen
+  separados, decisión humana y consulta segura desde Codex.
+- **H104 · piloto comercial UI:** permanece en el carril operativo/comercial y
+  consume la memoria H103 sin redefinirla.
+- **H105 · Humanización y Comunidad:** convertir equipo, comunidad, personajes y
+  producto real en series editoriales trazables. Consentimiento, derechos y
+  distinción persona/actor/personaje/sintético serán obligatorios.
+- **H106 · Biblioteca visual ampliada:** manos, presentadores UGC, vista trasera,
+  locaciones, empaque, producto, personajes, audio, start/end frames y
+  continuidad; cada activo con uso, canal, vigencia y permiso de IA.
+- **Fase de orquestación de producción:** una fórmula aprobada podrá crear un
+  paquete de producción y un preflight de motor, pero nunca consumir créditos,
+  publicar o pautar sin su aprobación humana específica.
+- **Fase de experimentación cerrada:** Codex propondrá una sola variable; Agencia
+  sellará control, retador, ventana y evidencia; Meta/TikTok aportarán señal y
+  MOMO OPS conservará pedidos, ventas y margen.
+- **Fase de memoria y fatiga:** cada ganador conservará contexto de validez,
+  elementos fijos, variables admitidas, fecha de revisión y señales de fatiga.
+  Replicar significará crear una versión, no duplicar ciegamente una pieza.
+- **Fase de interfaz simple:** cuatro recorridos visibles —Decidir, Crear, Medir
+  y Aprender— con las herramientas avanzadas cargadas bajo demanda.
+
+El orden aprobado es: fórmulas ganadoras → humanización → biblioteca visual →
+orquestación/experimentación → memoria de fatiga → simplificación final. Codex
+razona y propone; MOMO OPS y Agencia conservan la verdad; los motores ejecutan;
+las personas aprueban.
+
 ### Hito 55 — Identidad de marca operable (implementado y validado)
 
 - Kit oficial versionado para logos reales de Biblioteca, colores semánticos, tipografías, dirección visual, voz y reglas separadas para Pauta y Orgánico.

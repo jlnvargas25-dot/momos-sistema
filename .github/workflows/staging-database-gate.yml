@@ -74,13 +74,20 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/piloto-comercial-controlado-v1.sql
 
+      - name: Apply H103 creative advertising intelligence to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/inteligencia-creativa-publicitaria-v1.sql
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-102 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-103 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -89,6 +96,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-piloto-comercial-controlado-v1.sql | tee "$RUNNER_TEMP/commercial-pilot.log"
           grep -q "H102 piloto cerrado" "$RUNNER_TEMP/commercial-pilot.log"
+
+      - name: Run H103 creative intelligence adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-inteligencia-creativa-publicitaria-v1.sql | tee "$RUNNER_TEMP/creative-intelligence.log"
+          grep -q "H103 fórmulas/versiones/Meta-TikTok" "$RUNNER_TEMP/creative-intelligence.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:
