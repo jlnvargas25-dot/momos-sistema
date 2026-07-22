@@ -53,10 +53,12 @@ de staging. Requiere un environment protegido `staging` con:
 El workflow rechaza refs iguales y exige que tanto la conexión PostgreSQL como la
 URL de Supabase pertenezcan al mismo proyecto de staging. Ejecuta la aceptación
 ordenada 01–97, H93 y las pruebas adversariales H94–H97 dentro de transacciones con
-rollback. Después corre el runner privado H94 en modo `Staging` y solo acepta un
-certificado fresco, con al menos 100 solicitudes y cero invariantes rotas. La
-service role de staging vive exclusivamente en el environment protegido; nunca
-debe configurarse con una clave o URL de producción.
+rollback. Después corre el runner privado H99 sobre el dominio H94 en modo
+`Staging` y solo acepta un certificado fresco, con 64 contendientes, al menos
+2.000 solicitudes materializadas y cero invariantes rotas. El recibo conserva
+p50/p95/p99 y la huella del servidor, pero no PII, secretos ni datos comerciales.
+La service role de staging vive exclusivamente en el environment protegido;
+nunca debe configurarse con una clave o URL de producción.
 
 ## Observación diaria de backups
 

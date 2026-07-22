@@ -327,11 +327,13 @@ de producción. Los probes solo escriben en las tablas privadas H94.
 
 La certificación real se ejecuta mediante
 `.github/workflows/staging-database-gate.yml`. El gate compara el ref de staging
-contra producción, valida la URL exacta, corre la cadena 01–95 y H93, repite las
-adversariales H94/H95 con rollback, ejecuta el runner con 16 contendientes y exige en
-servidor un certificado fresco con cero invariantes. Sin los cinco secretos del
-environment `staging`, el flujo falla cerrado antes de instalar dependencias o
-abrir una corrida.
+contra producción, valida la URL exacta, corre la cadena 01–97 y H93, repite las
+adversariales H94–H97 con rollback, ejecuta el runner H99 con 64 contendientes y
+2.000 solicitudes materializadas y exige en servidor un certificado fresco con
+cero invariantes. Sin los cinco secretos del environment `staging`, el flujo
+falla cerrado antes de instalar dependencias o abrir una corrida. El runner puede
+emitir además un recibo JSON sin PII ni secretos mediante
+`MOMOS_H94_REPORT_PATH`.
 
 ## Hito 95 — observabilidad y SLO agregados
 

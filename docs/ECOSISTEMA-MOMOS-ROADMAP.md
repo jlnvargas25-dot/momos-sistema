@@ -212,12 +212,17 @@ Esta tabla debe actualizarse después de cada gate; nunca por percepción.
 - [ ] Carga sostenida, ráfaga y carrera por última unidad pasan con volumen representativo.
 - [ ] Caídas parciales se concilian sin doble cobro, pedido duplicado, sobreventa o pérdida silenciosa.
 
-**Avance H94:** la carga sintética aislada ya valida idempotencia, respuesta
-perdida, carrera por última unidad, leases, rollback, lecturas paralelas,
-tormentas Realtime y conciliación sin tocar el dominio comercial. El gate manual
-de staging ya exige proyectos y secretos separados y puede emitir el certificado
-servidor. Sigue pendiente ejecutarlo sobre un staging restaurado y representativo;
-la validación sintética de producción no sustituye esa evidencia.
+**H94/H99 certificados en staging:** la carga sintética aislada valida
+idempotencia, respuesta perdida, carrera por última unidad, leases, rollback,
+lecturas paralelas, tormentas Realtime y conciliación sin tocar el dominio
+comercial. El 22 de julio de 2026 el runner H99 ejecutó 2.000 solicitudes reales
+con 64 contendientes sobre el staging restaurado `mxrsmuqyesolkxoqvggl`: p50
+233,20 ms, p95 351,27 ms, p99 724,86 ms, p95 adversarial máximo 488,81 ms y
+cero invariantes rotas. Supabase selló la corrida como `Certificado` y
+reconciliada. El recibo sanitario versionado está en
+`docs/H99-STAGING-LOAD-2026-07-22.json`. Todavía falta una ventana sostenida de
+varios minutos/horas y tráfico sobre los recorridos comerciales reales antes de
+certificar escala alta.
 
 **H95 aplicado:** el Centro de Salud incorpora
 políticas SLO versionadas y una frontera privada e idempotente para telemetría agregada. Calcula disponibilidad,

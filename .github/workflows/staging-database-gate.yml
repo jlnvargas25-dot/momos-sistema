@@ -121,8 +121,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
           MOMOS_H94_ENVIRONMENT: Staging
           MOMOS_H94_ALLOW_STAGING: CERTIFY_NON_PRODUCTION
-          MOMOS_H94_CONCURRENCY: 16
-          MOMOS_H94_TARGET_REQUESTS: 150
+          MOMOS_H94_CONCURRENCY: 64
+          MOMOS_H94_TARGET_REQUESTS: 2000
         run: npm run test:resilience:synthetic
 
       - name: Verify the server sealed a fresh staging certificate
@@ -138,7 +138,9 @@ jobs:
               where environment='Staging'
                 and status='Certificado'
                 and completed_at >= clock_timestamp()-interval '15 minutes'
-                and total_requests >= 100
+                and concurrency = 64
+                and target_request_count = 2000
+                and total_requests >= 2000
                 and invariant_failures=0
                 and result_fingerprint is not null
             ) then
