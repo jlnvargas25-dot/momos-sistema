@@ -51,5 +51,5 @@ test("H110 pertenece a la cadena y al gate aislado de staging", () => {
   assert.match(ordered, /01-110 PASS/);
   assert.match(workflow, /calidad-maestra-biblioteca-ia-v1\.sql/);
   assert.match(workflow, /test-calidad-maestra-biblioteca-ia-v1\.sql/);
-  assert.match(workflow, /01-110 PASS/);
+  assert.match(workflow, /01-111 PASS/);
 });

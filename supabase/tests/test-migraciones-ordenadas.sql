@@ -1823,5 +1823,33 @@ begin
     'H110 perdió uso objetivo, calidad o cierre de ejecución externa';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-110 PASS, rollback total' as resultado_h110;
+select 'TESTS_OK - migraciones ordenadas 01-110 PASS, continúa H111' as resultado_h110;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_111_politica_maestro_visual_limpio')
+    and to_regprocedure('public.biblioteca_maestro_limpio_disponible()') is not null
+    and to_regprocedure('public.estado_maestro_visual_limpio_v1(bigint)') is not null,
+    'H111 no instaló la política de máster visual limpio';
+  assert exists(select 1 from pg_trigger
+      where tgname='brand_clean_master_profile_guard' and not tgisinternal),
+    'H111 perdió el guard de clasificación canónica';
+  assert has_function_privilege('authenticated','public.biblioteca_maestro_limpio_disponible()','EXECUTE')
+    and has_function_privilege('service_role','public.biblioteca_maestro_limpio_disponible()','EXECUTE')
+    and not has_function_privilege('authenticated','public.estado_maestro_visual_limpio_v1(bigint)','EXECUTE')
+    and not has_function_privilege('service_role','public.estado_maestro_visual_limpio_v1(bigint)','EXECUTE'),
+    'H111 perdió RBAC o expuso el clasificador interno';
+  assert position('clean_master_policy_version' in pg_get_functiondef(
+      'public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('source_quality' in pg_get_functiondef(
+      'public.momos_visual_library_v1(jsonb)'::regprocedure))>0
+    and position('Original con escarcha' in pg_get_functiondef(
+      'public.estado_calidad_activo_visual_v1(bigint,text)'::regprocedure))>0
+    and position('external_execution_allowed' in pg_get_functiondef(
+      'public.estado_maestro_visual_limpio_v1(bigint)'::regprocedure))>0,
+    'H111 perdió la clasificación MCP o el gate dinámico anti-escarcha';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-111 PASS, rollback total' as resultado_h111;
 rollback;

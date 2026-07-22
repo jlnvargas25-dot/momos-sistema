@@ -88,9 +88,14 @@ begin
   v_result:=public.revisar_calidad_activo_visual_v1((select frost_id from h110_context),jsonb_build_object(
     'issues',jsonb_build_array('Escarcha','Compresión visible'),'checks_completed',v_checks,
     'review_notes','La escarcha tapa textura y geometría; se necesita una nueva toma limpia.'));
-  assert v_result->>'status'='Requiere nueva toma'
-    and not (v_result#>>'{usage_readiness,video_generation,ready}')::boolean
-    and v_result->>'recommended_action'='Nueva toma',
+  assert (
+      (not exists(select 1 from public.momos_ops_migrations where id='20260722_111_politica_maestro_visual_limpio')
+        and v_result->>'status'='Requiere nueva toma' and v_result->>'recommended_action'='Nueva toma')
+      or
+      (exists(select 1 from public.momos_ops_migrations where id='20260722_111_politica_maestro_visual_limpio')
+        and v_result->>'status' in ('Variante artística','Requiere mejora')
+        and v_result->>'recommended_action' in ('Capturar máster limpio','Registrar dimensiones'))
+    ) and not (v_result#>>'{usage_readiness,video_generation,ready}')::boolean,
     'H110 aprobó la referencia defectuosa de Max.';
 
   v_result:=public.revisar_calidad_activo_visual_v1((select front_id from h110_context),jsonb_build_object(
@@ -154,7 +159,8 @@ begin
     'component_type','Producto','visual_set_key','max-master-h110','channel','TikTok',
     'purpose','Generación','target_use','Generación de video','required_views',jsonb_build_array('Frontal','Tres cuartos'),'limit',20));
   assert v_snapshot->>'schema_version'='momos-visual-library/v1'
-    and (v_snapshot->>'quality_contract_version')::integer=1
+    and (v_snapshot->>'quality_contract_version')::integer=case
+      when exists(select 1 from public.momos_ops_migrations where id='20260722_111_politica_maestro_visual_limpio') then 2 else 1 end
     and (v_snapshot#>>'{sets,0,ai_quality,ready}')::boolean
     and (v_snapshot#>>'{sets,0,assets,0,ai_quality,source_current}')::boolean,
     'H110 no entregó a Codex la aptitud exacta del set.';

@@ -536,6 +536,26 @@ un worker no puede iniciar si las referencias dejaron de ser aptas. Revisar,
 subir una versión mejorada o consultar calidad no genera, no publica ni consume
 créditos.
 
+## Hito 111 — Política de máster visual limpio
+
+Aplicar únicamente después de confirmar `20260722_110_calidad_maestra_biblioteca_ia`:
+
+1. `../politica-maestro-visual-limpio-v1.sql` — conserva cada foto original,
+   clasifica escarcha y condensación como variantes artísticas y exige un activo
+   limpio, canónico, certificado y con linaje para imagen IA, video y Elements.
+   Las certificaciones H110 antiguas se revalidan dinámicamente para impedir
+   bypass en preflight, autorización o worker.
+2. `../tests/test-politica-maestro-visual-limpio-v1.sql` — prueba separación de
+   usos, restauración enlazada, canonicalidad, RBAC, privacidad MCP y ausencia de
+   ejecución o créditos; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–111; siempre hace rollback.
+
+La secuencia operativa es: capturar primero el máster limpio, revisar los seis
+controles, conservar escarcha/condensación como variante y crear restauraciones
+solo como derivados enlazados. Codex recibe ambos activos con su clase exacta,
+pero solo el máster limpio puede atravesar los gates de generación.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:
