@@ -112,5 +112,19 @@ export function applyFinishedInventoryDeltaBatchToDb(db, envelope) {
   return { status: stale.length && !applied.length ? "stale" : "applied", applied, stale };
 }
 
+// H88: aplicaciÃ³n inmutable para React. El mapa monotÃ³nico es el Ãºnico objeto
+// anidado que el adaptador legado muta; todas las colecciones de producto se
+// reemplazan de forma dirigida y el resto del estado conserva su identidad.
+export function applyFinishedInventoryDeltaBatch(db, envelope) {
+  if (!db || typeof db !== "object") throw new Error("MOMO OPS no tiene un estado vÃ¡lido para producto terminado.");
+  const next = {
+    ...db,
+    finishedInventoryDeltaVersions: { ...(db.finishedInventoryDeltaVersions || {}) },
+  };
+  const result = applyFinishedInventoryDeltaBatchToDb(next, envelope);
+  if (!result.applied.length) return { ...result, db };
+  return { ...result, db: next };
+}
+
 export const FINISHED_INVENTORY_DELTA_BATCH_CONTRACT = BATCH_CONTRACT;
 export const FINISHED_INVENTORY_DELTA_CONTRACT = DELTA_CONTRACT;

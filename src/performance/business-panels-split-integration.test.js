@@ -28,6 +28,12 @@ test("H78 conserva todos los paneles extraídos bajo un contrato cerrado", () =>
   assert.doesNotMatch(panels, /from\s+["']\.\.\/\.\.\/MomosOps/);
 });
 
+test("H83 inyecta el catalogo de roles que Configuracion renderiza", () => {
+  assert.match(app, /function getBusinessPanelsShared\(\)[\s\S]+PERMISOS_POR_ROL, ROLES, SABORES/);
+  assert.match(panels, /PERMISOS_POR_ROL, ROLES, SABORES/);
+  assert.match(panels, /<MiniSelect options=\{ROLES\}/);
+});
+
 test("H78 espera el panel real antes de cerrar la navegación", () => {
   assert.match(app, /<Suspense fallback=\{<BusinessPanelFallback \/>\}>[\s\S]+<PanelReadySignal routeId=\{performanceRouteId\}/);
   for (const view of ["Dashboard", "Productos", "Domicilios", "Reclamos", "Clientes", "Beneficios", "Marketing", "Creativos", "Calendario", "Resultados", "Reportes", "Configuración"]) {

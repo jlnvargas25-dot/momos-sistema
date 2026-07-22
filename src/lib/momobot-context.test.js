@@ -50,7 +50,7 @@ test("responde cómo va un pedido con lenguaje natural", () => {
   const answer = momobotContextAnswer("¿Cómo va el pedido 1053?", catalogs);
   assert.match(answer.text, /En producción/);
   assert.match(answer.text, /Listo para empaque/);
-  assert.match(answer.text, /2 unidades de Momo Gatito, sabor Coco, figura Lizi/i);
+  assert.match(answer.text, /2 unidades de Lizi de Coco; presentación comercial: momo gatito/i);
 });
 
 test("recuerda ese pedido para una pregunta de seguimiento", () => {
@@ -100,7 +100,7 @@ test("entrega un resumen operativo con demoras y faltantes", () => {
 
 test("explica los faltantes registrados", () => {
   const answer = momobotContextAnswer("¿Qué falta producir?", catalogs);
-  assert.match(answer.text, /3 de Momo Perrito/);
+  assert.match(answer.text, /3 de presentación comercial Momo Perrito/);
   assert.match(answer.text, /P-1056/);
 });
 

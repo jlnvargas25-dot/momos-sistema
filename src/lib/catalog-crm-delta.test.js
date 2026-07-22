@@ -31,6 +31,7 @@ test("H74 reemplaza solo el producto y su receta", () => {
   const result = applyProductCatalogDeltaBatchToDb(db, productEnvelope());
   assert.deepEqual(result.applied, ["P1"]);
   assert.equal(result.db.products.find((row) => row.id === "P2").nombre, "Otro");
+  assert.deepEqual(result.db.products.find((row) => row.id === "P1").atributos, ["sabor", "salsa", "figura"]);
   assert.deepEqual(result.db.recipes.map((row) => row.id).sort(), ["R2", "R9"]);
 });
 

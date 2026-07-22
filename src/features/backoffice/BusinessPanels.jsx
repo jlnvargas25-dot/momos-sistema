@@ -1,7 +1,21 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { buildDeliveryOrderBoard, deliveryNextStep } from "../../lib/delivery-order-board.js";
+import { buildCustomerCrm, crmCompleteness } from "../../lib/customer-crm.js";
+import { buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard } from "../../lib/commercial-calendar.js";
+import { buildDistributionRoom, distributionChecklistFor, validateDistributionAction } from "../../lib/commercial-distribution.js";
+import { enrichDistributionWithDispatch } from "../../lib/commercial-dispatch.js";
+import { buildOperationalHistory, isActiveClaim, partitionByActivity } from "../../lib/operational-history.js";
+import {
+  activeConfigurationFigureCatalog, activeFigureCatalog, commercialFamilyLabel, expectedFigureProductId, figureProductId, isAuxiliaryFigureName, isCommercialFamilyProduct, isKitchenFigureName,
+  productUsesHorizontalFigure,
+  KITCHEN_FIGURE_DEFAULTS, KITCHEN_FIGURE_NAMES, orderLinePresentation, productTypeForCategory,
+} from "../../lib/momos-domain-language.js";
+import { PRODUCT_CATEGORY_EMOJI, PRODUCT_CATEGORY_ORDER } from "../../lib/product-categories.js";
+import { buildCanonicalFinishedStock } from "../../lib/canonical-stock.js";
+import { buildCanonicalPhysicalResults } from "../../lib/canonical-production-results.js";
 
 export function createBusinessPanels(shared) {
-  const { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, momoEspecie, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, buildCustomerCrm, crmCompleteness, buildCommercialCalendar, buildPostDraftFromCreative, calendarTransitionGuard, buildDistributionRoom, distributionChecklistFor, validateDistributionAction, enrichDistributionWithDispatch, buildOperationalHistory, isActiveClaim, isActiveDelivery, partitionByActivity, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION } = shared;
+  const { supabase, T, CANAL_STYLE, CANALES, CAL_ESTADOS, CAMP_ESTADOS, CREA_ESTADOS, MK_CANAL_STYLE, MK_CANALES, MK_FORMATOS, MK_OBJETIVOS, PERMISOS_POR_ROL, ROLES, SABORES, ATRIBUTO_LABEL, atributosDeTipo, hoyISO, dISO, diasEntre, selloAMs, milCO, fmt, pct, itemsOf, customerOf, productOf, orderSubtotal, orderTotal, lineAdiciones, lineAdicionesTotal, lineAdicionesCOGS, esPedidoCobrado, availability, ordersDeCampaign, ordersDeCreative, ventasDeCreative, atribucionDeResultado, resultadosDePlataforma, campaignMetrics, recipeLines, recipeCost, downloadCSV, Badge, Card, CountUp, Stat, SectionTitle, WorkScopeTabs, Btn, BtnAsync, toast, Modal, Field, Input, Select, MiniSelect, Empty, Bars, inputCls, inputStyle, InlineNotice, SegmentedTabs, deliveryBlocksNewRequest, normalizeRoles, normalizeKitchenDelaySettings, buildConfigurationSavePayload, normalizeConfigurationSnapshot, fetchOperationalHistoryPage, setOrderStatusRemoto, crearDomicilio, actualizarDomicilio, mutarDomicilioDelta, setReclamoEstado, editarReclamo, upsertCliente, guardarPreferenciasCliente, crearActivacionCliente, registrarContactoCliente, convertirActivacionCliente, activarBeneficioCliente, crearProducto, editarProducto, setProductoActivo, guardarRecetaProducto, sincronizarCostoProducto, mutarCatalogoCrmDelta, createInventoryIdempotencyKey, crearUsuarioStaff, quitarRolUsuario, setUserActivo, guardarConfiguracionServidor, fetchOperationalHealthSnapshot, fetchOperationalSloSnapshot, fetchContinuitySnapshot, runOperationalHealthReview, evaluateOperationalSloAlerts, crearCampana, editarCampana, crearCreativo, editarCreativo, crearPublicacion, setPublicacionEstado, registrarMetricasCreativo, guardarPreparacionDistribucion, aprobarDistribucion, cerrarDistribucionPublicacion, autorizarDespachoDistribucion, reintentarDespachoDistribucion, DB_VERSION } = shared;
 
   function Dashboard({ db, go, user }) {
     const [assistantCenterOpen, setAssistantCenterOpen] = useState(false);
@@ -99,14 +113,14 @@ export function createBusinessPanels(shared) {
 
         {sugerencias.length > 0 && (
           <div className="mt-3 text-xs font-bold p-3 rounded-xl" style={{ background: "#DCE7F2", color: "#3E5C7E" }}>
-            👩‍🍳 Producción sugerida: {sugerencias.map((s) => `${s.cantidad}× ${s.producto}`).join(" · ")}.{" "}
-            <button className="underline" onClick={() => go("Producción")}>Ver en Producción</button>
+            👩‍🍳 Necesidad por presentación comercial: {sugerencias.map((s) => `${s.cantidad}× ${commercialFamilyLabel(s.producto)}`).join(" · ")}. Abrí Producción para confirmar la figura y el sabor exactos.{" "}
+            <button className="underline" onClick={() => go("Producción")}>Ver detalle exacto</button>
           </div>
         )}
 
         {lotesListos.length > 0 && (
           <div className="mt-3 text-xs font-bold p-3 rounded-xl" style={{ background: "#DDEBD9", color: "#3F6B42" }}>
-            🧊✅ {lotesListos.length} lote(s) cumplieron su tiempo de congelación y esperan pasar a "Listo": {lotesListos.map((l) => `${l.id} (${[l.producto, l.gramaje, l.sabor].filter(Boolean).join(" · ")})`).join(", ")}.{" "}
+            🧊✅ {lotesListos.length} lote(s) cumplieron su tiempo de congelación y esperan cierre: {lotesListos.map((l) => `${l.id} (${[commercialFamilyLabel(l.producto), l.gramaje, l.sabor].filter(Boolean).join(" · ")})`).join(", ")}. La figura exacta se valida dentro del lote.{" "}
             <button className="underline" onClick={() => go("Producción")}>Ir a Producción</button>
           </div>
         )}
@@ -208,13 +222,15 @@ export function createBusinessPanels(shared) {
         <SectionTitle>Ventas por canal</SectionTitle>
         <Card className="p-4"><Bars data={porCanal} money /></Card>
 
-        <SectionTitle>Disponibilidad real de momos y cajas</SectionTitle>
+        <SectionTitle>Disponibilidad por familia comercial y cajas</SectionTitle>
+        <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>Este total sirve para vender y reservar. La promesa exacta se confirma después por figura y sabor en Inventario terminado.</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {disponibilidad.map((p) => {
             const disp = p.available;
             return (
               <Card key={p.id} className="p-3" onClick={() => go("Producción")}>
-                <div className="text-sm font-bold leading-tight">{p.name}</div>
+                <div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{p.type === "combo" ? "Caja / combo" : "Familia comercial"}</div>
+                <div className="text-sm font-bold leading-tight mt-0.5">{commercialFamilyLabel(p.name)}</div>
                 <div className="display text-xl mt-1" style={{ color: disp <= 2 ? "#A03B2A" : T.choco }}>
                   {disp} <span className="text-xs font-sans font-semibold" style={{ color: T.choco2 }}>disp.</span>
                 </div>
@@ -316,6 +332,12 @@ export function createBusinessPanels(shared) {
 
   /* ================= PEDIDOS ================= */
 
+  const HISTORY_AREA_OPTIONS = Object.freeze([
+    "Pedidos", "Producción", "Empaque", "Domicilios", "Reclamos", "Inventario",
+    "Inventario terminado", "Productos", "Clientes", "Agencia MOMOS", "Finanzas",
+    "Configuración", "Operación",
+  ]);
+
   function HistorialOperativo({ db }) {
     const [olderAudit, setOlderAudit] = useState([]);
     const [historyCursor, setHistoryCursor] = useState(db.auditCursor || null);
@@ -325,26 +347,56 @@ export function createBusinessPanels(shared) {
       const byId = new Map([...(db.audit_logs || []), ...olderAudit].map((row) => [row.id, row]));
       return [...byId.values()];
     }, [db.audit_logs, olderAudit]);
-    const entries = useMemo(() => buildOperationalHistory({ ...db, audit_logs: mergedAudit }), [db, mergedAudit]);
+    const localEntries = useMemo(() => buildOperationalHistory({ ...db, audit_logs: mergedAudit }), [db, mergedAudit]);
     const [q, setQ] = useState("");
     const [area, setArea] = useState("");
     const [desde, setDesde] = useState("");
     const [hasta, setHasta] = useState("");
     const [limit, setLimit] = useState(50);
-    const areas = useMemo(() => [...new Set(entries.map((entry) => entry.area))].sort((a, b) => a.localeCompare(b, "es")), [entries]);
-    const filtered = useMemo(() => {
-      const query = q.trim().toLocaleLowerCase("es");
-      return entries.filter((entry) => {
-        const haystack = [entry.area, entry.entity, entry.entityId, entry.action, entry.actor, entry.from, entry.to].join(" ").toLocaleLowerCase("es");
-        const day = entry.at.slice(0, 10);
-        return (!query || haystack.includes(query))
-          && (!area || entry.area === area)
-          && (!desde || day >= desde)
-          && (!hasta || day <= hasta);
-      });
-    }, [entries, q, area, desde, hasta]);
+    const filterRequestRef = useRef(0);
+    const [filteredAudit, setFilteredAudit] = useState([]);
+    const [filteredCursor, setFilteredCursor] = useState(null);
+    const [filteredKey, setFilteredKey] = useState("");
+    const serverFilters = useMemo(() => ({ query: q.trim(), area, from: desde, to: hasta }), [q, area, desde, hasta]);
+    const serverFilterKey = useMemo(() => JSON.stringify(serverFilters), [serverFilters]);
+    const hasServerFilters = Boolean(serverFilters.query || serverFilters.area || serverFilters.from || serverFilters.to);
+    const remoteEntries = useMemo(() => buildOperationalHistory({ audit_logs: filteredAudit }), [filteredAudit]);
+    const entries = hasServerFilters ? (filteredKey === serverFilterKey ? remoteEntries : []) : localEntries;
+    const areas = useMemo(() => [...new Set([...localEntries, ...remoteEntries].map((entry) => entry.area))].sort((a, b) => a.localeCompare(b, "es")), [localEntries, remoteEntries]);
+    const filtered = entries;
     useEffect(() => { setLimit(50); }, [q, area, desde, hasta]);
-    const visible = filtered.slice(0, limit);
+    useEffect(() => {
+      const requestId = ++filterRequestRef.current;
+      if (!hasServerFilters) {
+        setFilteredAudit([]);
+        setFilteredCursor(null);
+        setFilteredKey("");
+        setHistoryError("");
+        setLoadingHistory(false);
+        return undefined;
+      }
+      setLoadingHistory(true);
+      setHistoryError("");
+      const timer = setTimeout(async () => {
+        try {
+          const page = await fetchOperationalHistoryPage(null, 50, serverFilters);
+          if (requestId !== filterRequestRef.current) return;
+          setFilteredAudit(page.rows);
+          setFilteredCursor(page.hasMore ? page.cursor : null);
+          setFilteredKey(serverFilterKey);
+        } catch (error) {
+          if (requestId !== filterRequestRef.current) return;
+          setFilteredAudit([]);
+          setFilteredCursor(null);
+          setFilteredKey(serverFilterKey);
+          setHistoryError(error.message);
+        } finally {
+          if (requestId === filterRequestRef.current) setLoadingHistory(false);
+        }
+      }, 250);
+      return () => clearTimeout(timer);
+    }, [hasServerFilters, serverFilterKey, serverFilters]);
+    const visible = hasServerFilters ? filtered : filtered.slice(0, limit);
     const today = hoyISO();
     const todayCount = entries.filter((entry) => entry.at.startsWith(today)).length;
     const actorCount = new Set(entries.map((entry) => entry.actor).filter(Boolean)).size;
@@ -355,6 +407,27 @@ export function createBusinessPanels(shared) {
     }
 
     async function verMasHistorial() {
+      if (hasServerFilters) {
+        if (!filteredCursor || loadingHistory) return;
+        const requestId = ++filterRequestRef.current;
+        const requestedKey = serverFilterKey;
+        setLoadingHistory(true);
+        setHistoryError("");
+        try {
+          const page = await fetchOperationalHistoryPage(filteredCursor, 50, serverFilters);
+          if (requestId !== filterRequestRef.current || requestedKey !== serverFilterKey) return;
+          setFilteredAudit((rows) => {
+            const byId = new Map([...rows, ...page.rows].map((row) => [row.id, row]));
+            return [...byId.values()];
+          });
+          setFilteredCursor(page.hasMore ? page.cursor : null);
+        } catch (error) {
+          if (requestId === filterRequestRef.current) setHistoryError(error.message);
+        } finally {
+          if (requestId === filterRequestRef.current) setLoadingHistory(false);
+        }
+        return;
+      }
       if (visible.length < filtered.length) {
         setLimit((value) => value + 50);
         return;
@@ -382,7 +455,7 @@ export function createBusinessPanels(shared) {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          <Stat icon="◷" label="Movimientos" value={entries.length} sub="rastro disponible" tone={T.coral} />
+          <Stat icon="◷" label="Movimientos" value={entries.length} sub={hasServerFilters ? "cargados para este filtro" : "rastro disponible"} tone={T.coral} />
           <Stat icon="●" label="Hoy" value={todayCount} sub="acciones registradas" tone="#3F6B42" />
           <Stat icon="▦" label="Áreas" value={areas.length} sub="fuentes conectadas" tone="#63518A" />
           <Stat icon="♙" label="Responsables" value={actorCount} sub="usuarios en el rastro" tone="#96690F" />
@@ -396,7 +469,7 @@ export function createBusinessPanels(shared) {
           ariaLabel="Áreas del historial"
           value={area}
           onChange={setArea}
-          items={[["Todas", ""], ...areas.map((name) => [name, name])]}
+          items={[["Todas", ""], ...HISTORY_AREA_OPTIONS.map((name) => [name, name])]}
           getCount={(value) => value ? entries.filter((entry) => entry.area === value).length : entries.length}
         />
 
@@ -409,7 +482,7 @@ export function createBusinessPanels(shared) {
           </div>
         </Card>
 
-        <div className="flex items-center justify-between gap-3 mb-3"><div><div className="display text-lg font-semibold">Bitácora consolidada</div><div className="text-xs font-semibold" style={{ color: T.choco2 }}>{filtered.length} movimiento{filtered.length === 1 ? "" : "s"} encontrado{filtered.length === 1 ? "" : "s"}</div></div>{(q || area || desde || hasta) && <button type="button" className="text-xs font-extrabold" style={{ color: T.coral }} onClick={() => { setQ(""); setArea(""); setDesde(""); setHasta(""); }}>Limpiar filtros</button>}</div>
+        <div className="flex items-center justify-between gap-3 mb-3"><div><div className="display text-lg font-semibold">Bitácora consolidada</div><div className="text-xs font-semibold" style={{ color: T.choco2 }}>{loadingHistory && hasServerFilters && filteredKey !== serverFilterKey ? "Buscando en todo el historial…" : `${filtered.length} movimiento${filtered.length === 1 ? "" : "s"} cargado${filtered.length === 1 ? "" : "s"}`}</div></div>{(q || area || desde || hasta) && <button type="button" className="text-xs font-extrabold" style={{ color: T.coral }} onClick={() => { setQ(""); setArea(""); setDesde(""); setHasta(""); }}>Limpiar filtros</button>}</div>
         <Card className="overflow-hidden">
           <div className="divide-y" style={{ borderColor: T.border }}>
             {visible.map((entry) => (
@@ -419,10 +492,10 @@ export function createBusinessPanels(shared) {
                 <div className="text-right shrink-0"><time className="text-[10px] font-bold block" style={{ color: T.choco2 }}>{entry.at || "Sin fecha"}</time><span className="text-[10px] font-extrabold block mt-1">{entry.actor}</span></div>
               </div>
             ))}
-            {!visible.length && <div className="p-10 text-center"><div className="text-3xl mb-2">⌕</div><div className="font-bold">No hay movimientos con esos filtros</div></div>}
+            {!visible.length && <div className="p-10 text-center"><div className="text-3xl mb-2">⌕</div><div className="font-bold">{loadingHistory ? "Buscando movimientos…" : "No hay movimientos con esos filtros"}</div></div>}
           </div>
         </Card>
-        {(visible.length < filtered.length || historyCursor) && <div className="mt-3 text-center"><Btn kind="ghost" onClick={verMasHistorial} disabled={loadingHistory}>{loadingHistory ? "Cargando…" : "Ver 50 movimientos más"}</Btn></div>}
+        {((hasServerFilters && filteredCursor) || (!hasServerFilters && (visible.length < filtered.length || historyCursor))) && <div className="mt-3 text-center"><Btn kind="ghost" onClick={verMasHistorial} disabled={loadingHistory}>{loadingHistory ? "Cargando…" : "Ver 50 movimientos más"}</Btn></div>}
         {historyError && <div className="mt-2 text-center text-xs font-bold" style={{ color: T.red }}>{historyError}</div>}
       </div>
     );
@@ -432,47 +505,49 @@ export function createBusinessPanels(shared) {
 
   /* ================= INVENTARIO TERMINADO ================= */
 
-  const CAT_EMOJI = { "Momos Signature": "🐱", "Cajas y Combos": "🎁", "Momos Cuchara": "🥄", "Momos Antojos": "🥞", "Momos Bebidas": "🥤" };
+  const CAT_EMOJI = PRODUCT_CATEGORY_EMOJI;
 
   function nuevoProductoVacio() {
-    return { nombre: "", cat: "Momos Signature", tipo: "momo", especie: "gato", precio: "", precioRappi: "", costo: "", prep: "", frio: true, lejano: false, desc: "", comboSize: "", componentProductIds: [], empaqueItem: "", colchonProduccion: 0 };
+    return { nombre: "", cat: "Momos Antojos", tipo: "pedido", especie: "", precio: "", precioRappi: "", costo: "", prep: "", frio: true, lejano: false, desc: "", comboSize: "", componentProductIds: [], empaqueItem: "", colchonProduccion: 0 };
   }
 
-  function Productos({ db, user, refrescar, serverDataReady, aplicarMutacionCatalogoCrm, capturarContextoMutacionCatalogoCrm }) {
-    const cats = ["Momos Signature","Cajas y Combos","Momos Cuchara","Momos Antojos","Momos Bebidas"];
+  function Productos({ db, user, refrescar, serverDataReady, aplicarMutacionCatalogoCrm, capturarContextoMutacionCatalogoCrm, go }) {
+    const cats = PRODUCT_CATEGORY_ORDER;
     const [detalleProductoId, setDetalleProductoId] = useState(null);
-    const [recetaDe, setRecetaDe] = useState(null); // productId con receta abierta
-    const [linea, setLinea] = useState({ itemId: "", cantidad: "" });
+    const [detalleFiguraNombre, setDetalleFiguraNombre] = useState("");
     const [abrirForm, setAbrirForm] = useState(false);
     const [editandoProd, setEditandoProd] = useState(null);
     const [form, setForm] = useState(nuevoProductoVacio());
     const [errProd, setErrProd] = useState("");
-    const [recetaDraft, setRecetaDraft] = useState([]);
-    const [recetaSucia, setRecetaSucia] = useState(false);
-    const [errReceta, setErrReceta] = useState("");
-    const [guardandoReceta, setGuardandoReceta] = useState(false);
     const [fCatProd, setFCatProd] = useState("");
     const mutationKeyRef = useRef(createInventoryIdempotencyKey());
+    const finishedStock = useMemo(() => buildCanonicalFinishedStock(db, { today: hoyISO() }), [
+      db.products, db.variantes, db.variantesCuarentena, db.inventory_reservations,
+      db.production_batches, db.figuras, db.settings?.figuras,
+    ]);
+    const gramsForFigure = (figure) => Number(figure?.gramajeG)
+      || Number.parseFloat(String(figure?.gramaje || "").replace(",", "."))
+      || KITCHEN_FIGURE_DEFAULTS[figure?.nombre]?.grams
+      || 0;
 
-    const prodReceta = recetaDe ? db.products.find((p) => p.id === recetaDe) : null;
     const detalleProducto = detalleProductoId ? db.products.find((p) => p.id === detalleProductoId) : null;
+    const canonicalFigureRows = useMemo(() => activeFigureCatalog(db)
+      .filter((figure) => isKitchenFigureName(figure.nombre) && figureProductId(figure))
+      .map((figure) => ({
+        figure,
+        product: (db.products || []).find((product) => product.id === figureProductId(figure)),
+      }))
+      .filter((row) => row.product && isCommercialFamilyProduct(row.product)), [db.figuras, db.products, db.settings?.figuras]);
+    const mappedFamilyProductIds = useMemo(
+      () => new Set((db.products || []).filter(isCommercialFamilyProduct).map((product) => product.id)),
+      [db.products],
+    );
     const puedeEditar = user === "Administrador" && serverDataReady && Boolean(db.productsServerReady);
-    const costoRecetaDraft = recetaDraft.reduce((total, line) => {
-      const item = db.inventory_items.find((candidate) => candidate.id === line.itemId);
-      return total + Number(line.cantidad || 0) * Number(item?.costo || 0);
-    }, 0);
-
-    function abrirRecetaProducto(product) {
-      setLinea({ itemId: "", cantidad: "" });
-      setRecetaDraft(recipeLines(db, product.id).map((line) => ({ ...line })));
-      setRecetaSucia(false);
-      setErrReceta("");
-      setRecetaDe(product.id);
-    }
 
     function abrirEdicionProducto(product) {
+      const tipo = productTypeForCategory(product.cat);
       setEditandoProd(product);
-      setForm({ nombre: product.nombre, cat: product.cat, tipo: product.tipo, especie: product.especie || "gato", precio: product.precio, precioRappi: product.precioRappi, costo: product.costo, prep: product.prep, frio: !!product.frio, lejano: !!product.lejano, desc: product.desc || "", comboSize: product.comboSize || "", componentProductIds: [...(product.componentProductIds || [])], empaqueItem: product.empaqueItem || "", colchonProduccion: product.colchonProduccion ?? 0 });
+      setForm({ nombre: product.nombre, cat: product.cat, tipo, especie: tipo === "momo" ? (product.especie || "gato") : "", precio: product.precio, precioRappi: product.precioRappi, costo: product.costo, prep: product.prep, frio: !!product.frio, lejano: !!product.lejano, desc: product.desc || "", comboSize: product.comboSize || "", componentProductIds: [...(product.componentProductIds || [])], empaqueItem: product.empaqueItem || "", colchonProduccion: product.colchonProduccion ?? 0 });
       setErrProd("");
       setAbrirForm(true);
     }
@@ -484,7 +559,7 @@ export function createBusinessPanels(shared) {
         const key = mutationKeyRef.current;
         const context = capturarContextoMutacionCatalogoCrm();
         const envelope = await mutarCatalogoCrmDelta(operation, payload, key);
-        const applied = aplicarMutacionCatalogoCrm(envelope, operation, context);
+        const applied = await aplicarMutacionCatalogoCrm(envelope, operation, context);
         mutationKeyRef.current = createInventoryIdempotencyKey();
         if (applied?.status === "discarded") await refrescar({ reason: "catalog-delta-discard" });
         return applied?.result;
@@ -501,11 +576,12 @@ export function createBusinessPanels(shared) {
           { product_id: product.id, activo: !product.activo },
           () => setProductoActivo(product.id, !product.activo),
         );
-        toast("ok", product.activo ? "Producto desactivado del menú." : "Producto activado en el menú.");
+        toast("ok", product.activo ? "Entrada desactivada del menú." : "Entrada activada en el menú.");
       } catch (error) { toast("error", error.message); }
     }
 
     function payloadProducto() {
+      const allowedFamilyIds = new Set((db.products || []).filter(isCommercialFamilyProduct).map((product) => product.id));
       return {
         nombre: form.nombre.trim(), cat: form.cat, tipo: form.tipo,
         especie: form.tipo === "momo" ? form.especie : null,
@@ -513,7 +589,7 @@ export function createBusinessPanels(shared) {
         costo: Number(form.costo), prep: Number(form.prep) || 0,
         frio: Boolean(form.frio), lejano: Boolean(form.lejano), descr: form.desc || "",
         combo_size: form.tipo === "combo" ? Number(form.comboSize) : null,
-        component_product_ids: form.tipo === "combo" ? [...(form.componentProductIds || [])] : [],
+        component_product_ids: form.tipo === "combo" ? [...new Set(form.componentProductIds || [])].filter((id) => allowedFamilyIds.has(id)) : [],
         empaque_item_id: form.tipo === "combo" ? form.empaqueItem : null,
         colchon_produccion: form.tipo === "momo" ? Number(form.colchonProduccion) || 0 : 0,
       };
@@ -524,10 +600,13 @@ export function createBusinessPanels(shared) {
       if (!nombre) { setErrProd("Falta el nombre"); return; }
       if (!(+form.precio > 0)) { setErrProd("Precio inválido"); return; }
       if (!(+form.costo >= 0)) { setErrProd("Costo inválido"); return; }
-      if (form.tipo === "momo" && !["gato","perro"].includes(form.especie)) { setErrProd("Elegí la especie del momo."); return; }
+      if (form.tipo === "momo") { setErrProd("Las familias comerciales de figuras son canónicas. Vinculá o corregí sus figuras desde Producción; no crees otra desde Productos."); return; }
+      if (form.tipo === "momo" && !["gato","perro"].includes(form.especie)) { setErrProd("Elegí la silueta visual de referencia: gato o perro."); return; }
       if (form.tipo === "combo") {
+        const invalidComponents = (form.componentProductIds || []).filter((id) => !isCommercialFamilyProduct((db.products || []).find((product) => product.id === id)));
         if (!(+form.comboSize > 0)) { setErrProd("El combo necesita un tamaño (cuántos momos por caja)."); return; }
         if (!(form.componentProductIds || []).length) { setErrProd("Elegí al menos un momo componente."); return; }
+        if (invalidComponents.length) { setErrProd("El combo solo puede incluir familias comerciales vinculadas a figuras de Cocina."); return; }
         if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
       }
       try {
@@ -535,7 +614,7 @@ export function createBusinessPanels(shared) {
         await ejecutarProductoDelta("crear_producto", payload, () => crearProducto(payload));
         setAbrirForm(false);
         setErrProd("");
-        toast("ok", "Producto creado.");
+        toast("ok", "Entrada comercial creada.");
       } catch (error) { toast("error", error.message); return; }
     }
 
@@ -544,10 +623,12 @@ export function createBusinessPanels(shared) {
       if (!nombre) { setErrProd("Falta el nombre"); return; }
       if (!(+form.precio > 0)) { setErrProd("Precio inválido"); return; }
       if (!(+form.costo >= 0)) { setErrProd("Costo inválido"); return; }
-      if (form.tipo === "momo" && !["gato","perro"].includes(form.especie)) { setErrProd("Elegí la especie del momo."); return; }
+      if (form.tipo === "momo" && !["gato","perro"].includes(form.especie)) { setErrProd("Elegí la silueta visual de referencia: gato o perro."); return; }
       if (form.tipo === "combo") {
+        const invalidComponents = (form.componentProductIds || []).filter((id) => !isCommercialFamilyProduct((db.products || []).find((product) => product.id === id)));
         if (!(+form.comboSize > 0)) { setErrProd("El combo necesita un tamaño (cuántos momos por caja)."); return; }
         if (!(form.componentProductIds || []).length) { setErrProd("Elegí al menos un momo componente."); return; }
+        if (invalidComponents.length) { setErrProd("El combo solo puede incluir familias comerciales vinculadas a figuras de Cocina."); return; }
         if (!form.empaqueItem) { setErrProd("Elegí la caja (empaque) del combo."); return; }
       }
       try {
@@ -555,34 +636,43 @@ export function createBusinessPanels(shared) {
         await ejecutarProductoDelta("editar_producto", { product_id: editandoProd.id, ...payload }, () => editarProducto(editandoProd.id, payload));
         setAbrirForm(false);
         setErrProd("");
-        toast("ok", "Producto actualizado.");
+        toast("ok", "Entrada comercial actualizada.");
       } catch (error) { toast("error", error.message); return; }
     }
 
-    const totalProductos = db.products.length;
-    const productosActivos = db.products.filter((p) => p.activo).length;
-    const productosSinReceta = db.products.filter((p) => recipeLines(db, p.id).length === 0).length;
+    const nonFamilyProducts = db.products.filter((product) => !isCommercialFamilyProduct(product));
+    const totalProductos = canonicalFigureRows.length + nonFamilyProducts.length;
+    const productosActivos = canonicalFigureRows.filter((row) => row.product.activo !== false).length
+      + nonFamilyProducts.filter((product) => product.activo).length;
+    const marginEntries = [...canonicalFigureRows.map((row) => row.product), ...nonFamilyProducts]
+      .filter((product) => Number(product?.precio) > 0)
+      .map((product) => (Number(product.precio) - Number(product.costo || 0)) / Number(product.precio));
+    const margenPromedio = marginEntries.length
+      ? marginEntries.reduce((sum, margin) => sum + margin, 0) / marginEntries.length
+      : null;
+    const productosOperativos = db.products.filter((product) => product.tipo !== "combo" && !mappedFamilyProductIds.has(product.id));
+    const productosSinReceta = productosOperativos.filter((product) => recipeLines(db, product.id).length === 0).length;
 
     return (
       <div>
-        <SectionTitle>Catálogo de productos</SectionTitle>
+        <SectionTitle>Catálogo comercial</SectionTitle>
         <div className="text-xs font-semibold mb-3 -mt-3" style={{ color: T.choco2 }}>
-          🧾 Cada producto puede tener una receta (insumos por unidad). Al registrar un lote o al pasar a "En producción" un producto que se prepara al momento, los insumos se descuentan solos del inventario.
+          🧾 Las familias comerciales definen precio, disponibilidad y venta. Lizi, Momo, Rocco, Teo, Toby, Danna y Max conservan su ficha técnica en Producción; bebidas, crepas y cuchareables sí pueden tener receta propia por unidad.
         </div>
-        {!puedeEditar && <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: T.vainilla, color: T.choco2 }}>{user === "Administrador" && !db.productsServerReady ? "Catálogo en modo consulta hasta aplicar la migración 13 de Productos." : "Catálogo en modo consulta. Solo Administrador puede modificar productos y recetas."}</div>}
+        {!puedeEditar && <div className="text-xs font-bold p-2.5 rounded-xl mb-2" style={{ background: T.vainilla, color: T.choco2 }}>{user === "Administrador" && !db.productsServerReady ? "Catálogo en modo consulta hasta aplicar la migración 13 de Productos." : "Catálogo en modo consulta. Las recetas y el paso a paso se gestionan desde Producción."}</div>}
         {!abrirForm && errProd && <div className="text-sm font-bold p-2.5 rounded-xl mb-2" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errProd}</div>}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat icon="🧾" label="Productos" value={totalProductos} sub="en catálogo" tone={T.coral} />
+          <Stat icon="🧾" label="Entradas" value={totalProductos} sub="figuras, combos y productos al momento" tone={T.coral} />
           <Stat icon="✅" label="Activos" value={productosActivos} sub="a la venta" tone="#3F6B42" />
-          <Stat icon="⚠️" label="Sin receta" value={productosSinReceta} sub="no descuentan insumos" tone="#96690F" />
-          <Stat icon="📈" label="Margen prom." value={totalProductos ? pct(db.products.reduce((s, p) => s + (p.precio - p.costo) / p.precio, 0) / totalProductos) : "—"} sub="precio vs. costo" />
+          <Stat icon="⚠️" label="Sin receta" value={productosSinReceta} sub="preparaciones pendientes" tone="#96690F" />
+          <Stat icon="📈" label="Margen prom." value={margenPromedio === null ? "—" : pct(margenPromedio)} sub="precio vs. costo" />
         </div>
         <div className="text-[11px] font-semibold mt-2 mb-4" style={{ color: T.choco2 }}>
           <b style={{ color: T.coral }}>{productosActivos}</b> activos de {totalProductos} · {productosSinReceta} sin receta.
         </div>
 
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          {puedeEditar && <Btn small kind="rosa" onClick={() => { setForm(nuevoProductoVacio()); setEditandoProd(null); setErrProd(""); setAbrirForm(true); }}>＋ Nuevo producto</Btn>}
+          {puedeEditar && <Btn small kind="rosa" onClick={() => { setForm(nuevoProductoVacio()); setEditandoProd(null); setErrProd(""); setAbrirForm(true); }}>＋ Nueva entrada comercial</Btn>}
         </div>
 
         <SegmentedTabs
@@ -590,45 +680,67 @@ export function createBusinessPanels(shared) {
           value={fCatProd}
           onChange={setFCatProd}
           items={[["Todas", ""], ...cats.map((category) => [`${CAT_EMOJI[category] || ""} ${category}`.trim(), category])]}
-          getCount={(value) => value ? db.products.filter((product) => product.cat === value).length : totalProductos}
+          getCount={(value) => value === "Momos Signature" ? canonicalFigureRows.length : value ? db.products.filter((product) => product.cat === value && !isCommercialFamilyProduct(product)).length : totalProductos}
         />
-        {cats.filter((cat) => !fCatProd || cat === fCatProd).map((cat) => (
-          <div key={cat}>
-            <SectionTitle>{CAT_EMOJI[cat]} {cat}</SectionTitle>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {db.products.filter((p) => p.cat === cat).map((p) => {
-                const margen = (p.precio - p.costo) / p.precio;
-                const disp = availability(db, p);
-                const recipeCount = recipeLines(db, p.id).length;
-                return (
-                  <Card key={p.id} className={`momo-queue-item p-4 ${!p.activo ? "opacity-60" : ""}`} onClick={() => setDetalleProductoId(p.id)} aria-label={`Abrir detalle de ${p.nombre}`}>
-                    <div className="flex items-start justify-between gap-3"><div className="flex items-start gap-2.5 min-w-0"><span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-lg" style={{ background: T.rosa }} aria-hidden="true">{CAT_EMOJI[cat]}</span><div className="min-w-0"><div className="font-bold text-sm leading-tight">{p.nombre}</div><div className="text-[10px] font-extrabold uppercase tracking-wider mt-1" style={{ color: p.activo ? "#3F6B42" : T.choco2 }}>{p.activo ? "Activo en el menú" : "Fuera del menú"}</div></div></div><div className="display text-lg shrink-0" style={{ color: T.coral }}>{fmt(p.precio)}</div></div>
-                    <div className="flex items-end justify-between gap-3 mt-3"><div><div className="text-xs font-bold" style={{ color: margen > 0.6 ? "#3F6B42" : "#96690F" }}>Margen {pct(margen)}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{recipeCount ? `Receta con ${recipeCount} insumo${recipeCount === 1 ? "" : "s"}` : "Sin receta registrada"}</div></div><div className="text-right text-xs font-extrabold" style={{ color: isFinite(disp) && disp <= 2 ? "#A03B2A" : T.choco2 }}>{isFinite(disp) ? `${disp} disp.` : "Bajo pedido"}</div></div>
-                    <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.choco2 }}><span>{p.tipo === "combo" ? "Combo" : p.tipo === "momo" ? "Momo" : "Preparación al momento"}{p.frio ? " · requiere frío" : ""}</span><span style={{ color: T.coral }}>Abrir detalle ›</span></div>
-                  </Card>
-                );
-              })}
+        {cats.filter((cat) => !fCatProd || cat === fCatProd).map((cat) => {
+          const rows = cat === "Momos Signature"
+            ? canonicalFigureRows
+            : db.products
+              .filter((product) => product.cat === cat && !isCommercialFamilyProduct(product))
+              .map((product) => ({ product, figure: null }));
+          return (
+            <div key={cat}>
+              <SectionTitle>{CAT_EMOJI[cat]} {cat}</SectionTitle>
+              {cat === "Momos Signature" && <div className="text-[11px] font-semibold -mt-3 mb-3" style={{ color: T.choco2 }}>Cada tarjeta es una figura física. La familia comercial solo define precio, reserva y presentación.</div>}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {rows.map(({ product: p, figure }) => {
+                  const margen = p.precio > 0 ? (p.precio - p.costo) / p.precio : 0;
+                  const figureVariants = figure ? finishedStock.variants.filter((variant) => variant.productId === p.id && variant.figura === figure.nombre) : [];
+                  const figureSummary = figure ? finishedStock.figureSummaries.find((row) => row.figura === figure.nombre) : null;
+                  const disp = figure ? Number(figureSummary?.available || 0) : availability(db, p);
+                  const flavorCount = new Set(figureVariants.filter((variant) => Number(variant.disponibles || 0) > 0).map((variant) => variant.sabor).filter(Boolean)).size;
+                  const recipeCount = recipeLines(db, p.id).length;
+                  const displayName = figure?.nombre || p.nombre;
+                  const grams = gramsForFigure(figure);
+                  return (
+                    <Card key={figure ? `figure-${displayName}` : p.id} className={`momo-queue-item p-4 ${!p.activo ? "opacity-60" : ""}`} onClick={() => { setDetalleProductoId(p.id); setDetalleFiguraNombre(figure?.nombre || ""); }} aria-label={`Abrir detalle de ${displayName}`}>
+                      <div className="flex items-start justify-between gap-3"><div className="flex items-start gap-2.5 min-w-0"><span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-lg" style={{ background: T.rosa }} aria-hidden="true">{CAT_EMOJI[cat]}</span><div className="min-w-0"><div className="font-bold text-sm leading-tight">{displayName}</div><div className="text-[10px] font-extrabold uppercase tracking-wider mt-1" style={{ color: p.activo ? "#3F6B42" : T.choco2 }}>{p.activo ? figure ? "Figura activa" : "Activo en el menú" : "Fuera del menú"}</div></div></div><div className="display text-lg shrink-0" style={{ color: T.coral }}>{fmt(p.precio)}</div></div>
+                      <div className="flex items-end justify-between gap-3 mt-3"><div><div className="text-xs font-bold" style={{ color: margen > 0.6 ? "#3F6B42" : "#96690F" }}>{figure ? `${grams} g · ${commercialFamilyLabel(p)}` : `Margen ${pct(margen)}`}</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{figure ? `${flavorCount} sabor${flavorCount === 1 ? "" : "es"} con stock exacto` : recipeCount ? `Receta con ${recipeCount} insumo${recipeCount === 1 ? "" : "s"}` : p.tipo === "combo" ? "Composición comercial" : "Sin receta registrada"}</div></div><div className="text-right text-xs font-extrabold" style={{ color: isFinite(disp) && disp <= 2 ? "#A03B2A" : T.choco2 }}>{isFinite(disp) ? `${disp} disp.` : "Bajo pedido"}</div></div>
+                      <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t text-[11px] font-bold" style={{ borderColor: T.border, color: T.choco2 }}><span>{figure ? "Figura física" : p.tipo === "combo" ? "Combo" : p.tipo === "momo" ? "Configuración inconsistente · revisar" : "Preparación al momento"}{p.frio ? " · requiere frío" : ""}</span><span style={{ color: T.coral }}>Abrir detalle ›</span></div>
+                    </Card>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {detalleProducto && (() => {
           const lines = recipeLines(db, detalleProducto.id);
+          const linkedFigures = activeFigureCatalog(db).filter((figure) => isKitchenFigureName(figure.nombre) && figureProductId(figure) === detalleProducto.id);
+          const isCommercialFamily = isCommercialFamilyProduct(detalleProducto);
+          const selectedFigure = isCommercialFamily ? linkedFigures.find((figure) => figure.nombre === detalleFiguraNombre) || linkedFigures[0] || null : null;
+          const selectedFigureVariants = selectedFigure ? finishedStock.variants.filter((variant) => variant.productId === detalleProducto.id && variant.figura === selectedFigure.nombre) : [];
+          const selectedFigureAvailability = selectedFigure
+            ? Number(finishedStock.figureSummaries.find((row) => row.figura === selectedFigure.nombre)?.available || 0)
+            : 0;
           const margen = detalleProducto.precio > 0 ? (detalleProducto.precio - detalleProducto.costo) / detalleProducto.precio : 0;
-          const disp = availability(db, detalleProducto);
+          const disp = selectedFigure ? selectedFigureAvailability : availability(db, detalleProducto);
           const comboProducts = (detalleProducto.componentProductIds || []).map((id) => db.products.find((product) => product.id === id)?.nombre).filter(Boolean);
           const pack = db.inventory_items.find((item) => item.id === detalleProducto.empaqueItem);
+          const usesHorizontal = productUsesHorizontalFigure(detalleProducto);
+          const closeDetail = () => { setDetalleProductoId(null); setDetalleFiguraNombre(""); };
           return (
-            <Modal title={`Producto · ${detalleProducto.nombre}`} onClose={() => setDetalleProductoId(null)} wide>
+            <Modal title={`${selectedFigure ? "Figura" : isCommercialFamily ? "Familia comercial" : "Producto"} · ${selectedFigure?.nombre || detalleProducto.nombre}`} onClose={closeDetail} wide>
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>{CAT_EMOJI[detalleProducto.cat]} {detalleProducto.cat}</div><div className="display text-2xl font-semibold mt-0.5">{detalleProducto.nombre}</div><div className="text-sm font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>{detalleProducto.desc || "Sin descripción comercial registrada."}</div></div>
+                <div><div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>{CAT_EMOJI[detalleProducto.cat]} {selectedFigure ? `FIGURA FÍSICA · ${commercialFamilyLabel(detalleProducto)}` : detalleProducto.cat}</div><div className="display text-2xl font-semibold mt-0.5">{selectedFigure?.nombre || detalleProducto.nombre}</div><div className="text-sm font-semibold mt-1 max-w-2xl" style={{ color: T.choco2 }}>{selectedFigure ? `${gramsForFigure(selectedFigure)} g · su sabor se elige por separado · la familia comercial define el precio y la reserva.` : detalleProducto.desc || "Sin descripción comercial registrada."}</div></div>
                 <Badge label={detalleProducto.activo ? "Activo" : "Inactivo"} map={{ Activo: { bg: "#DDEBD9", fg: "#3F6B42" }, Inactivo: { bg: "#EBE6E0", fg: "#7A6E63" } }} />
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <Stat icon="$" label="Precio directo" value={fmt(detalleProducto.precio)} sub="precio de venta" tone={T.coral} />
+                <Stat icon="$" label={selectedFigure ? "Precio de la familia" : "Precio directo"} value={fmt(detalleProducto.precio)} sub={selectedFigure ? commercialFamilyLabel(detalleProducto) : "precio de venta"} tone={T.coral} />
                 <Stat icon="R" label="Precio Rappi" value={fmt(detalleProducto.precioRappi)} sub="canal plataforma" tone="#63518A" />
-                <Stat icon="◒" label="Costo" value={fmt(detalleProducto.costo)} sub="registrado" tone={T.choco} />
+                <Stat icon="◒" label={selectedFigure ? "Costo de referencia" : "Costo"} value={fmt(detalleProducto.costo)} sub={selectedFigure ? "registrado en la familia" : "registrado"} tone={T.choco} />
                 <Stat icon="↗" label="Margen" value={pct(margen)} sub="precio vs. costo" tone={margen > 0.6 ? "#3F6B42" : "#96690F"} />
               </div>
 
@@ -636,7 +748,7 @@ export function createBusinessPanels(shared) {
                 <Card className="p-4">
                   <div className="text-xs font-extrabold mb-3" style={{ color: T.choco2 }}>OPERACIÓN Y VENTA</div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-                    <div><div className="font-semibold" style={{ color: T.choco2 }}>Tipo</div><div className="font-bold mt-0.5">{detalleProducto.tipo === "momo" ? `Momo · ${detalleProducto.especie || "especie sin registrar"}` : detalleProducto.tipo === "combo" ? "Caja / combo" : "Preparación al momento"}</div></div>
+                    <div><div className="font-semibold" style={{ color: T.choco2 }}>Clase operativa</div><div className="font-bold mt-0.5">{selectedFigure ? `Figura física · presentación ${commercialFamilyLabel(detalleProducto)}` : isCommercialFamily ? "Familia comercial sin figura seleccionada" : detalleProducto.tipo === "momo" ? "Configuración inconsistente: figura fuera del catálogo canónico" : detalleProducto.tipo === "combo" ? "Caja / combo" : "Preparación al momento"}</div></div>
                     <div><div className="font-semibold" style={{ color: T.choco2 }}>Disponibilidad</div><div className="font-bold mt-0.5" style={{ color: isFinite(disp) && disp <= 2 ? "#A03B2A" : "#3F6B42" }}>{isFinite(disp) ? `${disp} unidades` : "Bajo pedido"}</div></div>
                     <div><div className="font-semibold" style={{ color: T.choco2 }}>Preparación</div><div className="font-bold mt-0.5">{detalleProducto.prep || 0} min</div></div>
                     <div><div className="font-semibold" style={{ color: T.choco2 }}>Cadena de frío</div><div className="font-bold mt-0.5">{detalleProducto.frio ? "Requerida" : "No requerida"}</div></div>
@@ -644,36 +756,58 @@ export function createBusinessPanels(shared) {
                     {detalleProducto.tipo === "momo" && <div><div className="font-semibold" style={{ color: T.choco2 }}>Colchón producción</div><div className="font-bold mt-0.5">{detalleProducto.colchonProduccion || 0} unidades</div></div>}
                   </div>
                   {detalleProducto.tipo === "combo" && <div className="mt-4 pt-3 border-t" style={{ borderColor: T.border }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Composición permitida</div><div className="text-xs font-bold mt-1">{detalleProducto.comboSize || 0} momos · caja {pack?.nombre || "sin configurar"}</div><div className="text-xs font-semibold mt-1" style={{ color: T.choco2 }}>{comboProducts.join(" · ") || "Sin productos componentes"}</div></div>}
+                  {usesHorizontal && <div className="rounded-xl p-3 mt-4 text-[10px] font-bold" style={{ background: "#FFF1D6", color: "#7A5510" }}>Horizontal es una decoración auxiliar de esta preparación. Solo permanece visible mientras este producto o alguna preparación compatible esté activa; no se ofrece como figura del pedido ni suma inventario terminado.</div>}
                 </Card>
 
-                <Card className="p-4">
+                {isCommercialFamily && <Card className="p-4">
+                  <div className="text-xs font-extrabold" style={{ color: T.choco2 }}>FIGURAS DE ESTA FAMILIA COMERCIAL</div>
+                  <div className="text-[11px] font-semibold mt-0.5 mb-3" style={{ color: T.choco2 }}>Esta presentación define venta, precio y reserva. Cada personaje conserva su identidad y ficha técnica en Producción.</div>
+                  <div className="space-y-2">{linkedFigures.map((figure) => <button type="button" key={figure.nombre} className="rounded-xl px-3 py-2 flex items-center justify-between gap-3 text-xs w-full text-left" onClick={() => setDetalleFiguraNombre(figure.nombre)} style={{ background: selectedFigure?.nombre === figure.nombre ? "#F6D9DF" : T.vainilla, outline: selectedFigure?.nombre === figure.nombre ? `1px solid ${T.coral}` : "none" }}><span className="font-bold">{figure.nombre}</span><span className="font-extrabold shrink-0" style={{ color: T.coral }}>{gramsForFigure(figure)} g</span></button>)}{linkedFigures.length === 0 && <div className="rounded-xl p-3 text-xs font-semibold" style={{ background: "#FBE8C8", color: "#7A5410" }}>Esta familia comercial todavía no tiene figuras físicas vinculadas. Producción seguirá mostrando las siete figuras activas para corregir la asignación sin inventar una receta.</div>}</div>
+                  {selectedFigure && <div className="mt-3 pt-3 border-t" style={{ borderColor: T.border }}><div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Stock exacto por sabor</div><div className="flex flex-wrap gap-1.5 mt-2">{selectedFigureVariants.filter((variant) => Number(variant.disponibles || 0) > 0).map((variant) => <span key={`${variant.sabor}-${variant.vence || ""}`} className="rounded-full px-2 py-1 text-[10px] font-extrabold" style={{ background: "#E6F1E3", color: "#3F6B42" }}>{variant.sabor || "Sin sabor"} · {variant.disponibles}</span>)}{selectedFigureVariants.every((variant) => Number(variant.disponibles || 0) <= 0) && <span className="text-[11px] font-semibold" style={{ color: T.choco2 }}>Sin unidades vendibles exactas.</span>}</div></div>}
+                  <div className="rounded-xl p-3 text-[10px] font-bold mt-3" style={{ background: "#E6F1E3", color: "#3F6B42" }}>✓ La mousse se elige por sabor y los rellenos se calculan desde las elaboraciones vigentes; no se usa una receta genérica para toda la familia.</div>
+                </Card>}
+
+                {!isCommercialFamily && <Card className="p-4">
                   <div className="flex items-start justify-between gap-3 mb-3"><div><div className="text-xs font-extrabold" style={{ color: T.choco2 }}>RECETA POR UNIDAD</div><div className="text-[11px] font-semibold mt-0.5" style={{ color: T.choco2 }}>{lines.length ? `${lines.length} insumo${lines.length === 1 ? "" : "s"} vinculados` : "No descuenta inventario todavía"}</div></div><span className="display text-lg" style={{ color: T.coral }}>{fmt(recipeCost(db, detalleProducto.id))}</span></div>
                   <div className="space-y-2">{lines.slice(0, 6).map((line) => { const item = db.inventory_items.find((candidate) => candidate.id === line.itemId); return <div key={line.id || line.itemId} className="rounded-xl px-3 py-2 flex items-center justify-between gap-3 text-xs" style={{ background: T.vainilla }}><span className="font-bold">{item?.nombre || "Insumo no encontrado"}</span><span className="font-extrabold shrink-0" style={{ color: T.choco2 }}>{line.cantidad} {item?.unidad || ""}</span></div>; })}{lines.length === 0 && <div className="rounded-xl p-3 text-xs font-semibold" style={{ background: "#FBE8C8", color: "#7A5410" }}>Falta registrar la receta para tener costo y descuento de inventario trazables.</div>}{lines.length > 6 && <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>＋ {lines.length - 6} insumo(s) más en la receta completa.</div>}</div>
                   {lines.length > 0 && <div className="text-[10px] font-bold mt-3" style={{ color: Math.abs(recipeCost(db, detalleProducto.id) - detalleProducto.costo) > detalleProducto.costo * 0.15 ? "#96690F" : "#3F6B42" }}>Costo receta {fmt(recipeCost(db, detalleProducto.id))} · registrado {fmt(detalleProducto.costo)}</div>}
-                </Card>
+                </Card>}
               </div>
 
               <div className="flex flex-wrap gap-2 pt-4 border-t" style={{ borderColor: T.border }}>
-                <Btn kind="rosa" onClick={() => abrirRecetaProducto(detalleProducto)}>🧾 Abrir receta completa</Btn>
-                {puedeEditar && <Btn kind="ghost" onClick={() => abrirEdicionProducto(detalleProducto)}>✏️ Editar producto</Btn>}
-                {puedeEditar && <BtnAsync kind={detalleProducto.activo ? "ghost" : "soft"} textoEnVuelo={detalleProducto.activo ? "Desactivando…" : "Activando…"} onClick={() => cambiarProductoActivo(detalleProducto)}>{detalleProducto.activo ? "Desactivar del menú" : "Activar en el menú"}</BtnAsync>}
+                <Btn kind="rosa" onClick={() => { const productId = detalleProducto.id; const figure = selectedFigure?.nombre || ""; closeDetail(); go?.("Producción", { productId, figure, manageProductRecipe: true, source: "Productos" }); }}>{isCommercialFamily ? `📖 Abrir ${selectedFigure?.nombre || "la familia"} en Producción` : "📖 Gestionar receta en Producción"}</Btn>
+                {puedeEditar && !isCommercialFamily && <Btn kind="ghost" onClick={() => abrirEdicionProducto(detalleProducto)}>✏️ Editar entrada comercial</Btn>}
+                {puedeEditar && !isCommercialFamily && <BtnAsync kind={detalleProducto.activo ? "ghost" : "soft"} textoEnVuelo={detalleProducto.activo ? "Desactivando…" : "Activando…"} onClick={() => cambiarProductoActivo(detalleProducto)}>{detalleProducto.activo ? "Desactivar del menú" : "Activar en el menú"}</BtnAsync>}
               </div>
             </Modal>
           );
         })()}
 
         {abrirForm && (
-          <Modal title={editandoProd ? "Editar producto" : "Nuevo producto"} onClose={() => setAbrirForm(false)}>
+          <Modal title={editandoProd ? "Editar entrada comercial" : "Nueva entrada comercial"} onClose={() => setAbrirForm(false)}>
             <Field label="Nombre"><Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} /></Field>
             <Field label="Categoría">
-              <Select options={cats} value={form.cat} onChange={(e) => setForm({ ...form, cat: e.target.value })} />
+              <Select options={editandoProd ? cats : cats.filter((category) => category !== "Momos Signature")} value={form.cat} onChange={(e) => {
+                const cat = e.target.value;
+                const tipo = productTypeForCategory(cat);
+                setForm({
+                  ...form, cat, tipo,
+                  especie: tipo === "momo" ? (form.especie || "gato") : "",
+                  componentProductIds: tipo === "combo" ? (form.componentProductIds || []) : [],
+                  comboSize: tipo === "combo" ? form.comboSize : "",
+                  empaqueItem: tipo === "combo" ? form.empaqueItem : "",
+                });
+              }} />
             </Field>
-            <Field label="Tipo">
-              {editandoProd
-                ? <Select options={[form.tipo]} value={form.tipo} disabled onChange={() => {}} />
-                : <Select options={["momo", "pedido", "combo"]} value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))} />}
+            <Field label="Clase de entrada">
+              <select value={form.tipo} disabled className={inputCls} style={inputStyle}>
+                <option value="momo">Familia comercial de figuras</option>
+                <option value="pedido">Preparación al momento</option>
+                <option value="combo">Caja / combo</option>
+              </select>
+              <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>MOMO OPS la deriva de la categoría para que una bebida o cuchareable nunca se convierta en figura.</div>
             </Field>
-            {form.tipo === "momo" && <Field label="Especie"><Select options={["gato","perro"]} value={form.especie} onChange={(e) => setForm({ ...form, especie: e.target.value })} /></Field>}
+            {form.tipo === "momo" && <Field label="Silueta visual de referencia (metadato)"><Select options={["gato","perro"]} value={form.especie} onChange={(e) => setForm({ ...form, especie: e.target.value })} /><div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>No define la figura física: Lizi, Momo, Rocco, Teo, Toby, Danna y Max se administran en Producción.</div></Field>}
             <div className="grid grid-cols-2 gap-2">
               <Field label="Precio"><Input type="number" min="0" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} /></Field>
               <Field label="Precio Rappi"><Input type="number" min="0" value={form.precioRappi} onChange={(e) => setForm({ ...form, precioRappi: e.target.value })} /></Field>
@@ -702,17 +836,18 @@ export function createBusinessPanels(shared) {
                     </select>
                   </Field>
                 </div>
-                <div className="text-[11px] font-bold mt-1 mb-1" style={{ color: T.choco2 }}>Momos que puede llevar (define las figuras disponibles al armar la caja):</div>
+                <div className="text-[11px] font-bold mt-1 mb-1" style={{ color: T.choco2 }}>Familias comerciales permitidas (la figura y el sabor exactos se eligen al armar la caja):</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {db.products.filter((p) => p.tipo === "momo" && p.activo).map((p) => {
+                  {db.products.filter((p) => isCommercialFamilyProduct(p) && p.activo).map((p) => {
                     const on = (form.componentProductIds || []).includes(p.id);
+                    const exactFigures = activeFigureCatalog(db).filter((figure) => figureProductId(figure) === p.id && isKitchenFigureName(figure.nombre)).map((figure) => figure.nombre);
                     return (
                       <button key={p.id} type="button" onClick={() => setForm((f) => {
                         const cur = f.componentProductIds || [];
                         return { ...f, componentProductIds: cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id] };
                       })} className="text-[11px] font-bold px-2.5 py-1 rounded-full"
                         style={{ background: on ? T.coral : T.surface, color: on ? "#fff" : T.choco2, border: "1px solid " + (on ? T.coral : T.border) }}>
-                        {p.nombre} {momoEspecie(p) === "perro" ? "🐶" : "🐱"}
+                        {commercialFamilyLabel(p)}{exactFigures.length ? ` · ${exactFigures.join(", ")}` : " · sin figuras vinculadas"}
                       </button>
                     );
                   })}
@@ -721,14 +856,14 @@ export function createBusinessPanels(shared) {
             )}
             <Field label="Atributos que pedirá al vender">
               <div className="flex gap-2 flex-wrap items-center">
-                {atributosDeTipo(form.tipo).length === 0
+                {atributosDeTipo(form).length === 0
                   ? <span className="text-xs font-semibold" style={{ color: T.choco2 }}>Ninguno — se vende tal cual (sin sabor/salsa/figura).</span>
-                  : atributosDeTipo(form.tipo).map((key) => (
+                  : atributosDeTipo(form).map((key) => (
                       <span key={key} className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>{ATRIBUTO_LABEL[key]}</span>
                     ))}
               </div>
               <div className="text-[11px] font-semibold mt-1.5" style={{ color: T.choco2 }}>
-                Se derivan del tipo automáticamente. Un {form.tipo === "pedido" ? "granizado/crepa" : "momo"} no se puede configurar a mano.
+                Se derivan de la clase técnica automáticamente. La figura física se define en Producción y en cada línea del pedido, nunca desde el nombre comercial de esta ficha.
               </div>
             </Field>
             {errProd && <div className="text-sm font-bold mb-3" style={{ color: T.coral }}>{errProd}</div>}
@@ -738,108 +873,6 @@ export function createBusinessPanels(shared) {
           </Modal>
         )}
 
-        {prodReceta && (
-          <Modal title={`Receta · ${prodReceta.nombre}`} onClose={() => setRecetaDe(null)} wide>
-            <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
-              Cantidades por <b>1 unidad</b> de producto. {prodReceta.tipo === "momo" ? "Se descuentan al registrar un lote de producción." : prodReceta.tipo === "pedido" ? "Se descuentan cuando el pedido pasa a \u201cEn producción\u201d." : "Los combos descuentan momos y cajas automáticamente; agrega aquí solo extras (lazo, tarjeta…)."}
-            </div>
-
-            {recetaDraft.length === 0 && (
-              <div className="text-sm font-semibold mb-3 p-3 rounded-xl" style={{ background: T.vainilla, color: T.choco2 }}>
-                Este producto aún no tiene receta. Agrega el primer insumo abajo.
-              </div>
-            )}
-
-            {recetaDraft.map((l) => {
-              const it = db.inventory_items.find((i) => i.id === l.itemId);
-              if (!it) return null;
-              return (
-                <Card key={l.id} className="p-3 mb-2 flex items-center justify-between gap-2 flex-wrap">
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold truncate">{it.nombre}</div>
-                    <div className="text-xs" style={{ color: T.choco2 }}>{fmt(it.costo)}/{it.unidad} · stock {it.stock} {it.unidad}</div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <input type="number" min="0" step="0.01" value={l.cantidad}
-                      disabled={!puedeEditar}
-                      onChange={(e) => { setRecetaDraft((lines) => lines.map((line) => line.itemId === l.itemId ? { ...line, cantidad: e.target.value } : line)); setRecetaSucia(true); }}
-                      className="w-20 rounded-xl px-2 py-1.5 text-sm border text-right font-bold" style={inputStyle} aria-label={`Cantidad de ${it.nombre}`} />
-                    <span className="text-xs font-bold" style={{ color: T.choco2 }}>{it.unidad}</span>
-                    <span className="text-xs font-bold w-16 text-right">{fmt(it.costo * l.cantidad)}</span>
-                    {puedeEditar && <button aria-label={`Quitar ${it.nombre}`} onClick={() => { setRecetaDraft((lines) => lines.filter((line) => line.itemId !== l.itemId)); setRecetaSucia(true); }} className="w-7 h-7 rounded-full font-bold text-xs" style={{ background: "#F6D4CD", color: "#A03B2A" }}>✕</button>}
-                  </div>
-                </Card>
-              );
-            })}
-
-            {puedeEditar && <Card className="p-3 mb-3">
-              <div className="text-xs font-bold mb-2" style={{ color: T.choco2 }}>AGREGAR INSUMO A LA RECETA</div>
-              <div className="flex flex-wrap gap-2 items-center">
-                <select value={linea.itemId} onChange={(e) => setLinea({ ...linea, itemId: e.target.value })} className="flex-1 min-w-[160px] rounded-xl px-2 py-2 text-sm border font-semibold" style={inputStyle}>
-                  <option value="">Elegir insumo…</option>
-                  {db.inventory_items.filter((i) => !recetaDraft.some((l) => l.itemId === i.id)).map((i) => (
-                    <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>
-                  ))}
-                </select>
-                <input type="number" min="0" step="0.01" value={linea.cantidad} onChange={(e) => setLinea({ ...linea, cantidad: e.target.value })}
-                  placeholder="Cant." className="w-24 rounded-xl px-2 py-2 text-sm border text-right font-bold" style={inputStyle} aria-label="Cantidad por unidad" />
-                <Btn small kind="rosa" onClick={() => {
-                  if (!linea.itemId || !parseFloat(linea.cantidad)) return;
-                  setRecetaDraft((lines) => [...lines,{ id: `draft-${linea.itemId}`, productId: prodReceta.id, itemId: linea.itemId, cantidad: parseFloat(linea.cantidad) }]);
-                  setRecetaSucia(true);
-                  setLinea({ itemId: "", cantidad: "" });
-                }}>＋ Agregar</Btn>
-              </div>
-              <div className="text-[11px] font-semibold mt-2" style={{ color: T.choco2 }}>¿No está el insumo? Créalo primero en Inventario → ＋ Nuevo insumo.</div>
-            </Card>}
-
-            {errReceta && <div className="text-sm font-bold p-2.5 rounded-xl mb-3" style={{ background: "#F6D4CD", color: "#A03B2A" }}>{errReceta}</div>}
-            {puedeEditar && <div className="flex justify-end mb-3">
-              <BtnAsync kind="rosa" disabled={!recetaSucia || guardandoReceta} textoEnVuelo="Guardando receta…" onClick={async () => {
-                if (recetaDraft.some((line) => !(Number(line.cantidad)>0))) { setErrReceta("Todas las cantidades deben ser mayores que cero."); return; }
-                setGuardandoReceta(true); setErrReceta("");
-                try {
-                  const lineas = recetaDraft.map((line) => ({ item_id: line.itemId, cantidad: Number(line.cantidad) }));
-                  await ejecutarProductoDelta(
-                    "guardar_receta_producto",
-                    { product_id: prodReceta.id, lineas },
-                    () => guardarRecetaProducto(prodReceta.id, recetaDraft),
-                  );
-                  setRecetaSucia(false);
-                  toast("ok", "Receta guardada.");
-                } catch (error) { toast("error", error.message); setGuardandoReceta(false); return; }
-                finally { setGuardandoReceta(false); }
-              }}>{recetaSucia ? "Guardar receta" : "Receta guardada ✓"}</BtnAsync>
-            </div>}
-
-            <Card className="p-4">
-              <div className="flex justify-between items-center text-sm">
-                <span className="font-semibold">Costo estimado por receta (1 unidad)</span>
-                <b className="display text-lg" style={{ color: T.coral }}>{fmt(costoRecetaDraft)}</b>
-              </div>
-              <div className="flex justify-between items-center text-xs mt-1" style={{ color: T.choco2 }}>
-                <span>Costo registrado del producto</span><b>{fmt(prodReceta.costo)}</b>
-              </div>
-              {puedeEditar && recetaDraft.length > 0 && Math.round(costoRecetaDraft) !== prodReceta.costo && (
-                <div className="mt-3">
-                  <BtnAsync small kind="soft" disabled={recetaSucia || guardandoReceta} textoEnVuelo="Actualizando costo…" onClick={async () => {
-                    setGuardandoReceta(true); setErrReceta("");
-                    try {
-                      await ejecutarProductoDelta(
-                        "sincronizar_costo_producto",
-                        { product_id: prodReceta.id },
-                        () => sincronizarCostoProducto(prodReceta.id),
-                      );
-                      toast("ok", "Costo del producto actualizado.");
-                    }
-                    catch (error) { toast("error", error.message); setGuardandoReceta(false); return; }
-                    finally { setGuardandoReceta(false); }
-                  }}>Actualizar costo del producto con la receta</BtnAsync>
-                </div>
-              )}
-            </Card>
-          </Modal>
-        )}
       </div>
     );
   }
@@ -848,42 +881,130 @@ export function createBusinessPanels(shared) {
 
   const DOM_ESTADOS = ["Por solicitar","Solicitado","Asignado","En ruta","Entregado","Problema","Cancelado"];
 
-  function Domicilios({ db, update, user, refrescar }) {
+  function Domicilios({ db, sincronizarPedidos, aplicarMutacionDomicilio, capturarGeneracionPedidos, solicitarConciliacionPedidos }) {
     const [nuevo, setNuevo] = useState(false);
+    const [detallePedidoId, setDetallePedidoId] = useState("");
     const [avisoDom, setAvisoDom] = useState(null);
     const [enviando, setEnviando] = useState(false);
+    const mutationKeysRef = useRef(new Map());
     const s = db.settings;
+    const deliveryDb = useMemo(() => db.deliverySnapshotReady ? {
+      ...db,
+      orders: db.deliveryOrders,
+      order_items: db.deliveryOrderItems,
+      customers: db.deliveryCustomers,
+      deliveries: db.deliveryDeliveries,
+    } : db, [db]);
     const [form, setForm] = useState({ orderId: "", proveedor: s.proveedores[0], costoReal: "", zona: s.zonas[0].nombre, obs: "" });
     const [scope, setScope] = useState("active");
-    const deliveryBuckets = useMemo(() => partitionByActivity(db.deliveries, isActiveDelivery), [db.deliveries]);
-    const listaDomicilios = scope === "active" ? deliveryBuckets.active : deliveryBuckets.history;
+    const pedidosActivos = useMemo(() => buildDeliveryOrderBoard({ orders: deliveryDb.orders, deliveries: deliveryDb.deliveries, scope: "active" }), [deliveryDb.orders, deliveryDb.deliveries]);
+    const pedidosHistoricos = useMemo(() => buildDeliveryOrderBoard({ orders: deliveryDb.orders, deliveries: deliveryDb.deliveries, scope: "history" }), [deliveryDb.orders, deliveryDb.deliveries]);
+    const tarjetasDomicilio = scope === "active" ? pedidosActivos : pedidosHistoricos;
+    const tarjetaDetalle = tarjetasDomicilio.find((card) => card.order.id === detallePedidoId) || null;
+    const clienteDetalle = tarjetaDetalle ? customerOf(deliveryDb, tarjetaDetalle.order.customerId) : null;
+    const productosDetalle = tarjetaDetalle ? itemsOf(deliveryDb, tarjetaDetalle.order.id) : [];
 
-    const subsidio = db.deliveries.reduce((sm, d) => sm + Math.max(0, d.costoReal - d.cobrado), 0);
-    const excedente = db.deliveries.reduce((sm, d) => sm + Math.max(0, d.cobrado - d.costoReal), 0);
-    const pedidosSinDomicilio = db.orders
+    const subsidio = deliveryDb.deliveries.reduce((sm, d) => sm + Math.max(0, d.costoReal - d.cobrado), 0);
+    const excedente = deliveryDb.deliveries.reduce((sm, d) => sm + Math.max(0, d.cobrado - d.costoReal), 0);
+    const pedidosSinDomicilio = deliveryDb.orders
       .filter((o) => !["Entregado", "Cancelado"].includes(o.estado))
       .filter((o) => o.canal !== "Rappi")
-      .filter((o) => !db.deliveries.some((delivery) => delivery.orderId === o.id && deliveryBlocksNewRequest(delivery)));
+      .filter((o) => !deliveryDb.deliveries.some((delivery) => delivery.orderId === o.id && deliveryBlocksNewRequest(delivery)));
     const pendientes = pedidosSinDomicilio.filter((o) => ["Empacado","Listo para despacho"].includes(o.estado));
+
+    function abrirAsignacion(order) {
+      setForm((actual) => ({
+        ...actual,
+        orderId: order.id,
+        zona: order.zona || actual.zona,
+        costoReal: order.domCosto > 0 ? String(order.domCosto) : actual.costoReal,
+        obs: order.obs || "",
+      }));
+      setDetallePedidoId("");
+      setNuevo(true);
+    }
+
+    function llaveMutacion(operation, payload) {
+      const signature = `${operation}:${JSON.stringify(payload)}`;
+      if (!mutationKeysRef.current.has(signature)) {
+        mutationKeysRef.current.set(signature, createInventoryIdempotencyKey());
+      }
+      return { signature, key: mutationKeysRef.current.get(signature) };
+    }
+
+    async function ejecutarMutacionDomicilio(operation, payload, legacyMutation) {
+      if (db.deliveryMutationDeltaReady !== true) {
+        await legacyMutation();
+        await sincronizarPedidos([payload.order_id]);
+        return { status: "legacy" };
+      }
+      const { signature, key } = llaveMutacion(operation, payload);
+      const generation = capturarGeneracionPedidos();
+      const envelope = await mutarDomicilioDelta(operation, payload, key);
+      mutationKeysRef.current.delete(signature);
+      try {
+        const result = await aplicarMutacionDomicilio(envelope, operation, generation);
+        if (result?.status === "discarded") await solicitarConciliacionPedidos();
+        return result;
+      } catch (error) {
+        // El servidor ya pudo confirmar el commit. Conciliar es seguro; repetir
+        // la escritura con una llave nueva no lo sería.
+        await solicitarConciliacionPedidos();
+        return { status: "reconciled", recoveredFrom: error?.message || "invalid_delivery_receipt" };
+      }
+    }
+
+    async function cambiarEstadoDomicilio(delivery, nuevoEstado) {
+      setEnviando(true);
+      try {
+        if (nuevoEstado === "En ruta" || nuevoEstado === "Entregado") {
+          await ejecutarMutacionDomicilio(
+            "transition",
+            { order_id: delivery.orderId, estado: nuevoEstado },
+            () => setOrderStatusRemoto(delivery.orderId, nuevoEstado),
+          );
+        } else {
+          await ejecutarMutacionDomicilio(
+            "update",
+            { order_id: delivery.orderId, delivery_id: delivery.id, estado: nuevoEstado },
+            () => actualizarDomicilio(delivery.id, { estado: nuevoEstado }),
+          );
+        }
+      } catch (error) {
+        setAvisoDom({
+          titulo: nuevoEstado === "En ruta" || nuevoEstado === "Entregado" ? "No se puede despachar todavía" : "No se pudo actualizar el domicilio",
+          texto: error.message,
+        });
+        setEnviando(false);
+        return;
+      }
+      setDetallePedidoId("");
+      setEnviando(false);
+    }
 
     function exportar() {
       downloadCSV("domicilios",
         ["ID","Pedido","Proveedor","Zona","Cobrado","Costo real","Diferencia","Solicitud","Salida","Entrega","Código","Estado"],
-        listaDomicilios.map((d) => [d.id, d.orderId, d.proveedor, d.zona, d.cobrado, d.costoReal, d.cobrado - d.costoReal, d.hSolicitud, d.hSalida, d.hEntrega, d.codigo, d.estado]));
+        tarjetasDomicilio.map(({ order, delivery }) => [
+          delivery?.id || "Sin asignar", order.id, delivery?.proveedor || "", delivery?.zona || order.zona || "",
+          delivery?.cobrado ?? order.domCobrado ?? 0, delivery?.costoReal ?? order.domCosto ?? 0,
+          delivery ? delivery.cobrado - delivery.costoReal : "", delivery?.hSolicitud || "", delivery?.hSalida || "",
+          delivery?.hEntrega || "", delivery?.codigo || "", delivery?.estado || "Sin domicilio",
+        ]));
     }
 
     return (
       <div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          <Stat icon="🛵" label="Domicilios activos" value={deliveryBuckets.active.length} onClick={() => { setScope("active"); setTimeout(() => { const el = document.getElementById("lista-domicilios"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }} active={scope === "active"} />
+          <Stat icon="🛵" label="Pedidos en logística" value={pedidosActivos.length} onClick={() => { setScope("active"); setTimeout(() => { const el = document.getElementById("lista-domicilios"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }} active={scope === "active"} />
           <Stat icon="🧾" label="Subsidio acumulado" value={fmt(subsidio)} sub="cobramos menos que el costo" tone="#A03B2A" />
           <Stat icon="💰" label="Excedente cobrado" value={fmt(excedente)} sub="cobramos más que el costo" tone="#3F6B42" />
           <Stat icon="📦" label="Listos sin domicilio" value={pendientes.length} sub="pedidos por solicitar" tone={pendientes.length ? "#96690F" : undefined} />
         </div>
 
         <div className="mb-4 flex flex-wrap gap-2">
-          <Btn onClick={() => { setForm((actual) => ({ ...actual, orderId: "" })); setNuevo(true); }}>＋ Solicitar domicilio</Btn>
-          <WorkScopeTabs value={scope} onChange={setScope} activeCount={deliveryBuckets.active.length} historyCount={deliveryBuckets.history.length} activeLabel="En seguimiento" />
+          <Btn onClick={() => { setForm({ orderId: "", proveedor: s.proveedores[0], costoReal: "", zona: s.zonas[0].nombre, obs: "" }); setNuevo(true); }}>＋ Asignar domicilio</Btn>
+          <WorkScopeTabs value={scope} onChange={setScope} activeCount={pedidosActivos.length} historyCount={pedidosHistoricos.length} activeLabel="En seguimiento" />
           <Btn small kind="ghost" onClick={exportar}>⬇ CSV</Btn>
         </div>
 
@@ -894,79 +1015,143 @@ export function createBusinessPanels(shared) {
         )}
 
         <div id="lista-domicilios" />
-        <SectionTitle>{scope === "active" ? "Entregas en seguimiento" : "Historial de domicilios"}</SectionTitle>
+        <SectionTitle>{scope === "active" ? "Pedidos para entrega" : "Pedidos entregados o cancelados"}</SectionTitle>
         <div className="grid lg:grid-cols-2 gap-3">
-          {listaDomicilios.map((d) => {
-            const dif = d.cobrado - d.costoReal;
+          {tarjetasDomicilio.map((card) => {
+            const { order, delivery } = card;
+            const customer = customerOf(deliveryDb, order.customerId);
+            const orderItems = itemsOf(deliveryDb, order.id);
+            const roots = orderItems.filter((item) => !item.parentItemId && !item.parent_item_id);
+            const productos = roots.map((item) => {
+              const presentation = orderLinePresentation(item, productOf(deliveryDb, item.productId));
+              const childCount = orderItems.filter((candidate) => (candidate.parentItemId || candidate.parent_item_id) === item.id).length;
+              return `${presentation.quantityLabel}${childCount ? ` · ${childCount} postres exactos` : ""}`;
+            }).join(" · ");
             return (
-              <Card key={d.id} className="p-4">
+              <Card key={order.id} className="p-4" onClick={() => setDetallePedidoId(order.id)} aria-label={`Abrir domicilio del pedido ${order.id}`}>
                 <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <div className="font-bold">{d.id} · Pedido {d.orderId}</div>
-                    <div className="text-xs" style={{ color: T.choco2 }}>{d.proveedor} · {d.zona} · Código {d.codigo || "—"}</div>
-                  </div>
-                  <Badge label={d.estado} />
-                </div>
-                <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-                  {[["Solicitud", d.hSolicitud || "—"], ["Salida", d.hSalida || "—"], ["Entrega", d.hEntrega || "—"]].map(([l, v]) => (
-                    <div key={l} className="rounded-xl py-1.5" style={{ background: T.vainilla }}>
-                      <div className="text-sm font-bold">{v}</div>
-                      <div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{l}</div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: card.needsAssignment ? "#A03B2A" : T.choco2 }}>
+                      {card.needsAssignment ? "Listo · falta domicilio" : "Seguimiento de entrega"}
                     </div>
-                  ))}
-                </div>
-                <div className="flex flex-wrap justify-between items-center gap-2 mt-3">
-                  <div className="text-xs font-semibold" style={{ color: T.choco2 }}>
-                    Cobrado {fmt(d.cobrado)} · Costo {fmt(d.costoReal)} ·{" "}
-                    <b style={{ color: dif < 0 ? "#A03B2A" : "#3F6B42" }}>{dif < 0 ? `subsidio ${fmt(-dif)}` : dif > 0 ? `excedente ${fmt(dif)}` : "sin diferencia"}</b>
+                    <div className="display text-lg font-semibold">Pedido {order.id}</div>
+                    <div className="text-xs truncate" style={{ color: T.choco2 }}>{customer.nombre || "Cliente sin nombre"} · {order.barrio || customer.barrio || "Sin barrio"}</div>
                   </div>
-                  <MiniSelect options={DOM_ESTADOS} value={d.estado} disabled={enviando || scope === "history"} onChange={async (e) => {
-                    const nuevo = e.target.value;
-                    setEnviando(true);
-                    // "En ruta"/"Entregado" son dominio del PEDIDO: set_order_status sincroniza pedido+domicilio+sellos server-side.
-                    if (nuevo === "En ruta" || nuevo === "Entregado") {
-                      try {
-                        await setOrderStatusRemoto(d.orderId, nuevo);
-                      } catch (err) {
-                        setAvisoDom({ titulo: "No se puede despachar todavía", texto: err.message });
-                        setEnviando(false);
-                        return;
-                      }
-                      try {
-                        await refrescar();
-                      } catch (err) {
-                        setAvisoDom({ titulo: "Acción aplicada, vista desactualizada", texto: "El domicilio se actualizó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
-                      }
-                      setEnviando(false);
-                      return;
-                    }
-                    try {
-                      await actualizarDomicilio(d.id, { estado: nuevo });
-                    } catch (err) {
-                      setAvisoDom({ titulo: "No se pudo actualizar el domicilio", texto: err.message });
-                      setEnviando(false);
-                      return;
-                    }
-                    try {
-                      await refrescar();
-                    } catch (err) {
-                      setAvisoDom({ titulo: "Acción aplicada, vista desactualizada", texto: "El domicilio se actualizó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
-                    }
-                    setEnviando(false);
-                  }} />
+                  <Badge label={delivery?.estado || "Sin domicilio"} />
                 </div>
-                {d.obs && <div className="text-xs mt-2" style={{ color: T.choco2 }}>📝 {d.obs}</div>}
+                <div className="mt-3 text-sm font-semibold line-clamp-2">{productos || "Sin productos cargados"}</div>
+                <div className="mt-2 text-xs truncate" style={{ color: T.choco2 }}>
+                  📍 {order.direccion || customer.direccion || "Falta dirección"}
+                </div>
+                <div className="mt-3 pt-3 border-t flex items-end justify-between gap-3" style={{ borderColor: T.border }}>
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Siguiente paso</div>
+                    <div className="text-xs font-bold mt-0.5">{deliveryNextStep(card)}</div>
+                  </div>
+                  <span className="text-xs font-extrabold whitespace-nowrap" style={{ color: T.coral }}>{card.needsAssignment ? "Asignar ›" : "Abrir ›"}</span>
+                </div>
               </Card>
             );
           })}
-          {!listaDomicilios.length && <Empty icon={scope === "active" ? "🛵" : "◷"} text={scope === "active" ? "No hay domicilios activos." : "Todavía no hay domicilios entregados o cancelados."} />}
+          {!tarjetasDomicilio.length && <Empty icon={scope === "active" ? "🛵" : "◷"} text={scope === "active" ? "No hay pedidos esperando o usando domicilio." : "Todavía no hay pedidos entregados o cancelados."} />}
         </div>
 
+        {tarjetaDetalle && (
+          <Modal wide title={`Pedido ${tarjetaDetalle.order.id} · entrega`} onClose={() => setDetallePedidoId("")}>
+            <div className="rounded-2xl border p-4 mb-4" style={{ background: tarjetaDetalle.needsAssignment ? "#FFF4DF" : "#EEF6EA", borderColor: tarjetaDetalle.needsAssignment ? "#E8B55B" : "#A9CBA7" }}>
+              <div className="text-[10px] uppercase tracking-[.14em] font-extrabold" style={{ color: tarjetaDetalle.needsAssignment ? "#96690F" : "#3F6B42" }}>Siguiente paso</div>
+              <div className="display text-lg font-semibold mt-1">{deliveryNextStep(tarjetaDetalle)}</div>
+              <div className="text-xs mt-1" style={{ color: T.choco2 }}>El pedido es la unidad de trabajo. El código {tarjetaDetalle.delivery?.id || "D-xxx"} permanece como trazabilidad interna.</div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-3">
+              <Card className="p-4">
+                <div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Cliente y destino</div>
+                <div className="font-bold">{clienteDetalle?.nombre || "Sin nombre"}</div>
+                <div className="text-sm">{clienteDetalle?.telefono || "Sin teléfono"}</div>
+                <div className="text-sm font-semibold mt-3">📍 {tarjetaDetalle.order.direccion || clienteDetalle?.direccion || "Sin dirección"}</div>
+                <div className="text-xs mt-1" style={{ color: T.choco2 }}>{tarjetaDetalle.order.barrio || clienteDetalle?.barrio || "Sin barrio"} · {tarjetaDetalle.order.zona || "Sin zona"}</div>
+                <div className="text-xs mt-3 rounded-xl p-2.5" style={{ background: T.vainilla, color: T.choco2 }}>{tarjetaDetalle.order.obs || "Sin referencia adicional de entrega."}</div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>Domicilio asignado</div>
+                    <div className="font-bold mt-1">{tarjetaDetalle.delivery ? `${tarjetaDetalle.delivery.proveedor} · ${tarjetaDetalle.delivery.id}` : "Todavía sin asignar"}</div>
+                  </div>
+                  <Badge label={tarjetaDetalle.delivery?.estado || "Sin domicilio"} />
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                  <div><span style={{ color: T.choco2 }}>Zona</span><div className="font-bold">{tarjetaDetalle.delivery?.zona || tarjetaDetalle.order.zona || "—"}</div></div>
+                  <div><span style={{ color: T.choco2 }}>Código</span><div className="font-bold">{tarjetaDetalle.delivery?.codigo || "—"}</div></div>
+                  <div><span style={{ color: T.choco2 }}>Cobrado</span><div className="font-bold">{fmt(tarjetaDetalle.delivery?.cobrado ?? tarjetaDetalle.order.domCobrado ?? 0)}</div></div>
+                  <div><span style={{ color: T.choco2 }}>Costo real</span><div className="font-bold">{fmt(tarjetaDetalle.delivery?.costoReal ?? tarjetaDetalle.order.domCosto ?? 0)}</div></div>
+                </div>
+                {tarjetaDetalle.delivery?.obs && <div className="text-xs mt-3">📝 {tarjetaDetalle.delivery.obs}</div>}
+              </Card>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Contenido del pedido</div>
+              <Card className="p-4">
+                {productosDetalle.filter((item) => !item.parentItemId && !item.parent_item_id).map((item) => {
+                  const presentation = orderLinePresentation(item, productOf(deliveryDb, item.productId));
+                  const children = productosDetalle.filter((candidate) => (candidate.parentItemId || candidate.parent_item_id) === item.id);
+                  return <div key={item.id} className="py-2 border-b last:border-b-0" style={{ borderColor: T.border }}>
+                    <div className="flex justify-between gap-3 text-sm"><span className="font-bold">{presentation.quantityLabel}</span><span className="font-bold whitespace-nowrap">{fmt(item.precio * item.cant)}</span></div>
+                    {presentation.secondary && <div className="text-[11px] mt-0.5" style={{ color: T.choco2 }}>{presentation.secondary}</div>}
+                    {children.length > 0 && <div className="mt-2 pl-3 border-l space-y-1" style={{ borderColor: T.rosaDeep }}>{children.map((child) => { const childPresentation = orderLinePresentation(child, productOf(deliveryDb, child.productId)); return <div key={child.id}><div className="text-xs font-bold">{childPresentation.quantityLabel}</div>{childPresentation.secondary && <div className="text-[10px]" style={{ color: T.choco2 }}>{childPresentation.secondary}</div>}</div>; })}</div>}
+                  </div>;
+                })}
+                {!productosDetalle.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin productos cargados.</div>}
+                <div className="flex justify-between gap-3 mt-3 pt-3 border-t font-bold" style={{ borderColor: T.border }}><span>Total del pedido</span><span>{fmt(orderTotal(deliveryDb, tarjetaDetalle.order))}</span></div>
+              </Card>
+            </div>
+
+            {tarjetaDetalle.delivery && (
+              <div className="mt-4">
+                <div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Tiempos del domicilio</div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {[["Solicitud", tarjetaDetalle.delivery.hSolicitud || "—"], ["Salida", tarjetaDetalle.delivery.hSalida || "—"], ["Entrega", tarjetaDetalle.delivery.hEntrega || "—"]].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border py-2" style={{ background: T.vainilla, borderColor: T.border }}>
+                      <div className="font-bold">{value}</div><div className="text-[10px] font-bold" style={{ color: T.choco2 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {tarjetaDetalle.attempts.length > 1 && (
+              <div className="mt-4">
+                <div className="text-[10px] uppercase tracking-wider font-extrabold mb-2" style={{ color: T.choco2 }}>Intentos de domicilio</div>
+                <Card className="p-3">
+                  {tarjetaDetalle.attempts.map((attempt) => (
+                    <div key={attempt.id} className="flex items-center justify-between gap-3 py-2 border-b last:border-b-0" style={{ borderColor: T.border }}>
+                      <div className="text-sm"><b>{attempt.id}</b> · {attempt.proveedor || "Sin proveedor"}</div><Badge label={attempt.estado} />
+                    </div>
+                  ))}
+                </Card>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-end gap-2 mt-5">
+              {tarjetaDetalle.needsAssignment && <Btn onClick={() => abrirAsignacion(tarjetaDetalle.order)}>🛵 Asignar domicilio</Btn>}
+              {tarjetaDetalle.delivery && scope === "active" && (
+                <Field label="Actualizar seguimiento">
+                  <MiniSelect options={DOM_ESTADOS} value={tarjetaDetalle.delivery.estado} disabled={enviando} onChange={(event) => cambiarEstadoDomicilio(tarjetaDetalle.delivery, event.target.value)} />
+                </Field>
+              )}
+              <Btn kind="ghost" onClick={() => setDetallePedidoId("")}>Cerrar</Btn>
+            </div>
+          </Modal>
+        )}
+
         {nuevo && (
-          <Modal title="Solicitar domicilio" onClose={() => setNuevo(false)}>
+          <Modal title="Asignar domicilio al pedido" onClose={() => setNuevo(false)}>
             <Field label="Pedido">
               <Select placeholder="Elegir pedido…" options={pedidosSinDomicilio.map((o) => o.id)} value={form.orderId} onChange={(e) => {
-                const o = db.orders.find((x) => x.id === e.target.value);
+                const o = deliveryDb.orders.find((x) => x.id === e.target.value);
                 setForm({ ...form, orderId: e.target.value, zona: o ? o.zona : form.zona });
               }} />
             </Field>
@@ -979,23 +1164,26 @@ export function createBusinessPanels(shared) {
                 if (!form.orderId) return;
                 setEnviando(true);
                 try {
-                  await crearDomicilio(form.orderId, form.proveedor, form.zona, Math.max(0, +form.costoReal || 0), form.obs);
+                  const payload = {
+                    order_id: form.orderId,
+                    proveedor: form.proveedor,
+                    zona: form.zona,
+                    costo_real: Math.max(0, +form.costoReal || 0),
+                    obs: form.obs,
+                  };
+                  await ejecutarMutacionDomicilio(
+                    "assign",
+                    payload,
+                    () => crearDomicilio(form.orderId, form.proveedor, form.zona, payload.costo_real, form.obs),
+                  );
                 } catch (e) {
                   setAvisoDom({ titulo: "No se pudo solicitar el domicilio", texto: e.message });
                   setEnviando(false);
                   return;
                 }
-                try {
-                  await refrescar();
-                } catch (e) {
-                  setAvisoDom({ titulo: "Acción aplicada, vista desactualizada", texto: "El domicilio se solicitó correctamente, pero no se pudo actualizar la vista. Recargá la página para verlo." });
-                  setEnviando(false);
-                  setNuevo(false);
-                  return;
-                }
                 setEnviando(false);
                 setNuevo(false);
-              }}>Solicitar</Btn>
+              }}>Asignar domicilio</Btn>
               <Btn kind="ghost" onClick={() => setNuevo(false)}>Cancelar</Btn>
             </div>
           </Modal>
@@ -1183,7 +1371,7 @@ export function createBusinessPanels(shared) {
         const key = mutationKeyRef.current;
         const context = capturarContextoMutacionCatalogoCrm();
         const envelope = await mutarCatalogoCrmDelta(operation, payload, key);
-        const applied = aplicarMutacionCatalogoCrm(envelope, operation, context);
+        const applied = await aplicarMutacionCatalogoCrm(envelope, operation, context);
         mutationKeyRef.current = createInventoryIdempotencyKey();
         if (applied?.status === "discarded") await refrescar({ reason: "crm-delta-discard" });
         return applied?.result;
@@ -1261,7 +1449,7 @@ export function createBusinessPanels(shared) {
 
     function exportar() {
       downloadCSV("clientes",
-        ["Nombre","Teléfono","Instagram","Barrio","Dirección","Canal","Primera compra","Última compra","Total","Pedidos","Ticket promedio","Cumpleaños","Favoritos","Estado"],
+        ["Nombre","Teléfono","Instagram","Barrio","Dirección","Canal","Primera compra","Última compra","Total","Pedidos","Ticket promedio","Cumpleaños","Preferencia declarada","Estado"],
         db.customers.map((c) => [c.nombre, c.telefono, c.instagram, c.barrio, c.direccion, c.canal, c.primera, c.ultima, c.total, c.pedidos, Math.round(c.total / Math.max(c.pedidos, 1)), c.cumple, c.favoritos, c.estado]));
     }
 
@@ -1349,10 +1537,10 @@ export function createBusinessPanels(shared) {
               <div style={{ fontVariantNumeric: "tabular-nums" }}>🗓️ {crm.firstPurchase ? <>Primera compra <b>{crm.firstPurchase}</b> · última <b>{crm.lastPurchase}</b></> : <span style={{ color: T.choco2 }}>Sin compras entregadas aún (lead)</span>}</div>
               {sel.instagram && <div>📸 {sel.instagram}</div>}
               {sel.cumple && <div>🎂 Cumpleaños: {sel.cumple}</div>}
-              {sel.favoritos && <div>💗 {sel.favoritos}</div>}
+              {sel.favoritos && <div>💗 <b>Preferencia declarada:</b> {sel.favoritos}</div>}
             </div>
             <div className="momo-trace-open mt-3" style={{ animationDelay: "370ms" }}>
-              <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>GUSTOS REALES SEGÚN COMPRAS</div>
+              <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>COMPRADO HISTÓRICAMENTE</div>
               {crm.automaticFavorites.length ? <div className="flex flex-wrap gap-1.5">{crm.automaticFavorites.map((favorite) => <span key={favorite.label} className="text-xs font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1.5" style={{ background: T.rosa, color: "#8E4B5A" }}>{favorite.label} <span style={{ background: "rgba(255,255,255,.6)", borderRadius: "999px", padding: "0 6px", fontVariantNumeric: "tabular-nums" }}>{favorite.quantity}</span></span>)}</div> : <div className="text-sm" style={{ color: T.choco2 }}>Aún no hay compras entregadas para aprender sus gustos.</div>}
             </div>
             {sel.notas && <div className="text-xs mt-3 p-2.5 rounded-xl" style={{ background: T.vainilla }}>📝 {sel.notas}</div>}
@@ -1360,7 +1548,7 @@ export function createBusinessPanels(shared) {
             {detalleVista === "compras" && <>
             <div className="momo-trace-open mt-3" style={{ animationDelay: "410ms" }}>
               <div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>HISTORIAL DE PEDIDOS</div>
-              {crm.orders.map((order) => <div key={order.id} className="momo-crm-row flex justify-between gap-3 text-sm px-2 py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="min-w-0"><b>{order.id}</b> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{order.fecha}</span><div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => `${item.cant}× ${item.nombre}${item.figura ? ` ${item.figura}` : ""}${item.sabor ? ` de ${item.sabor}` : ""}`).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(order.totalCrm)}</div></div></div>)}
+              {crm.orders.map((order) => <div key={order.id} className="momo-crm-row flex justify-between gap-3 text-sm px-2 py-2 border-b last:border-0" style={{ borderColor: T.border }}><div className="min-w-0"><b>{order.id}</b> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{order.fecha}</span><div className="text-xs" style={{ color: T.choco2 }}>{order.itemsCrm.map((item) => orderLinePresentation(item, productOf(db, item.productId)).quantityLabel).join("; ") || "Sin líneas"}</div></div><div className="text-right shrink-0"><Badge label={order.estado} /><div className="text-xs font-bold mt-1" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(order.totalCrm)}</div></div></div>)}
               {!crm.orders.length && <div className="text-sm" style={{ color: T.choco2 }}>Sin pedidos todavía.</div>}
             </div>
             </>}
@@ -1487,7 +1675,7 @@ export function createBusinessPanels(shared) {
               <Field label="Cumpleaños"><Input type="date" value={form.cumple ? "2000-" + form.cumple : ""} onChange={(e) => setForm({ ...form, cumple: e.target.value ? e.target.value.slice(5) : "" })} /></Field>
               <Field label="Estado"><Select options={ESTADOS_CLIENTE} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} /></Field>
             </div>
-            <Field label="Favoritos"><Input value={form.favoritos} onChange={(e) => setForm({ ...form, favoritos: e.target.value })} placeholder="Ej: Maracuyá · Gatito" /></Field>
+            <Field label="Preferencia declarada por el cliente"><Input value={form.favoritos} onChange={(e) => setForm({ ...form, favoritos: e.target.value })} placeholder="Ej: Lizi de Maracuyá · no confundir con el historial comprado" /></Field>
             <Field label="Notas"><Input value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></Field>
             {err && <div className="text-sm font-bold mb-3" style={{ color: T.coral }}>{err}</div>}
             <div className="flex justify-end gap-2">
@@ -1511,7 +1699,7 @@ export function createBusinessPanels(shared) {
   const TIPOS_BENEFICIO = [
     { tipo: "descuento_porcentaje", label: "Descuento %" },
     { tipo: "descuento_valor_fijo", label: "Descuento valor fijo ($)" },
-    { tipo: "producto_gratis", label: "Producto gratis" },
+    { tipo: "producto_gratis", label: "Producto preparado gratis" },
   ];
 
   function labelBeneficio(b, db) {
@@ -1535,7 +1723,7 @@ export function createBusinessPanels(shared) {
         const key = mutationKeyRef.current;
         const context = capturarContextoMutacionCatalogoCrm();
         const envelope = await mutarCatalogoCrmDelta("activar_beneficio_cliente", payload, key);
-        const applied = aplicarMutacionCatalogoCrm(envelope, "activar_beneficio_cliente", context);
+        const applied = await aplicarMutacionCatalogoCrm(envelope, "activar_beneficio_cliente", context);
         mutationKeyRef.current = createInventoryIdempotencyKey();
         if (applied?.status === "discarded") await refrescar({ reason: "benefit-delta-discard" });
         return applied?.result;
@@ -1598,11 +1786,12 @@ export function createBusinessPanels(shared) {
               <Field label="Valor del descuento ($)"><Input type="number" min="0" value={form.valor} onChange={(e) => setForm({ ...form, valor: +e.target.value })} /></Field>
             )}
             {form.tipoBeneficio === "producto_gratis" && (
-              <Field label="Producto gratis">
-                <select value={form.productoGratisId} onChange={(e) => setForm({ ...form, productoGratisId: e.target.value })} className={inputCls} style={inputStyle}>
-                  {db.products.filter((p) => p.activo).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                </select>
-              </Field>
+               <Field label="Producto preparado gratis">
+                 <select value={form.productoGratisId} onChange={(e) => setForm({ ...form, productoGratisId: e.target.value })} className={inputCls} style={inputStyle}>
+                   {db.products.filter((p) => p.activo && !isCommercialFamilyProduct(p) && p.tipo !== "combo").map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                 </select>
+                 <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>Las familias Gatito, Perrito y Premium necesitan figura y sabor exactos; por eso no se agregan como regalo genérico.</div>
+               </Field>
             )}
             <Field label="Condición"><Input value={form.condicion} onChange={(e) => setForm({ ...form, condicion: e.target.value })} placeholder="Historia, referido, cumpleaños, Club Sweet Love…" /></Field>
             <Field label="Compra mínima"><Input type="number" value={form.minimo} onChange={(e) => setForm({ ...form, minimo: +e.target.value })} /></Field>
@@ -1635,6 +1824,7 @@ export function createBusinessPanels(shared) {
     const [desde, setDesde] = useState(dISO(-14));
     const [hasta, setHasta] = useState(hoyISO());
     const validos = db.orders.filter((o) => esPedidoCobrado(o) && o.fecha >= desde && o.fecha <= hasta);
+    const physicalResults = useMemo(() => buildCanonicalPhysicalResults(db.production_batches || [], { from: desde, to: hasta }), [db.production_batches, desde, hasta]);
 
     const porDia = {};
     validos.forEach((o) => { porDia[o.fecha] = (porDia[o.fecha] || 0) + orderTotal(db, o); });
@@ -1644,12 +1834,16 @@ export function createBusinessPanels(shared) {
     const porProducto = {}, porSabor = {}, porFigura = {}, porBarrio = {}, porCategoria = {};
     validos.forEach((o) => {
       porBarrio[o.barrio] = (porBarrio[o.barrio] || 0) + orderTotal(db, o);
-      itemsOf(db, o.id).forEach((i) => {
-        porProducto[i.nombre] = (porProducto[i.nombre] || 0) + i.cant;
-        if (i.sabor) porSabor[i.sabor] = (porSabor[i.sabor] || 0) + i.cant;
-        if (i.figura) porFigura[i.figura.split(" ")[0]] = (porFigura[i.figura.split(" ")[0]] || 0) + i.cant;
+      const orderItems = itemsOf(db, o.id);
+      orderItems.filter((item) => !item.parentItemId && !item.parent_item_id).forEach((i) => {
+        const presentationName = commercialFamilyLabel(i.nombre);
+        porProducto[presentationName] = (porProducto[presentationName] || 0) + i.cant;
         const p = productOf(db, i.productId);
         if (p) porCategoria[p.cat] = (porCategoria[p.cat] || 0) + i.precio * i.cant;
+      });
+      orderItems.forEach((i) => {
+        if (i.sabor) porSabor[i.sabor] = (porSabor[i.sabor] || 0) + i.cant;
+        if (isKitchenFigureName(i.figura)) porFigura[i.figura.trim()] = (porFigura[i.figura.trim()] || 0) + i.cant;
       });
     });
     const top = (obj, n = 6) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, value]) => ({ label, value }));
@@ -1659,8 +1853,8 @@ export function createBusinessPanels(shared) {
     const deliveriesValidos = db.deliveries.filter((d) => idsValidos.has(d.orderId));
     const subsidio = deliveriesValidos.reduce((s, d) => s + Math.max(0, d.costoReal - d.cobrado), 0);
     const costoDomTotal = deliveriesValidos.reduce((s, d) => s + d.costoReal, 0);
-    const mermaProm = db.production_batches.reduce((s, l) => s + (l.imperfectas + l.descartadas) / Math.max(l.prod, 1), 0) / Math.max(db.production_batches.length, 1);
-    const recuperadas = db.production_batches.filter((l) => String(l.destino).includes("Insumo") || String(l.destino).includes("Prueba")).reduce((s, l) => s + l.imperfectas, 0);
+    const mermaProm = physicalResults.grossWasteRate;
+    const recuperadas = physicalResults.repurposedImperfectUnits;
     const nuevos = db.customers.filter((c) => diasEntre(c.primera, hoyISO()) <= 10).length;
     const recurr = db.customers.filter((c) => c.pedidos >= 2).length;
     const recompra = recurr / Math.max(db.customers.length, 1);
@@ -1681,10 +1875,11 @@ export function createBusinessPanels(shared) {
         ["Indicador","Valor"],
         [["Rango", desde + " a " + hasta], ["Pedidos", validos.length], ["Ticket promedio", ticket],
          ["Costo real domicilios", costoDomTotal], ["Subsidio domicilios", subsidio],
-         ["Merma promedio %", Math.round(mermaProm * 100)], ["Piezas recuperadas", recuperadas],
+         ["Merma bruta %", Math.round(mermaProm * 100)], ["Piezas reaprovechadas", recuperadas],
+         ["Descarte definitivo", physicalResults.definitiveLossUnits],
          ["Clientes nuevos (10 días)", nuevos], ["Clientes recurrentes", recurr],
          ["Recompra %", Math.round(recompra * 100)], ["Beneficios usados", benefUsados],
-         ...top(porProducto, 10).map((d) => ["Producto: " + d.label, d.value]),
+         ...top(porProducto, 10).map((d) => ["Presentación comercial: " + d.label, d.value]),
          ...top(porSabor, 10).map((d) => ["Sabor: " + d.label, d.value])]);
     }
 
@@ -1701,7 +1896,7 @@ export function createBusinessPanels(shared) {
           <Stat icon="🎯" label="Ticket promedio" value={fmt(ticket)} />
           <Stat icon="🛵" label="Costo real domicilios" value={fmt(costoDomTotal)} sub={`subsidio ${fmt(subsidio)}`} tone="#96690F" />
           <Stat icon="🔁" label="Recompra" value={pct(recompra)} sub={`${recurr} de ${db.customers.length} clientes`} tone="#3F6B42" />
-          <Stat icon="♻️" label="Piezas recuperadas" value={recuperadas} sub={`merma promedio ${pct(mermaProm)}`} />
+          <Stat icon="♻️" label="Piezas reaprovechadas" value={recuperadas} sub={`merma bruta ${pct(mermaProm)} · descarte ${physicalResults.definitiveLossUnits}`} />
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Stat icon="🆕" label="Clientes nuevos (10 días)" value={nuevos} />
@@ -1715,19 +1910,19 @@ export function createBusinessPanels(shared) {
 
         <div className="grid lg:grid-cols-2 gap-3 mt-3">
           <Card className="p-4"><div className="text-xs font-bold mb-3" style={{ color: T.choco2 }}>VENTAS POR CATEGORÍA</div><Bars data={top(porCategoria)} money /></Card>
-          <Card className="p-4"><div className="text-xs font-bold mb-3" style={{ color: T.choco2 }}>PRODUCTOS MÁS VENDIDOS (unidades)</div><Bars data={top(porProducto)} /></Card>
+          <Card className="p-4"><div className="text-xs font-bold mb-1" style={{ color: T.choco2 }}>PRESENTACIONES COMERCIALES MÁS VENDIDAS</div><div className="text-[10px] mb-3" style={{ color: T.choco2 }}>Cuenta cajas y familias vendidas sin duplicar sus postres internos.</div><Bars data={top(porProducto)} /></Card>
           <Card className="p-4"><div className="text-xs font-bold mb-3" style={{ color: T.choco2 }}>SABORES MÁS VENDIDOS</div><Bars data={top(porSabor)} /></Card>
           <Card className="p-4"><div className="text-xs font-bold mb-3" style={{ color: T.choco2 }}>FIGURAS MÁS VENDIDAS</div><Bars data={top(porFigura)} /></Card>
           <Card className="p-4"><div className="text-xs font-bold mb-3" style={{ color: T.choco2 }}>VENTAS POR BARRIO</div><Bars data={top(porBarrio)} money /></Card>
           <Card className="p-4"><div className="text-xs font-bold mb-3" style={{ color: T.choco2 }}>RECLAMOS POR CANAL</div><Bars data={Object.entries(reclamosCanal).map(([label, value]) => ({ label, value }))} /></Card>
         </div>
 
-        <SectionTitle>Margen estimado por producto (%)</SectionTitle>
+        <SectionTitle>Margen estimado por presentación o preparación (%)</SectionTitle>
         <Card className="p-4"><Bars data={margenes} /></Card>
 
-        <SectionTitle>Merma por lote (%)</SectionTitle>
+        <SectionTitle>Merma bruta por lote (%)</SectionTitle>
         <Card className="p-4">
-          <Bars data={db.production_batches.map((l) => ({ label: l.id + " " + l.sabor, value: Math.round(((l.imperfectas + l.descartadas) / Math.max(l.prod, 1)) * 100), color: T.rosaDeep }))} />
+          <Bars data={physicalResults.batches.map((batch) => ({ label: `${batch.batchId} ${batch.flavor}`, value: Math.round(batch.grossWasteRate * 100), color: T.rosaDeep }))} />
         </Card>
 
         {(() => {
@@ -1807,6 +2002,12 @@ export function createBusinessPanels(shared) {
     const [guardandoDemoras, setGuardandoDemoras] = useState(false);
     const [configDirty, setConfigDirty] = useState(false);
     const [configMsg, setConfigMsg] = useState("");
+    const [healthSnapshot, setHealthSnapshot] = useState(null);
+    const [sloSnapshot, setSloSnapshot] = useState(null);
+    const [continuitySnapshot, setContinuitySnapshot] = useState(null);
+    const [healthLoading, setHealthLoading] = useState(true);
+    const [healthReviewing, setHealthReviewing] = useState(false);
+    const [healthError, setHealthError] = useState("");
     const listas = [
       ["saboresFrutales", "Sabores frutales"], ["saboresCremosos", "Sabores cremosos"],
       ["rellenos", "Rellenos"], ["salsas", "Salsas"],
@@ -1816,6 +2017,35 @@ export function createBusinessPanels(shared) {
     useEffect(() => {
       setDelayDraft(normalizeKitchenDelaySettings(s));
     }, [s.demoraCocinaMin, s.demoraCocinaUrgenteMin, s.demoraEmpaqueMin, s.demoraEmpaqueUrgenteMin, s.demoraRepeticionMin]);
+
+    useEffect(() => {
+      let active = true;
+      setHealthLoading(true);
+      Promise.all([fetchOperationalHealthSnapshot(), fetchOperationalSloSnapshot(60), fetchContinuitySnapshot()])
+        .then(([health, slo, continuity]) => { if (active) { setHealthSnapshot(health); setSloSnapshot(slo); setContinuitySnapshot(continuity); setHealthError(""); } })
+        .catch((error) => { if (active) setHealthError(error?.message || "No se pudo consultar la salud de MOMO OPS."); })
+        .finally(() => { if (active) setHealthLoading(false); });
+      return () => { active = false; };
+    }, []);
+
+    async function revisarSaludAhora() {
+      if (healthReviewing) return;
+      setHealthReviewing(true);
+      setHealthError("");
+      try {
+        await runOperationalHealthReview();
+        await evaluateOperationalSloAlerts(60);
+        const [health, slo, continuity] = await Promise.all([fetchOperationalHealthSnapshot(), fetchOperationalSloSnapshot(60), fetchContinuitySnapshot()]);
+        setHealthSnapshot(health);
+        setSloSnapshot(slo);
+        setContinuitySnapshot(continuity);
+        toast("ok", "Revisión operativa completada");
+      } catch (error) {
+        setHealthError(error?.message || "No se pudo ejecutar la revisión operativa.");
+      } finally {
+        setHealthReviewing(false);
+      }
+    }
 
     function editarBorrador(mutator) {
       update(mutator);
@@ -1838,11 +2068,18 @@ export function createBusinessPanels(shared) {
         d.configurationFigureProductChoices = normalized.figureProductChoices;
         d.users = normalized.users;
         d.multipleRolesReady = true;
-        d.figuras = normalized.figures.map((figure) => ({
+        const normalizedFigures = normalized.figures.map((figure) => ({
           nombre: figure.nombre, especie: figure.especie, gramajeG: Number.parseInt(figure.gramaje, 10),
           productId: figure.productId, activo: figure.activo,
         }));
-        Object.assign(d.settings, normalized.settingsCatalogos);
+        d.figuras = activeFigureCatalog({ figuras: normalizedFigures, products: d.products || [] });
+        Object.assign(d.settings, {
+          ...normalized.settingsCatalogos,
+          figuras: activeConfigurationFigureCatalog({
+            figuras: normalized.settingsCatalogos.figuras,
+            products: d.products || [],
+          }),
+        });
         const byId = new Map((d.audit_logs || []).map((row) => [String(row.id), row]));
         normalized.auditLogs.forEach((row) => byId.set(String(row.id), row));
         d.audit_logs = [...byId.values()].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 100);
@@ -1861,7 +2098,7 @@ export function createBusinessPanels(shared) {
           db.configurationSnapshotVersion,
           createInventoryIdempotencyKey(),
         );
-        if (response?.contract !== "momos.configuration-mutation.v1" || !response?.snapshot) {
+        if (!["momos.configuration-mutation.v1", "momos.configuration-mutation.v2"].includes(response?.contract) || !response?.snapshot) {
           throw new Error("El servidor devolvió una confirmación incompleta.");
         }
         aplicarSnapshotConfiguracion(response.snapshot);
@@ -1909,19 +2146,25 @@ export function createBusinessPanels(shared) {
       setNuevoItem((prev) => ({ ...prev, [k]: "" }));
     }
 
-    function agregarFigura() {
-      const nombre = (nuevaFig.nombre || "").trim();
-      if (!nombre || !nuevaFig.productId) {
-        setConfigMsg("⚠️ La figura necesita nombre y un producto compatible.");
+    function agregarFigura(nombreSeleccionado = nuevaFig.nombre) {
+      const nombre = (nombreSeleccionado || "").trim();
+      const canonical = KITCHEN_FIGURE_DEFAULTS[nombre];
+      const canonicalProductId = expectedFigureProductId(nombre);
+      if (!canonical) {
+        setConfigMsg("⚠️ Elegí una de las siete figuras físicas canónicas de MOMOS.");
+        return;
+      }
+      if (!nombre || !canonicalProductId || !(db.products || []).some((product) => product.id === canonicalProductId && isCommercialFamilyProduct(product))) {
+        setConfigMsg("⚠️ Falta la familia comercial canónica de esta figura. Corregí el catálogo antes de restaurarla.");
         return;
       }
       editarBorrador((d) => {
         if (d.settings.figuras.some((f) => f.nombre.toLowerCase() === nombre.toLowerCase())) return;
         d.settings.figuras = [...d.settings.figuras, {
           nombre,
-          especie: nuevaFig.especie === "perro" ? "perro" : "gato",
-          gramaje: (nuevaFig.gramaje || "150 g").trim(),
-          productId: nuevaFig.productId,
+          especie: canonical.species,
+          gramaje: (nuevaFig.nombre === nombre ? nuevaFig.gramaje : `${canonical.grams} g`).trim() || `${canonical.grams} g`,
+          productId: canonicalProductId,
         }];
       });
       setNuevaFig({ nombre: "", especie: "gato", gramaje: "150 g", productId: "" });
@@ -1941,6 +2184,52 @@ export function createBusinessPanels(shared) {
       });
       setNuevoTop({ nombre: "", precio: "", insumoId: "" });
     }
+
+    const healthStatus = healthSnapshot?.status || (healthLoading ? "Revisando" : "Sin diagnóstico");
+    const healthCounts = healthSnapshot?.counts || {};
+    const healthIncidents = Array.isArray(healthSnapshot?.incidents) ? healthSnapshot.incidents : [];
+    const sloServices = Array.isArray(sloSnapshot?.services) ? sloSnapshot.services : [];
+    const sloCounts = sloSnapshot?.counts || {};
+    const sloAlerts = Array.isArray(sloSnapshot?.alerts) ? sloSnapshot.alerts : [];
+    const sloAlertCounts = sloSnapshot?.alertCounts || {};
+    const sloLabels = {
+      OPS_FRONTEND: "Interfaz MOMO OPS", RPC_CORE: "Operaciones del servidor",
+      DATABASE: "Base de datos", REALTIME: "Actualización en vivo",
+      STORAGE: "Archivos", CONNECTORS: "Integraciones", HEALTH_MONITOR: "Monitor automático",
+    };
+    const sloAlertTitle = {
+      ERROR_BUDGET_EXHAUSTED: "Se agotó el margen de errores",
+      LATENCY_P95_HIGH: "Las respuestas están tardando más de lo esperado",
+      SATURATION_HIGH: "El servicio está cerca de su capacidad",
+      QUEUE_HIGH: "Hay demasiado trabajo esperando",
+      TELEMETRY_STALE: "La señal dejó de actualizarse",
+    };
+    const sloTone = (status) => status === "Saludable"
+      ? { bg: "#E3EFE0", color: "#315D36" }
+      : status === "En riesgo" ? { bg: "#FFF1D6", color: "#7B5410" }
+        : status === "Fuera de SLO" ? { bg: "#FBE1DC", color: "#A03B2A" }
+          : { bg: T.vainilla, color: T.choco2 };
+    const healthTone = healthSnapshot?.readOnly || healthStatus === "Solo lectura"
+      ? { bg: "#FBE1DC", border: "#E56B55", text: "#A03B2A", icon: "⛔" }
+      : healthStatus === "Saludable"
+        ? { bg: "#E3EFE0", border: "#93BF8D", text: "#315D36", icon: "✓" }
+        : { bg: "#FFF1D6", border: "#E3B35B", text: "#7B5410", icon: "⚠" };
+    const healthTitle = {
+      INVENTORY_STOCK_DRIFT: "El stock y sus lotes no coinciden",
+      FINISHED_RESULTS_DRIFT: "Los resultados físicos necesitan conciliación",
+      KITCHEN_ORDER_STALLED: "Hay pedidos demorados en Cocina",
+      PACKING_ORDER_STALLED: "Hay pedidos demorados en Empaque",
+      CONNECTOR_HEARTBEAT_STALE: "Una integración necesita revisión",
+      BACKUP_RPO_EXCEEDED: "El respaldo está fuera del tiempo objetivo",
+      DATABASE_CONNECTION_PRESSURE: "La base está cerca de su límite de conexiones",
+      SCHEMA_MIGRATION_MISSING: "El esquema del servidor está incompleto",
+      PAID_ORDER_WITHOUT_FLOW: "Un pedido pagado no entró al flujo",
+    };
+    const healthDate = (value) => value
+      ? new Date(value).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" })
+      : "Sin registro";
+    const continuityBackup = continuitySnapshot?.backup || {};
+    const continuityRecovery = continuitySnapshot?.recovery || {};
 
     return (
       <div>
@@ -1962,6 +2251,90 @@ export function createBusinessPanels(shared) {
             </div>
           </div>
           {configMsg && <div className="text-xs font-bold mt-3" role="status" style={{ color: configMsg.startsWith("⚠️") ? "#A03B2A" : "#3F6B42" }}>{configMsg}</div>}
+        </Card>
+        <SectionTitle>🩺 Salud y continuidad de MOMO OPS</SectionTitle>
+        <Card className="p-4" data-testid="operational-health-center" style={{ background: "linear-gradient(145deg, #fff, #FFF9F1)", borderColor: healthTone.border }}>
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="w-11 h-11 rounded-2xl flex items-center justify-center text-lg shrink-0" style={{ background: healthTone.bg, color: healthTone.text }} aria-hidden="true">{healthTone.icon}</span>
+              <div className="min-w-0">
+                <div className="text-[10px] font-extrabold uppercase tracking-[.14em]" style={{ color: healthTone.text }}>Diagnóstico automático</div>
+                <div className="font-serif text-xl font-bold mt-0.5">{healthStatus}</div>
+                <div className="text-xs font-semibold mt-1 leading-relaxed" style={{ color: T.choco2 }}>
+                  {healthSnapshot?.readOnly
+                    ? "Las escrituras están protegidas hasta verificar y corregir el fallo de integridad."
+                    : healthStatus === "Saludable"
+                      ? "Pedidos, inventarios y trazabilidad están conciliados."
+                      : "La operación puede continuar; revisá las advertencias para evitar que escalen."}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-2xl px-3 py-2 text-center min-w-[74px]" style={{ background: T.vainilla }}><div className="font-serif text-xl font-bold">{Number(healthCounts.critical || 0)}</div><div className="text-[9px] font-extrabold uppercase">Críticas</div></div>
+              <div className="rounded-2xl px-3 py-2 text-center min-w-[74px]" style={{ background: T.vainilla }}><div className="font-serif text-xl font-bold">{Number(healthCounts.high || 0)}</div><div className="text-[9px] font-extrabold uppercase">Altas</div></div>
+              <Btn small onClick={revisarSaludAhora} disabled={healthReviewing || healthLoading}>{healthReviewing ? "Revisando…" : "Revisar ahora"}</Btn>
+            </div>
+          </div>
+
+          {healthError && <div className="mt-3 rounded-xl px-3 py-2 text-xs font-bold" role="alert" style={{ background: "#FBE1DC", color: "#A03B2A" }}>{healthError}</div>}
+          {healthLoading && !healthSnapshot ? <div className="mt-4 text-sm font-semibold" style={{ color: T.choco2 }}>Consultando el estado protegido del servidor…</div> : <>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2 mt-4">
+              <div className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] font-extrabold uppercase" style={{ color: T.choco2 }}>Última revisión</div><div className="text-sm font-bold mt-1">{healthDate(healthSnapshot?.lastCheckedAt)}</div></div>
+              <div className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] font-extrabold uppercase" style={{ color: T.choco2 }}>Vigilancia</div><div className="text-sm font-bold mt-1">{healthSnapshot?.scheduler === "pg_cron" ? "Automática cada 5 minutos" : "Worker privado"}</div></div>
+              <div className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}>
+                <div className="text-[9px] font-extrabold uppercase" style={{ color: T.choco2 }}>Backup observado</div>
+                <div className="text-sm font-bold mt-1">{continuityBackup.observed ? healthDate(continuityBackup.completedAt) : "Sin evidencia"}</div>
+                <div className="text-[10px] font-semibold mt-1" style={{ color: continuityBackup.pitrEnabled ? "#315D36" : "#A03B2A" }}>{continuityBackup.pitrEnabled ? "PITR activo" : "PITR inactivo"}</div>
+                {continuityBackup.observed && <div className="text-[9px] font-semibold mt-1" style={{ color: continuityBackup.rpoCoverageObserved ? "#315D36" : "#A03B2A" }}>{continuityBackup.rpoCoverageObserved ? "Cobertura RPO observada" : "RPO de 5 min sin cobertura"} · Base solamente</div>}
+              </div>
+              <div className="rounded-2xl border p-3" style={{ borderColor: continuityRecovery.certified ? "#93BF8D" : T.border, background: continuityRecovery.certified ? "#F2F7F0" : T.soft }}>
+                <div className="text-[9px] font-extrabold uppercase" style={{ color: T.choco2 }}>Recuperación comprobada</div>
+                <div className="text-sm font-bold mt-1">{continuityRecovery.certified ? `Certificada hasta ${healthDate(continuityRecovery.certifiedUntil)}` : continuityRecovery.tested ? `Último simulacro: ${continuityRecovery.status}` : "Simulacro pendiente"}</div>
+                {continuityRecovery.tested && <div className="text-[9px] font-semibold mt-1" style={{ color: continuityRecovery.evidenceDerived && continuityRecovery.storageVerified ? "#315D36" : "#A03B2A" }}>{continuityRecovery.evidenceDerived ? `RPO ${continuityRecovery.rpoMinutes} min · RTO ${continuityRecovery.rtoMinutes} min` : "Evidencia anterior: repetir simulacro H97"} · {continuityRecovery.storageVerified ? "Storage verificado" : "Storage pendiente"}</div>}
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }} data-testid="operational-slo-center">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div><div className="text-xs font-extrabold uppercase tracking-wide" style={{ color: T.choco2 }}>Nivel de servicio · última hora</div><div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>Disponibilidad y velocidad con evidencia agregada, nunca con datos de clientes.</div></div>
+                <div className="flex gap-2 text-[10px] font-bold"><span>{Number(sloCounts.healthy || 0)} saludables</span><span>{Number(sloCounts.outside || 0)} fuera</span><span>{Number(sloCounts.withoutData || 0)} sin datos</span></div>
+              </div>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                {sloSnapshot?.pendingActivation && <div className="sm:col-span-2 xl:col-span-4 rounded-2xl border px-3 py-3 text-xs font-bold" style={{ borderColor: T.border, background: T.vainilla, color: T.choco2 }}>H95 estÃ¡ listo en la aplicaciÃ³n y espera activaciÃ³n en el servidor. El diagnÃ³stico operativo actual sigue disponible.</div>}
+                {sloServices.map((service) => {
+                  const tone = sloTone(service.status);
+                  const availabilityValue = service.availability == null ? "—" : `${(Number(service.availability) * 100).toFixed(2)}%`;
+                  const p95Value = service.latency?.p95Ms == null ? "—" : `${service.latency.p95Ms} ms`;
+                  return <div key={service.serviceCode} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: "#fff" }}>
+                    <div className="flex items-center justify-between gap-2"><div className="text-xs font-bold">{sloLabels[service.serviceCode] || service.serviceCode}</div><span className="rounded-full px-2 py-1 text-[8px] font-extrabold uppercase" style={{ background: tone.bg, color: tone.color }}>{service.status}</span></div>
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-center"><div><div className="font-serif text-base font-bold">{availabilityValue}</div><div className="text-[8px] uppercase font-bold" style={{ color: T.choco2 }}>Disponible</div></div><div><div className="font-serif text-base font-bold">{p95Value}</div><div className="text-[8px] uppercase font-bold" style={{ color: T.choco2 }}>p95</div></div><div><div className="font-serif text-base font-bold">{Number(service.sampleCount || 0)}</div><div className="text-[8px] uppercase font-bold" style={{ color: T.choco2 }}>Muestras</div></div></div>
+                  </div>;
+                })}
+              </div>
+              {sloAlerts.length > 0 && <div className="mt-3 rounded-2xl border p-3" style={{ borderColor: Number(sloAlertCounts.critical || 0) > 0 ? "#E56B55" : "#E3B35B", background: Number(sloAlertCounts.critical || 0) > 0 ? "#FFF5F2" : "#FFF9EC" }} data-testid="operational-slo-alerts">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="text-xs font-extrabold">Alertas del servicio</div>
+                  <span className="text-[9px] font-extrabold uppercase">{Number(sloAlertCounts.open || 0)} abiertas</span>
+                </div>
+                <div className="grid md:grid-cols-2 gap-2">
+                  {sloAlerts.slice(0, 6).map((alert) => <div key={alert.id} className="rounded-xl border px-3 py-2" style={{ borderColor: T.border, background: alert.status === "Recuperada" ? "#F2F7F0" : "#fff" }}>
+                    <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-extrabold uppercase" style={{ color: alert.severity === "Critica" ? "#A03B2A" : "#8A5D08" }}>{sloLabels[alert.serviceCode] || "Servicio MOMO OPS"}</span><Badge tone={alert.status === "Recuperada" ? "green" : "amber"}>{alert.status}</Badge></div>
+                    <div className="text-xs font-bold mt-1">{sloAlertTitle[alert.alertCode] || "Revisar la salud del servicio"}</div>
+                    <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>Responsable: {alert.ownerRole} · {healthDate(alert.lastSeenAt)}</div>
+                  </div>)}
+                </div>
+              </div>}
+            </div>
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
+              <div className="flex items-center justify-between gap-3 mb-2"><div className="text-xs font-extrabold uppercase tracking-wide" style={{ color: T.choco2 }}>Qué necesita atención</div><span className="text-[10px] font-bold">{healthIncidents.length} abiertas o recuperadas</span></div>
+              {healthIncidents.length === 0 ? <div className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: "#E3EFE0", color: "#315D36" }}>✓ No hay incidentes pendientes.</div> : <div className="grid md:grid-cols-2 gap-2">
+                {healthIncidents.slice(0, 6).map((incident) => <div key={incident.id} className="rounded-2xl border p-3" style={{ borderColor: incident.severity === "Crítica" ? "#E56B55" : T.border, background: incident.status === "Recuperado" ? "#F2F7F0" : "#fff" }}>
+                  <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-extrabold uppercase" style={{ color: incident.severity === "Crítica" ? "#A03B2A" : T.coral }}>{incident.severity} · {incident.domain}</span><Badge tone={incident.status === "Recuperado" ? "green" : "amber"}>{incident.status}</Badge></div>
+                  <div className="text-sm font-bold mt-1">{healthTitle[incident.titleCode] || "Revisar una señal operativa"}</div>
+                  <div className="text-[10px] font-semibold mt-1" style={{ color: T.choco2 }}>Responsable: {incident.ownerRole} · detectado {healthDate(incident.lastSeenAt)}</div>
+                </div>)}
+              </div>}
+            </div>
+          </>}
         </Card>
         <SectionTitle>Zonas y tarifas de domicilio</SectionTitle>
         <Card className="p-4">
@@ -1991,6 +2364,23 @@ export function createBusinessPanels(shared) {
               <span className="text-xs font-bold" style={{ color: T.choco2 }}>h</span>
             </div>
           </div>
+        </Card>
+
+        <SectionTitle>🗓️ Vida útil de Producción</SectionTitle>
+        <Card className="p-4" data-testid="production-shelf-life-settings" style={{ background: "linear-gradient(145deg, #fff, #F5FAF2)" }}>
+          <div className="flex items-start gap-3 mb-4">
+            <span className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0" style={{ background: "#E8F1E5", color: "#315D36" }} aria-hidden="true">🗓️</span>
+            <div><div className="text-sm font-bold">Vencimientos automáticos de Cocina</div><div className="text-xs font-semibold mt-0.5 leading-relaxed" style={{ color: T.choco2 }}>La fecha se calcula desde el desmolde del producto o desde el registro de la mezcla. Cada lote conserva la vida útil con la que nació aunque esta configuración cambie después.</div></div>
+          </div>
+          {s.vidaUtilConfigurable ? <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Producto terminado">
+              <div className="flex items-center gap-2"><Input type="number" min="1" max="30" step="1" value={s.vidaUtilProductoTerminadoDias} onChange={(e) => editarBorrador((d) => { d.settings.vidaUtilProductoTerminadoDias = Math.max(1, Math.min(30, Number.parseInt(e.target.value, 10) || 1)); })} /><span className="text-xs font-bold">días desde desmolde</span></div>
+            </Field>
+            <Field label="Mezclas y elaboraciones">
+              <div className="flex items-center gap-2"><Input type="number" min="1" max="30" step="1" value={s.vidaUtilMezclasDias} onChange={(e) => editarBorrador((d) => { d.settings.vidaUtilMezclasDias = Math.max(1, Math.min(30, Number.parseInt(e.target.value, 10) || 1)); })} /><span className="text-xs font-bold">días desde preparación</span></div>
+            </Field>
+            <div className="sm:col-span-2 rounded-xl px-3 py-2 text-xs font-bold" style={{ background: "#E8F1E5", color: "#315D36" }}>Regla actual: producto terminado {s.vidaUtilProductoTerminadoDias} días · mezclas {s.vidaUtilMezclasDias} días.</div>
+          </div> : <div className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: "#FFF1D6", color: "#7B5410" }}>Aplicá la migración de vida útil configurable para editar estos valores sin desalinear Producción y la base de datos.</div>}
         </Card>
 
         <SectionTitle>⏱️ Tiempos de pedidos demorados</SectionTitle>
@@ -2067,41 +2457,54 @@ export function createBusinessPanels(shared) {
           ))}
         </div>
 
-        <SectionTitle>Figuras (catálogo)</SectionTitle>
+        <SectionTitle>Figuras físicas y auxiliares (catálogo de Cocina)</SectionTitle>
         <Card className="p-4">
           <div className="text-xs font-semibold mb-3" style={{ color: T.choco2 }}>
-            La figura es la <b>forma</b> (nombre · especie · gramaje). El sabor es aparte: cualquier figura se ofrece en los 11 sabores.
+            Lizi, Momo, Rocco, Teo, Toby, Danna y Max son <b>postres físicos</b>. Horizontal es una figura auxiliar de decoración y solo aparece mientras Cuchareable, Cake Momo o Cheesecake Momo estén activos.
           </div>
           {s.figuras.map((f, i) => (
             <div key={f.nombre} className="flex items-center justify-between gap-3 py-2 border-b last:border-0" style={{ borderColor: T.border }}>
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-sm font-bold truncate">{f.nombre}</span>
-                <Badge label={f.especie === "perro" ? "🐶 perro" : "🐱 gato"} />
+                <Badge label={isAuxiliaryFigureName(f.nombre) ? "Auxiliar de decoración" : f.especie === "perro" ? "Silueta: perro" : "Silueta: gato"} />
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <input value={f.gramaje} onChange={(e) => editarBorrador((d) => { d.settings.figuras[i].gramaje = e.target.value; })}
-                  className="w-20 rounded-xl px-2 py-1.5 text-sm border text-right font-semibold" style={inputStyle} />
-                <button aria-label={`Quitar ${f.nombre}`} onClick={() => editarBorrador((d) => {
-                  d.settings.figuras = d.settings.figuras.filter((x) => x.nombre !== f.nombre);
-                })} className="font-bold opacity-60 text-sm">✕</button>
+                {isAuxiliaryFigureName(f.nombre)
+                  ? <span className="text-[10px] font-bold" style={{ color: T.choco2 }}>Se activa automáticamente</span>
+                  : <input value={f.gramaje} onChange={(e) => editarBorrador((d) => { d.settings.figuras[i].gramaje = e.target.value; })}
+                    className="w-20 rounded-xl px-2 py-1.5 text-sm border text-right font-semibold" style={inputStyle} />}
+                {isKitchenFigureName(f.nombre)
+                  ? <span className="text-[9px] font-extrabold rounded-full px-2 py-1" style={{ background: "#E6F1E3", color: "#3F6B42" }}>CATÁLOGO PROTEGIDO</span>
+                  : isAuxiliaryFigureName(f.nombre)
+                    ? <span className="text-[9px] font-extrabold rounded-full px-2 py-1" style={{ background: "#FFF1D6", color: "#7A5510" }}>VISIBLE POR PRODUCTO ACTIVO</span>
+                  : <button aria-label={`Quitar denominación heredada ${f.nombre}`} onClick={() => editarBorrador((d) => {
+                    d.settings.figuras = d.settings.figuras.filter((x) => x.nombre !== f.nombre);
+                  })} className="font-bold opacity-60 text-sm">Quitar legado</button>}
               </div>
             </div>
           ))}
-          <div className="flex flex-wrap gap-2 pt-3 items-center">
-            <input value={nuevaFig.nombre} onChange={(e) => setNuevaFig({ ...nuevaFig, nombre: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && agregarFigura()} placeholder="Nombre (ej. Lizi)"
-              className="flex-1 min-w-[120px] rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
-            <div className="w-28"><Select options={["gato", "perro"]} value={nuevaFig.especie} onChange={(e) => setNuevaFig({ ...nuevaFig, especie: e.target.value, productId: "" })} /></div>
-            <input value={nuevaFig.gramaje} onChange={(e) => setNuevaFig({ ...nuevaFig, gramaje: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && agregarFigura()} placeholder="150 g"
-              className="w-24 rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
-            <select value={nuevaFig.productId} onChange={(e) => setNuevaFig({ ...nuevaFig, productId: e.target.value })}
-              className="rounded-xl px-3 py-2 text-xs border font-semibold min-w-[170px]" style={inputStyle}>
-              <option value="">— producto compatible —</option>
-              {(db.configurationFigureProductChoices || []).filter((product) => product.especie === nuevaFig.especie).map((product) => <option key={product.id} value={product.id}>{product.nombre}</option>)}
-            </select>
-            <Btn small kind="rosa" onClick={agregarFigura}>＋ Figura</Btn>
-          </div>
+          {(() => {
+            const existing = new Set(s.figuras.map((figure) => figure.nombre));
+            const missing = KITCHEN_FIGURE_NAMES.filter((name) => !existing.has(name));
+            if (!missing.length) return <div className="rounded-xl px-3 py-2 mt-3 text-xs font-bold" style={{ background: "#E6F1E3", color: "#3F6B42" }}>✓ Las siete figuras físicas están completas. Sus nombres no se pueden reemplazar por una familia comercial.</div>;
+            const selectedDefaults = KITCHEN_FIGURE_DEFAULTS[nuevaFig.nombre] || KITCHEN_FIGURE_DEFAULTS[missing[0]];
+            const selectedName = missing.includes(nuevaFig.nombre) ? nuevaFig.nombre : missing[0];
+            const selectedGrams = nuevaFig.nombre === selectedName && nuevaFig.gramaje ? nuevaFig.gramaje : `${selectedDefaults.grams} g`;
+            const expectedProductId = expectedFigureProductId(selectedName);
+            const canonicalProduct = (db.products || []).find((product) => product.id === expectedProductId);
+            const canonicalFamily = canonicalProduct ? commercialFamilyLabel(canonicalProduct) : `Falta configurar ${expectedProductId}`;
+            return <div className="flex flex-wrap gap-2 pt-3 items-center">
+              <select value={selectedName} onChange={(e) => { const next = KITCHEN_FIGURE_DEFAULTS[e.target.value]; setNuevaFig({ nombre: e.target.value, especie: next.species, gramaje: `${next.grams} g`, productId: expectedFigureProductId(e.target.value) }); }} className="flex-1 min-w-[150px] rounded-xl px-3 py-2 text-sm border font-semibold" style={inputStyle}>
+                {missing.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <span className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: T.vainilla }}>{selectedDefaults.species} · {selectedDefaults.grams} g base</span>
+              <input value={selectedGrams} onChange={(e) => setNuevaFig({ ...nuevaFig, nombre: selectedName, especie: selectedDefaults.species, gramaje: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && agregarFigura()} placeholder={`${selectedDefaults.grams} g`}
+                className="w-24 rounded-xl px-3 py-2 text-sm border outline-none" style={inputStyle} />
+              <span className="rounded-xl px-3 py-2 text-xs font-bold min-w-[190px]" style={{ background: canonicalProduct ? "#E6F1E3" : "#FFF1D6", color: canonicalProduct ? "#3F6B42" : "#7A5510" }}>Familia canónica: {canonicalFamily}</span>
+              <Btn small kind="rosa" onClick={() => agregarFigura(selectedName)}>Restaurar figura</Btn>
+            </div>;
+          })()}
         </Card>
 
         <SectionTitle>Toppings / adiciones (catálogo)</SectionTitle>
@@ -2405,7 +2808,7 @@ export function createBusinessPanels(shared) {
 
     function exportar() {
       downloadCSV("campanas",
-        ["Id","Nombre","Canal","Objetivo","Producto foco","Oferta","Inicio","Fin","Presupuesto","Gasto real","Pedidos atrib.","Ventas atrib.","CAC","ROAS","Estado","Responsable"],
+        ["Id","Nombre","Canal","Objetivo","Producto o presentación foco","Oferta","Inicio","Fin","Presupuesto","Gasto real","Pedidos atrib.","Ventas atrib.","CAC","ROAS","Estado","Responsable"],
         conMetrics.map(({ c, m }) => [c.id, c.nombre, c.canal, c.objetivo, c.productoFoco, c.oferta, c.fechaInicio, c.fechaFin, c.presupuesto, c.gastoReal, m.pedidos, m.ventas, m.cac ? Math.round(m.cac) : "", m.roas ? m.roas.toFixed(2) : "", c.estado, c.responsable]));
     }
 
@@ -2458,7 +2861,7 @@ export function createBusinessPanels(shared) {
                 <div className="flex justify-between items-start gap-2">
                   <div className="min-w-0">
                     <div className="font-bold text-sm truncate">{c.nombre}</div>
-                    <div className="text-xs" style={{ color: T.choco2 }}>{c.objetivo} · {c.productoFoco || "sin producto foco"}</div>
+                    <div className="text-xs" style={{ color: T.choco2 }}>{c.objetivo} · {c.productoFoco ? `foco: ${commercialFamilyLabel(c.productoFoco)}` : "sin producto o presentación foco"}</div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <Badge label={c.estado} />
@@ -2498,10 +2901,10 @@ export function createBusinessPanels(shared) {
         {nueva && (
           <Modal title="Nueva campaña" onClose={() => setNueva(false)} wide>
             <div className="grid sm:grid-cols-2 gap-x-4">
-              <Field label="Nombre"><Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Ej: Lanzamiento Gatitos" /></Field>
+              <Field label="Nombre"><Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Ej: Campaña Lizi de Oreo" /></Field>
               <Field label="Canal"><Select options={MK_CANALES} value={form.canal} onChange={(e) => setForm({ ...form, canal: e.target.value })} /></Field>
               <Field label="Objetivo"><Select options={MK_OBJETIVOS} value={form.objetivo} onChange={(e) => setForm({ ...form, objetivo: e.target.value })} /></Field>
-              <Field label="Producto foco"><Select placeholder="Sin producto foco" options={db.products.map((p) => p.nombre)} value={form.productoFoco} onChange={(e) => setForm({ ...form, productoFoco: e.target.value })} /></Field>
+              <Field label="Producto o presentación comercial foco"><Select placeholder="Sin foco único" options={db.products.map((p) => p.nombre)} value={form.productoFoco} onChange={(e) => setForm({ ...form, productoFoco: e.target.value })} /></Field>
               <Field label="Oferta"><Input value={form.oferta} onChange={(e) => setForm({ ...form, oferta: e.target.value })} placeholder="Ej: 2x1, envío gratis…" /></Field>
               <Field label="Responsable"><Input value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })} /></Field>
               <Field label="Fecha inicio"><Input type="date" value={form.fechaInicio} onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })} /></Field>
@@ -2571,6 +2974,27 @@ export function createBusinessPanels(shared) {
     const [form, setForm] = useState(vacio);
     const sabores = [...db.settings.saboresFrutales, ...db.settings.saboresCremosos];
 
+    function focusProductFor(draft) {
+      return draft?.productoFoco ? db.products.find((product) => product.nombre === draft.productoFoco) : null;
+    }
+
+    function compatibleFigureNames(draft) {
+      const product = focusProductFor(draft);
+      if (!isCommercialFamilyProduct(product)) return [];
+      return activeFigureCatalog(db)
+        .filter((figure) => figureProductId(figure) === product.id)
+        .map((figure) => figure.nombre);
+    }
+
+    function validateCreativeSubject(draft) {
+      const product = focusProductFor(draft);
+      if (!isCommercialFamilyProduct(product)) return "";
+      const allowed = compatibleFigureNames(draft);
+      if (!allowed.includes(draft.figuraFoco)) return `Elegí una figura física de ${commercialFamilyLabel(product)}: ${allowed.join(", ") || "falta configurarla en Producción"}.`;
+      if (!draft.saborFoco) return "Elegí el sabor protagonista del creativo.";
+      return "";
+    }
+
     const grupos = [["Idea","Ideas pendientes"],["En diseño","En diseño"],["En revisión","En revisión"],["Aprobado","Aprobados"],["Publicado","Publicados"],["Ganador","Ganadores"]];
     const lista = db.creatives.filter((c) => !fEstado || c.estado === fEstado);
 
@@ -2593,6 +3017,8 @@ export function createBusinessPanels(shared) {
 
     async function guardar() {
       if (!form.titulo.trim()) { toast("error", "Falta el título del creativo"); return; }
+      const subjectError = validateCreativeSubject(form);
+      if (subjectError) { toast("error", subjectError); return; }
       let res;
       try { res = await crearCreativo(payloadCreativo(form)); }
       catch (e) { toast("error", e.message); return; }
@@ -2605,6 +3031,8 @@ export function createBusinessPanels(shared) {
       // El baseline queda congelado al abrir el modal. Comparar contra el polling
       // más reciente podría reenviar valores viejos y pisar cambios de otro equipo.
       const orig = selBase || sel;
+      const subjectError = validateCreativeSubject(sel);
+      if (subjectError) { toast("error", subjectError); return; }
       const antes = payloadCreativo(orig);
       const despues = payloadCreativo(sel);
       const patch = {};
@@ -2665,7 +3093,8 @@ export function createBusinessPanels(shared) {
                 {c.hook && <div className="text-xs mt-2 italic p-2 rounded-lg" style={{ background: T.vainilla, color: T.choco }}>“{c.hook}”</div>}
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   <Badge label={c.canal} map={MK_CANAL_STYLE} />
-                  {c.productoFoco && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>{c.productoFoco}</span>}
+                  {c.productoFoco && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: T.vainilla, color: T.choco2 }}>Oferta foco: {commercialFamilyLabel(c.productoFoco)}</span>}
+                  {c.figuraFoco && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: T.rosa, color: "#8E4B5A" }}>{c.figuraFoco}{c.saborFoco ? ` de ${c.saborFoco}` : ""}</span>}
                 </div>
                 <div className="flex justify-between items-center mt-2 text-[11px] font-semibold" style={{ color: T.choco2 }}>
                   <span>{c.responsable} · entrega {c.fechaEntrega}</span>
@@ -2700,8 +3129,8 @@ export function createBusinessPanels(shared) {
                     </Field>
                     <Field label="Canal"><Select options={MK_CANALES} value={f.canal} onChange={(e) => setF({ ...f, canal: e.target.value })} /></Field>
                     <Field label="Formato"><Select options={MK_FORMATOS} value={f.formato} onChange={(e) => setF({ ...f, formato: e.target.value })} /></Field>
-                    <Field label="Producto foco"><Select placeholder="—" options={db.products.map((p) => p.nombre)} value={f.productoFoco} onChange={(e) => setF({ ...f, productoFoco: e.target.value })} /></Field>
-                    <Field label="Figura foco"><Select placeholder="—" options={db.settings.figuras.map((x) => x.nombre)} value={f.figuraFoco} onChange={(e) => setF({ ...f, figuraFoco: e.target.value })} /></Field>
+                    <Field label="Producto o presentación comercial foco"><Select placeholder="—" options={db.products.map((p) => p.nombre)} value={f.productoFoco} onChange={(e) => setF({ ...f, productoFoco: e.target.value, figuraFoco: "", saborFoco: "" })} /></Field>
+                    <Field label="Postre / figura protagonista"><Select placeholder={isCommercialFamilyProduct(focusProductFor(f)) ? "Elegir figura exacta…" : "No aplica"} options={compatibleFigureNames(f)} value={f.figuraFoco} onChange={(e) => setF({ ...f, figuraFoco: e.target.value })} /></Field>
                     <Field label="Sabor foco"><Select placeholder="—" options={sabores} value={f.saborFoco} onChange={(e) => setF({ ...f, saborFoco: e.target.value })} /></Field>
                     <Field label="Estado"><Select options={CREA_ESTADOS} value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value })} /></Field>
                     <Field label="Responsable"><Input value={f.responsable} onChange={(e) => setF({ ...f, responsable: e.target.value })} /></Field>

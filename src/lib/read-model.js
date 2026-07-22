@@ -7,7 +7,7 @@ import { agencyOperationalFactsReady as hasAgencyOperationalFacts, normalizeAgen
 import { normalizeOrderDeltaBatch } from "./order-delta.js";
 import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta.js";
 import { normalizeProductionActivityDelta } from "./production-delta.js";
-import { normalizeCustomerCrmDeltaBatch, normalizeProductCatalogDeltaBatch } from "./catalog-crm-delta.js";
+import { activeConfigurationFigureCatalog } from "./momos-domain-language.js";
 
 /* ── Fase 3 · slice 2: lecturas de MAESTROS/CATÁLOGOS desde Supabase ──
    Devuelve objetos con el shape EXACTO de la maqueta (camelCase).
@@ -407,7 +407,11 @@ export async function fetchAgencyCatalogosConFallback(
   legacyLoader = () => fetchCatalogos({ includeAgency: true, skipAgencySnapshot: true }),
 ) {
   const snapshots = await fetchAgencyCatalogos();
-  return snapshots || legacyLoader();
+  if (snapshots) return snapshots;
+  if (await piiReadClosureCapability()) {
+    throw new Error("Los snapshots protegidos de Agencia no están disponibles; H89 impide degradar a lecturas directas.");
+  }
+  return legacyLoader();
 }
 
 export async function fetchAgencySnapshotEventVersion() {
@@ -428,6 +432,14 @@ async function multipleRolesCapability() {
   return !missing && result.data === true;
 }
 
+async function piiReadClosureCapability() {
+  const result = await supabase.rpc("cierre_lecturas_pii_disponible");
+  const missing = result.error && (result.error.code === "PGRST202"
+    || /could not find the function|schema cache/i.test(result.error.message || ""));
+  if (result.error && !missing) throw new Error(result.error.message);
+  return !missing && result.data === true;
+}
+
 async function inventoryDeltasCapability() {
   const manifest = await fetchSyncManifest();
   const advertised = manifest?.capabilities?.inventario_deltas_disponibles === true;
@@ -437,6 +449,21 @@ async function inventoryDeltasCapability() {
       ? normalizeInventoryCursorToken(manifest?.inventory_latest_event_id)
       : "",
   };
+}
+
+async function kitchenProceduresCapability() {
+  const manifest = await fetchSyncManifest();
+  return manifest?.capabilities?.fichas_tecnicas_cocina_disponibles === true;
+}
+
+async function kitchenProcedureManagementCapability() {
+  const manifest = await fetchSyncManifest();
+  return manifest?.capabilities?.gestion_fichas_tecnicas_cocina_disponible === true;
+}
+
+async function internalPreparationFormulaCapability() {
+  const manifest = await fetchSyncManifest();
+  return manifest?.capabilities?.formulas_elaboraciones_internas_disponibles === true;
 }
 
 export async function fetchInventoryDeltas(itemIds) {
@@ -476,6 +503,18 @@ export async function fetchOrderDeltas(orderIds) {
   return data;
 }
 
+export async function fetchDeliverySnapshot(historyLimit = 50) {
+  const limit = Math.max(1, Math.min(50, Number.parseInt(historyLimit, 10) || 50));
+  const manifest = await fetchSyncManifest();
+  const { data, error } = await supabase.rpc("momos_delivery_snapshot_v1", { p_history_limit: limit });
+  if (error) throw new Error(error.message);
+  const { normalizeDeliverySnapshot } = await import("./delivery-sync.js");
+  return {
+    ...normalizeDeliverySnapshot(data),
+    mutationDeltaReady: manifest?.capabilities?.domicilios_mutaciones_atomicas_disponibles === true,
+  };
+}
+
 export async function fetchFinishedInventoryDeltas(productIds) {
   const ids = [...new Set((Array.isArray(productIds) ? productIds : [])
     .map((value) => String(value || "").trim())
@@ -510,6 +549,7 @@ export async function fetchProductCatalogDeltas(productIds) {
   if (!ids.length || ids.length > 20) throw new Error("Solicita entre 1 y 20 productos.");
   const { data, error } = await supabase.rpc("momos_product_catalog_deltas_v1", { p_product_ids: ids });
   if (error) throw new Error(error.message);
+  const { normalizeProductCatalogDeltaBatch } = await import("./catalog-crm-delta.js");
   return normalizeProductCatalogDeltaBatch(data);
 }
 
@@ -519,10 +559,28 @@ export async function fetchCustomerCrmDeltas(customerIds) {
   if (!ids.length || ids.length > 20) throw new Error("Solicita entre 1 y 20 clientes.");
   const { data, error } = await supabase.rpc("momos_customer_crm_deltas_v1", { p_customer_ids: ids });
   if (error) throw new Error(error.message);
+  const { normalizeCustomerCrmDeltaBatch } = await import("./catalog-crm-delta.js");
   return normalizeCustomerCrmDeltaBatch(data);
 }
 
 export async function fetchUserProfile(authUserId) {
+  const protectedProfile = await supabase.rpc("momos_current_user_profile_v1");
+  const profileMissing = protectedProfile.error && (protectedProfile.error.code === "PGRST202"
+    || /could not find the function|schema cache/i.test(protectedProfile.error.message || ""));
+  if (protectedProfile.error && !profileMissing) throw new Error(protectedProfile.error.message);
+  if (!profileMissing) {
+    const data = protectedProfile.data;
+    if (!data || typeof data !== "object" || !data.id || !Array.isArray(data.roles)
+      || data.privacy?.own_profile_only !== true
+      || data.privacy?.contains_email !== false
+      || data.privacy?.contains_auth_id !== false) {
+      throw new Error("El perfil protegido de MOMOS perdió su contrato de privacidad.");
+    }
+    return { id: data.id, nombre: data.nombre, rol: data.rol, roles: data.roles, activo: data.activo, multipleRolesReady: true };
+  }
+  if (await piiReadClosureCapability()) {
+    throw new Error("H89 está activo, pero el perfil protegido no está disponible.");
+  }
   const multipleRolesReady = await multipleRolesCapability();
   const columns = multipleRolesReady ? "id,nombre,rol,roles,activo" : "id,nombre,rol,activo";
   const { data, error } = await supabase.from("users").select(columns).eq("auth_id", authUserId).maybeSingle();
@@ -551,18 +609,68 @@ export async function fetchBrandAssetSignedUrl(storagePath) {
   return data.signedUrl;
 }
 
-export async function fetchOperationalHistoryPage(cursor = null, limit = 50) {
-  const { data, error } = await supabase.rpc("momos_history_page_v1", {
+export const OPERATIONAL_HISTORY_AREAS = Object.freeze([
+  "Pedidos", "Producción", "Empaque", "Domicilios", "Reclamos", "Inventario",
+  "Inventario terminado", "Productos", "Clientes", "Agencia MOMOS", "Finanzas",
+  "Configuración", "Operación",
+]);
+
+export function normalizeOperationalHistoryFilters(filters = {}) {
+  const query = String(filters.query || "").trim();
+  const area = String(filters.area || "").trim();
+  const from = String(filters.from || "").trim();
+  const to = String(filters.to || "").trim();
+  if (query.length > 80 || /[\u0000-\u001f\u007f]/.test(query)) throw new Error("La búsqueda del historial no es válida.");
+  if (area && !OPERATIONAL_HISTORY_AREAS.includes(area)) throw new Error("El área del historial no es válida.");
+  if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) || (from && to && from > to)) {
+    throw new Error("El rango del historial no es válido.");
+  }
+  return { query, area, from, to };
+}
+
+export async function fetchOperationalHistoryPage(cursor = null, limit = 50, filters = {}) {
+  const normalized = normalizeOperationalHistoryFilters(filters);
+  const pageLimit = Math.min(50, Math.max(1, Number(limit) || 50));
+  let { data, error } = await supabase.rpc("momos_history_page_v2", {
     p_cursor: cursor || null,
-    p_limit: Math.min(50, Math.max(1, Number(limit) || 50)),
+    p_limit: pageLimit,
+    p_query: normalized.query,
+    p_area: normalized.area,
+    p_from: normalized.from || null,
+    p_to: normalized.to || null,
   });
+  const missing = error && (error.code === "PGRST202"
+    || /could not find (?:the )?function|schema cache|function\b.+\bdoes not exist/i.test(error.message || ""));
+  const filtered = Boolean(normalized.query || normalized.area || normalized.from || normalized.to);
+  if (missing && filtered) throw new Error("La búsqueda histórica de servidor aún no está desplegada. Aplicá H79 y recargá MOMO OPS.");
+  if (missing) {
+    ({ data, error } = await supabase.rpc("momos_history_page_v1", {
+      p_cursor: cursor || null,
+      p_limit: pageLimit,
+    }));
+  }
   if (error) throw new Error(error.message);
+  if (!missing) {
+    const privacy = data?.privacy;
+    const valid = data?.contract === "momos.history-page.v2"
+      && Number(data?.version) === 2
+      && Array.isArray(data?.rows)
+      && Number(data?.limit) === pageLimit
+      && privacy?.contains_customer_pii === false
+      && privacy?.contains_staff_identity === false
+      && privacy?.contains_storage_references === false
+      && privacy?.contains_secrets === false
+      && privacy?.external_execution === false;
+    if (!valid) throw new Error("El historial H79 no cumple su contrato protegido.");
+  }
   return {
     rows: (data?.rows || []).map((row) => ({
       id: row.id, fecha: tsBogota(row.fecha), user: nz(row.user), entidad: row.entidad,
       entidadId: nz(row.entidad_id), accion: row.accion, de: nz(row.de), a: nz(row.a),
     })),
     cursor: data?.next_cursor || null,
+    hasMore: missing ? Boolean(data?.next_cursor) : data?.has_more === true,
+    filtered: missing ? false : data?.filtered === true,
   };
 }
 
@@ -611,9 +719,12 @@ export async function fetchFinanceSyncVersion() {
 }
 
 export async function fetchConfigurationSnapshot() {
-  const { data, error } = await supabase.rpc("momos_configuration_snapshot_v1");
+  let { data, error } = await supabase.rpc("momos_configuration_snapshot_v2");
+  const missing = error && (error.code === "PGRST202"
+    || /could not find (?:the )?function|schema cache|function\b.+\bdoes not exist/i.test(error.message || ""));
+  if (missing) ({ data, error } = await supabase.rpc("momos_configuration_snapshot_v1"));
   if (error) throw new Error(error.message);
-  return { sourceKind: "server-configuration-snapshot-v1", payload: data };
+  return { sourceKind: data?.contract === "momos.configuration-snapshot.v2" ? "server-configuration-snapshot-v2" : "server-configuration-snapshot-v1", payload: data };
 }
 
 export async function fetchConfigurationSyncVersion() {
@@ -640,15 +751,25 @@ export async function fetchDashboardSyncVersion() {
 export async function fetchCatalogos(options = {}) {
   const includeAgency = options.includeAgency !== false;
   const skipAgencySnapshot = options.skipAgencySnapshot === true;
-  const [multipleRolesReady, inventoryDeltaCapability] = await Promise.all([
-    multipleRolesCapability(), inventoryDeltasCapability(),
+  const [multipleRolesReady, inventoryDeltaCapability, kitchenProceduresReady, kitchenProcedureManagementReady, internalPreparationFormulaReady, piiReadClosureReady] = await Promise.all([
+    multipleRolesCapability(), inventoryDeltasCapability(), kitchenProceduresCapability(), kitchenProcedureManagementCapability(), internalPreparationFormulaCapability(), piiReadClosureCapability(),
   ]);
   const userColumns = multipleRolesReady ? "id,nombre,email,rol,roles,activo" : "id,nombre,email,rol,activo";
-  const coreSnapshot = includeAgency ? null : await optionalSnapshot("momos_core_snapshot_v1");
+  // H88 se despliega antes que el cierre RLS H89. Preferimos el contrato por
+  // rol y conservamos una única compatibilidad temporal con H87/H56.
+  let coreSnapshot = includeAgency ? null : await optionalSnapshot("momos_core_snapshot_v3");
+  if (!includeAgency && !coreSnapshot) {
+    coreSnapshot = await optionalSnapshot(
+      kitchenProceduresReady ? "momos_core_snapshot_v2" : "momos_core_snapshot_v1",
+    );
+  }
+  if (!coreSnapshot && piiReadClosureReady) {
+    throw new Error("Los catálogos protegidos por rol no están disponibles; H89 bloquea la lectura directa.");
+  }
   const coreKeys = [
     "products", "combo_components", "inventory_items", "recipes", "users", "toppings", "figuras",
     "catalog_values", "zonas", "proveedores_domicilio", "brand_library", "app_settings", "subrecetas",
-    "subreceta_ingredientes", "figura_relleno",
+    "subreceta_ingredientes", "figura_relleno", "kitchen_procedures",
   ];
   const q = coreSnapshot ? [
     ...coreKeys.map((key) => ({ data: key === "brand_library" ? (coreSnapshot[key] || null) : (coreSnapshot[key] || []), error: null })),
@@ -669,6 +790,13 @@ export async function fetchCatalogos(options = {}) {
     supabase.from("subrecetas").select("id,nombre,tipo,sabor,merma_pct,rinde_g,item_id,activo").order("id"),
     supabase.from("subreceta_ingredientes").select("subreceta_id,item_id,cantidad").order("subreceta_id"),
     supabase.from("figura_relleno").select("id,subreceta_id,gramos_por_unidad,activo").order("id"),
+    kitchenProceduresReady
+      ? supabase.from("kitchen_procedure_versions")
+        .select(internalPreparationFormulaReady
+          ? "subrecipe_id,version,process_defined,note,steps,source_ref,fingerprint,formula_fingerprint,approved_at"
+          : "subrecipe_id,version,process_defined,note,steps,source_ref,fingerprint,approved_at")
+        .eq("status", "Vigente").order("subrecipe_id")
+      : Promise.resolve({ data: [], error: null }),
     includeAgency ? supabase.from("campaigns").select("id,nombre,canal,objetivo,producto_foco_id,oferta,fecha_inicio,fecha_fin,presupuesto,gasto_real,estado,responsable,notas").order("id", { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
     includeAgency ? supabase.from("creatives").select("id,campaign_id,titulo,canal,formato,producto_foco_id,figura,sabor,hook,copy,guion,estado,responsable,fecha_entrega,asset_url,notas,external_id,generacion").order("id", { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
     includeAgency ? supabase.from("content_posts").select("id,fecha,hora,canal,campaign_id,creative_id,titulo,copy_final,estado,url_publicacion,external_post_id,notas").order("fecha", { ascending: false }).order("hora", { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
@@ -676,7 +804,7 @@ export async function fetchCatalogos(options = {}) {
   ]);
   const conError = q.find((r) => r.error);
   if (conError) throw new Error(conError.error.message);
-  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, camps, creativeRows, postRows, metricRows] = q.map((r) => r.data);
+  const [prods, combos, items, recs, usrs, tops, figs, cats, zons, provs, brandRes, appSet, subrs, subrIngs, figRell, procedureRows, camps, creativeRows, postRows, metricRows] = q.map((r) => r.data);
 
   const [productReadyResult, catalogCrmDeltaResult] = await Promise.all([
     capabilityResult("productos_servidor_disponible"),
@@ -788,6 +916,16 @@ export async function fetchCatalogos(options = {}) {
   const setting = {};
   appSet.forEach((s) => { setting[s.clave] = s.valor; });
 
+  const configurationFigures = activeConfigurationFigureCatalog({
+    products,
+    figuras: figs.map((f) => ({
+      nombre: f.nombre,
+      especie: f.especie,
+      gramaje: f.gramaje_g != null ? `${f.gramaje_g} g` : "",
+      productId: nz(f.product_id),
+      activo: f.activo,
+    })),
+  });
   const settingsCatalogos = {
     zonas: zons.map((z) => ({ nombre: z.nombre, tarifa: Number(z.tarifa) })),
     saboresFrutales: porCat.sabor_frutal || [],
@@ -795,11 +933,14 @@ export async function fetchCatalogos(options = {}) {
     salsas: porCat.salsa || [],
     pagos: porCat.pago || [],
     toppings: tops.map((t) => ({ nombre: t.nombre, precio: Number(t.precio), insumoId: nz(t.insumo_id), insumoCant: Number(t.insumo_cant) })),
-    figuras: figs.filter((f) => f.activo).map((f) => ({ nombre: f.nombre, especie: f.especie, gramaje: f.gramaje_g != null ? `${f.gramaje_g} g` : "" })),
+    figuras: configurationFigures,
     proveedores: provs.map((p) => p.nombre),
     pedidoMinimo: Number(setting.pedido_minimo ?? 25000),
     pautaMensual: Number(setting.pauta_mensual ?? 350000),
     horasCongelacion: Number(setting.horas_congelacion ?? 10),
+    vidaUtilConfigurable: setting.vida_util_producto_terminado_dias != null && setting.vida_util_mezclas_dias != null,
+    vidaUtilProductoTerminadoDias: Number(setting.vida_util_producto_terminado_dias ?? 3),
+    vidaUtilMezclasDias: Number(setting.vida_util_mezclas_dias ?? 0),
     demoraCocinaMin: Number(setting.demora_cocina_min ?? 15),
     demoraCocinaUrgenteMin: Number(setting.demora_cocina_urgente_min ?? 30),
     demoraEmpaqueMin: Number(setting.demora_empaque_min ?? 10),
@@ -818,14 +959,30 @@ export async function fetchCatalogos(options = {}) {
 
   // Producción v2: hidratación completa de la tabla figuras (activas e inactivas,
   // con product_id/gramaje_g numérico) para el grid de figuras del form de Producción.
-  // settingsCatalogos.figuras arriba sigue igual (solo activas, gramaje en texto) para no romper otros consumidores.
+  // settingsCatalogos.figuras conserva el mismo formato de UI e incluye productId;
+  // sin ese vínculo una edición de Configuración podría intentar guardar una figura huérfana.
   const figuras = figs.map((f) => ({ nombre: f.nombre, especie: f.especie, gramajeG: f.gramaje_g ?? null, productId: nz(f.product_id), activo: f.activo }));
 
   // Componentes + BOM (hito 2): bases/subrecetas, su receta por 1000 g y el relleno
   // configurable de figuras. Vacío es legítimo en bases sin migración — sin guard.
+  const kitchen_procedures = (procedureRows || []).map((row) => ({
+    subrecipeId: row.subrecipe_id,
+    version: Number(row.version),
+    processDefined: row.process_defined === true,
+    note: nz(row.note),
+    steps: Array.isArray(row.steps) ? row.steps.map((step) => ({
+      title: nz(step?.title), detail: nz(step?.detail),
+    })) : [],
+    sourceRef: nz(row.source_ref),
+    fingerprint: nz(row.fingerprint),
+    formulaFingerprint: nz(row.formula_fingerprint),
+    approvedAt: nz(row.approved_at),
+  }));
+  const procedureBySubrecipe = new Map(kitchen_procedures.map((row) => [row.subrecipeId, row]));
   const subrecetas = (subrs || []).map((sr) => ({
     id: sr.id, nombre: sr.nombre, tipo: sr.tipo, sabor: nz(sr.sabor),
     mermaPct: Number(sr.merma_pct), rindeG: Number(sr.rinde_g), itemId: sr.item_id, activo: sr.activo,
+    procedure: procedureBySubrecipe.get(sr.id) || null,
   }));
   const subreceta_ingredientes = (subrIngs || []).map((r) => ({ subrecetaId: r.subreceta_id, itemId: r.item_id, cantidad: Number(r.cantidad) }));
   const figura_relleno = (figRell || []).map((f) => ({ id: f.id, subrecetaId: f.subreceta_id, gramosPorUnidad: Number(f.gramos_por_unidad), activo: f.activo }));
@@ -883,9 +1040,15 @@ export async function fetchCatalogos(options = {}) {
     // snapshot MVCC. Una base H69 sin el bloque completo degrada al refresco
     // legacy; el manifiesto nunca puede sellar colecciones leidas aparte.
     inventoryMutationEventVersion: inventoryDeltaReady ? atomicInventoryBoundary : "",
-    settingsCatalogos, brand_library, figuras, subrecetas,
+    settingsCatalogos, brand_library, figuras, subrecetas, kitchen_procedures,
+    kitchenProceduresReady,
+    kitchenProcedureManagementReady,
+    internalPreparationFormulaReady,
+    kitchenProcedureSyncVersion: normalizeAgencySnapshotVersion(coreSnapshot?.kitchen_procedure_sync_version),
     subreceta_ingredientes, figura_relleno,
-    syncSource: coreSnapshot ? "snapshot-v1" : "legacy-queries",
+    syncSource: coreSnapshot
+      ? (Number(coreSnapshot.version) >= 3 ? "snapshot-v3-role-scoped" : (kitchenProceduresReady ? "snapshot-v2" : "snapshot-v1"))
+      : "legacy-queries",
     syncServerTime: coreSnapshot?.server_time || "",
   };
   if (!includeAgency) return coreCatalogs;
@@ -1906,8 +2069,14 @@ export async function fetchOperativo() {
   const orderDeltaReady = syncManifest?.capabilities?.pedidos_deltas_disponibles === true;
   const finishedInventoryDeltaReady = syncManifest?.capabilities?.producto_terminado_deltas_disponibles === true;
   const productionMutationDeltaReady = syncManifest?.capabilities?.produccion_deltas_disponibles === true;
+  const finishedProductDisposalReady = syncManifest?.capabilities?.desecho_producto_terminado_disponible === true;
   const catalogCrmDeltaReady = syncManifest?.capabilities?.catalogo_crm_deltas_disponibles === true;
-  const operationalSnapshot = await optionalSnapshot("momos_operational_snapshot_v1");
+  const piiReadClosureReady = await piiReadClosureCapability();
+  const operationalSnapshot = await optionalSnapshot("momos_operational_snapshot_v2")
+    || await optionalSnapshot("momos_operational_snapshot_v1");
+  if (!operationalSnapshot && piiReadClosureReady) {
+    throw new Error("El snapshot operativo protegido no está disponible; H89 bloquea la lectura directa.");
+  }
   const operationalKeys = [
     "orders", "order_items", "order_item_adiciones", "customers", "deliveries", "evidences", "benefits",
     "claims", "inventory_movements", "inventory_reservations", "production_suggestions", "audit_logs",
@@ -2225,5 +2394,5 @@ export async function fetchOperativo() {
     gramajeG: v.gramaje_g, disponibles: Number(v.disponibles), vence: nz(v.vencimiento_proximo),
   }));
 
-  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, orderDeltaReady, finishedInventoryDeltaReady, productionMutationDeltaReady, catalogCrmDeltaReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
+  return { orders, order_items, customers, deliveries, evidences, benefits, claims, inventory_movements, inventory_reservations, production_suggestions, audit_logs, auditCursor: operationalSnapshot?.history_cursor || null, packing_verifications, production_batches, subreceta_producciones, variantes, variantesCuarentena, operationalControlReady, orderDeltaReady, finishedInventoryDeltaReady, productionMutationDeltaReady, finishedProductDisposalReady, catalogCrmDeltaReady, order_stage_assignments, order_line_progress, order_incidents, order_dispatch_handoffs, crmServerReady, customer_crm_profiles, customer_contacts, customer_activations, syncSource: operationalSnapshot ? "snapshot-v1" : "legacy-queries", syncServerTime: operationalSnapshot?.server_time || "" };
 }

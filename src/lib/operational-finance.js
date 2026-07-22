@@ -1,3 +1,6 @@
+import { calculateOrderMoney } from "./order-money.js";
+import { buildCanonicalPhysicalResults } from "./canonical-production-results.js";
+
 const PREPAYMENT_STATES = new Set(["Nuevo", "Confirmado", "Pendiente de pago"]);
 const TERMINAL_WITH_DELIVERY = new Set(["En ruta", "Entregado", "Reclamo"]);
 const ACTIVE_DELIVERY_STATES = new Set(["Solicitado", "Asignado", "En ruta", "Entregado"]);
@@ -18,9 +21,6 @@ const inRange = (value, from, to) => {
   const date = datePart(value);
   return !!date && (!from || date >= from) && (!to || date <= to);
 };
-
-const additionsTotal = (line) => (Array.isArray(line?.adiciones) ? line.adiciones : [])
-  .reduce((sum, addition) => sum + number(addition.precio) * Math.max(1, number(addition.cant)) * Math.max(1, number(line.cant)), 0);
 
 const indexFirst = (rows, keyOf) => {
   const index = new Map();
@@ -71,11 +71,6 @@ const buildFinanceIndexes = (db) => {
   };
 };
 
-const subtotalFromLines = (lines) => lines
-  .reduce((sum, line) => sum + number(line.precio) * number(line.cant) + additionsTotal(line), 0);
-
-const totalFromSubtotal = (order, subtotal) => subtotal - number(order.descuento) + number(order.domCobrado);
-
 const lineCost = (indexes, line) => {
   const product = indexes.productById.get(line.productId);
   const base = line.costoUnitario !== undefined && line.costoUnitario !== null
@@ -90,11 +85,11 @@ const lineCost = (indexes, line) => {
 };
 
 export function financeOrderSubtotal(db, order) {
-  return subtotalFromLines((db.order_items || []).filter((line) => line.orderId === order.id));
+  return calculateOrderMoney(db, order).subtotalBeforeDiscount;
 }
 
 export function financeOrderTotal(db, order) {
-  return financeOrderSubtotal(db, order) - number(order.descuento) + number(order.domCobrado);
+  return calculateOrderMoney(db, order).totalCharged;
 }
 
 function parseMovementAmount(value) {
@@ -116,15 +111,17 @@ function addTask(queue, task) {
 
 export function buildOperationalFinance(db, { from = "", to = "" } = {}) {
   const orders = (db.orders || []).filter((order) => inRange(order.fecha, from, to));
+  const productionResults = Array.isArray(db.production_batches)
+    ? buildCanonicalPhysicalResults(db.production_batches, { from, to })
+    : null;
   const indexes = buildFinanceIndexes(db);
   const metricsByOrder = new Map();
   orders.forEach((order) => {
-    const lines = indexes.itemsByOrder.get(order.id) || [];
-    const subtotal = subtotalFromLines(lines);
+    const money = calculateOrderMoney(db, order);
     metricsByOrder.set(order, {
-      lines,
-      subtotal,
-      total: totalFromSubtotal(order, subtotal),
+      lines: money.lines,
+      subtotal: money.subtotalBeforeDiscount,
+      total: money.totalCharged,
     });
   });
 
@@ -257,6 +254,7 @@ export function buildOperationalFinance(db, { from = "", to = "" } = {}) {
     range: { from, to },
     queue,
     payments,
+    productionResults,
     summary: {
       ordersReviewed: orders.length,
       confirmedPaymentOrders: confirmedPayments.length,

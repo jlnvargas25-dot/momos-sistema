@@ -21,3 +21,6 @@ enabled_tools = [
   "momos_request_human_approval",
   "momos_get_human_approval",
 ]
+
+[mcp_servers.momos_agency.tools.momos_health]
+approval_mode = "approve"

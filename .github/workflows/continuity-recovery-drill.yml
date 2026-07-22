@@ -1,0 +1,156 @@
+name: MOMOS isolated recovery drill
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_restored_staging:
+        description: Confirma que el backup ya fue restaurado en staging aislado
+        required: true
+        type: choice
+        options:
+          - NO
+          - RESTORED_ISOLATED_STAGING
+      backup_id:
+        description: ID exacto del backup de producción restaurado
+        required: true
+        type: string
+      restore_started_at:
+        description: Inicio UTC ISO esperado; se contrasta con created_at oficial de staging
+        required: true
+        type: string
+      recovery_target_at:
+        description: Punto objetivo UTC ISO exacto
+        required: true
+        type: string
+      restored_through_at:
+        description: Último evento restaurado/reproducido UTC ISO exacto
+        required: true
+        type: string
+      storage_manifest_sha256:
+        description: SHA-256 del manifiesto externo de objetos Storage restaurados
+        required: true
+        type: string
+      storage_object_count:
+        description: Objetos Storage restaurados y verificados
+        required: true
+        type: number
+      replay_receipt_sha256:
+        description: SHA-256 del recibo de replay idempotente
+        required: true
+        type: string
+      replayed_event_count:
+        description: Eventos posteriores reproducidos (puede ser 0)
+        required: true
+        type: number
+      confirm_storage:
+        description: Confirma restauración y hash de Storage
+        required: true
+        type: choice
+        options:
+          - NO
+          - STORAGE_OBJECTS_RESTORED_AND_HASHED
+      confirm_replay:
+        description: Confirma replay idempotente y conciliado
+        required: true
+        type: choice
+        options:
+          - NO
+          - REPLAY_COMPLETED_IDEMPOTENTLY
+
+permissions:
+  contents: read
+
+concurrency:
+  group: momos-isolated-recovery-drill
+  cancel-in-progress: false
+
+jobs:
+  certify-restored-staging:
+    if: >-
+      inputs.confirm_restored_staging == 'RESTORED_ISOLATED_STAGING' &&
+      inputs.confirm_storage == 'STORAGE_OBJECTS_RESTORED_AND_HASHED' &&
+      inputs.confirm_replay == 'REPLAY_COMPLETED_IDEMPOTENTLY'
+    name: isolated-recovery-drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: recovery-staging
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Prove production and staging are different projects
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+          PRODUCTION_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
+        run: |
+          test -n "$STAGING_DATABASE_URL"
+          test -n "$STAGING_PROJECT_REF"
+          test -n "$PRODUCTION_PROJECT_REF"
+          test "$STAGING_PROJECT_REF" != "$PRODUCTION_PROJECT_REF"
+          test "$STAGING_SUPABASE_URL" = "https://$STAGING_PROJECT_REF.supabase.co"
+          test "$PRODUCTION_SUPABASE_URL" = "https://$PRODUCTION_PROJECT_REF.supabase.co"
+          case "$STAGING_DATABASE_URL" in
+            *"$STAGING_PROJECT_REF"*) ;;
+            *) echo "El DSN no corresponde al staging sellado" >&2; exit 1 ;;
+          esac
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          package-manager-cache: false
+
+      - name: Install locked dependencies and PostgreSQL client
+        run: |
+          npm ci
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Validate complete ordered schema on restored staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/ordered.log"
+          grep -q "01-100 PASS" "$RUNNER_TEMP/ordered.log"
+
+      - name: Challenge continuity and derived evidence contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-continuidad-recuperacion-v1.sql | tee "$RUNNER_TEMP/h93.log"
+          grep -q "H93 RPO/RTO" "$RUNNER_TEMP/h93.log"
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-evidencia-recuperacion-derivada-v1.sql | tee "$RUNNER_TEMP/h97.log"
+          grep -q "H97 RPO/RTO derivados" "$RUNNER_TEMP/h97.log"
+
+      - name: Run repository contracts and build
+        run: npm run ci:contracts && npm test && npm run test:performance && npm run build
+
+      - name: Seal only structured recovery evidence in production
+        env:
+          PRODUCTION_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
+          PRODUCTION_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.PRODUCTION_SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+          STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          MOMOS_RECOVERY_ENVIRONMENT: ${{ inputs.confirm_restored_staging }}
+          MOMOS_RECOVERY_BACKUP_ID: ${{ inputs.backup_id }}
+          MOMOS_RECOVERY_STARTED_AT: ${{ inputs.restore_started_at }}
+          MOMOS_RECOVERY_TARGET_AT: ${{ inputs.recovery_target_at }}
+          MOMOS_RECOVERY_RESTORED_THROUGH_AT: ${{ inputs.restored_through_at }}
+          MOMOS_STORAGE_MANIFEST_SHA256: ${{ inputs.storage_manifest_sha256 }}
+          MOMOS_STORAGE_OBJECT_COUNT: ${{ inputs.storage_object_count }}
+          MOMOS_REPLAY_RECEIPT_SHA256: ${{ inputs.replay_receipt_sha256 }}
+          MOMOS_REPLAYED_EVENT_COUNT: ${{ inputs.replayed_event_count }}
+          MOMOS_STORAGE_CONFIRMATION: ${{ inputs.confirm_storage }}
+          MOMOS_REPLAY_CONFIRMATION: ${{ inputs.confirm_replay }}
+        run: npm run worker:continuity:certify

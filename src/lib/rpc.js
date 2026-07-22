@@ -48,10 +48,90 @@ export async function guardarConfiguracionServidor(payload, expectedVersion, ide
   if (!/^\d+$/.test(String(expectedVersion || "")) || String(expectedVersion) === "0") {
     throw new Error("Configuración no tiene una versión autoritativa para guardar.");
   }
-  const { data, error } = await supabase.rpc("guardar_configuracion_v1", {
+  const shelfLifeV2 = Object.prototype.hasOwnProperty.call(payload || {}, "finished_product_shelf_days")
+    && Object.prototype.hasOwnProperty.call(payload || {}, "mixture_shelf_days");
+  const { data, error } = await supabase.rpc(shelfLifeV2 ? "guardar_configuracion_v2" : "guardar_configuracion_v1", {
     p: { idempotency_key: key, expected_version: String(expectedVersion), payload },
   });
   if (error) throw rpcError(error, "No se pudo guardar Configuración.");
+  return data;
+}
+
+export async function fetchOperationalHealthSnapshot() {
+  const { data, error } = await supabase.rpc("momos_operational_health_snapshot_v1");
+  if (error) throw rpcError(error, "No se pudo consultar la salud de MOMO OPS.");
+  if (data?.contract !== "momos.operational-health.v1") {
+    throw new Error("El servidor devolvió un diagnóstico incompleto.");
+  }
+  return data;
+}
+
+export async function fetchOperationalSloSnapshot(windowMinutes = 60) {
+  const minutes = Number(windowMinutes);
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) {
+    throw new Error("La ventana de observabilidad no es válida.");
+  }
+  const { data, error } = await supabase.rpc("momos_operational_slo_snapshot_v1", {
+    p_window_minutes: minutes,
+  });
+  if (error && isMissingRpcError(error)) {
+    return {
+      contract: "momos.operational-slo.v1",
+      pendingActivation: true,
+      services: [],
+      counts: { healthy: 0, atRisk: 0, outside: 0, withoutData: 0 },
+    };
+  }
+  if (error) throw rpcError(error, "No se pudieron consultar los SLO de MOMO OPS.");
+  if (data?.contract !== "momos.operational-slo.v1" || !Array.isArray(data?.services)) {
+    throw new Error("El servidor devolvió observabilidad incompleta.");
+  }
+  return data;
+}
+
+export async function reportClientSloTelemetry(payload) {
+  const measurements = Array.isArray(payload?.measurements) ? payload.measurements : [];
+  if (measurements.length < 1 || measurements.length > 4) {
+    throw new Error("El lote de salud debe contener entre una y cuatro mediciones.");
+  }
+  const { data, error } = await supabase.rpc("registrar_lote_telemetria_cliente_slo_v1", {
+    p: { measurements },
+  });
+  // Compatibilidad durante el despliegue: el cliente H96 puede convivir con
+  // H95 sin interrumpir ninguna acción operativa.
+  if (error && isMissingRpcError(error)) return { ok: false, pendingActivation: true };
+  if (error) throw rpcError(error, "No se pudo reportar la salud agregada.");
+  if (data?.contract !== "momos.client-slo-batch.v1") {
+    throw new Error("El servidor no confirmó el lote de salud.");
+  }
+  return data;
+}
+
+export async function evaluateOperationalSloAlerts(windowMinutes = 60) {
+  const minutes = Number(windowMinutes);
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) {
+    throw new Error("La ventana de alertas no es válida.");
+  }
+  const { data, error } = await supabase.rpc("evaluar_alertas_slo_v1", {
+    p_window_minutes: minutes,
+  });
+  if (error && isMissingRpcError(error)) return { ok: false, pendingActivation: true };
+  if (error) throw rpcError(error, "No se pudieron evaluar las alertas de servicio.");
+  return data;
+}
+
+export async function fetchContinuitySnapshot() {
+  const { data, error } = await supabase.rpc("momos_continuity_snapshot_v1");
+  if (error) throw rpcError(error, "No se pudo consultar la continuidad de MOMO OPS.");
+  if (data?.contract !== "momos.continuity.v1") {
+    throw new Error("El servidor devolvió una evidencia de continuidad incompleta.");
+  }
+  return data;
+}
+
+export async function runOperationalHealthReview() {
+  const { data, error } = await supabase.rpc("ejecutar_revision_salud_operativa_v1");
+  if (error) throw rpcError(error, "No se pudo ejecutar la revisión operativa.");
   return data;
 }
 
@@ -110,6 +190,21 @@ export async function setProgresoLineaPedido(orderItemId, stage, status, expecte
 export async function completarEtapaPedido(orderId, stage) {
   const { data, error } = await supabase.rpc("completar_etapa_pedido", { p_order_id: orderId, p_stage: stage });
   if (error) throw new Error(error.message);
+  return data;
+}
+
+// H91: Cocina completa sus líneas y entrega el pedido a Empaque dentro de la
+// misma transacción PostgreSQL. La llave se conserva durante el intento para
+// que una respuesta perdida no repita ninguna escritura.
+export async function completarCocinaYEntregarEmpaque(orderId, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+    throw new Error("El relevo Cocina a Empaque no tiene una llave idempotente válida.");
+  }
+  const { data, error } = await supabase.rpc("completar_cocina_y_entregar_empaque_v1", {
+    p: { order_id: orderId, idempotency_key: key },
+  });
+  if (error) throw rpcError(error, "No se pudo entregar el pedido de Cocina a Empaque.");
   return data;
 }
 
@@ -200,6 +295,16 @@ export async function actualizarDomicilio(deliveryId, payload) {
   if (error) throw new Error(error.message);
 }
 
+export async function mutarDomicilioDelta(operation, payload, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!key) throw new Error("La operación logística necesita una llave idempotente.");
+  const { data, error } = await supabase.rpc("mutar_domicilio_delta", {
+    p: { operation, idempotency_key: key, payload },
+  });
+  if (error) throw rpcError(error, "No se pudo completar la operación logística.");
+  return data;
+}
+
 export async function upsertCliente(customerId, payload) {
   const { data, error } = await supabase.rpc("upsert_cliente", { p_customer_id: customerId || null, p: payload });
   if (error) throw new Error(error.message);
@@ -259,6 +364,22 @@ export async function crearCorrida(payload) {
 export async function crearCorridaDelta(payload) {
   const { data, error } = await supabase.rpc("crear_corrida_delta", { p: payload });
   if (error) throw rpcError(error);
+  return data;
+}
+
+export async function crearCorridaAgrupada(payload, suggestionIds, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+    throw new Error("La corrida agrupada no tiene una llave idempotente válida.");
+  }
+  const ids = Array.isArray(suggestionIds) ? suggestionIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
+  if (!ids.length || new Set(ids).size !== ids.length) {
+    throw new Error("La corrida agrupada necesita sugerencias únicas.");
+  }
+  const { data, error } = await supabase.rpc("crear_corrida_agrupada_v1", {
+    p: { idempotency_key: key, corrida: payload, suggestion_ids: ids },
+  });
+  if (error) throw rpcError(error, "No se pudo registrar la corrida agrupada.");
   return data;
 }
 
@@ -1093,6 +1214,38 @@ export function entradaInsumoLoteDelta({ itemId, cant, costoTotal, vence, provee
   }, idempotencyKey);
 }
 
+export async function registrarCompraYAtenderSugerencias(
+  { itemId, cant, costoTotal, vence, proveedor = "", ubicacion = "", nota = "" },
+  suggestionIds,
+  idempotencyKey,
+) {
+  const key = String(idempotencyKey || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+    throw new Error("La compra agrupada no tiene una llave idempotente válida.");
+  }
+  const ids = Array.isArray(suggestionIds) ? suggestionIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
+  if (!ids.length || new Set(ids).size !== ids.length) {
+    throw new Error("La compra agrupada necesita sugerencias únicas.");
+  }
+  const { data, error } = await supabase.rpc("registrar_compra_y_atender_sugerencias_v1", {
+    p: {
+      idempotency_key: key,
+      suggestion_ids: ids,
+      compra: {
+        item_id: itemId,
+        cant,
+        costo_total: costoTotal,
+        vence: vence || null,
+        proveedor,
+        ubicacion,
+        nota,
+      },
+    },
+  });
+  if (error) throw rpcError(error, "No se pudo registrar la compra y cerrar sus recomendaciones.");
+  return data;
+}
+
 export function movimientoInsumoDelta(itemId, tipo, cant, nota = "", idempotencyKey) {
   return inventoryMutationRpc("movimiento_insumo_delta", {
     item_id: itemId,
@@ -1128,6 +1281,65 @@ export async function producirSubreceta(payload) {
 export async function producirSubrecetaDelta(payload) {
   const { data, error } = await supabase.rpc("producir_subreceta_delta", { p: payload });
   if (error) throw rpcError(error);
+  return data;
+}
+
+export async function listarFichasTecnicasCocina(subrecipeId) {
+  const { data, error } = await supabase.rpc("listar_fichas_tecnicas_cocina", {
+    p_subrecipe_id: String(subrecipeId || "").trim(),
+  });
+  if (error) throw rpcError(error, "No se pudo consultar el historial de la ficha técnica.");
+  return data;
+}
+
+export async function listarFichasIntegralesElaboracion(subrecipeId) {
+  const { data, error } = await supabase.rpc("listar_fichas_integrales_elaboracion", {
+    p_subrecipe_id: String(subrecipeId || "").trim(),
+  });
+  if (error) throw rpcError(error, "No se pudo consultar el historial integral de la elaboración.");
+  return data;
+}
+
+export async function guardarFichaTecnicaCocina(payload) {
+  const { data, error } = await supabase.rpc("guardar_ficha_tecnica_cocina", { p: payload });
+  if (error) throw rpcError(error, "No se pudo guardar el borrador de la ficha técnica.");
+  return data;
+}
+
+export async function activarFichaTecnicaCocina(id, confirmacion = "ACTIVAR FICHA") {
+  const { data, error } = await supabase.rpc("activar_ficha_tecnica_cocina", {
+    p_id: Number(id), p_confirmacion: confirmacion,
+  });
+  if (error) throw rpcError(error, "No se pudo publicar la ficha técnica.");
+  return data;
+}
+
+export async function archivarBorradorFichaTecnica(id, confirmacion = "ARCHIVAR BORRADOR") {
+  const { data, error } = await supabase.rpc("archivar_borrador_ficha_tecnica", {
+    p_id: Number(id), p_confirmacion: confirmacion,
+  });
+  if (error) throw rpcError(error, "No se pudo archivar el borrador de la ficha técnica.");
+  return data;
+}
+
+export async function desecharProductoTerminadoDelta({ batchId, figura, motivo, cantidadEsperada }, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+    throw new Error("El desecho de producto terminado no tiene una llave idempotente válida.");
+  }
+  if (!Number.isInteger(Number(cantidadEsperada)) || Number(cantidadEsperada) <= 0) {
+    throw new Error("La cantidad de producto terminado a desechar debe ser un entero positivo.");
+  }
+  const { data, error } = await supabase.rpc("desechar_producto_terminado_delta", {
+    p: {
+      batch_id: batchId,
+      figura,
+      motivo,
+      cantidad_esperada: Number(cantidadEsperada),
+      idempotency_key: key,
+    },
+  });
+  if (error) throw rpcError(error, "No se pudo desechar el producto terminado.");
   return data;
 }
 

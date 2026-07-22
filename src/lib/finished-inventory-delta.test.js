@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyFinishedInventoryDeltaBatch,
   applyFinishedInventoryDeltaBatchToDb,
   compareFinishedInventoryDeltaVersions,
   normalizeFinishedInventoryDeltaBatch,
@@ -49,6 +50,20 @@ test("H72 descarta replay o respuesta antigua", () => {
   const result = applyFinishedInventoryDeltaBatchToDb(db, envelope("7"));
   assert.equal(result.status, "stale");
   assert.deepEqual(result.applied, []);
+});
+
+test("H88 actualiza producto terminado preservando el estado no relacionado", () => {
+  const unrelated = Array.from({ length: 25000 }, (_, id) => ({ id }));
+  const db = {
+    products: [{ id: "PR01", precio: 18000, stock: 1 }], production_batches: [], variantes: [],
+    variantesCuarentena: [], finishedInventoryDeltaVersions: {}, agencyRetentionMeasurements: unrelated,
+  };
+  const result = applyFinishedInventoryDeltaBatch(db, envelope());
+  assert.equal(db.products[0].stock, 1);
+  assert.equal(db.finishedInventoryDeltaVersions.PR01, undefined);
+  assert.equal(result.db.products[0].stock, 3);
+  assert.equal(result.db.agencyRetentionMeasurements, unrelated);
+  assert.equal(result.db.finishedInventoryDeltaVersions.PR01, "7");
 });
 
 test("H72 rechaza mezcla de productos, duplicados y fronteras abiertas", () => {

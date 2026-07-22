@@ -78,25 +78,28 @@ test("calcula TTL por dominio sin refrescar catálogos vigentes", async () => {
       [SYNC_DOMAINS.FINANCE]: async () => ({}),
       [SYNC_DOMAINS.CONFIGURATION]: async () => ({}),
       [SYNC_DOMAINS.DASHBOARD]: async () => ({}),
+      [SYNC_DOMAINS.LOGISTICS]: async () => ({}),
     },
     apply: async () => {},
     now: () => clock,
   });
-  await coordinator.request([SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS, SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.FINANCE, SYNC_DOMAINS.CONFIGURATION, SYNC_DOMAINS.DASHBOARD]);
+  await coordinator.request([SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS, SYNC_DOMAINS.AGENCY, SYNC_DOMAINS.FINANCE, SYNC_DOMAINS.CONFIGURATION, SYNC_DOMAINS.DASHBOARD, SYNC_DOMAINS.LOGISTICS]);
   clock += 70_000;
   assert.deepEqual(coordinator.staleDomains({
     catalogos: 15 * 60_000, operativo: 60_000, agencia: 5 * 60_000,
-    finanzas: 5 * 60_000, configuracion: 5 * 60_000, dashboard: 5 * 60_000,
+    finanzas: 5 * 60_000, configuracion: 5 * 60_000, dashboard: 5 * 60_000, logistica: 5 * 60_000,
   }), [SYNC_DOMAINS.OPERATIONS]);
 });
 
 test("una vista operativa no consulta Agencia y una vista comercial usa solo su contrato cerrado", () => {
   assert.deepEqual(syncDomainsForView("Produccion"), [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS]);
+  assert.deepEqual(syncDomainsForView("Inventario terminado"), [SYNC_DOMAINS.CATALOGS, SYNC_DOMAINS.OPERATIONS]);
   assert.deepEqual(syncDomainsForView("Pedidos"), [SYNC_DOMAINS.OPERATIONS]);
   assert.deepEqual(syncDomainsForView("Productos"), [SYNC_DOMAINS.CATALOGS]);
   assert.deepEqual(syncDomainsForView("Finanzas"), [SYNC_DOMAINS.FINANCE]);
   assert.deepEqual(syncDomainsForView("Configuración"), [SYNC_DOMAINS.CONFIGURATION]);
   assert.deepEqual(syncDomainsForView("Dashboard"), [SYNC_DOMAINS.DASHBOARD]);
+  assert.deepEqual(syncDomainsForView("Domicilios"), [SYNC_DOMAINS.LOGISTICS]);
   assert.deepEqual(syncDomainsForView("Creativos"), [SYNC_DOMAINS.AGENCY]);
   assert.deepEqual(syncDomainsForView("Agencia MOMOS"), [SYNC_DOMAINS.AGENCY]);
   assert.deepEqual(syncDomainsForView("Agencia MOMOS", { agencyOperationalFactsReady: true }), [SYNC_DOMAINS.AGENCY]);

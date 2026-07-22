@@ -1,4 +1,6 @@
-import { buildIngredientLotSummary } from "./ingredient-lots.js";
+import { canonicalUsableIngredientStock } from "./canonical-stock.js";
+import { businessDateISO } from "./business-date.js";
+import { isCommercialFamilyProduct, isKitchenFigureName } from "./momos-domain-language.js";
 
 const PAID_STATES = new Set([
   "Pagado", "En producción", "Listo para empaque", "Empacado",
@@ -39,10 +41,7 @@ function resolveProduct(db, reference) {
 }
 
 function usablePreparedStock(db, itemId, today) {
-  const item = (db.inventory_items || []).find((candidate) => candidate.id === itemId);
-  if (!item) return 0;
-  if (db.inventoryLotsReady) return buildIngredientLotSummary(itemId, db.inventory_lots || [], today).usableStock;
-  return number(item.stock);
+  return canonicalUsableIngredientStock(db, itemId, { today }).usable;
 }
 
 function lineDemandRows(db, today, historyDays) {
@@ -65,7 +64,7 @@ function lineDemandRows(db, today, historyDays) {
     const parentIds = new Set(lines.map((line) => line.parentItemId).filter(Boolean));
     lines.forEach((line) => {
       const product = products.get(line.productId);
-      if (!product || product.activo === false || product.tipo !== "momo") return;
+      if (!product || product.activo === false || !isCommercialFamilyProduct(product)) return;
       if (!line.figura || !line.sabor) return;
       // Una caja tiene una línea padre y líneas hijas exactas; contar ambas duplicaría la demanda.
       if (!line.parentItemId && parentIds.has(line.id)) return;
@@ -80,7 +79,9 @@ function lineDemandRows(db, today, historyDays) {
 
 function suggestionRows(db) {
   const orderItems = new Map((db.order_items || []).map((line) => [line.id, line]));
-  const figures = new Map((db.figuras || []).map((figure) => [normalized(figure.nombre), figure]));
+  const figures = new Map((db.figuras || [])
+    .filter((figure) => figure?.activo !== false && isKitchenFigureName(figure?.nombre))
+    .map((figure) => [normalized(figure.nombre), figure]));
   return (db.production_suggestions || [])
     .filter((suggestion) => suggestion.estado === "Pendiente" && suggestion.area !== "Inventario")
     .map((suggestion) => {
@@ -103,6 +104,7 @@ function inProcessByVariant(db) {
       ? batch.figuras
       : (batch.figura ? [{ figura: batch.figura, cant: batch.prod }] : []);
     figures.forEach((entry) => {
+      if (!isKitchenFigureName(entry?.figura)) return;
       const key = exactKey(productId, entry.figura, batch.sabor, batch.relleno);
       result.set(key, (result.get(key) || 0) + number(entry.cant));
     });
@@ -113,7 +115,7 @@ function inProcessByVariant(db) {
 function availableByVariant(db, today) {
   const result = new Map();
   (db.variantes || []).forEach((variant) => {
-    if (variant.vence && isoDay(variant.vence) < today) return;
+    if (!isKitchenFigureName(variant?.figura) || (variant.vence && isoDay(variant.vence) < today)) return;
     const key = exactStockKey(variant.productId, variant.figura, variant.sabor);
     result.set(key, (result.get(key) || 0) + number(variant.disponibles));
   });
@@ -251,8 +253,9 @@ function buildPreparationNeeds(db, plans, today) {
 }
 
 export function productionRunDraft(plan, figures = [], defaultFilling = "") {
-  const availableNames = new Set((figures || []).filter((figure) => figure.activo !== false).map((figure) => figure.nombre));
-  const quantities = Object.fromEntries((figures || []).filter((figure) => figure.activo !== false).map((figure) => [figure.nombre, 0]));
+  const canonicalFigures = (figures || []).filter((figure) => figure.activo !== false && isKitchenFigureName(figure?.nombre));
+  const availableNames = new Set(canonicalFigures.map((figure) => figure.nombre));
+  const quantities = Object.fromEntries(canonicalFigures.map((figure) => [figure.nombre, 0]));
   (plan?.variants || []).forEach((variant) => {
     if (availableNames.has(variant.figure)) quantities[variant.figure] = (quantities[variant.figure] || 0) + variant.recommended;
   });
@@ -260,7 +263,7 @@ export function productionRunDraft(plan, figures = [], defaultFilling = "") {
 }
 
 export function buildKitchenProductionPlan(db = {}, options = {}) {
-  const today = options.today || new Date().toISOString().slice(0, 10);
+  const today = options.today || businessDateISO();
   const horizonDays = Math.max(1, number(options.horizonDays || 3));
   const historyDays = Math.max(7, number(options.historyDays || 28));
   const suggestions = suggestionRows(db);
@@ -268,12 +271,41 @@ export function buildKitchenProductionPlan(db = {}, options = {}) {
   const evidence = campaignEvidence(db, demandRows);
   const inProcess = inProcessByVariant(db);
   const available = availableByVariant(db, today);
-  const figures = new Map((db.figuras || []).map((figure) => [normalized(figure.nombre), figure]));
+  const figures = new Map((db.figuras || [])
+    .filter((figure) => figure?.activo !== false && isKitchenFigureName(figure?.nombre))
+    .map((figure) => [normalized(figure.nombre), figure]));
 
   const variants = new Map();
-  function ensureVariant({ productId, figure, flavor, filling }) {
+  const integrityIssues = [];
+  function ensureVariant({ productId, figure, flavor, filling, sourceId = "" }) {
+    if (!isKitchenFigureName(figure)) {
+      integrityIssues.push({
+        code: "NON_CANONICAL_FIGURE", sourceId, productId, figure, flavor, canCreate: false,
+      });
+      return null;
+    }
     const figureConfig = figures.get(normalized(figure));
-    const resolvedProductId = figureConfig?.productId || productId;
+    if (!figureConfig) {
+      integrityIssues.push({
+        code: "FIGURE_NOT_CONFIGURED", sourceId, productId, figure, flavor, canCreate: false,
+      });
+      return null;
+    }
+    const canonicalProductId = figureConfig?.productId || "";
+    if (productId && canonicalProductId && productId !== canonicalProductId) {
+      integrityIssues.push({
+        code: "ORDER_VARIANT_PRODUCT_MISMATCH",
+        sourceId,
+        productId,
+        canonicalProductId,
+        figure,
+        flavor,
+        canCreate: false,
+      });
+      return null;
+    }
+    const resolvedProductId = productId || canonicalProductId;
+    if (!resolvedProductId) return null;
     const key = exactKey(resolvedProductId, figure, flavor, filling);
     if (!variants.has(key)) variants.set(key, {
       key, productId: resolvedProductId, figure, flavor, filling,
@@ -285,13 +317,15 @@ export function buildKitchenProductionPlan(db = {}, options = {}) {
 
   suggestions.forEach((row) => {
     if (!row.productId || !row.figureName || !row.flavor) return;
-    const variant = ensureVariant({ productId: row.productId, figure: row.figureName, flavor: row.flavor, filling: row.filling });
+    const variant = ensureVariant({ productId: row.productId, figure: row.figureName, flavor: row.flavor, filling: row.filling, sourceId: row.suggestion.id });
+    if (!variant) return;
     variant.queue += row.quantity;
     variant.suggestionIds.push(row.suggestion.id);
     if (row.suggestion.orderId) variant.orderIds.add(row.suggestion.orderId);
   });
   demandRows.forEach((row) => {
-    const variant = ensureVariant({ productId: row.product.id, figure: row.line.figura, flavor: row.line.sabor, filling: row.line.relleno });
+    const variant = ensureVariant({ productId: row.product.id, figure: row.line.figura, flavor: row.line.sabor, filling: row.line.relleno, sourceId: row.line.id });
+    if (!variant) return;
     variant.historical += row.quantity;
     if (row.attributed) variant.attributed += row.quantity;
     variant.salesRows.push(row);
@@ -328,6 +362,7 @@ export function buildKitchenProductionPlan(db = {}, options = {}) {
   return {
     plans,
     preparationNeeds,
+    integrityIssues,
     summary: {
       runs: plans.length,
       units: plans.reduce((sum, plan) => sum + plan.totalUnits, 0),
@@ -335,6 +370,6 @@ export function buildKitchenProductionPlan(db = {}, options = {}) {
       forecastUnits: plans.reduce((sum, plan) => sum + Math.max(0, plan.totalUnits - plan.queueUnits), 0),
       preparations: preparationNeeds.length,
     },
-    policy: "Pronóstico de 3 días por vencimiento del producto terminado. La pauta solo agrega colchón cuando existen pedidos pagados atribuidos y ROAS respaldado.",
+    policy: `Pronóstico de ${horizonDays} días según la vida útil configurada del producto terminado. La pauta solo agrega colchón cuando existen pedidos pagados atribuidos y ROAS respaldado.`,
   };
 }

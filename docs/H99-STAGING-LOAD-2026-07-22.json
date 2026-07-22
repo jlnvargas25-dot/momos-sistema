@@ -1,0 +1,101 @@
+{
+  "contract": "momos.resilience.staging.v1",
+  "environment": "Staging",
+  "runKey": "h94-staging-1784693714236-a26ad6d1",
+  "runnerVersion": "h99-runner-1",
+  "startedAt": "2026-07-22T04:15:14.236Z",
+  "completedAt": "2026-07-22T04:15:27.182Z",
+  "durationMs": 12946,
+  "concurrency": 64,
+  "targetRequests": 2000,
+  "actualRequests": 2000,
+  "latencyMs": {
+    "p50": 233.2,
+    "p95": 351.27,
+    "p99": 724.86
+  },
+  "scenarios": [
+    {
+      "code": "IDEMPOTENT_REPLAY",
+      "passed": true,
+      "requestCount": 1104,
+      "duplicateCount": 552,
+      "conflictCount": 0,
+      "p95Ms": 488.81,
+      "invariantFailures": 0
+    },
+    {
+      "code": "LOST_RESPONSE_RETRY",
+      "passed": true,
+      "requestCount": 10,
+      "duplicateCount": 5,
+      "conflictCount": 0,
+      "p95Ms": 191.85,
+      "invariantFailures": 0
+    },
+    {
+      "code": "LAST_UNIT_RACE",
+      "passed": true,
+      "requestCount": 64,
+      "duplicateCount": 0,
+      "conflictCount": 63,
+      "p95Ms": 291.75,
+      "invariantFailures": 0
+    },
+    {
+      "code": "LEASE_CONTENTION",
+      "passed": true,
+      "requestCount": 64,
+      "duplicateCount": 0,
+      "conflictCount": 63,
+      "p95Ms": 309.15,
+      "invariantFailures": 0
+    },
+    {
+      "code": "ATOMIC_ROLLBACK",
+      "passed": true,
+      "requestCount": 3,
+      "duplicateCount": 0,
+      "conflictCount": 1,
+      "p95Ms": 164.89,
+      "invariantFailures": 0
+    },
+    {
+      "code": "PARALLEL_READS",
+      "passed": true,
+      "requestCount": 734,
+      "duplicateCount": 0,
+      "conflictCount": 0,
+      "p95Ms": 351.21,
+      "invariantFailures": 0
+    },
+    {
+      "code": "REALTIME_COALESCING",
+      "passed": true,
+      "requestCount": 20,
+      "duplicateCount": 18,
+      "conflictCount": 0,
+      "p95Ms": 0.45,
+      "invariantFailures": 0
+    },
+    {
+      "code": "FINAL_RECONCILIATION",
+      "passed": true,
+      "requestCount": 1,
+      "duplicateCount": 0,
+      "conflictCount": 0,
+      "p95Ms": 158.4,
+      "invariantFailures": 0
+    }
+  ],
+  "certificate": {
+    "status": "Certificado",
+    "reconciled": true,
+    "invariantFailures": 0,
+    "fingerprint": "8226414494c7128a2a3b4eb4b36810e97a7d28146e3d6fd16db57e1160d46666"
+  },
+  "isolated": true,
+  "businessMutation": false,
+  "containsCustomerPii": false,
+  "containsSecrets": false
+}

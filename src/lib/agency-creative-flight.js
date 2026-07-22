@@ -1,3 +1,5 @@
+import { businessDateISO } from "./business-date.js";
+
 const list = (value) => Array.isArray(value) ? value : [];
 const same = (a, b) => String(a ?? "") === String(b ?? "");
 
@@ -40,7 +42,7 @@ export function publicationCandidatesForFlight(flight = {}, db = {}) {
     && inferCreativeContentMode({ ...creative, campaignId: post.campaignId }, db) === flight.mode);
 }
 
-export function publicationDraftForFlight(flight = {}, db = {}, date = new Date().toISOString().slice(0, 10)) {
+export function publicationDraftForFlight(flight = {}, db = {}, date = businessDateISO()) {
   const creative = list(db.creatives).find((row) => same(row.id, flight.release?.creativeId)) || {};
   return {
     fecha: date,

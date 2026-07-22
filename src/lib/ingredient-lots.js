@@ -1,7 +1,9 @@
+import { businessDateISO } from "./business-date.js";
+
 const isoDay = (value) => String(value || "").slice(0, 10);
 const positive = (value) => Math.max(0, Number(value) || 0);
 
-export function ingredientLotStatus(lot, today = new Date().toISOString().slice(0, 10)) {
+export function ingredientLotStatus(lot, today = businessDateISO()) {
   const available = positive(lot?.available ?? lot?.disponible);
   const expiry = isoDay(lot?.expiresAt ?? lot?.vence);
   if (available === 0) return "Agotado";

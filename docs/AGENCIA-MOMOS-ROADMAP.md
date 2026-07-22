@@ -2,6 +2,8 @@
 
 > Visión: MOMO OPS conserva hechos, permisos, costos y resultados; Codex dirige la estrategia y la creación; el dueño de marca decide junto al agente; los motores externos ejecutan únicamente contratos aprobados.
 
+> La preparación comercial del ecosistema completo se gobierna en [`ECOSISTEMA-MOMOS-ROADMAP.md`](ECOSISTEMA-MOMOS-ROADMAP.md). Este documento conserva el alcance específico de Agencia.
+
 ## Cimientos construidos
 
 - Hitos 16–20: briefs, decisiones, biblioteca de originales, derechos y distribución aprobada.
@@ -320,6 +322,84 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Toda pieza creada con un original de Biblioteca seguirá pasando por revisión humana, QA, máster y Distribución Comercial. H54 conserva `external_execution_allowed=false`: no publica, pauta, contacta, distribuye ni modifica presupuesto.
 - Archivos previstos: `supabase/mcp-biblioteca-creativa-v1.sql`, `supabase/tests/test-mcp-biblioteca-creativa-v1.sql`, `scripts/momos-agency-mcp.mjs`, contratos/pruebas locales y actualización de la cadena ordenada.
 - **Validación cerrada:** SQL H54 aplicado; adversarial específico y aceptación ordenada 01–54 PASS con rollback total; suite **453/453 PASS**, build Vite PASS y gateway JS sin errores de sintaxis. Una sesión MCP previa debe reiniciarse antes de probar la nueva herramienta con un original real.
+
+### Programa funcional futuro — Humanización y Comunidad MOMOS
+
+**Objetivo:** convertir la cercanía de MOMOS en una capacidad editorial, comunitaria y medible dentro de Agencia, sin confundir humanización con testimonios fabricados, exposición de datos personales o publicación automática.
+
+- El Inicio Ejecutivo incorporará un espacio guiado **Humanización y Comunidad**; no será otro silo. Reunirá las acciones pendientes, series activas, señales de conversación, permisos, episodios por producir y aprendizajes humanos aprobados.
+- La estrategia distinguirá cuatro protagonistas complementarios: **equipo**, **comunidad**, **personajes MOMOS** y **producto real**. Cada pieza declarará protagonista, territorio emocional, objetivo, audiencia, canal, serie y evidencia que entregará el payoff.
+- Se formalizarán territorios emocionales versionados —antojo, ternura, celebración, compañía, humor y pertenencia— vinculados al perfil de marca vigente. Ningún territorio podrá sustituir la verdad de producto, inventar claims o forzar una venta en contenido orgánico.
+- Las **series editoriales reutilizables** conservarán nombre, propósito, fórmula narrativa, frecuencia, protagonistas permitidos, hook, rituales, tono, formato, referencias obligatorias, variantes admitidas, CTA, estado y vigencia. Cada episodio mantendrá vínculo exacto con brief, contrato, storyboard, activos, publicación y resultados.
+- La Biblioteca de producción aportará manos, presentadores UGC, locaciones, producto, empaque, personajes y audio. Rostro, voz, manos identificables, historias de clientes y UGC exigirán derechos, consentimiento específico, canal, finalidad y vigencia antes de entrar en un paquete de producción.
+- El sistema distinguirá explícitamente **persona real**, **personaje ficticio**, **recreación/actor** y **contenido sintético**. Nunca presentará un avatar, actor o testimonio generado como cliente real; la IA servirá para ampliar narrativa y producción, no para fabricar confianza.
+- Una futura **Bandeja de Comunidad** podrá recibir comentarios, preguntas, menciones y UGC desde conectores oficiales de Meta y TikTok. La primera fase será de lectura, clasificación y propuesta: Codex o el agente podrá sugerir respuestas o convertir señales agregadas en briefs, pero no responder, contactar, publicar ni reutilizar material sin decisión humana y permisos vigentes.
+- Pide MOMOS y MOMO OPS aportarán únicamente hechos permitidos: ocasiones, productos, recompra, franjas, zonas agregadas, pedidos pagados y margen. Los datos personales no cruzarán al MCP; una historia individual requerirá consentimiento y selección humana independiente.
+- Codex funcionará como laboratorio: propondrá ángulos, hooks, formatos y variaciones de una sola variable. Agencia conservará el experimento; Higgsfield u otro motor producirá solo después del preflight; MOMO OPS sellará costo, publicación, métricas, pedidos y margen; una persona decidirá si el resultado se convierte en fórmula reutilizable.
+- Las métricas de vínculo incluirán comentarios significativos, respuestas, compartidos, guardados, menciones, UGC autorizado, conversación recurrente, asociación con personajes, visitas, recompra y pedidos pagados. Vistas o estética por sí solas no podrán declarar una fórmula ganadora.
+- El aprendizaje se apoyará en los contratos existentes de retención y experimentación: hipótesis previa, control, una variable, muestra mínima, evidencia por beat y cierre humano. Las fórmulas distinguirán **elementos fijos**, **variables permitidas**, **restricciones**, contexto de validez y fecha de revisión para evitar replicación ciega o fatiga creativa.
+- La UI ofrecerá cuatro recorridos simples: **Crear una serie**, **Preparar un episodio**, **Escuchar a la comunidad** y **Revisar conexión y resultados**. La implementación deberá cargarse bajo demanda y reutilizar Biblioteca, Calendario, Estudio, Producción, Distribución y Aprendizajes existentes.
+- Dependencias: perfil de marca activo, Biblioteca/activos de producción, consentimiento y derechos, contratos de retención, motor `marca-comunidad`, Pide MOMOS para señales de cliente y conectores Meta/TikTok para conversación y medición reales.
+- Guardas permanentes: `external_execution=false` por defecto; consentimiento verificable; separación Orgánico/Pauta; sin PII en MCP; sin contacto, respuesta, publicación, inversión o reutilización automática; aprobación humana separada para historia, activo, pieza, publicación y aprendizaje.
+
+**Criterio de cierre:** el programa se considerará implementado cuando una serie aprobada pueda producir al menos dos episodios trazables, recibir señales reales de una plataforma conectada, vincular resultados agregados con MOMO OPS, cerrar una prueba de una sola variable y convertir —mediante decisión humana— el resultado en una fórmula versionada, sin exponer PII ni ejecutar acciones externas por omisión.
+
+> Este programa no reserva un número de migración. Su secuencia técnica se asignará al implementarlo, después de comprobar el último ID aplicado en `public.momos_ops_migrations`.
+
+### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
+
+**Objetivo:** lanzar Pide MOMOS como una interfaz pública rápida y resiliente sobre la misma verdad operativa de MOMO OPS, con trazabilidad auditable desde la primera visita hasta pago, producción, entrega, atribución y recompra. Este programa no se considerará listo por tener pantallas: exige contratos transaccionales, seguridad, observabilidad y carga verificadas.
+
+#### Trazabilidad comercial de punta a punta
+
+- Un `trace_id` de alta entropía acompañará sesión, cotización, reserva, intento de pago, evento de pasarela, pedido, producción, empaque, entrega, reclamo y atribución. `correlation_id` agrupará el viaje y `causation_id` explicará qué evento produjo cada transición.
+- Se formalizarán `checkout_sessions`, cotizaciones versionadas, `payments`, `payment_events`, touchpoints de atribución y un ledger comercial append-only. El pedido conservará snapshots de precio, costo, comisión, domicilio, producto y promoción válidos al momento de comprar.
+- Toda mutación pública exigirá clave idempotente con alcance y expiración definidos. Cada evento externo tendrá además identificador único del proveedor, fecha original, hash del payload validado y estado de conciliación.
+- Un pago confirmado sin pedido, pedido sin reserva, reserva sin pago, entrega sin pedido o webhook incierto abrirá una excepción operativa visible. Un timeout posterior a una posible escritura nunca se reintentará a ciegas.
+- La atribución conservará UTM, landing, campaña, anuncio, creativo, publicación, cupón o referido sin reemplazar la fuente de verdad pagada de MOMO OPS. La cadena deberá poder llegar de `post_id/creative_id` a pedido pagado, ingreso, margen y recompra sin exponer PII a Agencia o MCP.
+
+#### Seguridad de Pide MOMOS — gate obligatorio de lanzamiento
+
+- Pide MOMOS y MOMO OPS serán frontends separados con el backend compartido, roles y superficies distintas. El cliente público no recibirá permisos directos de escritura sobre pedidos, precios, inventario, beneficios, pagos, auditoría ni datos de otros clientes.
+- Catálogo, cotización, reserva, creación de pedido, confirmación de pago y tracking usarán RPC/funciones de servidor de lista cerrada. El servidor recalculará producto, variante, cantidad, precio, promoción, horario, zona, domicilio, inventario y capacidad; nunca confiará en totales enviados por el navegador.
+- Las funciones privilegiadas usarán mínimo privilegio, `search_path` cerrado, grants explícitos, RLS y pruebas adversariales de bypass. Ningún secreto de pasarela, Supabase `service_role`, Meta, TikTok, Higgsfield o mensajería entrará en variables `VITE_*`, bundles, logs o respuestas públicas.
+- El pago utilizará checkout alojado o tokenización del proveedor para evitar almacenar datos de tarjeta. Cada webhook verificará firma, timestamp, tolerancia de reloj, ambiente, cuenta receptora, moneda, monto, pedido esperado y protección contra replay antes de producir un evento idempotente.
+- La consulta de pedido no dependerá únicamente de un número secuencial y un teléfono. Usará un token público opaco de alta entropía o verificación OTP; responderá de forma uniforme para evitar enumeración de pedidos o clientes.
+- Cotización, reserva, pago, tracking, login/OTP, recuperación y formularios tendrán rate limiting por IP, dispositivo, sesión y sujeto cuando corresponda, más límites globales y protección contra bots. Las reservas temporales tendrán cuota, expiración efectiva y defensa contra acaparamiento de inventario.
+- La interfaz aplicará CSP estricta, HTTPS/HSTS, CORS por allowlist, headers de aislamiento y protección contra framing, validación de origen y defensa CSRF cuando se usen cookies. Entradas, notas, direcciones y contenido de terceros se validarán por esquema y se escaparán al renderizar.
+- Storage mantendrá buckets privados cuando exista información de personas o pedidos; las URLs serán firmadas, breves y de un solo propósito. Subidas validarán MIME real, extensión, tamaño, dimensiones, hash, derechos y análisis de archivos antes de quedar operables.
+- La privacidad seguirá minimización, finalidad, consentimiento separado, retención y borrado gobernado. Logs, telemetría, analítica, MCP y trazas no conservarán teléfonos, direcciones, tokens, payloads completos de pago ni secretos. Los requisitos legales y de tratamiento de datos requerirán revisión especializada antes del lanzamiento público.
+- Secretos y llaves tendrán inventario, propietario, ambiente, rotación y procedimiento de revocación. Dependencias, contenedores y repositorio pasarán análisis de vulnerabilidades, secretos y actualizaciones; los hallazgos críticos bloquearán despliegue.
+- Se mantendrá auditoría inmutable para cambios sensibles, alertas por autenticación anómala, replay, duplicados, exceso de reservas, divergencias de monto, errores de firma y elevación de privilegios. El equipo tendrá un procedimiento probado de respuesta y contención.
+
+#### Rendimiento y escalabilidad
+
+- El shop público se desplegará como aplicación independiente en CDN/edge. Catálogo, imágenes y configuración no sensible usarán caché versionada, compresión y revalidación; disponibilidad, precio final, capacidad y reserva permanecerán dinámicos y autoritativos en servidor.
+- Las consultas públicas serán pequeñas, paginadas y específicas; Pide no consumirá los snapshots amplios de MOMO OPS ni se suscribirá a tablas operativas crudas por Realtime. El tracking recibirá únicamente el estado público simplificado del pedido exacto.
+- La base tendrá índices medidos para los caminos reales: pedido por idempotencia/cliente/fecha/estado, items por pedido, reserva por pedido/estado/expiración, evento de pago por proveedor/id externo, tracking por token y auditoría por cursor. Cada índice deberá justificarse con `EXPLAIN (ANALYZE, BUFFERS)` sobre volumen representativo.
+- Webhooks, notificaciones, sincronizaciones, liberación de reservas y tareas no interactivas usarán colas con lease, reintentos acotados, backoff, dead-letter y conciliación. El checkout no esperará procesos secundarios para confirmar una transacción ya segura.
+- Se definirán límites de conexión, pooling, timeouts, circuit breakers y backpressure. La venta también respetará capacidad de producción, empaque, entrega y franjas; inventario disponible por sí solo no autoriza demanda ilimitada.
+- El frontend conservará presupuestos de bundle, carga diferida, imágenes responsivas y telemetría de interacción. El exceso actual del presupuesto inicial de JavaScript y el tamaño de Agencia deberán corregirse, aunque Pide tenga su bundle separado.
+
+#### Observabilidad, continuidad y calidad
+
+- Se medirán latencia p50/p95/p99, tasa de error, saturación, concurrencia, colas, reservas activas, expiraciones, webhooks pendientes, conciliaciones, pagos sin pedido, pedidos sin pago y discrepancias de inventario. Todas las señales operativas usarán `trace_id` sin PII.
+- Se definirán SLO y presupuesto de error para catálogo, cotización, reserva, pago, creación de pedido y tracking. Un dashboard deberá diferenciar caída del frontend, función, base, pasarela, Storage, mensajería y proveedor externo.
+- Backups, recuperación puntual cuando esté disponible, restauración, retención de eventos y procedimientos de contingencia tendrán responsables y pruebas periódicas. Se declararán RPO y RTO antes de abrir tráfico público.
+- La accesibilidad, navegación móvil, conectividad lenta, reintentos, mensajes de error, estados vacíos y recuperación de checkout se validarán con personas reales; una página rápida pero confusa también pierde pedidos y aumenta soporte.
+- Reembolsos, reversos, contracargos, cancelaciones, pago confirmado sin stock y fallos parciales tendrán estados y conciliación propios. Ningún operador corregirá dinero o inventario editando filas manualmente.
+
+#### Gates de validación antes del lanzamiento
+
+- Suite de unidad, integración y E2E sobre catálogo → cotización → reserva → pago simulado/webhook → pedido → producción → entrega → atribución.
+- Pruebas adversariales de autorización, RLS, enumeración, manipulación de precio, replay de webhook, doble clic, carrera por la última unidad, expiración, abuso de reservas, archivos maliciosos y exposición de secretos/PII.
+- Prueba de carga en staging con volumen de datos representativo, tráfico sostenido, ráfagas y al menos diez veces el pico inicial esperado. Los objetivos numéricos se fijarán antes de probar; no se declarará capacidad “media” o “alta” sin p95/p99, error y saturación observados.
+- Prueba de recuperación: caída de pasarela, función, cola, worker, Realtime y base; conciliación posterior sin doble cobro, doble pedido, sobreventa ni pérdida silenciosa.
+- Revisión de seguridad independiente antes de manejar pagos reales y una nueva revisión cuando cambien autenticación, pasarela, tracking público o permisos.
+
+**Criterio de cierre:** el programa estará listo para lanzamiento controlado cuando exista una compra E2E trazable y reconciliable, cero duplicados y cero sobreventa bajo las pruebas de concurrencia acordadas, todos los gates de seguridad pasen, los SLO se cumplan bajo carga objetivo y una restauración/contingencia pueda ejecutarse sin pérdida silenciosa. Tráfico alto requerirá una certificación posterior con el pico real observado; no se inferirá únicamente del diseño.
+
+> Este programa tampoco reserva un número de migración. Pide MOMOS se implementará como aplicación separada y sus cambios de backend se numerarán después del último paso técnico aplicado, preservando la cadena canónica.
 
 ## Skills finales de Agencia
 

@@ -1,4 +1,5 @@
 import { compareOperationalDatesDesc, parseOperationalTimestamp } from "./operational-time.js";
+import { inventoryReservationPresentation } from "./momos-domain-language.js";
 
 const ORDER_TERMINAL = new Set(["Entregado", "Cancelado"]);
 const PRODUCTION_ACTIVE = new Set(["En preparación", "Congelando"]);
@@ -89,6 +90,7 @@ export function buildActiveReservationDashboard(db = {}, now = new Date()) {
   const reservations = (db.inventory_reservations || [])
     .filter(isActiveInventoryReservation)
     .map((reservation) => {
+      const presentation = inventoryReservationPresentation(reservation);
       const order = orders.get(reservation.orderId) || null;
       const customer = order ? customers.get(order.customerId) : null;
       const createdAt = parseOperationalTimestamp(reservation.fecha);
@@ -108,7 +110,7 @@ export function buildActiveReservationDashboard(db = {}, now = new Date()) {
         ageHours,
         exactSource: Boolean(reservation.batchId),
         sourceLabel: reservation.batchId
-          ? `Lote ${reservation.batchId}${reservation.figuraLote ? ` · ${reservation.figuraLote}` : ""}`
+          ? `Lote ${reservation.batchId} · ${presentation.primary}${presentation.secondary ? ` · ${presentation.secondary}` : ""}`
           : reservation.tipo === "producto" ? "Sin lote físico exacto" : "Stock de insumo o empaque",
         attention: reasons.length > 0,
         attentionReasons: reasons,
@@ -165,9 +167,13 @@ const AREA_BY_ENTITY = new Map([
   ["Domicilio", "Domicilios"], ["Entrega", "Domicilios"],
   ["Reclamo", "Reclamos"],
   ["Inventario", "Inventario"], ["Insumo", "Inventario"], ["Lote de insumo", "Inventario"], ["Movimiento", "Inventario"],
+  ["Inventario terminado", "Inventario terminado"], ["Producto terminado", "Inventario terminado"], ["Reserva de producto", "Inventario terminado"],
   ["Producto", "Productos"], ["Receta", "Productos"],
   ["Cliente", "Clientes"], ["CRM", "Clientes"], ["Activación", "Clientes"], ["Beneficio", "Clientes"],
   ["Campaña", "Agencia MOMOS"], ["Creativo", "Agencia MOMOS"], ["Publicación", "Agencia MOMOS"], ["Brief", "Agencia MOMOS"], ["Decisión", "Agencia MOMOS"],
+  ["Brief agencia", "Agencia MOMOS"], ["Decisión agencia", "Agencia MOMOS"], ["Cerebro Agencia", "Agencia MOMOS"],
+  ["Biblioteca marca", "Agencia MOMOS"], ["Identidad de marca", "Agencia MOMOS"], ["Storyboard", "Agencia MOMOS"], ["Motion", "Agencia MOMOS"],
+  ["Finanzas", "Finanzas"], ["Movimiento financiero", "Finanzas"], ["Caja", "Finanzas"], ["Gasto", "Finanzas"], ["Costo", "Finanzas"],
   ["Usuario", "Configuración"], ["Configuración", "Configuración"],
 ]);
 
@@ -180,9 +186,13 @@ export function operationalAreaForAudit(log = {}) {
   if (normalized.includes("empaque")) return "Empaque";
   if (normalized.includes("domic") || normalized.includes("entrega")) return "Domicilios";
   if (normalized.includes("reclamo") || normalized.includes("incidente")) return "Reclamos";
+  if ((normalized.includes("inventario") || normalized.includes("producto")) && normalized.includes("terminado")) return "Inventario terminado";
   if (normalized.includes("invent") || normalized.includes("insumo")) return "Inventario";
   if (normalized.includes("cliente") || normalized.includes("crm")) return "Clientes";
-  if (normalized.includes("marketing") || normalized.includes("creativ") || normalized.includes("campaña")) return "Agencia MOMOS";
+  if (normalized.includes("agencia") || normalized.includes("marketing") || normalized.includes("creativ")
+    || normalized.includes("campaña") || normalized.includes("brief") || normalized.includes("biblioteca marca")
+    || normalized.includes("identidad de marca") || normalized.includes("storyboard") || normalized.includes("motion")) return "Agencia MOMOS";
+  if (normalized.includes("finanz") || normalized.includes("movimiento financiero") || normalized.includes("gasto") || normalized.includes("costo")) return "Finanzas";
   return entity || "Operación";
 }
 

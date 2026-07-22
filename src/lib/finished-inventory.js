@@ -1,4 +1,14 @@
-const PROCESS_STATES = new Set(["En preparación", "Congelando", "Reservado"]);
+import {
+  expectedFigureProductId,
+  isCommercialFamilyProduct,
+  isKitchenFigureName,
+  KITCHEN_FIGURE_DEFAULTS,
+  KITCHEN_FIGURE_NAMES,
+} from "./momos-domain-language.js";
+import { businessDateISO } from "./business-date.js";
+import { buildCanonicalPhysicalResults, canonicalBatchPhysicalResult } from "./canonical-production-results.js";
+
+const PROCESS_STATES = new Set(["En preparación", "Congelando"]);
 
 function number(value) {
   const parsed = Number(value);
@@ -15,11 +25,16 @@ function grams(value) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDateISO();
 }
 
 function expired(date, today) {
   return Boolean(date && String(date).slice(0, 10) < today);
+}
+
+function figureBelongsToProduct(productId, figure) {
+  const expectedProductId = expectedFigureProductId(figure);
+  return Boolean(expectedProductId && String(productId || "").trim() === expectedProductId);
 }
 
 function hasImperfectDestination(batch) {
@@ -36,7 +51,7 @@ function figureOutcomeRows(batch) {
   const expectedImperfect = nonNegative(batch?.imperfectas);
   const expectedDiscarded = nonNegative(batch?.descartadas);
   const rows = detailed.map((row) => ({
-    figura: String(row.figura || "Sin figura verificable"),
+    figura: isKitchenFigureName(row?.figura) ? String(row.figura).trim() : "Sin figura verificable",
     perfectas: nonNegative(row.perfectas),
     imperfectas: nonNegative(row.imperfectas),
     descartadas: nonNegative(row.descartadas),
@@ -53,8 +68,11 @@ function figureOutcomeRows(batch) {
     return rows;
   }
 
-  const planned = Array.isArray(batch?.figuras) ? batch.figuras.filter((row) => number(row.cant) > 0) : [];
-  const onlyFigure = String(batch?.figura || (planned.length === 1 ? planned[0].figura : "") || "Sin figura verificable");
+  const planned = Array.isArray(batch?.figuras)
+    ? batch.figuras.filter((row) => number(row.cant) > 0 && isKitchenFigureName(row?.figura))
+    : [];
+  const candidate = batch?.figura || (planned.length === 1 ? planned[0].figura : "");
+  const onlyFigure = isKitchenFigureName(candidate) ? String(candidate).trim() : "Sin figura verificable";
   return [{
     figura: onlyFigure, perfectas: nonNegative(batch?.perfectas),
     imperfectas: expectedImperfect, descartadas: expectedDiscarded,
@@ -69,7 +87,7 @@ function earliestDate(current, next) {
 
 export function buildFinishedInventory(db = {}, { today = todayIso() } = {}) {
   const baseProducts = (db.products || [])
-    .filter((product) => product.tipo === "momo" && (product.activo !== false || number(product.stock) > 0))
+    .filter((product) => isCommercialFamilyProduct(product) && (product.activo !== false || number(product.stock) > 0))
     .map((product) => ({
       ...product,
       officialAvailable: nonNegative(product.stock),
@@ -77,9 +95,11 @@ export function buildFinishedInventory(db = {}, { today = todayIso() } = {}) {
     }));
 
   const productIds = new Set(baseProducts.map((product) => product.id));
-  const reportedVariants = [...(db.variantes || []), ...(db.variantesCuarentena || [])]
-    .filter((variant) => productIds.has(variant.productId) && number(variant.disponibles) > 0)
+  const candidateVariants = [...(db.variantes || []), ...(db.variantesCuarentena || [])]
+    .filter((variant) => productIds.has(variant.productId) && isKitchenFigureName(variant.figura) && number(variant.disponibles) > 0)
     .map((variant) => ({ ...variant, disponibles: nonNegative(variant.disponibles) }));
+  const incompatibleVariants = candidateVariants.filter((variant) => !figureBelongsToProduct(variant.productId, variant.figura));
+  const reportedVariants = candidateVariants.filter((variant) => figureBelongsToProduct(variant.productId, variant.figura));
   const quarantinedVariants = reportedVariants.filter((variant) => expired(variant.vence, today));
   const eligibleVariants = reportedVariants.filter((variant) => !expired(variant.vence, today));
   const quarantinedByProduct = quarantinedVariants.reduce((totals, variant) => {
@@ -132,14 +152,20 @@ export function buildFinishedInventory(db = {}, { today = todayIso() } = {}) {
   const inProcess = (db.production_batches || []).filter((batch) => PROCESS_STATES.has(batch.estado));
   const imperfects = (db.production_batches || [])
     .filter((batch) => number(batch.imperfectas) > 0 || number(batch.descartadas) > 0)
-    .map((batch) => ({
-      ...batch,
-      imperfectas: number(batch.imperfectas),
-      descartadas: number(batch.descartadas),
-      destinationRegistered: hasImperfectDestination(batch),
-      forShakes: isShakeDestination(batch),
-      figureOutcomes: figureOutcomeRows(batch),
-    }));
+    .map((batch) => {
+      const physicalResult = canonicalBatchPhysicalResult(batch);
+      return {
+        ...batch,
+        perfectas: physicalResult.perfect,
+        imperfectas: physicalResult.imperfect,
+        descartadas: physicalResult.discarded,
+        physicalResult,
+        destinationRegistered: hasImperfectDestination(batch),
+        forShakes: isShakeDestination(batch),
+        figureOutcomes: figureOutcomeRows(batch),
+      };
+    });
+  const physicalResults = buildCanonicalPhysicalResults(db.production_batches || []);
 
   const figureIndex = new Map();
   function ensureFigure(name, metadata = {}) {
@@ -156,11 +182,32 @@ export function buildFinishedInventory(db = {}, { today = todayIso() } = {}) {
     if (metadata.productId) entry.productIds.add(metadata.productId);
     return entry;
   }
-  // El catálogo define qué figuras existen; el stock solo completa sus cifras.
-  // Así una figura activa nunca desaparece de Inventario terminado por estar en cero.
-  const serverFigures = Array.isArray(db.figuras) ? db.figuras.filter((figure) => figure?.activo !== false) : [];
-  const fallbackFigures = Array.isArray(db.settings?.figuras) ? db.settings.figuras : [];
-  (serverFigures.length ? serverFigures : fallbackFigures).forEach((figure) => ensureFigure(figure.nombre, figure));
+  // Las siete figuras físicas canónicas siempre existen en la operación de MOMOS.
+  // El catálogo del servidor aporta metadatos, pero el stock nunca decide si una
+  // figura se muestra: Producción e Inventario terminado deben conservar incluso
+  // las tarjetas en cero para que la comparación sea exacta y operable.
+  const serverFigures = Array.isArray(db.figuras)
+    ? db.figuras.filter((figure) => figure?.activo !== false && isKitchenFigureName(figure?.nombre))
+    : [];
+  const fallbackFigures = Array.isArray(db.settings?.figuras)
+    ? db.settings.figuras.filter((figure) => isKitchenFigureName(figure?.nombre))
+    : [];
+  const catalogFigures = serverFigures.length ? serverFigures : fallbackFigures;
+  const incompatibleCatalogFigures = catalogFigures.filter((figure) => {
+    const registeredProductId = String(figure?.productId ?? figure?.product_id ?? "").trim();
+    return Boolean(registeredProductId && registeredProductId !== expectedFigureProductId(figure.nombre));
+  });
+  const catalogByName = new Map(catalogFigures.map((figure) => [String(figure.nombre), figure]));
+  KITCHEN_FIGURE_NAMES.forEach((figureName) => {
+    const configured = catalogByName.get(figureName) || {};
+    const defaults = KITCHEN_FIGURE_DEFAULTS[figureName] || {};
+    ensureFigure(figureName, {
+      ...configured,
+      especie: configured.especie || defaults.species,
+      gramajeG: configured.gramajeG ?? configured.gramaje ?? defaults.grams,
+      productId: expectedFigureProductId(figureName),
+    });
+  });
   variants.forEach((variant) => {
     const figure = ensureFigure(variant.figura, { gramajeG: variant.gramajeG, productId: variant.productId });
     const flavorName = String(variant.sabor || "Sin sabor");
@@ -209,26 +256,39 @@ export function buildFinishedInventory(db = {}, { today = todayIso() } = {}) {
     withoutVariantDetail: finishedProducts.reduce((sum, product) => sum + product.withoutVariantDetail, 0),
     reserved: activeReservations.reduce((sum, reservation) => sum + reservation.cantidad, 0),
     inProcess: inProcess.reduce((sum, batch) => sum + number(batch.prod), 0),
-    imperfectTotal: imperfects.reduce((sum, batch) => sum + batch.imperfectas, 0),
-    imperfectPending: imperfects.filter((batch) => !batch.destinationRegistered).reduce((sum, batch) => sum + batch.imperfectas, 0),
-    imperfectReused: imperfects.filter((batch) => batch.destinationRegistered).reduce((sum, batch) => sum + batch.imperfectas, 0),
+    produced: physicalResults.produced,
+    perfect: physicalResults.perfect,
+    imperfectTotal: physicalResults.imperfect,
+    imperfectPending: physicalResults.pendingImperfectUnits,
+    imperfectReused: physicalResults.repurposedImperfectUnits,
     imperfectForShakes: imperfects.filter((batch) => batch.forShakes).reduce((sum, batch) => sum + batch.imperfectas, 0),
-    discarded: imperfects.reduce((sum, batch) => sum + batch.descartadas, 0),
+    discarded: physicalResults.discarded,
+    grossWasteUnits: physicalResults.grossWasteUnits,
+    grossWasteRate: physicalResults.grossWasteRate,
+    definitiveLossUnits: physicalResults.definitiveLossUnits,
+    definitiveLossRate: physicalResults.definitiveLossRate,
+    inconsistentPhysicalBatches: physicalResults.inconsistentBatchCount,
     quarantined: quarantinedVariants.reduce((sum, variant) => sum + variant.disponibles, 0),
     reconciliationExcess,
     reconciliationBlocked,
+    incompatibleVariantUnits: incompatibleVariants.reduce((sum, variant) => sum + variant.disponibles, 0),
+    incompatibleVariantRows: incompatibleVariants.length,
+    incompatibleCatalogFigures: incompatibleCatalogFigures.length,
     negativeStockProducts: products.filter((product) => product.invalidNegativeStock).length,
   };
 
   return {
     products: finishedProducts,
     variants,
+    incompatibleVariants,
+    incompatibleCatalogFigures,
     quarantinedVariants,
     reservations,
     reservationHistory,
     activeReservations,
     inProcess,
     imperfects,
+    physicalResults,
     figureSummaries,
     summary,
   };

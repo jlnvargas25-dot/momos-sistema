@@ -1,0 +1,8 @@
+# Toda modificación requiere supervisión del propietario del producto.
+* @jlnvargas25-dot
+
+# Superficies sensibles: base, permisos, automatizaciones y workers privados.
+/supabase/ @jlnvargas25-dot
+/.github/ @jlnvargas25-dot
+/scripts/ @jlnvargas25-dot
+/src/lib/rpc.js @jlnvargas25-dot

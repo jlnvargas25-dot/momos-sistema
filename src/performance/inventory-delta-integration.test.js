@@ -145,8 +145,11 @@ test("el fallback legacy se usa únicamente cuando falta la RPC H69", () => {
   const missingGuardCount = (inventoryPanelSource.match(
     /if \(!isMissingRpcError\(error\)\) throw error;/g,
   ) || []).length;
-  assert.equal(missingGuardCount, deltaCallCount,
-    "cada posible degradación a la RPC anterior debe estar protegida por isMissingRpcError");
+  assert.equal(missingGuardCount, deltaCallCount + 1,
+    "cada degradación H69 y la compatibilidad temporal H91 deben exigir isMissingRpcError");
+  assert.match(inventoryPanelSource,
+    /registrarCompraYAtenderSugerencias\([\s\S]*?catch \(error\) \{\s*if \(!isMissingRpcError\(error\)\) throw error;/,
+    "H91 solo puede degradar a H69 cuando la RPC compuesta aún no existe");
 
   const guardedFallbacks = [...inventoryPanelSource.matchAll(
     /catch \(error\) \{\s*if \(!isMissingRpcError\(error\)\) throw error;\s*mutationIntentKeysRef\.current\.delete\(intent\.fingerprint\);\s*await (entradaInsumoLote|movimientoInsumo|desecharLoteInsumo)\(/g,
@@ -343,11 +346,13 @@ test("H70 protege snapshot, fetch delta y mutación con una generación monotón
   assert.match(applier, /status: "discarded"/);
   assert.match(applier, /inventorySyncGenerationRef\.current \+= 1/);
 
-  const mutations = [...inventoryPanelSource.matchAll(
-    /const mutationGeneration = capturarGeneracionInventario\(\);\s*const response = await (entradaInsumoLoteDelta|movimientoInsumoDelta|desecharLoteInsumoDelta)\(/g,
-  )];
-  assert.equal(mutations.length, 4,
+  assert.equal((inventoryPanelSource.match(
+    /const mutationGeneration = capturarGeneracionInventario\(\);/g,
+  ) || []).length, 4,
     "cada RPC mutante debe capturar la generación antes de escribir");
+  assert.match(inventoryPanelSource,
+    /const mutationGeneration = capturarGeneracionInventario\(\);[\s\S]*?registrarCompraYAtenderSugerencias\([\s\S]*?entradaInsumoLoteDelta\(/,
+    "la compra H91 y su fallback H69 deben compartir la misma generación inicial");
   assert.equal((inventoryPanelSource.match(/mutationGeneration,\s*\);/g) || []).length, 4,
     "cada respuesta mutante debe validarse contra su generación de inicio");
 });
@@ -399,10 +404,18 @@ test("los pendientes Realtime sobreviven cleanup y cambios de vista sin mezclar 
     /if \(inventoryDeltaRealtime && inventoryRealtimePendingRef\.current\.size\)[\s\S]*?flushInventoryDeltas\(\)[\s\S]*?else if \(dbRef\.current\?\.inventoryMutationDeltaReady === true[\s\S]*?fallbackInventorySnapshots\(\)/,
     "un nuevo efecto debe retomar pendientes tanto dentro como fuera de Inventario");
 
-  const cleanup = sourceBetween(
+  // Aislar primero el efecto Realtime evita depender de LF/CRLF y de otros
+  // cleanup de React que puedan existir antes en MomosOps.
+  const realtimeEffect = sourceBetween(
     mainSource,
-    "return () => {\n      alive = false;",
-    "  }, [session?.user?.id",
+    "const fallbackInventorySnapshots",
+    "// Con sesi",
+    "efecto Realtime H70",
+  );
+  const cleanup = sourceBetween(
+    realtimeEffect,
+    "return () => {",
+    "supabase.removeChannel(channel);",
     "cleanup de Realtime H70",
   );
   assert.doesNotMatch(cleanup, /inventoryRealtimePendingRef\.current\.clear|\.delete\(/,

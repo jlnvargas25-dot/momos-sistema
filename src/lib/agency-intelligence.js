@@ -1,4 +1,15 @@
 import { normalizeAgencyOperationalFacts } from "./agency-operational-facts.js";
+import { DEFAULT_AGENCY_SETTINGS } from "./agency-settings.js";
+import { commercialFamilyLabel, isCommercialFamilyProduct } from "./momos-domain-language.js";
+import { businessDateISO } from "./business-date.js";
+import {
+  buildCanonicalFinishedStock, canonicalExactFinishedStock,
+  canonicalFinishedProductStock, canonicalUsableIngredientStock,
+} from "./canonical-stock.js";
+import { calculateOrderAttributionRevenue } from "./order-money.js";
+import { buildCanonicalPhysicalResults } from "./canonical-production-results.js";
+
+export { DEFAULT_AGENCY_SETTINGS } from "./agency-settings.js";
 
 const PAID_STATES = new Set([
   "Pagado", "En producción", "Listo para empaque", "Empacado",
@@ -17,17 +28,6 @@ const daysBetween = (from, to) => {
   return Math.round((new Date(`${right}T12:00:00`) - new Date(`${left}T12:00:00`)) / 86400000);
 };
 const isPaidOrder = (order) => order?.estado !== "Cancelado" && Boolean(order?.pagadoEn || PAID_STATES.has(order?.estado));
-
-export const DEFAULT_AGENCY_SETTINGS = Object.freeze({
-  autonomyMode: "Copiloto",
-  dailyBudgetLimit: 100000,
-  campaignBudgetLimit: 500000,
-  scaleStepPct: 15,
-  requireCreativeApproval: true,
-  blockOutOfStock: true,
-  contactOnlyAuthorized: true,
-  paused: false,
-});
 
 const SERVER_DECISION_TYPES = new Set([
   "Crear contenido", "Contactar segmento", "Activar campaña", "Pausar campaña",
@@ -53,10 +53,7 @@ export function normalizeAgencySettings(settings = {}) {
 }
 
 function orderRevenue(order, db) {
-  if (number(order.total) > 0) return number(order.total);
-  return (db.order_items || [])
-    .filter((line) => line.orderId === order.id && !line.parentItemId)
-    .reduce((sum, line) => sum + number(line.precio) * Math.max(1, number(line.cant)), 0);
+  return calculateOrderAttributionRevenue(db, order);
 }
 
 function resolveProduct(db, reference) {
@@ -73,30 +70,33 @@ function creativeProduct(creative, db) {
 }
 
 function usableIngredientStock(db, itemId, today) {
-  const item = (db.inventory_items || []).find((candidate) => candidate.id === itemId);
-  if (!item) return null;
-  const lots = (db.inventory_lots || []).filter((lot) => lot.itemId === itemId && number(lot.available) > 0);
-  if (db.inventoryLotsReady && lots.length) {
-    return lots.filter((lot) => !lot.expiresAt || lot.expiresAt >= today)
-      .reduce((sum, lot) => sum + number(lot.available), 0);
-  }
-  return number(item.stock);
+  const stock = canonicalUsableIngredientStock(db, itemId, { today });
+  return stock.item ? stock.usable : null;
 }
 
-function productStock(db, reference, today = new Date().toISOString().slice(0, 10), visited = new Set()) {
+function productStock(db, reference, today = businessDateISO(), visited = new Set(), finishedView = null) {
   const product = resolveProduct(db, reference);
   if (!product || product.activo === false || visited.has(product.id)) return null;
   // H67 distingue explÃ­citamente "desconocido" de cero. Ninguna receta o
   // valor legado puede rellenar silenciosamente una fuente no verificada.
   if (product.stockVerified === false || product.stockSource === "unverified") return null;
   const nextVisited = new Set(visited); nextVisited.add(product.id);
+  if (isCommercialFamilyProduct(product)
+    && product.stock !== undefined && product.stock !== null
+    && Array.isArray(db.variantes) && db.variantes.length) {
+    const canonical = canonicalFinishedProductStock(db, product.id, {
+      today,
+      view: finishedView || buildCanonicalFinishedStock(db, { today }),
+    });
+    return canonical?.sellable ?? null;
+  }
   const exact = (db.variantes || []).filter((item) => item.productId === product.id && (!item.vence || item.vence >= today));
   if (exact.length) return exact.reduce((sum, item) => sum + number(item.disponibles), 0);
   if (product.stock !== undefined && product.stock !== null) return Math.max(0, number(product.stock));
 
   if (product.tipo === "combo" && product.comboSize) {
     const componentIds = product.componentProductIds || [];
-    const componentStock = componentIds.reduce((sum, id) => sum + Math.max(0, productStock(db, id, today, nextVisited) || 0), 0);
+    const componentStock = componentIds.reduce((sum, id) => sum + Math.max(0, productStock(db, id, today, nextVisited, finishedView) || 0), 0);
     const boxes = Math.floor(componentStock / Math.max(1, number(product.comboSize)));
     const packaging = product.empaqueItem ? usableIngredientStock(db, product.empaqueItem, today) : null;
     return packaging === null ? boxes : Math.min(boxes, Math.floor(packaging));
@@ -114,8 +114,22 @@ function productStock(db, reference, today = new Date().toISOString().slice(0, 1
   return null;
 }
 
-export function agencyProductStock(db, reference, today = new Date().toISOString().slice(0, 10)) {
-  return productStock(db, reference, today);
+export function agencyProductStock(db, reference, today = businessDateISO()) {
+  const finishedView = Array.isArray(db?.variantes) && db.variantes.length
+    ? buildCanonicalFinishedStock(db, { today })
+    : null;
+  return productStock(db, reference, today, new Set(), finishedView);
+}
+
+export function agencyExactVariantStock(db, {
+  productId, figure, flavor, today = businessDateISO(),
+} = {}) {
+  return canonicalExactFinishedStock(db, { productId, figure, flavor, today });
+}
+
+export function agencyPhysicalProductionResults(db = {}, options = {}) {
+  if (!Array.isArray(db.production_batches)) return null;
+  return buildCanonicalPhysicalResults(db.production_batches || [], options);
 }
 
 function platformMetrics(db) {
@@ -222,6 +236,8 @@ function agencyFactsContext(db) {
   const products = facts.productCatalog.map((product) => ({
     id: product.productId,
     nombre: product.name,
+    cat: product.category,
+    tipo: product.type,
     activo: product.active,
     stock: product.availableStock,
     agencyAvailableStock: product.availableStock,
@@ -232,6 +248,13 @@ function agencyFactsContext(db) {
     facts,
     decisionDb: { products, creatives: db.creatives || [] },
   };
+}
+
+function agencyProductLabel(product) {
+  if (!product) return "producto sin identificar";
+  return isCommercialFamilyProduct(product)
+    ? `la presentación comercial ${commercialFamilyLabel(product)}`
+    : product.nombre;
 }
 
 function agencyFactsCalendar(facts) {
@@ -261,11 +284,18 @@ export function guardAgencyAction(action = {}, db = {}, rawSettings = {}) {
     reasons.push("La parada de emergencia de Agencia MOMOS está activa.");
   }
   if (settings.blockOutOfStock && action.productId) {
-    const stock = productStock(db, action.productId, action.today);
+    const figure = action.figure ?? action.figura;
+    const flavor = action.flavor ?? action.sabor;
+    const stock = figure && flavor
+      ? agencyExactVariantStock(db, {
+        productId: action.productId, figure, flavor,
+        today: action.today || businessDateISO(),
+      })
+      : productStock(db, action.productId, action.today);
     if (stock === null && !["Reponer stock", "Crear brief"].includes(type)) {
-      reasons.push("No existe una disponibilidad verificable para el producto foco.");
+      reasons.push("No existe una disponibilidad verificable para el postre o la presentación comercial foco.");
     } else if (stock !== null && stock <= 0 && !["Reponer stock", "Crear brief"].includes(type)) {
-      reasons.push("El producto foco no tiene stock disponible.");
+      reasons.push("El postre o la presentación comercial foco no tiene stock disponible.");
     }
   }
   if (settings.requireCreativeApproval && action.creativeId && ["Activar campaña", "Publicar contenido", "Repetir creativo"].includes(type)) {
@@ -287,13 +317,17 @@ export function guardAgencyAction(action = {}, db = {}, rawSettings = {}) {
   return { allowed: reasons.length === 0, reasons, warnings, settings };
 }
 
-export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new Date().toISOString().slice(0, 10)) {
+export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = businessDateISO()) {
   const settings = normalizeAgencySettings(rawSettings);
+  const physicalProduction = agencyPhysicalProductionResults(db);
   const factsContext = agencyFactsContext(db);
   const facts = factsContext?.facts || null;
   // Con H67 listo, las decisiones operativas se resuelven sobre agregados
   // sin mezclar stock, pedidos ni clientes del estado legado.
   const operationalDb = factsContext?.decisionDb || db;
+  const finishedView = Array.isArray(operationalDb?.variantes) && operationalDb.variantes.length
+    ? buildCanonicalFinishedStock(operationalDb, { today })
+    : null;
   const factCalendar = facts ? agencyFactsCalendar(facts) : null;
   const activeCampaigns = (db.campaigns || []).filter((campaign) => campaign.estado === "Activa");
   const performance = activeCampaigns.map((campaign) => ({ ...campaignPerformance(campaign, db, facts), campaign }));
@@ -301,12 +335,12 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
 
   performance.forEach((metric) => {
     const product = campaignProduct(metric.campaign, operationalDb);
-    const stock = product ? productStock(operationalDb, product.id, today) : null;
+    const stock = product ? productStock(operationalDb, product.id, today, new Set(), finishedView) : null;
     if (product && stock === null) {
       recommendations.push(recommendation({
         id: `verify-stock-${metric.campaignId}`, type: "Revisar oferta", pillar: "Control interno", risk: "Alto", priority: 100, confidence: "Alta",
         title: `VerificÃ¡ disponibilidad antes de mover ${metric.campaign.nombre}`,
-        rationale: "El producto foco no tiene una fuente de stock verificable; desconocido no significa agotado ni disponible.",
+        rationale: "El postre o la presentación comercial foco no tiene una fuente de stock verificable; desconocido no significa agotado ni disponible.",
         evidence: { stock: null, stockSource: product.stockSource || "unverified", campaignId: metric.campaignId, spend: metric.spend },
         signals: ["Stock: por verificar", signal("Fuente", product.stockSource || "unverified"), signal("Gasto", metric.spend)],
         campaignId: metric.campaignId, productId: product.id,
@@ -316,7 +350,7 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
       recommendations.push(recommendation({
         id: `stock-${metric.campaignId}`, type: "Reponer stock", pillar: "Inventario", risk: "Alto", priority: 100, confidence: "Alta",
         title: `Protegé la pauta de ${metric.campaign.nombre}`,
-        rationale: "La campaña está activa, pero su producto foco no tiene disponibilidad para cumplir nuevas ventas.",
+        rationale: "La campaña está activa, pero su postre o presentación comercial foco no tiene disponibilidad para cumplir nuevas ventas.",
         evidence: { stock, campaignId: metric.campaignId, spend: metric.spend }, signals: [signal("Stock", stock), signal("Gasto", metric.spend)],
         campaignId: metric.campaignId, productId: product.id, nextStep: "Pausar la promesa comercial y enviar el faltante a Producción o Inventario.",
       }));
@@ -364,12 +398,12 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
 
   const sales = productSales(operationalDb, today, 30, facts);
   const activeProductIds = new Set(activeCampaigns.map((campaign) => campaignProduct(campaign, operationalDb)?.id).filter(Boolean));
-  const promotable = sales.find((entry) => entry.units >= 2 && !activeProductIds.has(entry.product.id) && number(productStock(operationalDb, entry.product.id, today)) > 0);
+  const promotable = sales.find((entry) => entry.units >= 2 && !activeProductIds.has(entry.product.id) && number(productStock(operationalDb, entry.product.id, today, new Set(), finishedView)) > 0);
   if (promotable) {
-    const stock = productStock(operationalDb, promotable.product.id, today);
+    const stock = productStock(operationalDb, promotable.product.id, today, new Set(), finishedView);
     recommendations.push(recommendation({
       id: `product-momentum-${promotable.product.id}-${today}`, type: "Impulsar producto", pillar: "Producto", risk: "Medio", priority: 74, confidence: "Alta",
-      title: `Convertí la demanda de ${promotable.product.nombre} en campaña`,
+      title: `Convertí la demanda de ${agencyProductLabel(promotable.product)} en campaña`,
       rationale: "Tiene ventas recientes, disponibilidad verificable y no cuenta con una campaña activa propia.",
       evidence: { units30d: promotable.units, orders30d: promotable.orders, revenue30d: promotable.revenue, stock },
       signals: [signal("Vendidas 30 días", promotable.units), signal("Pedidos", promotable.orders), signal("Stock", stock)],
@@ -379,13 +413,13 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
 
   const soldProductIds = new Set(sales.map((entry) => entry.product.id));
   const idleStock = (operationalDb.products || []).filter((product) => product.activo !== false && !soldProductIds.has(product.id) && !activeProductIds.has(product.id))
-    .map((product) => ({ product, stock: productStock(operationalDb, product.id, today) }))
+    .map((product) => ({ product, stock: productStock(operationalDb, product.id, today, new Set(), finishedView) }))
     .filter((entry) => Number.isFinite(entry.stock) && entry.stock >= 5)
     .sort((left, right) => right.stock - left.stock || left.product.id.localeCompare(right.product.id))[0];
   if (idleStock) {
     recommendations.push(recommendation({
       id: `idle-stock-${idleStock.product.id}-${today}`, type: "Mover inventario", pillar: "Producto", risk: "Medio", priority: 68, confidence: "Media",
-      title: `Dale salida a ${idleStock.product.nombre}`,
+      title: `Dale salida a ${agencyProductLabel(idleStock.product)}`,
       rationale: "Tiene inventario disponible, pero no registra ventas pagadas en los últimos 30 días ni una campaña activa.",
       evidence: { stock: idleStock.stock, units30d: 0, activeCampaigns: 0 }, signals: [signal("Stock", idleStock.stock), "Ventas 30 días: 0", "Campaña activa: no"],
       productId: idleStock.product.id, channel: "Instagram", nextStep: "Investigar primero precio, presentación y audiencia; no descontar sin revisar margen.",
@@ -464,6 +498,7 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
     performance,
     productSales: sales,
     creativePerformance: creativeMetrics,
+    physicalProduction,
     pipeline: {
       opportunities: guarded.length,
       briefs: (db.agencyBriefs || []).filter((brief) => !["Descartado", "Completado"].includes(brief.status)).length,
@@ -479,9 +514,13 @@ export function buildAgencyIntelligence(db = {}, rawSettings = {}, today = new D
       activeCampaigns: activeCampaigns.length,
       pendingCreatives: pendingCreatives.length,
       eligibleCustomers: dormantCount + birthdayCount,
-      productsWithStock: (operationalDb.products || []).filter((product) => number(productStock(operationalDb, product.id, today)) > 0).length,
+      productsWithStock: (operationalDb.products || []).filter((product) => number(productStock(operationalDb, product.id, today, new Set(), finishedView)) > 0).length,
       winners: winner ? 1 : 0,
       scheduledNext7,
+      producedUnits: physicalProduction?.produced ?? null,
+      grossWasteUnits: physicalProduction?.grossWasteUnits ?? null,
+      grossWasteRate: physicalProduction?.grossWasteRate ?? null,
+      definitiveLossUnits: physicalProduction?.definitiveLossUnits ?? null,
     },
   };
 }

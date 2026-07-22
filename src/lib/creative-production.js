@@ -1,3 +1,5 @@
+import { businessDateISO } from "./business-date.js";
+
 const list = (value) => Array.isArray(value) ? value : [];
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const clean = (value) => String(value || "").trim();
@@ -24,7 +26,7 @@ export function recommendedCreativeProvider(job = {}) {
   return "Manual";
 }
 
-export function creativeAuthorizationGuard(job = {}, input = {}, db = {}, today = new Date().toISOString().slice(0, 10)) {
+export function creativeAuthorizationGuard(job = {}, input = {}, db = {}, today = businessDateISO()) {
   const reasons = [];
   const maxCostCop = number(input.maxCostCop);
   if (job.status !== "Preparado") reasons.push("Solo un trabajo preparado puede autorizarse.");

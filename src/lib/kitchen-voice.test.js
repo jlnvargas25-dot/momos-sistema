@@ -218,7 +218,7 @@ test("anuncia una orden nueva con cliente, contenido y regla de pago", () => {
   assert.match(paid.text, /pagada y lista para iniciar/i);
   assert.deepEqual(paid.figures, ["Lizi"]);
   assert.deepEqual(paid.flavors, ["Oreo", "Nutella"]);
-  assert.deepEqual(paid.items[0], { id: "OI-A", name: "Malteada Oreo Momo", quantity: 2, figures: ["Lizi"], flavors: ["Oreo"] });
+  assert.deepEqual(paid.items[0], { id: "OI-A", name: "Malteada Oreo Momo", commercialFamily: "", quantity: 2, figures: ["Lizi"], flavors: ["Oreo"] });
 
   const pending = kitchenOrderAlert(
     { id: "P-1054", customerId: "C02", estado: "Pendiente de pago" },
@@ -313,8 +313,8 @@ test("consulta por voz el contenido completo de un pedido sin convertirlo en una
     assert.equal(answer.orderId, "P-1053");
     assert.equal(answer.canPrepare, true);
     assert.match(answer.text, /P-1053 de Valentina Ríos/i);
-    assert.match(answer.text, /2 unidades de Momo Gatito/i);
-    assert.match(answer.text, /sabor Maracuyá.*figura Lizi.*salsa Frutos rojos.*relleno Cheesecake con ganache/i);
+    assert.match(answer.text, /2 unidades de Lizi de Maracuyá/i);
+    assert.match(answer.text, /presentación comercial: momo gatito.*salsa: frutos rojos.*relleno: cheesecake con ganache/i);
     assert.match(answer.text, /Cocina puede iniciarlo/i);
   });
 
@@ -1036,8 +1036,8 @@ test("puede iniciar por número una comanda completa aunque el producto no sea a
   assert.deepEqual(parsed.madeToOrder.items, [
     { productId: "PR-MOMO", productName: "Momo Gatito", quantity: 2 },
   ]);
-  assert.match(parsed.madeToOrder.orderContent, /2 unidades de Momo Gatito/i);
-  assert.match(parsed.madeToOrder.orderContent, /Maracuyá.*Lizi.*Frutos rojos.*Cheesecake con ganache/i);
+  assert.match(parsed.madeToOrder.orderContent, /2 unidades de Lizi de Maracuyá/i);
+  assert.match(parsed.madeToOrder.orderContent, /presentación comercial: momo gatito.*salsa: frutos rojos.*relleno: cheesecake con ganache/i);
 });
 
 test("no permite iniciar una preparación si no existe una orden pagada compatible", () => {
