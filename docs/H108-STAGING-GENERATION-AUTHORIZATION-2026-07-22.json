@@ -1,0 +1,63 @@
+{
+  "contract": "momos.generation-authorization.staging.v1",
+  "capturedAt": "2026-07-22T18:53:49.3869060Z",
+  "environment": "Staging",
+  "projectRef": "mxrsmuqyesolkxoqvggl",
+  "execution": {
+    "method": "Supabase Management API",
+    "explicitUtf8Bytes": true,
+    "productionProjectRefBlocked": "csojbqpvujymesuvntxb",
+    "baseCommit": "6cce67281b7f6ce6fff44ccc41219fe543ba6df5"
+  },
+  "migration": {
+    "id": "20260722_108_autorizacion_generacion_preflight",
+    "appliedAt": "2026-07-22T18:49:22.905358Z",
+    "sha256": "676491f795537c991579acd769d5cb9c5094490e02d858b56fffbc3d9b6949a7",
+    "adversarialSha256": "292a82a21df6dcf3b9302a3b984d49418a11090d215d99d03fdf8e6a7edef50a",
+    "orderedAcceptanceSha256": "10afbb322a6a6590f4de21383210c1b0b3d0be0f42ce761a6e5a7568d191c9c0",
+    "applied": true,
+    "idempotentRepairVerified": true
+  },
+  "acceptance": {
+    "preflightToAuthorizedJobAtomic": "PASS_WITH_ROLLBACK",
+    "replayAndCollisionProtection": "PASS_WITH_ROLLBACK",
+    "brandConnectorCostAndPrivacyGates": "PASS_WITH_ROLLBACK",
+    "orderedMigrations01To108": "PASS_WITH_ROLLBACK",
+    "localGeneralTests": "742_PASS",
+    "localPerformanceTests": "204_PASS",
+    "productionBuild": "PASS",
+    "performanceBudget": "PASS",
+    "repositoryContracts": "PASS",
+    "mcpHealth": "PASS",
+    "testRowsRemaining": 0
+  },
+  "runtime": {
+    "schema": "momos-generation-authorizations/v1",
+    "persistedAuthorizations": 0,
+    "openGenerationJobs": 0,
+    "humanAuthorizationRequired": true,
+    "jobCreatedOnlyAfterAuthorization": true,
+    "workerMayClaimAfterAuthorization": true,
+    "workerClaimedDuringCertification": false,
+    "creditsConsumedByAuthorization": false,
+    "externalGenerationAuthorized": true,
+    "publicationAllowed": false
+  },
+  "productionVerification": {
+    "readOnly": true,
+    "h108Applied": false,
+    "mutated": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "containsStoragePaths": false,
+    "containsStaffIdentity": false
+  },
+  "dependencyAudit": {
+    "highOrCritical": 0,
+    "moderate": 2,
+    "note": "npm audit reports the known @hono/node-server advisory through the MCP SDK; the available automatic fix is a breaking downgrade and was not applied silently."
+  },
+  "conclusion": "PASS - H108 convierte exclusivamente un preflight H107 aprobado y vigente en un único trabajo autorizado, con marca, costo y conector revalidados. La autorización habilita al worker pero no lo reclama, no consume créditos y no permite publicar."
+}

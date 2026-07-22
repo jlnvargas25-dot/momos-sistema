@@ -391,9 +391,25 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 - Guardas permanentes: cero créditos, cero trabajos creados, cero ejecución
   externa y cero publicación durante preparación y aprobación del preflight.
 
-Siguiente fase: convertir únicamente un preflight aprobado y vigente en una
-solicitud de autorización de motor separada, sin saltar el costo, la salud del
-conector ni el consentimiento humano ya existentes.
+### Hito 108 — Autorización humana de generación (implementado)
+
+- Solo Administración puede convertir un preflight H107 aprobado y vigente en
+  un trabajo creativo `Autorizado`, mediante confirmación explícita y criterio
+  humano documentado.
+- La operación es atómica e idempotente: revalida fórmula, paquete visual,
+  identidad, kit oficial, conector saludable y tope de costo antes de crear un
+  único trabajo dentro de la cola Kling/Higgsfield existente.
+- Autorizar habilita al worker para reclamar el trabajo; la propia autorización
+  no consume créditos, no llama el motor y no permite publicación.
+- MCP expone solamente el estado compacto y auditado de las autorizaciones. No
+  puede autorizar, reclamar un worker, ejecutar un motor ni publicar.
+- La publicación conserva su revisión creativa, derechos y aprobación de
+  Distribución como un gate posterior independiente.
+
+Siguiente fase operativa: ejecutar un piloto real controlado con un único trabajo
+autorizado, capturar recibo/costo/salida del worker existente y revisar el activo
+antes de cualquier distribución. No requiere ampliar permisos ni activar una
+publicación automática.
 
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 

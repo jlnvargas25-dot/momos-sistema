@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import {
-  medirFormulaCreativa, resolverMedicionFormulaCreativa, revisarFormulaCreativa,
+  autorizarGeneracionDesdePreflight, medirFormulaCreativa, resolverMedicionFormulaCreativa, revisarFormulaCreativa,
   revisarPlanProduccionFormula,
 } from "../../lib/rpc";
 
@@ -27,6 +27,10 @@ export function createAgencyFormulaLab(shared) {
     const summary = intelligence?.summary || {};
     const productionPreflight = db.agencyProductionPreflight;
     const productionPlans = productionPreflight?.plans || [];
+    const generationAuthorizations = db.agencyGenerationAuthorizations?.authorizations || [];
+    const generationByPlan = useMemo(() => new Map(
+      generationAuthorizations.map((authorization) => [authorization.planId, authorization]),
+    ), [generationAuthorizations]);
 
     async function review(formula, status) {
       const note = status === "En revisión"
@@ -70,6 +74,27 @@ export function createAgencyFormulaLab(shared) {
       await refrescar();
     }
 
+    async function authorizeGeneration(plan) {
+      const confirmed = window.confirm(
+        `Vas a autorizar una generación externa en ${plan.provider} con tope de ${money(plan.maxCostCop)}.\n\n`
+        + "El worker podrá reclamar el trabajo y consumir créditos. La publicación seguirá bloqueada. ¿Continuar?",
+      );
+      if (!confirmed) return;
+      const note = window.prompt(
+        "Documentá por qué este preflight está listo para consumir créditos:",
+        "Revisé fórmula, producto, referencias, marca, formato, motor y tope de costo; autorizo generar sin publicar.",
+      );
+      if (note == null) return;
+      const result = await autorizarGeneracionDesdePreflight({
+        authorization_key: `ui.h108.plan.${plan.id}`,
+        plan_id: plan.id,
+        decision_note: note,
+        acknowledge_external_generation: true,
+      });
+      toast("ok", `Trabajo #${result.job_id} autorizado para ${plan.provider}; publicación bloqueada`);
+      await refrescar();
+    }
+
     if (!db.agencyCreativeIntelligenceReady) return <div className="rounded-2xl border p-5 text-sm font-bold" style={{ borderColor: T.border, background: "#FFF2D8", color: "#7A5410" }}>
       Aplicá <code>inteligencia-creativa-publicitaria-v1.sql</code> para activar fórmulas ganadoras y memoria para Codex.
     </div>;
@@ -95,12 +120,14 @@ export function createAgencyFormulaLab(shared) {
 
       {db.agencyProductionPreflightReady && <>
         <div className="flex items-end justify-between gap-3 mb-2"><div><div className="display text-lg font-semibold">Listos para producir</div><div className="text-[10px]" style={{ color: T.choco2 }}>Cada tarjeta une una fórmula aprobada con referencias visuales verificadas. Aprobar no genera, no consume créditos y no publica.</div></div><span className="rounded-full px-3 py-1 text-[9px] font-extrabold" style={{ background: "#F8EFE4", color: T.choco2 }}>{productionPlans.length} preflight</span></div>
-        {productionPlans.length ? <div className="grid lg:grid-cols-2 gap-3 mb-5">{productionPlans.map((plan) => <article key={plan.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#fff" }}>
+        {productionPlans.length ? <div className="grid lg:grid-cols-2 gap-3 mb-5">{productionPlans.map((plan) => { const authorization = generationByPlan.get(plan.id); return <article key={plan.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#fff" }}>
           <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{plan.provider} · {plan.operation} · v{plan.version}</div><div className="display text-base font-semibold">Fórmula #{plan.formulaId} + paquete #{plan.productionPackId}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{plan.channel} · {plan.targetFormat} · {plan.durationSeconds ? `${plan.durationSeconds} s` : "imagen"}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: plan.status === "Aprobado" ? "#DDEBD9" : "#FFF2D8", color: plan.status === "Aprobado" ? "#315B35" : "#7A5410" }}>{plan.status}</span></div>
           <div className="grid grid-cols-2 gap-2 my-3 text-[10px]"><div className="rounded-xl p-2.5" style={{ background: "#F8EFE4" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Motor</div><div className="font-semibold">{plan.modelLabel}</div></div><div className="rounded-xl p-2.5" style={{ background: "#F8EFE4" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Tope protegido</div><div className="font-semibold">{money(plan.maxCostCop)}</div></div></div>
-          <div className="rounded-xl p-2.5 mb-3 text-[10px] font-bold" style={{ background: "#E4F0E1", color: "#315B35" }}>✓ 0 créditos consumidos · 0 trabajos creados · publicación bloqueada</div>
-          <div className="flex flex-wrap gap-2">{plan.status === "Preparado" && <BtnAsync small onClick={() => reviewProductionPlan(plan,"En revisión")}>Enviar a revisión</BtnAsync>}{plan.status === "En revisión" && <BtnAsync small onClick={() => reviewProductionPlan(plan,"Aprobado")}>Aprobar preflight</BtnAsync>}</div>
-        </article>)}</div> : <div className="mb-5"><Empty icon="🎬" text="Cuando Codex una una fórmula aprobada con un paquete visual aprobado, el preflight aparecerá aquí para decisión humana." /></div>}
+          <div className="rounded-xl p-2.5 mb-3 text-[10px] font-bold" style={{ background: authorization ? "#FFF2D8" : "#E4F0E1", color: authorization ? "#7A5410" : "#315B35" }}>{authorization
+            ? `Trabajo #${authorization.jobId} · ${authorization.jobStatus} · el worker puede generar · publicación bloqueada`
+            : "✓ 0 créditos consumidos · 0 trabajos creados · publicación bloqueada"}</div>
+          <div className="flex flex-wrap gap-2">{plan.status === "Preparado" && <BtnAsync small onClick={() => reviewProductionPlan(plan,"En revisión")}>Enviar a revisión</BtnAsync>}{plan.status === "En revisión" && <BtnAsync small onClick={() => reviewProductionPlan(plan,"Aprobado")}>Aprobar preflight</BtnAsync>}{plan.status === "Aprobado" && !authorization && db.agencyGenerationAuthorizationReady && <BtnAsync small onClick={() => authorizeGeneration(plan)}>Autorizar generación</BtnAsync>}</div>
+        </article>; })}</div> : <div className="mb-5"><Empty icon="🎬" text="Cuando Codex una una fórmula aprobada con un paquete visual aprobado, el preflight aparecerá aquí para decisión humana." /></div>}
       </>}
 
       <div className="display text-lg font-semibold mb-2">Mediciones y decisión humana</div>
