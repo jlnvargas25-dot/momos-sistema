@@ -458,7 +458,19 @@ Requisitos sellados para la revisión de P03:
   cerrada de la spec §1.9).
 - `k=3` del snapshot de demanda y `franja` fuera de sus dimensiones.
 - Pasarela concreta: el slug de proveedor de `payments` queda abierto.
+- Seeds técnicos de P02 (`pide_quote_ttl_minutos`, `pide_max_items_quote`,
+  `pide_max_cant_item`, `pide_stock_colchon`, `pide_rate_*`): valores de
+  arranque, no aprobados como negocio.
+- Catálogo de adiciones con precio por canal: hoy NO existe verdad canónica de
+  precio de adiciones (el flujo staff lo recibe de la UI), así que P02 las
+  rechaza en Pide. Habilitarlas exige definir esa verdad primero.
 
 60. `../pide-fundaciones-v1.sql` — §1 completo de la superficie pública: canal `Pide` en los CHECK vivos, retiro del gancho muerto `Temporal`/`expira`, tablas `quotes`, `checkout_sessions`, `checkout_holds` + `checkout_hold_lotes` (extensión exactly-once y terminales selladas por trigger), `payments` + `payment_events` (UNIQUE parcial Iniciado/Aprobado), `order_attributions`, demanda con snapshot sellado k≥3 por `creado_at`, tracking v4, `benefits.hold_quote_id`, techos anti-acaparamiento, RLS deny-all, perímetro H89 ampliado y purga en dos fases (DELETE 24–72 h).
 61. `../tests/test-pide-fundaciones-v1.sql` — adversarial: CHECKs nuevos y viejos, deny-all real por rol (4 verbos), UNIQUE parciales de idempotencia, extensión exactly-once, estados terminales, hold veneno aislado, liberación de holds vencidos con orden global de locks, payment_events idempotentes, anonimización con re-saneo de atribución, FK RESTRICT, guard H89 y k≥3 del snapshot de demanda; siempre hace rollback.
 62. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente (cadena OPS del snapshot congelado + sección P01); siempre hace rollback.
+
+Aplicar P02 únicamente después de confirmar `20260721_p01_pide_fundaciones`:
+
+63. `../pide-cotizacion-v1.sql` — cotización autoritativa: `products.precio_pide` (NULL = no habilitado en Pide, decisión ratificada), `catalogo_publico_v1` (precio del canal + disponibilidad gruesa, sin verdad interna), `cotizar_pedido_v1` (entrada sin precios, dominio canónico de figuras/sabores/salsas vía `catalog_values`, capacidad `cupo − pedidos activos` con colchón, mínimo global con override, beneficio SOLO con posesión probada e indistinguible para anon, demanda insatisfecha PII-free, rate limit por IP+global con teléfono como señal), remediación del drift de grants de `shop_mis_pedidos`/`shop_mis_items` y quote inmutable con vencimiento.
+64. `../tests/test-pide-cotizacion-v1.sql` — adversarial: RBAC de superficie, precio del navegador rechazado, adiciones rechazadas, dominio canónico, combos con cajas exactas, disponibilidad gruesa sin números, demanda normalizada, Cancelado libera cupo, mínimo, anti-oráculo de beneficio, posesión probada, no-mutación comercial, rate limit y grants remediados; siempre hace rollback.
+65. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente (cadena OPS + P01 + P02); siempre hace rollback.

@@ -1615,4 +1615,36 @@ end $$;
 
 select 'TESTS_OK — carril Pide P01 fundaciones PASS, rollback total' as resultado_p01;
 
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_p02_pide_cotizacion')
+    and to_regprocedure('public.cotizar_pedido_v1(jsonb)') is not null
+    and to_regprocedure('public.catalogo_publico_v1()') is not null
+    and to_regprocedure('public._pide_rate_golpe(text,interval)') is not null
+    and to_regprocedure('public._pide_disponibilidad(text)') is not null
+    and to_regclass('public.pide_rate_counters') is not null,
+    'P02 no instaló la cotización autoritativa de Pide';
+  assert exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='products'
+        and column_name='precio_pide')
+    and exists(select 1 from public.app_settings where clave='pide_quote_ttl_minutos'),
+    'P02 no agregó precio_pide o sus settings';
+  assert (select relrowsecurity from pg_class
+      where oid='public.pide_rate_counters'::regclass)
+    and not has_table_privilege('anon','public.pide_rate_counters','SELECT'),
+    'P02 dejó expuesta la tabla de rate limit';
+  assert has_function_privilege('anon','public.cotizar_pedido_v1(jsonb)','EXECUTE')
+    and has_function_privilege('anon','public.catalogo_publico_v1()','EXECUTE')
+    and not has_function_privilege('anon','public._pide_rate_golpe(text,interval)','EXECUTE'),
+    'P02 perdió el RBAC de la superficie pública';
+  assert not has_table_privilege('anon','public.shop_mis_pedidos','SELECT')
+    and not has_table_privilege('anon','public.shop_mis_items','INSERT')
+    and not has_table_privilege('authenticated','public.shop_mis_pedidos','UPDATE')
+    and has_table_privilege('authenticated','public.shop_mis_pedidos','SELECT'),
+    'P02 no remedió el drift de grants de shop_mis_*';
+end $$;
+
+select 'TESTS_OK — carril Pide P02 cotizacion PASS, rollback total' as resultado_p02;
+
 rollback;
