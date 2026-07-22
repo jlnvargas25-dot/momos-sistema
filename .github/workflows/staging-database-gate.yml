@@ -75,6 +75,7 @@ jobs:
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
           grep -q "01-100 PASS" "$RUNNER_TEMP/migrations.log"
           grep -q "carril Pide P01 fundaciones PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "carril Pide P02 cotizacion PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run P01 pide-fundaciones adversarial with rollback
         env:
@@ -83,6 +84,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-pide-fundaciones-v1.sql | tee "$RUNNER_TEMP/pide-p01.log"
           grep -q "TESTS_OK" "$RUNNER_TEMP/pide-p01.log"
+
+      - name: Run P02 pide-cotizacion adversarial with rollback
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-pide-cotizacion-v1.sql | tee "$RUNNER_TEMP/pide-p02.log"
+          grep -q "TESTS_OK" "$RUNNER_TEMP/pide-p02.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:
