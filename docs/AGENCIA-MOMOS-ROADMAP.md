@@ -37,9 +37,13 @@
   manos, presentadores UGC, vistas traseras, locaciones, empaque, producto,
   personajes y audio en sets/variantes; cada persona queda limitada por nivel
   de identificación, canal, finalidad, vigencia y permiso específico de IA.
-- **Fase de orquestación de producción:** una fórmula aprobada podrá crear un
-  paquete de producción y un preflight de motor, pero nunca consumir créditos,
-  publicar o pautar sin su aprobación humana específica.
+- **H107–H109 · Orquestación y conectores:** preflight, autorización humana y
+  aislamiento de staging integrados. Ninguna preparación consume créditos ni
+  publica; el worker necesita autorización y entorno verificado.
+- **H110 · Calidad maestra para IA:** implementada en código y pendiente de
+  certificación en staging. Separa derechos de aptitud técnica, conserva el
+  original, versiona revisiones y bloquea imagen, video o Elements deficientes
+  en preflight, autorización y reclamo del worker.
 - **Fase de experimentación cerrada:** Codex propondrá una sola variable; Agencia
   sellará control, retador, ventana y evidencia; Meta/TikTok aportarán señal y
   MOMO OPS conservará pedidos, ventas y margen.
@@ -410,6 +414,27 @@ Siguiente fase operativa: ejecutar un piloto real controlado con un único traba
 autorizado, capturar recibo/costo/salida del worker existente y revisar el activo
 antes de cualquier distribución. No requiere ampliar permisos ni activar una
 publicación automática.
+
+### Hito 109 — Aislamiento del piloto de conectores (implementado)
+
+- El runtime de Higgsfield/Kling queda sellado por entorno y project ref.
+- Reanudar exige decisión humana inmutable y heartbeat v2 del mismo staging.
+- Salud y preparación no crean trabajos, no consumen créditos y no publican.
+
+### Hito 110 — Calidad maestra de Biblioteca para IA (implementado; staging pendiente)
+
+- Derechos y consentimiento siguen siendo obligatorios, pero ya no se muestran
+  como si probaran resolución, enfoque, geometría o limpieza visual.
+- Cada original recibe una revisión humana versionada con seis controles y una
+  aptitud separada para contenido, imagen, video y Element. Cambiar el archivo o
+  su ficha invalida la certificación anterior.
+- Una mejora se carga como activo derivado enlazado mediante
+  `original_asset_id`; el original no se reemplaza ni se borra.
+- Producto, empaque y personajes requieren para video una frontal, otra vista y
+  escala; un Element maestro exige además trasera y detalle macro aptos.
+- El mismo estado se revalida al aprobar H107, al autorizar H108 y cuando el
+  worker intenta iniciar. Ninguno de esos controles genera contenido o consume
+  créditos por sí mismo.
 
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 const FORBIDDEN_KEY = /(api[_-]?key|access[_-]?token|refresh[_-]?token|app[_-]?secret|password|service[_-]?role|authorization)/i;
 
-export const MOMOS_AGENCY_MCP_VERSION = "1.7.0";
+export const MOMOS_AGENCY_MCP_VERSION = "1.8.0";
 
 export const MOMOS_AGENCY_MCP_TOOLS = Object.freeze([
   "momos_health",

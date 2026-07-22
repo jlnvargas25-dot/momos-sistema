@@ -35,3 +35,18 @@ test("rechaza rutas privadas aunque estén anidadas", () => {
   leaked.sets[0].assets[0].storage_path = "private/momo.png";
   assert.throws(() => normalizeVisualLibrary(leaked), /campo interno|sensible|privado/i);
 });
+
+test("conserva la aptitud H110 separada para activo y set", () => {
+  const quality = { ready: false, target_use: "Generación de video",
+    reasons: ["Falta una vista tres cuartos apta."], warnings: [],
+    status: "Requiere mejora", recommended_action: "Nueva toma", source_current: true,
+    assessment_fingerprint: "c".repeat(32) };
+  const input = envelope([{ ...asset(), ai_quality: quality }]);
+  input.quality_contract_version = 1;
+  input.filters.target_use = "Generación de video";
+  input.sets[0].ai_quality = quality;
+  const result = normalizeVisualLibrary(input);
+  assert.equal(result.quality_contract_version, 1);
+  assert.equal(result.sets[0].ai_quality.ready, false);
+  assert.equal(result.sets[0].assets[0].ai_quality.target_use, "Generación de video");
+});

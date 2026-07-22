@@ -897,6 +897,48 @@ async function sha256File(file) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+async function inspectBrandMediaFile(file) {
+  if (file.type.startsWith("image/")) {
+    if (typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await createImageBitmap(file);
+        const result = { width: bitmap.width, height: bitmap.height, duration_seconds: null };
+        bitmap.close?.();
+        if (result.width > 0 && result.height > 0) return result;
+      } catch { /* fallback DOM below */ }
+    }
+    if (typeof Image === "undefined" || typeof URL === "undefined") {
+      throw new Error("No se pudieron verificar las dimensiones reales de la imagen.");
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      return await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight, duration_seconds: null });
+        image.onerror = () => reject(new Error("La imagen no se pudo decodificar para verificar su resolución."));
+        image.src = url;
+      });
+    } finally { URL.revokeObjectURL(url); }
+  }
+  if (file.type.startsWith("video/") || file.type.startsWith("audio/")) {
+    if (typeof document === "undefined" || typeof URL === "undefined") return {};
+    const url = URL.createObjectURL(file);
+    try {
+      return await new Promise((resolve, reject) => {
+        const media = document.createElement(file.type.startsWith("video/") ? "video" : "audio");
+        media.preload = "metadata";
+        media.onloadedmetadata = () => resolve({
+          width: media.videoWidth || null, height: media.videoHeight || null,
+          duration_seconds: Number.isFinite(media.duration) ? media.duration : null,
+        });
+        media.onerror = () => reject(new Error("El archivo no se pudo decodificar para verificar sus metadatos."));
+        media.src = url;
+      });
+    } finally { URL.revokeObjectURL(url); }
+  }
+  return {};
+}
+
 export async function subirActivoMarca(file, metadata = {}) {
   if (!(file instanceof File)) throw new Error("Elegí un archivo original para la biblioteca.");
   if (file.size <= 0 || file.size > 100 * 1024 * 1024) throw new Error("El archivo debe pesar entre 1 byte y 100 MB.");
@@ -905,6 +947,7 @@ export async function subirActivoMarca(file, metadata = {}) {
   const { data: auth, error: authError } = await supabase.auth.getUser();
   if (authError || !auth.user) throw new Error("La sesión expiró; volvé a iniciar sesión antes de subir el archivo.");
   const hash = await sha256File(file);
+  const technical = await inspectBrandMediaFile(file);
   const rawExt = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
   const path = `${auth.user.id}/${Date.now()}-${crypto.randomUUID()}.${rawExt}`;
   const upload = await supabase.storage.from("brand-assets").upload(path, file, { contentType: file.type, upsert: false });
@@ -913,6 +956,8 @@ export async function subirActivoMarca(file, metadata = {}) {
     p: {
       ...metadata, storage_path: path, content_hash: hash,
       mime_type: file.type, size_bytes: file.size,
+      width: technical.width ?? null, height: technical.height ?? null,
+      duration_seconds: technical.duration_seconds ?? null,
     },
   });
   if (error) {
@@ -969,6 +1014,15 @@ export async function clasificarActivoProduccion(assetId, profile = {}) {
   const { data, error } = await supabase.rpc("clasificar_activo_produccion", {
     p_asset_id: assetId,
     p: profile,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revisarCalidadActivoVisual(assetId, review = {}) {
+  const { data, error } = await supabase.rpc("revisar_calidad_activo_visual_v1", {
+    p_asset_id: assetId,
+    p: review,
   });
   if (error) throw new Error(error.message);
   return data;

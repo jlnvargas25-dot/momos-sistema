@@ -159,13 +159,20 @@ jobs:
           }
           NODE
 
+      - name: Apply H110 AI-ready visual quality contract to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/calidad-maestra-biblioteca-ia-v1.sql
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-109 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-110 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -231,6 +238,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-preparacion-piloto-conectores-v1.sql | tee "$RUNNER_TEMP/connector-pilot.log"
           grep -q "project-ref/entorno/RBAC/pausa" "$RUNNER_TEMP/connector-pilot.log"
+
+      - name: Run H110 AI-ready visual quality adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-calidad-maestra-biblioteca-ia-v1.sql | tee "$RUNNER_TEMP/visual-quality.log"
+          grep -q "H110 original inmutable" "$RUNNER_TEMP/visual-quality.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:
