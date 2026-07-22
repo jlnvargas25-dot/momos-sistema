@@ -236,13 +236,15 @@ real del monitor 1.2.1 confirmó dos ejecuciones consecutivas dentro del mismo
 minuto sin colisiones de recibos: 9 chequeos, 2 advertencias y 0 fallos, sin
 activar el modo de solo lectura.
 
-**H97 preparado:** endurece la certificación de recuperación. RPO y RTO ya no
+**H97 aplicado y validado:** endurece la certificación de recuperación. RPO y RTO ya no
 pueden ser declarados por un worker: el servidor los deriva del objetivo, el
 punto realmente restaurado, el inicio y el cierre. También exige evidencia
 separada de objetos Storage y replay, porque el backup de base no contiene los
 bytes de Storage. El 21 de julio de 2026 se observaron siete backups físicos
 diarios y PITR inactivo; por eso el RPO central de cinco minutos sigue sin estar
-certificado. Falta aplicar H97 y ejecutar un simulacro real en staging restaurado.
+certificado. La migración, su prueba adversarial, H93 y la cadena ordenada
+01–97 pasaron en Supabase el 21 de julio de 2026. Falta crear un staging aislado,
+restaurar allí un backup representativo y ejecutar el simulacro real.
 
 **Evidencia de cierre:** informe de carga firmado, SLO cumplidos y restauración/caos controlado aprobado.
 
