@@ -224,6 +224,18 @@ reconciliada. El recibo sanitario versionado está en
 varios minutos/horas y tráfico sobre los recorridos comerciales reales antes de
 certificar escala alta.
 
+**H100 aplicado y validado en staging:** el primer recorrido interno con las RPC
+canónicas detectó que el relevo Empaque → Logística dependía de una resolución
+implícita de `digest()` y fallaba en el entorno restaurado. H100 reemplazó esa
+dependencia por SHA-256 nativo y repitió Pago → Cocina → Empaque → relevo físico
+→ En ruta → Entregado. Pasaron separación de roles, reintentos idempotentes,
+firma exacta de comanda, actualización CRM una sola vez, trazabilidad y RBAC. El
+ensayo terminó en rollback y la comprobación posterior encontró cero usuarios,
+clientes, pedidos, evidencias o domicilios sintéticos. El recibo está en
+`docs/H100-STAGING-INTERNAL-PILOT-2026-07-22.json`. Esto certifica el recorrido
+interno; todavía no certifica checkout público, webhook de pago, carga de Storage
+en este mismo ensayo, un cliente real ni tráfico alto sostenido.
+
 **H95 aplicado:** el Centro de Salud incorpora
 políticas SLO versionadas y una frontera privada e idempotente para telemetría agregada. Calcula disponibilidad,
 presupuesto de error, p50/p95/p99 por histograma, saturación, colas y vigencia en

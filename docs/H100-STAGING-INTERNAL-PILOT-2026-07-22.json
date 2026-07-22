@@ -1,0 +1,60 @@
+{
+  "contract": "momos.internal-operational-pilot.staging.v1",
+  "environment": "Staging",
+  "executedAt": "2026-07-22T04:35:43.898Z",
+  "result": "PASS",
+  "migration": {
+    "id": "20260722_100_piloto_operativo_interno",
+    "appliedAt": "2026-07-22T04:35:13.499Z",
+    "change": "native-sha256-packing-to-logistics-handoff"
+  },
+  "flow": {
+    "stages": [
+      "payment-confirmed",
+      "kitchen-started",
+      "kitchen-to-packing",
+      "packing-verified",
+      "ready-for-dispatch",
+      "physical-handoff-accepted",
+      "in-route",
+      "delivered"
+    ],
+    "canonicalRpc": true,
+    "idempotentRetries": true,
+    "roleSeparation": true,
+    "exactPackingSignature": true,
+    "physicalHandoff": true,
+    "crmUpdatedExactlyOnce": true,
+    "inventoryUnchangedByIsolatedFixture": true
+  },
+  "transaction": {
+    "mode": "rollback",
+    "rolledBack": true,
+    "cleanup": {
+      "users": 0,
+      "customers": 0,
+      "orders": 0,
+      "evidences": 0,
+      "deliveries": 0
+    }
+  },
+  "relatedEvidence": {
+    "loadAndChaos": "docs/H99-STAGING-LOAD-2026-07-22.json",
+    "actualRequests": 2000,
+    "concurrency": 64,
+    "invariantFailures": 0
+  },
+  "scope": {
+    "internalOperationsCertified": true,
+    "realCustomerPilot": false,
+    "publicCheckoutCertified": false,
+    "paymentWebhookCertified": false,
+    "storageUploadCertifiedHere": false,
+    "highTrafficCertified": false
+  },
+  "privacy": {
+    "containsCustomerPii": false,
+    "containsSecrets": false,
+    "externalExecution": false
+  }
+}

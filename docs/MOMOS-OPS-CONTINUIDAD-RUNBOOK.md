@@ -31,7 +31,7 @@ consume `momos_continuity_snapshot_v1()`.
 - El objetivo y el punto restaurado fueron `2026-07-21T09:34:09.602Z`: RPO
   derivado 0 min y replay idempotente de cero eventos.
 - Storage verificó 50 objetos, tres buckets y 8.652.100 bytes mediante SHA-256.
-- H93, H97 y la cadena ordenada 01–97 pasaron sobre el staging restaurado; la
+- H93, H97 y la cadena ordenada 01–100 pasaron sobre el staging restaurado; la
   evidencia estructurada quedó registrada en producción como certificada.
 
 Conclusión honesta: la recuperación completa de base, Storage y replay sí quedó
@@ -92,7 +92,7 @@ aislado, sin conectores externos, cobros, publicaciones ni mensajes a clientes.
    real de eventos; nunca permite declarar cero por conveniencia.
 5. Ejecutar exactamente ocho verificaciones: migraciones, pedidos, inventario,
    reservas, pagos, recibos, replay y Storage.
-6. Ejecutar las pruebas H93 y H97, la cadena 01–97, contratos y build.
+6. Ejecutar las pruebas H93 y H97, la cadena 01–100, contratos y build.
 7. Invocar manualmente `.github/workflows/continuity-recovery-drill.yml` con los
    tiempos y huellas anteriores. El workflow no crea ni restaura proyectos; solo
    valida el staging ya restaurado y registra evidencia estructurada.

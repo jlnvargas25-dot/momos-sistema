@@ -1519,5 +1519,29 @@ begin
     'H97 perdió derivación temporal o el contrato compacto honesto';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-97 PASS, rollback total' as resultado_h97;
+select 'TESTS_OK - migraciones ordenadas 01-97 PASS, continua H100' as resultado_h97;
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_100_piloto_operativo_interno')
+    and to_regprocedure('public.piloto_operativo_interno_disponible()') is not null
+    and to_regprocedure('public.ofrecer_relevo_despacho(text,text)') is not null,
+    'H100 no instalo el cierre del relevo operativo interno';
+  assert has_function_privilege('authenticated',
+      'public.ofrecer_relevo_despacho(text,text)','EXECUTE')
+    and has_function_privilege('authenticated',
+      'public.piloto_operativo_interno_disponible()','EXECUTE')
+    and not has_function_privilege('anon',
+      'public.ofrecer_relevo_despacho(text,text)','EXECUTE')
+    and not has_function_privilege('service_role',
+      'public.ofrecer_relevo_despacho(text,text)','EXECUTE'),
+    'H100 perdio RBAC en el relevo operativo';
+  assert position('pg_catalog.sha256' in pg_get_functiondef(
+      'public.ofrecer_relevo_despacho(text,text)'::regprocedure))>0
+    and position('digest(' in pg_get_functiondef(
+      'public.ofrecer_relevo_despacho(text,text)'::regprocedure))=0,
+    'H100 conserva la dependencia fragil de pgcrypto.digest';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-100 PASS, rollback total' as resultado_h100;
 rollback;

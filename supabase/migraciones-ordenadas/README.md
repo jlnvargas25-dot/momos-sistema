@@ -327,13 +327,32 @@ de producción. Los probes solo escriben en las tablas privadas H94.
 
 La certificación real se ejecuta mediante
 `.github/workflows/staging-database-gate.yml`. El gate compara el ref de staging
-contra producción, valida la URL exacta, corre la cadena 01–97 y H93, repite las
-adversariales H94–H97 con rollback, ejecuta el runner H99 con 64 contendientes y
+contra producción, valida la URL exacta, corre la cadena 01–100 y H93, repite las
+adversariales H94–H97 y el recorrido H100 con rollback, ejecuta el runner H99 con 64 contendientes y
 2.000 solicitudes materializadas y exige en servidor un certificado fresco con
 cero invariantes. Sin los cinco secretos del environment `staging`, el flujo
 falla cerrado antes de instalar dependencias o abrir una corrida. El runner puede
 emitir además un recibo JSON sin PII ni secretos mediante
 `MOMOS_H94_REPORT_PATH`.
+
+## Hito 100 — piloto operativo interno reejecutable
+
+Aplicar después de confirmar `20260721_97_evidencia_recuperacion_derivada`:
+
+1. `../piloto-operativo-interno-v1.sql` — corrige la firma del relevo
+   Empaque–Logística usando SHA-256 nativo, sin depender de la ubicación de
+   `pgcrypto.digest`, y conserva RBAC, bloqueo y auditoría.
+2. `../tests/test-piloto-operativo-e2e-v1.sql` — recorre Pago, Cocina, Empaque,
+   Logística y Entrega mediante las RPC canónicas, prueba reintentos, roles,
+   firma de comanda, CRM y limpieza; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–100; siempre hace rollback.
+
+H98 continúa diferido hasta producción y H99 es una certificación de carga, no
+una migración de esquema. Por eso la numeración salta de la migración H97 a H100.
+El recibo `docs/H100-STAGING-INTERNAL-PILOT-2026-07-22.json` declara de forma
+explícita lo que el ensayo no cubre: checkout público, webhook de pago, cliente
+real, carga de archivos y tráfico alto sostenido.
 
 ## Hito 95 — observabilidad y SLO agregados
 
