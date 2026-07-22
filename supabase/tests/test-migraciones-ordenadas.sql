@@ -1136,7 +1136,9 @@ end $$;
 select 'TESTS_OK — migraciones ordenadas 01-84 PASS, rollback total' as resultado_h84;
 do $$
 begin
-  assert to_regclass('public.kitchen_procedure_versions') is not null
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260720_85_fichas_tecnicas_cocina')
+    and to_regclass('public.kitchen_procedure_versions') is not null
     and to_regprocedure('public.guardar_ficha_tecnica_cocina(jsonb)') is not null
     and to_regprocedure('public.activar_ficha_tecnica_cocina(bigint,text)') is not null
     and to_regprocedure('public.momos_core_snapshot_v2()') is not null
@@ -1169,7 +1171,9 @@ end $$;
 select 'TESTS_OK — migraciones ordenadas 01-85 PASS, rollback total' as resultado_h85;
 do $$
 begin
-  assert to_regclass('public.kitchen_procedure_sync_state') is not null
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260720_86_gestion_fichas_tecnicas')
+    and to_regclass('public.kitchen_procedure_sync_state') is not null
     and to_regprocedure('public.listar_fichas_tecnicas_cocina(text)') is not null
     and to_regprocedure('public.archivar_borrador_ficha_tecnica(bigint,text)') is not null
     and to_regprocedure('public.gestion_fichas_tecnicas_cocina_disponible()') is not null,

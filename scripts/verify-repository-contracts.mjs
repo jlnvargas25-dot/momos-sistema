@@ -83,11 +83,16 @@ for (const [id, owners] of migrationOwners) {
   if (owners.length > 1) fail(`ID de migración duplicado ${id}: ${owners.join(", ")}`);
 }
 const orderedIds = [...migrationOwners.keys()].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-const latestId = orderedIds.at(-1) || "";
 const acceptance = await readFile(path.join(root, "supabase", "tests", "test-migraciones-ordenadas.sql"), "utf8");
-if (!latestId) fail("No se detectaron entradas en public.momos_ops_migrations");
-else if (!acceptance.includes(latestId)) fail(`La aceptación ordenada no comprueba la última migración detectada: ${latestId}`);
-else note(`Cadena SQL detectada hasta ${latestId}`);
+if (orderedIds.length === 0) fail("No se detectaron entradas en public.momos_ops_migrations");
+else {
+  // TODOS los IDs del ledger deben estar asertados en la aceptación, no solo
+  // el último por natural sort: con dos carriles (H numérico y P de Pide) el
+  // "último" es ambiguo y un hueco intermedio quedaba invisible.
+  const faltantes = orderedIds.filter((id) => !acceptance.includes(id));
+  if (faltantes.length > 0) fail(`La aceptación ordenada no comprueba ${faltantes.length} migraciones del ledger: ${faltantes.join(", ")}`);
+  else note(`Cadena SQL: ${orderedIds.length} migraciones, todas asertadas en la aceptación (hasta ${orderedIds.at(-1)})`);
+}
 
 const workerEntries = (await readdir(path.join(root, "scripts"), { withFileTypes: true }))
   .filter((entry) => entry.isFile() && entry.name.endsWith(".mjs"));
