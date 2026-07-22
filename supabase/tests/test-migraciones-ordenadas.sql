@@ -1628,8 +1628,11 @@ begin
   assert exists(select 1 from information_schema.columns
       where table_schema='public' and table_name='products'
         and column_name='precio_pide')
+    and exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='orders'
+        and column_name='fecha_entrega')
     and exists(select 1 from public.app_settings where clave='pide_quote_ttl_minutos'),
-    'P02 no agregó precio_pide o sus settings';
+    'P02 no agregó precio_pide/fecha_entrega o sus settings';
   assert (select relrowsecurity from pg_class
       where oid='public.pide_rate_counters'::regclass)
     and not has_table_privilege('anon','public.pide_rate_counters','SELECT'),

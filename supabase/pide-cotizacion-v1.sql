@@ -90,8 +90,15 @@ begin
     raise exception 'orders perdió zona/franja: la capacidad por franja+fecha no puede contarse.';
   end if;
   if not exists(select 1 from information_schema.columns
-      where table_schema='public' and table_name='franjas' and column_name='cupo') then
-    raise exception 'franjas.cupo ausente (gancho de capacidad).';
+      where table_schema='public' and table_name='franjas' and column_name='cupo')
+     or not exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='franjas' and column_name='activo') then
+    raise exception 'franjas.cupo/activo ausentes (gancho de capacidad).';
+  end if;
+  if (select count(*) from information_schema.columns
+      where table_schema='public' and table_name='benefits'
+        and column_name in ('estado','vence','minimo','tipo_beneficio','valor','beneficio'))<>6 then
+    raise exception 'benefits cambió de forma (estado/vence/minimo/tipo_beneficio/valor/beneficio).';
   end if;
   if not exists(select 1 from public.catalog_values where categoria='salsa')
      or not exists(select 1 from public.catalog_values where categoria like 'sabor_%') then
@@ -103,8 +110,10 @@ begin
 
   -- Los objetos P02 NO deben existir.
   if exists(select 1 from information_schema.columns
-      where table_schema='public' and table_name='products' and column_name='precio_pide') then
-    raise exception 'products.precio_pide ya existe: base fuera del estado esperado.';
+      where table_schema='public' and table_name='products' and column_name='precio_pide')
+     or exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='orders' and column_name='fecha_entrega') then
+    raise exception 'precio_pide/fecha_entrega ya existen: base fuera del estado esperado.';
   end if;
   if to_regclass('public.pide_rate_counters') is not null
      or to_regprocedure('public.cotizar_pedido_v1(jsonb)') is not null
@@ -118,6 +127,16 @@ end $$;
 -- ============================================================================
 alter table public.products add column precio_pide numeric
   check (precio_pide is null or precio_pide>0);
+
+-- Verdad de ENTREGA (hallazgo del panel): orders.fecha es la fecha operativa
+-- de CREACIÓN (rpc-pedidos-v1.sql:446) y el staff jamás escribe franja —
+-- contar capacidad sobre orders.fecha contaría contra la columna equivocada.
+-- La capacidad del canal se cuenta sobre fecha_entrega, que solo escribe el
+-- canal Pide (P04 la sella junto con franja desde la quote; el staff queda
+-- NULL y no ocupa franjas, coherente con su operación sin franjas).
+alter table public.orders add column fecha_entrega date;
+create index orders_pide_capacidad_idx
+  on public.orders(fecha_entrega,franja) where estado<>'Cancelado';
 
 -- Seeds técnicos (valores de arranque NO aprobados como negocio — ver README).
 insert into public.app_settings(clave,valor) values
@@ -154,6 +173,10 @@ create table public.pide_rate_counters(
   ventana_inicio timestamptz not null,
   golpes integer not null check (golpes>0)
 );
+-- La limpieza oportunista borra por ventana_inicio: sin este índice cada
+-- cotización pagaría un seq scan sobre una tabla que un atacante puede inflar.
+create index pide_rate_counters_ventana_idx
+  on public.pide_rate_counters(ventana_inicio);
 
 create function public._pide_rate_golpe(p_clave text, p_ventana interval)
 returns integer
@@ -209,9 +232,15 @@ begin
     return 'disponible';
   elsif v_tipo='combo' then
     for v_comp in
-      select cc.component_id from public.combo_components cc
+      select cc.component_id,pc.activo as comp_activo,pc.tipo as comp_tipo
+      from public.combo_components cc
+      join public.products pc on pc.id=cc.component_id
       where cc.combo_id=p_product_id
     loop
+      -- Anti-ciclo (hallazgo del panel): jamás recursar en otro combo.
+      if v_comp.comp_tipo<>'momo' then continue; end if;
+      -- Componente apagado ⇒ el combo no es vendible (quote irreproducible).
+      if not v_comp.comp_activo then return 'agotado'; end if;
       v_sig:=public._pide_disponibilidad(v_comp.component_id);
       if v_sig='agotado' then return 'agotado'; end if;
       if v_sig='pocas_unidades' then v_peor:='pocas_unidades'; end if;
@@ -298,6 +327,7 @@ declare
   v_ventana interval;
   v_headers jsonb;
   v_ip_hash text; v_tel_crudo text; v_tel_hash text;
+  v_xff text; v_bucket text; v_lim_ip integer;
   v_item jsonb; v_box jsonb; v_slot jsonb;
   v_prod public.products%rowtype;
   v_max_items integer; v_max_cant integer;
@@ -314,15 +344,29 @@ declare
   v_figura text; v_sabor text; v_salsa text;
 begin
   -- ---- Rate limit (defensa de costo; §8) — ANTES de tocar catálogo. -------
+  -- Endurecido por el panel: (a) la IP se toma del ÚLTIMO salto de
+  -- x-forwarded-for — el que appendea el edge confiable; los prefijos que el
+  -- cliente invente NO acuñan claves nuevas; (b) el contador global se shardea
+  -- por bucket de ventana + pid para no serializar el canal en una fila
+  -- caliente; (c) cortes en IFs separados: cortocircuito garantizado.
   v_ventana:=make_interval(mins=>public._pide_setting_int('pide_rate_ventana_minutos',10));
+  v_lim_ip:=public._pide_setting_int('pide_rate_limit_ip',30);
   begin
     v_headers:=coalesce(nullif(current_setting('request.headers',true),'')::jsonb,'{}'::jsonb);
   exception when others then v_headers:='{}'::jsonb; end;
-  v_ip_hash:=encode(sha256(coalesce(v_headers->>'x-forwarded-for','sin-ip')::bytea),'hex');
-  if public._pide_rate_golpe('g',v_ventana)
-       > public._pide_setting_int('pide_rate_limit_global',300)
-     or public._pide_rate_golpe('ip:'||v_ip_hash,v_ventana)
-       > public._pide_setting_int('pide_rate_limit_ip',30) then
+  v_xff:=coalesce(v_headers->>'x-forwarded-for','');
+  v_xff:=btrim(coalesce(nullif(split_part(v_xff,',',
+    greatest(1,coalesce(array_length(string_to_array(v_xff,','),1),1))),''),'sin-ip'));
+  v_ip_hash:=encode(sha256(v_xff::bytea),'hex');
+  v_bucket:=floor(extract(epoch from clock_timestamp())
+    /(60*public._pide_setting_int('pide_rate_ventana_minutos',10)))::bigint::text;
+  perform public._pide_rate_golpe('g:'||v_bucket||':'||(pg_backend_pid()%8)::text,v_ventana);
+  if (select coalesce(sum(golpes),0) from public.pide_rate_counters
+      where clave like 'g:'||v_bucket||':%')
+     > public._pide_setting_int('pide_rate_limit_global',300) then
+    return public._pide_error('QUOTE_RATE_LIMIT','Demasiadas cotizaciones; probá en unos minutos.');
+  end if;
+  if public._pide_rate_golpe('ip:'||v_ip_hash,v_ventana)>v_lim_ip then
     return public._pide_error('QUOTE_RATE_LIMIT','Demasiadas cotizaciones; probá en unos minutos.');
   end if;
   -- El contador por teléfono es señal (hash forjable sin pepper): SOLO aplica
@@ -334,11 +378,15 @@ begin
     if public._pide_rate_golpe('tel:'||v_tel_hash,v_ventana)
          > public._pide_setting_int('pide_rate_limit_telefono',10)
        and coalesce((select golpes from public.pide_rate_counters
-           where clave='ip:'||v_ip_hash),0)
-         > public._pide_setting_int('pide_rate_limit_ip',30)/2 then
+           where clave='ip:'||v_ip_hash),0) > v_lim_ip/2 then
       return public._pide_error('QUOTE_RATE_LIMIT','Demasiadas cotizaciones; probá en unos minutos.');
     end if;
   end if;
+
+  -- Del rate limit para abajo el cuerpo corre en un sub-bloque: una excepción
+  -- interna NO revierte los golpes ya contados — el camino de error jamás es
+  -- gratis contra la defensa de costo (hallazgo del panel).
+  begin
 
   -- ---- Límites duros de entrada (§4) — antes de tocar catálogo. -----------
   if p is null or jsonb_typeof(p)<>'object' or pg_column_size(p)>16384 then
@@ -397,19 +445,10 @@ begin
     if v_prod.id is null or v_prod.precio_pide is null then
       return public._pide_error('PRODUCTO_NO_DISPONIBLE','Un producto de la cotización no está disponible.');
     end if;
-    v_disp:=public._pide_disponibilidad(v_prod.id);
-    if v_disp='agotado' then
-      return public._pide_error('PRODUCTO_NO_DISPONIBLE','Un producto de la cotización está agotado.');
-    end if;
-    if v_disp='pocas_unidades' then
-      v_advertencias:=v_advertencias||jsonb_build_object(
-        'tipo','pocas_unidades','product_id',v_prod.id);
-    end if;
-
     -- Config del producto: replica la estructura REAL de crear_pedido
     -- (rpc-pedidos-v1.sql:594-647 combos con boxes/slots y salsa obligatoria;
     -- :690-693 línea simple con figura/sabor/salsa del item).
-    if coalesce(v_prod.combo_size,0)>=1 then
+    if v_prod.tipo='combo' then
       if jsonb_typeof(v_item->'boxes')<>'array'
          or jsonb_array_length(v_item->'boxes')<>v_cantidad then
         return public._pide_error('ENTRADA_INVALIDA','Cada combo necesita sus cajas completas.');
@@ -429,6 +468,8 @@ begin
           if not exists(select 1 from public.figuras f
               join public.combo_components cc
                 on cc.combo_id=v_prod.id and cc.component_id=f.product_id
+              join public.products pr
+                on pr.id=f.product_id and pr.activo and pr.tipo='momo'
               where f.activo and f.nombre=v_figura) then
             return public._pide_error('ENTRADA_INVALIDA','Una figura no pertenece a este combo.');
           end if;
@@ -478,6 +519,16 @@ begin
       v_detalle:=jsonb_build_object('sabor',v_sabor,'salsa',v_salsa);
     end if;
 
+    -- §5.9: disponibilidad gruesa al final de las validaciones del item.
+    v_disp:=public._pide_disponibilidad(v_prod.id);
+    if v_disp='agotado' then
+      return public._pide_error('PRODUCTO_NO_DISPONIBLE','Un producto de la cotización está agotado.');
+    end if;
+    if v_disp='pocas_unidades' then
+      v_advertencias:=v_advertencias||jsonb_build_object(
+        'tipo','pocas_unidades','product_id',v_prod.id);
+    end if;
+
     v_unidades:=v_unidades+v_cantidad;
     v_subtotal:=v_subtotal+(v_prod.precio_pide*v_cantidad);
     v_lineas:=v_lineas||jsonb_build_object(
@@ -505,7 +556,8 @@ begin
     return public._pide_error('SIN_CAPACIDAD_FRANJA','Esa franja no está disponible.');
   end if;
   select count(*) into v_activos from public.orders o
-    where o.fecha=v_fecha and o.franja=v_franja_in and o.estado<>'Cancelado';
+    where o.fecha_entrega=v_fecha and o.franja=v_franja_in
+      and o.estado<>'Cancelado';
   -- Colchón también acá: el punto de quiebre no revela el cupo exacto (§8).
   if v_activos>=greatest(0,v_cupo-public._pide_setting_int('pide_stock_colchon',2)) then
     insert into public.pide_demand_events(zona,franja,fecha,error,cantidad)
@@ -527,9 +579,15 @@ begin
   -- sin error, mismo shape. El telefono de entrada JAMÁS activa beneficio.
   v_customer:=public.current_customer_id();
   if v_customer is not null then
+    -- Vigencia REAL como el core (rpc-pedidos-v1.sql:739-746): Activo, no
+    -- vencido y con mínimo alcanzado; selección determinista (vence próximo).
     select * into v_benefit from public.benefits b
       where b.customer_id=v_customer and b.estado='Activo'
-      order by b.id limit 1;
+        and (b.vence is null or b.vence>=current_date)
+      order by b.vence nulls last, b.id limit 1;
+    if v_benefit.id is not null and v_subtotal<coalesce(v_benefit.minimo,0) then
+      v_benefit.id:=null;  -- mínimo del beneficio no alcanzado: sin línea, mismo shape
+    end if;
     if v_benefit.id is not null then
       if v_benefit.tipo_beneficio='descuento_porcentaje' then
         v_desc:=round(v_subtotal*coalesce(v_benefit.valor,0)/100.0);
@@ -563,11 +621,12 @@ begin
     'ok',true,'quote_id',v_quote_id,'quote_version',1,
     'vence_at',v_vence,'moneda','COP',
     'lineas',v_lineas,'total',v_total,'advertencias',v_advertencias);
-exception when others then
-  -- Jamás internals hacia la superficie pública; el detalle queda en el log
-  -- del servidor (warning), la respuesta es genérica.
-  raise warning 'cotizar_pedido_v1: %',sqlerrm;
-  return public._pide_error('ENTRADA_INVALIDA','No pudimos procesar la solicitud.');
+  exception when others then
+    -- Jamás internals hacia la superficie pública; el detalle queda en el log
+    -- del servidor (warning) y los golpes de rate ya contados sobreviven.
+    raise warning 'cotizar_pedido_v1: %',sqlerrm;
+    return public._pide_error('ENTRADA_INVALIDA','No pudimos procesar la solicitud.');
+  end;
 end $$;
 
 -- ============================================================================

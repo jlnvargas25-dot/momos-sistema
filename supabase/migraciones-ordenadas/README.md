@@ -445,6 +445,13 @@ Requisitos sellados para la revisión de P03:
    orden canónico global de `_pide_liberar_holds_vencidos`: `products` por
    `id` ascendente y después `lote_figuras` por `(batch_id, figura)`. Romper
    ese orden reintroduce el deadlock que la revisión F3 eliminó.
+3. (P04) `crear_pedido_publico_v1` DEBE sellar `orders.fecha_entrega` y
+   `orders.franja` con los valores de la quote para el canal Pide.
+   `orders.fecha` sigue siendo la fecha operativa de creación (semántica
+   staff/financiera intacta) y la capacidad del canal se cuenta SOLO sobre
+   `fecha_entrega + franja` (índice `orders_pide_capacidad_idx`, hallazgo del
+   panel de P02). Un pedido Pide sin `fecha_entrega` no ocupa franja:
+   prohibido.
 
 ### Pendientes de decisión (Jorge)
 

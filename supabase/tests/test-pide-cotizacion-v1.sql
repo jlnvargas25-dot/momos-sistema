@@ -143,6 +143,11 @@ begin
   values('P02-B-'||v_sfx,v_cliente,'P02 descuento','descuento_valor_fijo',5000);
   insert into p02_ids values('cliente',v_cliente),('telefono_cliente',
     coalesce((select telefono from public.customers where id=v_cliente),v_tel));
+
+  -- Margen del propio rate limit durante el test (hallazgo del panel): el
+  -- fixture sube el techo por IP; solo el bloque 11 lo baja para probar el
+  -- corte. El rollback final revierte el setting.
+  update public.app_settings set valor=to_jsonb(1000) where clave='pide_rate_limit_ip';
 end $$;
 
 -- 1) Catálogo público como anon: precio del canal, sin verdad interna.
@@ -337,6 +342,19 @@ begin
         from generate_series(1,v_size) n)))),
     'zona',v_zona,'franja',v_franja,'fecha_entrega',(current_date+2)::text));
   assert v_q->>'error'='ENTRADA_INVALIDA','Aceptó una figura ajena dentro del combo.';
+  -- componente APAGADO ⇒ el combo no cotiza (quote irreproducible prohibida)
+  update public.products set activo=false
+    where id=(select product_id from public.figuras
+      where nombre=(select valor from p02_ids where clave='combo_figura') limit 1);
+  v_q:=public.cotizar_pedido_v1(jsonb_build_object('canal','pide',
+    'items',jsonb_build_array(jsonb_build_object(
+      'product_id',v_combo,'cantidad',1,'boxes',jsonb_build_array(v_boxes))),
+    'zona',v_zona,'franja',v_franja,'fecha_entrega',(current_date+2)::text));
+  assert v_q->>'error' in ('ENTRADA_INVALIDA','PRODUCTO_NO_DISPONIBLE'),
+    'Un combo con componente apagado cotizó igual.';
+  update public.products set activo=true
+    where id=(select product_id from public.figuras
+      where nombre=(select valor from p02_ids where clave='combo_figura') limit 1);
 end $$;
 
 -- 5) Disponibilidad gruesa: agotado corta; pocas_unidades advierte; jamás
@@ -397,10 +415,12 @@ begin
     'El evento de demanda no se registró normalizado.';
   -- franja chica (cupo 3, colchón 2 ⇒ corta desde el pedido 1 activo)
   v_orden:='P02-O-'||v_sfx;
-  insert into public.orders(id,fecha,hora,canal,customer_id,estado,zona,franja)
-  values(v_orden,current_date+2,current_time,'Pide',
+  -- Semántica REAL: orders.fecha = fecha operativa de creación (staff);
+  -- la ENTREGA viaja en fecha_entrega+franja (contrato sellado para P04).
+  insert into public.orders(id,fecha,hora,canal,customer_id,estado,zona,franja,fecha_entrega)
+  values(v_orden,current_date,current_time,'Pide',
     (select valor from p02_ids where clave='cliente'),'Nuevo',
-    (select valor from p02_ids where clave='zona'),v_chica);
+    (select valor from p02_ids where clave='zona'),v_chica,current_date+2);
   v_q:=public.cotizar_pedido_v1(jsonb_build_object('canal','pide',
     'items',jsonb_build_array(v_item),
     'zona',(select valor from p02_ids where clave='zona'),'franja',v_chica,
@@ -471,10 +491,10 @@ select set_config('request.jwt.claims',jsonb_build_object(
   'sub',(select valor from p02_ids where clave='admin_auth'),'role','authenticated'
 )::text,true);
 do $$
-declare v_q jsonb; v_row public.quotes%rowtype;
+declare v_q jsonb; v_row public.quotes%rowtype; v_payload jsonb;
   v_sfx text:=(select valor from p02_ids where clave='sfx');
 begin
-  v_q:=public.cotizar_pedido_v1(jsonb_build_object('canal','pide',
+  v_payload:=jsonb_build_object('canal','pide',
     'items',jsonb_build_array(jsonb_build_object(
       'product_id',(select valor from p02_ids where clave='momo'),'cantidad',1,
       'figura',(select valor from p02_ids where clave='figura'),
@@ -482,7 +502,8 @@ begin
       'salsa',(select valor from p02_ids where clave='salsa'))),
     'zona',(select valor from p02_ids where clave='zona'),
     'franja',(select valor from p02_ids where clave='franja'),
-    'fecha_entrega',(current_date+2)::text));
+    'fecha_entrega',(current_date+2)::text);
+  v_q:=public.cotizar_pedido_v1(v_payload);
   assert coalesce((v_q->>'ok')::boolean,false),
     'La cotización authenticated falló: '||coalesce(v_q->>'error','?');
   assert exists(select 1 from jsonb_array_elements(v_q->'lineas') l
@@ -498,6 +519,26 @@ begin
   -- Cotizar NO reservó el beneficio (eso es de P03): sigue Activo.
   assert (select estado from public.benefits where id='P02-B-'||v_sfx)='Activo',
     'Cotizar mutó el estado del beneficio.';
+
+  -- Beneficio VENCIDO: no aparece y el shape no cambia (vigencia real del core).
+  update public.benefits set vence=current_date-1 where id='P02-B-'||v_sfx;
+  v_q:=public.cotizar_pedido_v1(v_payload);
+  assert coalesce((v_q->>'ok')::boolean,false)
+    and not exists(select 1 from jsonb_array_elements(v_q->'lineas') l
+      where l->>'tipo'='beneficio'),
+    'Un beneficio vencido se aplicó igual.';
+  update public.benefits set vence=null where id='P02-B-'||v_sfx;
+
+  -- Mínimo del beneficio no alcanzado: sin línea y sin ancla interna.
+  update public.benefits set minimo=999999 where id='P02-B-'||v_sfx;
+  v_q:=public.cotizar_pedido_v1(v_payload);
+  assert coalesce((v_q->>'ok')::boolean,false)
+    and not exists(select 1 from jsonb_array_elements(v_q->'lineas') l
+      where l->>'tipo'='beneficio')
+    and (select benefit_id from public.quotes
+      where id=(v_q->>'quote_id')::uuid) is null,
+    'Un beneficio con mínimo no alcanzado se aplicó o se ancló igual.';
+  update public.benefits set minimo=null where id='P02-B-'||v_sfx;
 end $$;
 reset role;
 
@@ -530,9 +571,25 @@ begin
     'franja',(select valor from p02_ids where clave='franja'),
     'fecha_entrega',(current_date+2)::text));
   assert v_q->>'error'='QUOTE_RATE_LIMIT','El rate limit por IP no cortó.';
-  update public.app_settings set valor=to_jsonb(30) where clave='pide_rate_limit_ip';
+  update public.app_settings set valor=to_jsonb(1000) where clave='pide_rate_limit_ip';
 end $$;
 reset role;
+
+-- 11b) La clave de IP se acuña del ÚLTIMO salto de x-forwarded-for: los
+--      prefijos que invente el cliente NO fabrican claves nuevas.
+do $$
+declare v_claves0 integer; v_claves integer;
+begin
+  select count(*) into v_claves0 from public.pide_rate_counters where clave like 'ip:%';
+  perform set_config('request.headers','{"x-forwarded-for":"1.2.3.4, 9.9.9.9"}',true);
+  perform public.cotizar_pedido_v1('{}'::jsonb);
+  perform set_config('request.headers','{"x-forwarded-for":"5.6.7.8, 9.9.9.9"}',true);
+  perform public.cotizar_pedido_v1('{}'::jsonb);
+  select count(*) into v_claves from public.pide_rate_counters where clave like 'ip:%';
+  assert v_claves-v_claves0=1,
+    'Prefijos falsos de x-forwarded-for acuñaron claves de IP nuevas.';
+  perform set_config('request.headers','',true);
+end $$;
 
 select 'TESTS_OK — P02 catálogo por canal/precio server/dominio canónico/combos exactos/disponibilidad gruesa/demanda normalizada/capacidad con colchón y Cancelado libera/mínimo/anti-oráculo de beneficio/posesión probada/no-mutación/rate limit/grants remediados PASS, rollback total' as resultado;
 rollback;
