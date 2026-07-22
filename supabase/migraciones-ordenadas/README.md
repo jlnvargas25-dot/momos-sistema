@@ -150,10 +150,17 @@ P01 NO toca funciones del core OPS: el cableado de
 `_pide_liberar_holds_vencidos` dentro de `_reserve_inventory` y de las RPC
 públicas llega en P03 — hacerlo en P01 cruzaría el carril OPS.
 
-Requisito sellado para la revisión de P03: el FIFO del hold JAMÁS emite una
-fila con `batch_id` null habiendo consumido `lote_figuras`. El escape
-`batch_id` null existe solo para stock legítimamente sin lote, y ese supuesto
-debe confirmarse contra el dominio antes de aplicar P03.
+Requisitos sellados para la revisión de P03:
+
+1. El FIFO del hold JAMÁS emite una fila con `batch_id` null habiendo
+   consumido `lote_figuras`. El escape `batch_id` null existe solo para stock
+   legítimamente sin lote, y ese supuesto debe confirmarse contra el dominio
+   antes de aplicar P03.
+2. Toda ruta que combine locks de `products` y `lote_figuras` (incluida
+   `_reserve_inventory` al cablear la liberación perezosa) los adquiere en el
+   orden canónico global de `_pide_liberar_holds_vencidos`: `products` por
+   `id` ascendente y después `lote_figuras` por `(batch_id, figura)`. Romper
+   ese orden reintroduce el deadlock que la revisión F3 eliminó.
 
 ### Pendientes de decisión (Jorge)
 

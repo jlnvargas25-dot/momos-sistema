@@ -261,6 +261,14 @@ begin
       '{"utm_campaign":"promo 300-123-4567"}'::jsonb);
   exception when check_violation then v_failed:=true; end;
   assert v_failed,'utm_campaign aceptó un valor con formato de teléfono.';
+  -- Un run de 16+ dígitos (tarjeta) también se rechaza en texto libre.
+  v_failed:=false;
+  begin
+    insert into public.quotes(total,zona,franja,fecha_entrega,vence_at,atribucion)
+    values(1000,v_zona,v_franja,current_date+2,clock_timestamp()+interval '15 minutes',
+      '{"cupon":"4111 1111 1111 1111"}'::jsonb);
+  exception when check_violation then v_failed:=true; end;
+  assert v_failed,'cupon aceptó un número de tarjeta (16 dígitos).';
   -- F2: las claves de ID exigen patrón opaco estricto…
   v_failed:=false;
   begin
@@ -370,6 +378,12 @@ begin
     update public.payments set estado='Aprobado' where id=v_pago;
   exception when raise_exception then v_failed:=true; end;
   assert v_failed,'payments permitió salir de Reembolsado.';
+  -- Columnas de verdad selladas en un pago cerrado.
+  v_failed:=false;
+  begin
+    update public.payments set monto=1 where id=v_pago;
+  exception when raise_exception then v_failed:=true; end;
+  assert v_failed,'payments permitió reescribir el monto de un pago cerrado.';
 
   -- F8: mismo (payment_id,external_event_id) → unique_violation; un
   -- external_event_id distinto entra (re-notificación legítima que P04
@@ -478,6 +492,13 @@ begin
       where id=v_h5;
   exception when raise_exception then v_failed:=true; end;
   assert v_failed,'El hold aceptó una segunda extensión.';
+  -- Identidad del hold inmutable.
+  v_failed:=false;
+  begin
+    update public.checkout_holds
+      set actor_hmac=encode(sha256(('p01-otro')::bytea),'hex') where id=v_h5;
+  exception when raise_exception then v_failed:=true; end;
+  assert v_failed,'checkout_holds permitió reescribir actor_hmac.';
   -- reversa legítima tras intent rechazado: expira_original + sello limpio
   update public.checkout_holds
     set expira_at=expira_original,extendido_por_pago_at=null
@@ -649,7 +670,10 @@ drop policy staff_read on public.quotes;
 
 -- 12) Purga efímera: borra solo quotes viejas sin pago ni pedido; conserva la
 --     quote Usada anonimizada (verdad del FK de payments).
-set local role service_role;
+-- El claim JWT basta: purgar_checkout_efimero_v1 gatea por auth.role() (claim
+-- de request.jwt.claims), no por current_user. El rol REAL service_role no
+-- puede hacer el DML de setup ni leer los asserts (deny-all del bloque 0):
+-- cambiar el rol acá contradecía al propio test.
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 do $$
 declare
@@ -657,6 +681,7 @@ declare
   v_franja text:=(select valor from p01_ids where clave='franja');
   v_q_vieja uuid; v_res jsonb; v_failed boolean:=false;
   v_q3 uuid:=(select valor::uuid from p01_ids where clave='q3');
+  v_q_veneno uuid; v_h_veneno uuid;
 begin
   -- F1: la ventana de purga es 24-72 h (spec §1.2) — fuera de rango, cerrada.
   begin
@@ -676,8 +701,35 @@ begin
     'La purga dejó viva una quote vieja sin pago.';
   assert exists(select 1 from public.quotes where id=v_q3),
     'La purga borró una quote con pago (rompe conciliación).';
-end $$;
-reset role;
 
-select 'TESTS_OK — P01 canal/holds/extensión exactly-once/hold veneno/pagos con terminales/eventos idempotentes/beneficio/anonimización+re-saneo/atribución/tracking/demanda k>=3/guard H89/purga 24-72h PASS, rollback total' as resultado;
+  -- La retención de PII no depende de la conciliación de inventario: una quote
+  -- vieja con hold veneno (Temporal vencido irreconciliable) conserva quote y
+  -- hold para conciliar, pero su sesión con PII cruda cae igual.
+  insert into public.quotes(total,zona,franja,fecha_entrega,vence_at,created_at)
+  values(1000,v_zona,v_franja,current_date+2,
+    clock_timestamp()-interval '79 hours',clock_timestamp()-interval '80 hours')
+  returning id into v_q_veneno;
+  insert into public.checkout_holds(quote_id,actor_hmac,expira_original,expira_at,creado_at)
+  values(v_q_veneno,encode(sha256(('p01-actor-f')::bytea),'hex'),
+    clock_timestamp()-interval '78 hours',clock_timestamp()-interval '78 hours',
+    clock_timestamp()-interval '79 hours')
+  returning id into v_h_veneno;
+  insert into public.checkout_hold_lotes(hold_id,product_id,batch_id,figura,cantidad)
+  values(v_h_veneno,(select valor from p01_ids where clave='producto'),
+    (select valor from p01_ids where clave='lote'),'P01Figura',1);
+  insert into public.checkout_sessions(quote_id,nombre,telefono,direccion)
+  values(v_q_veneno,'P01 veneno','573007654321','Carrera P01 # 9-87');
+  v_res:=public.purgar_checkout_efimero_v1(48);
+  assert (v_res->>'holdsIrreconciliables')::integer=1,
+    'El hold veneno de la purga no quedó contado.';
+  assert (v_res->>'sesionesPurgadas')::integer>=1,
+    'La purga no reportó la sesión huérfana.';
+  assert not exists(select 1 from public.checkout_sessions where quote_id=v_q_veneno),
+    'La sesión con PII sobrevivió al hold veneno más allá de la ventana.';
+  assert exists(select 1 from public.quotes where id=v_q_veneno)
+    and (select estado from public.checkout_holds where id=v_h_veneno)='Temporal',
+    'La purga tocó la quote o el hold pendientes de conciliación.';
+end $$;
+
+select 'TESTS_OK — P01 canal/holds/extensión exactly-once/hold veneno/pagos con terminales y columnas selladas/eventos idempotentes/beneficio/anonimización+re-saneo/atribución sin teléfonos ni tarjetas/tracking/demanda k>=3/guard H89/purga 24-72h con PII acotada PASS, rollback total' as resultado;
 rollback;

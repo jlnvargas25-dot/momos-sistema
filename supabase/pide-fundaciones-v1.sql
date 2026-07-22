@@ -195,8 +195,9 @@ alter table public.inventory_reservations drop column expira;
 --     plataforma, no un teléfono, y se valida contra catálogo en P04. El
 --     riesgo real de PII vive en el texto libre, no acá.
 --   * Todo valor de texto libre (utm_*, cupon, referido, landing, qr) queda
---     rechazado si al depurar no-dígitos forma un run de 7-15 dígitos
---     (formato-teléfono): jamás se persiste un teléfono disfrazado.
+--     rechazado si al depurar no-dígitos forma un run de 7 o más dígitos
+--     (teléfonos, tarjetas, cédulas): un run largo de dígitos jamás es señal
+--     comercial legítima — los IDs de plataforma viajan por sus tres claves.
 create function public._pide_atribucion_valida(p jsonb)
 returns boolean
 language sql immutable
@@ -214,7 +215,7 @@ as $$
             and jsonb_typeof(e.value)='string'
             and coalesce(e.value #>> '{}','') !~ '^[A-Za-z0-9:_-]{1,64}$')
         or (e.key not in ('campaign_id','creative_id','post_id')
-            and regexp_replace(coalesce(e.value #>> '{}',''),'[^0-9]','','g') ~ '^[0-9]{7,15}$')
+            and regexp_replace(coalesce(e.value #>> '{}',''),'[^0-9]','','g') ~ '^[0-9]{7,}$')
     )
 $$;
 revoke all on function public._pide_atribucion_valida(jsonb)
@@ -328,6 +329,15 @@ begin
   if new.expira_original is distinct from old.expira_original then
     raise exception 'checkout_holds: expira_original es inmutable.';
   end if;
+  if new.quote_id is distinct from old.quote_id
+     or new.actor_hmac is distinct from old.actor_hmac
+     or new.creado_at is distinct from old.creado_at then
+    raise exception 'checkout_holds: quote_id/actor_hmac/creado_at son inmutables.';
+  end if;
+  if old.resuelto_at is not null
+     and new.resuelto_at is distinct from old.resuelto_at then
+    raise exception 'checkout_holds: resuelto_at se sella una sola vez.';
+  end if;
   if new.expira_at is distinct from old.expira_at
      or new.extendido_por_pago_at is distinct from old.extendido_por_pago_at then
     if old.estado='Temporal' and new.estado='Temporal'
@@ -431,6 +441,20 @@ begin
         new.estado;
     end if;
   end if;
+  -- Columnas de verdad selladas una vez cerrado el pago (Aprobado o terminal):
+  -- un bug de RPC jamás reescribe el monto de un pago aprobado. external_id
+  -- solo admite sellarse una vez (null → valor).
+  if old.estado in ('Aprobado','Rechazado','Expirado','Reembolsado') then
+    if new.quote_id is distinct from old.quote_id
+       or new.proveedor is distinct from old.proveedor
+       or new.monto is distinct from old.monto
+       or new.moneda is distinct from old.moneda
+       or (new.external_id is distinct from old.external_id
+           and old.external_id is not null) then
+      raise exception 'payments: quote_id/proveedor/monto/moneda/external_id están sellados en estado %.',
+        old.estado;
+    end if;
+  end if;
   return new;
 end $$;
 revoke all on function public._pide_payments_guard()
@@ -492,6 +516,10 @@ begin
      and old.estado in ('Invalidado','Expirado') then
     raise exception 'order_tracking_tokens: % es terminal; la transición a % está prohibida.',
       old.estado,new.estado;
+  end if;
+  if new.order_id is distinct from old.order_id
+     or new.emitido_at is distinct from old.emitido_at then
+    raise exception 'order_tracking_tokens: order_id/emitido_at son inmutables.';
   end if;
   return new;
 end $$;
@@ -868,7 +896,7 @@ returns jsonb
 language plpgsql security definer
 set search_path=pg_catalog,public,pg_temp
 as $$
-declare v_horas integer; v_ids uuid[]; v_lib jsonb; v_purgadas integer:=0;
+declare v_horas integer; v_ids uuid[]; v_lib jsonb; v_purgadas integer:=0; v_sesiones integer:=0;
 begin
   if auth.role() is distinct from 'service_role' then
     raise exception 'Solo el job privado puede purgar el checkout efímero.';
@@ -882,6 +910,18 @@ begin
     raise exception 'La ventana de purga debe estar entre 24 y 72 horas.';
   end if;
   v_lib:=public._pide_liberar_holds_vencidos();
+  -- La retención acotada de PII NO depende de la conciliación de inventario:
+  -- las sesiones de TODA quote vieja sin pago caen al vencer la ventana,
+  -- incluidas las excluidas de la purga por un hold Temporal vencido
+  -- irreconciliable (hold veneno). Borrar la sesión es seguro (nada la
+  -- referencia); la quote y el hold quedan para la conciliación posterior.
+  delete from public.checkout_sessions s
+    using public.quotes q
+    where s.quote_id=q.id
+      and q.created_at<clock_timestamp()-make_interval(hours=>v_horas)
+      and q.estado<>'Usada'
+      and not exists(select 1 from public.payments p where p.quote_id=q.id);
+  get diagnostics v_sesiones=row_count;
   -- Ventana select→delete cerrada: las candidatas quedan BLOQUEADAS
   -- (FOR UPDATE SKIP LOCKED — el lock de la quote además frena FKs nuevos:
   -- insertar payments/checkout_holds toma KEY SHARE sobre la quote) y cada
@@ -899,6 +939,7 @@ begin
   ) s;
   if v_ids is null then
     return jsonb_build_object('ok',true,'quotesPurgadas',0,
+      'sesionesPurgadas',v_sesiones,
       'holdsLiberados',coalesce((v_lib->>'liberados')::integer,0),
       'holdsIrreconciliables',coalesce((v_lib->>'irreconciliables')::integer,0),
       'containsCustomerPii',false,'containsSecrets',false);
@@ -910,7 +951,6 @@ begin
       and h.estado='Expirada';
   delete from public.checkout_holds h
     where h.quote_id=any(v_ids) and h.estado='Expirada';
-  delete from public.checkout_sessions s where s.quote_id=any(v_ids);
   update public.benefits set estado='Activo',hold_quote_id=null
     where hold_quote_id=any(v_ids) and estado='Reservado' and pedido_uso is null;
   -- Guards re-verificados DENTRO del DELETE: sin pago, sin hold vivo, no Usada.
@@ -922,6 +962,7 @@ begin
         where h.quote_id=q.id and h.estado in ('Temporal','Confirmada'));
   get diagnostics v_purgadas=row_count;
   return jsonb_build_object('ok',true,'quotesPurgadas',v_purgadas,
+    'sesionesPurgadas',v_sesiones,
     'holdsLiberados',coalesce((v_lib->>'liberados')::integer,0),
     'holdsIrreconciliables',coalesce((v_lib->>'irreconciliables')::integer,0),
     'containsCustomerPii',false,'containsSecrets',false);
