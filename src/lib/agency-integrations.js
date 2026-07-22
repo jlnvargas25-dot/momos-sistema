@@ -37,7 +37,7 @@ const INTEGRATION_CATALOG = [
 ];
 
 export const AGENCY_INTEGRATION_PROVIDERS = INTEGRATION_CATALOG.map((item) => item.provider);
-export const AGENCY_INTEGRATION_ENVIRONMENTS = ["Pruebas", "Producción"];
+export const AGENCY_INTEGRATION_ENVIRONMENTS = ["Pruebas", "Staging", "Producción"];
 
 const STATUS_ORDER = ["Con error", "Por conectar", "Configurada", "Pausada", "Activa"];
 
@@ -72,9 +72,12 @@ function normalizeCapabilities(value, fallback) {
 export function buildAgencyIntegrationCenter(db = {}, nowValue = new Date()) {
   const now = nowValue instanceof Date ? nowValue : new Date(nowValue);
   const storedByProvider = new Map((db.agencyIntegrations || []).map((row) => [row.provider, row]));
+  const pilotByProvider = new Map((db.connectorPilotReadiness?.connectors || [])
+    .map((row) => [row.provider, row]));
 
   const integrations = INTEGRATION_CATALOG.map((definition) => {
     const stored = storedByProvider.get(definition.provider) || {};
+    const pilot = pilotByProvider.get(definition.provider) || {};
     const status = STATUS_ORDER.includes(stored.status) ? stored.status : "Por conectar";
     const heartbeatMinutes = minutesBetween(now, stored.lastHeartbeatAt);
     const heartbeatFresh = heartbeatMinutes !== null && heartbeatMinutes <= 30;
@@ -132,6 +135,9 @@ export function buildAgencyIntegrationCenter(db = {}, nowValue = new Date()) {
       runCount: runs.length,
       reasons,
       needsAttention: waiting > 0 && !operational || status === "Con error",
+      pilotEnvironmentSealed: db.connectorPilotReadiness?.runtime?.sealed === true,
+      canPrepareStaging: pilot.ready_to_prepare === true,
+      projectRefVerified: pilot.environment_matches === true,
     };
   });
 

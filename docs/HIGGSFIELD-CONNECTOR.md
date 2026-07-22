@@ -30,7 +30,9 @@ del modelo, duración, formato, referencias, cámara y costo antes de consumir c
 
 ## Instalación
 
-1. Aplicar `supabase/higgsfield-conector-v1.sql` después del paso 23.
+1. Aplicar `supabase/higgsfield-conector-v1.sql` después del paso 23 y
+   `supabase/preparacion-piloto-conectores-v1.sql` como H109. El despliegue debe
+   sellar el entorno con `configurar_entorno_conectores_v1`; no se hace desde Vite.
 2. Instalar el CLI oficial en la máquina o runtime privado:
 
    ```powershell
@@ -42,6 +44,11 @@ del modelo, duración, formato, referencias, cámara y costo antes de consumir c
 
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
+   - `MOMOS_CONNECTOR_ENVIRONMENT=Staging` durante el piloto
+   - `MOMOS_CONNECTOR_PROJECT_REF`, exactamente el ref de `SUPABASE_URL`
+   - `MOMOS_CONNECTOR_ALLOW_STAGING=CONTROLLED_NON_PRODUCTION`
+   - producción usa una confirmación distinta y deliberada:
+     `MOMOS_CONNECTOR_ALLOW_PRODUCTION=EXPLICIT_PRODUCTION`
    - `HIGGSFIELD_COP_PER_CREDIT`
    - opcionales: `HIGGSFIELD_IMAGE_MODEL`, `HIGGSFIELD_VIDEO_MODEL`,
      `HIGGSFIELD_POLL_MS`, `HIGGSFIELD_WORKER_ID`
@@ -49,7 +56,8 @@ del modelo, duración, formato, referencias, cámara y costo antes de consumir c
      `HIGGSFIELD_CLI_ENTRY` con la ruta absoluta a `bin/higgsfield.js` o
      `HIGGSFIELD_BIN` con un ejecutable nativo. El worker nunca usa un shell.
 
-4. Confirmar la sesión y el heartbeat sin reclamar trabajos ni consumir créditos:
+4. Con Higgsfield aún `Pausada`, confirmar la sesión y el heartbeat sin reclamar
+   trabajos ni consumir créditos:
 
    ```powershell
    npm run worker:higgsfield:health
@@ -58,13 +66,18 @@ del modelo, duración, formato, referencias, cámara y costo antes de consumir c
    Esta comprobación no exige `HIGGSFIELD_COP_PER_CREDIT`; la tarifa sí es
    obligatoria para cualquier ciclo capaz de estimar o despachar trabajos.
 
-5. Verificar un ciclo sin dejar un proceso permanente:
+5. En **Agencia MOMOS → Integraciones**, Administración escribe la frase exacta
+   para **Preparar reanudación**. El estado pasa a `Configurada`, no a `Activa`.
+   Ejecutar otra vez el mismo health-check: solo esa comprobación v2 puede
+   confirmar `Activa`, siempre que project ref y entorno coincidan.
+
+6. Verificar un ciclo sin dejar un proceso permanente:
 
    ```powershell
    npm run worker:higgsfield:once
    ```
 
-6. Cuando la prueba real haya sido revisada, ejecutar `npm run worker:higgsfield`
+7. Cuando la prueba real haya sido revisada, ejecutar `npm run worker:higgsfield`
    con un supervisor de procesos del servidor.
 
 Los fallbacks actuales del worker son `marketing_studio_image` para imagen y

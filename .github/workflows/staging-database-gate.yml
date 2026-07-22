@@ -126,13 +126,46 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/autorizacion-generacion-preflight-v1.sql
 
+      - name: Apply H109 connector pilot isolation to staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/preparacion-piloto-conectores-v1.sql
+          node --input-type=module <<'NODE'
+          const response = await fetch(`${process.env.STAGING_SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/configurar_entorno_conectores_v1`, {
+            method: "POST",
+            headers: {
+              apikey: process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ p: {
+              environment: "Staging",
+              project_ref: process.env.STAGING_PROJECT_REF,
+              production_project_ref: process.env.PRODUCTION_PROJECT_REF,
+              confirmation: "SELLAR_STAGING_NO_PRODUCCION",
+            } }),
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok || result?.ok !== true || result?.environment !== "Staging"
+            || result?.project_ref_verified !== true || result?.generation_allowed !== false
+            || result?.publication_allowed !== false) {
+            throw new Error(`No se pudo sellar H109 en staging (HTTP ${response.status}).`);
+          }
+          NODE
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
-          grep -q "01-108 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-109 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -190,6 +223,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-autorizacion-generacion-preflight-v1.sql | tee "$RUNNER_TEMP/generation-authorization.log"
           grep -q "marca/conector/costo/worker habilitado" "$RUNNER_TEMP/generation-authorization.log"
+
+      - name: Run H109 connector pilot adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-preparacion-piloto-conectores-v1.sql | tee "$RUNNER_TEMP/connector-pilot.log"
+          grep -q "project-ref/entorno/RBAC/pausa" "$RUNNER_TEMP/connector-pilot.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:

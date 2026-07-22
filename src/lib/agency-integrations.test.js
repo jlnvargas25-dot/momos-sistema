@@ -95,3 +95,26 @@ test("cuenta publicaciones aprobadas por canal sin confundir Meta con TikTok", (
 test("permite el camino Manual sin secreto externo", () => {
     assert.deepEqual(agencyProviderExecutionGuard("Manual", {}, NOW), { allowed: true, reasons: [], integration: null });
   });
+
+test("separa preparación en staging de activación y ejecución", () => {
+  const db = {
+    agencyIntegrationsReady: true,
+    higgsfieldConnectorReady: true,
+    connectorPilotReadiness: {
+      runtime: { sealed: true, environment: "Staging" },
+      connectors: [{ provider: "Higgsfield", ready_to_prepare: true, environment_matches: true }],
+    },
+    agencyIntegrations: [{
+      provider: "Higgsfield", status: "Pausada", environment: "Staging",
+      secretConfigured: true, workerVersion: "momos-higgsfield-worker/1.1.0",
+      lastHeartbeatAt: "2026-07-15T14:55:00-05:00",
+    }],
+  };
+  const integration = buildAgencyIntegrationCenter(db, NOW).integrations
+    .find((item) => item.provider === "Higgsfield");
+  assert.equal(integration.pilotEnvironmentSealed, true);
+  assert.equal(integration.projectRefVerified, true);
+  assert.equal(integration.canPrepareStaging, true);
+  assert.equal(integration.operational, false);
+  assert.equal(agencyProviderExecutionGuard("Higgsfield", db, NOW).allowed, false);
+});

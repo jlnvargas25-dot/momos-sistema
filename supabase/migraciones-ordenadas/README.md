@@ -495,6 +495,25 @@ Administradora. MCP puede leer `momos_generation_authorizations`, pero no puede
 autorizar, ejecutar ni publicar. Kling/Higgsfield conservan sus leases, recibos y
 conciliación existentes; Distribución mantiene una aprobación posterior separada.
 
+## Hito 109 — Preparación controlada de conectores creativos
+
+Aplicar únicamente después de confirmar `20260722_108_autorizacion_generacion_preflight`:
+
+1. `../preparacion-piloto-conectores-v1.sql` — sella el project ref y entorno del
+   runtime, invalida los heartbeats antiguos sin prueba de entorno, incorpora
+   `Staging` al centro de integraciones y exige una decisión humana inmutable
+   antes de sacar Higgsfield o Kling de `Pausada`.
+2. `../tests/test-preparacion-piloto-conectores-v1.sql` — intenta cruzar project
+   refs, reanudar con heartbeat vencido, omitir la frase exacta, reescribir la
+   evidencia y fabricar trabajos, costos o permiso de publicación; siempre rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–109; siempre hace rollback.
+
+El despliegue configura `configurar_entorno_conectores_v1` con project refs
+privados. Administración solo prepara la reanudación en `Staging`; un
+health-check del worker v2 debe confirmarla después. Preparar o consultar salud
+no reclama trabajos, no llama generación, no consume créditos y no publica.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

@@ -20,7 +20,9 @@ pública, al repositorio ni al chat.
 
 ## Activación ordenada
 
-1. Aplicar `supabase/kling-conector-v1.sql` después del paso 24.
+1. Aplicar `supabase/kling-conector-v1.sql` después del paso 24 y H109
+   `supabase/preparacion-piloto-conectores-v1.sql`; el despliegue sella el
+   entorno mediante `configurar_entorno_conectores_v1`.
 2. Ejecutar `supabase/tests/test-kling-conector-v1.sql`; siempre termina en
    `ROLLBACK` y no contacta a Kling.
 3. Ejecutar `supabase/tests/test-migraciones-ordenadas.sql`.
@@ -30,6 +32,11 @@ pública, al repositorio ni al chat.
 
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
+   - `MOMOS_CONNECTOR_ENVIRONMENT=Staging`, `MOMOS_CONNECTOR_PROJECT_REF`
+     igual al ref de `SUPABASE_URL` y
+     `MOMOS_CONNECTOR_ALLOW_STAGING=CONTROLLED_NON_PRODUCTION` durante el piloto
+   - producción requiere deliberadamente
+     `MOMOS_CONNECTOR_ALLOW_PRODUCTION=EXPLICIT_PRODUCTION`
    - `KLING_API_KEY`
    - `KLING_API_BASE_URL=https://api-singapore.klingai.com` (opcional porque
      ya es el valor predeterminado; el worker rechaza cualquier otro origen)
@@ -46,14 +53,18 @@ pública, al repositorio ni al chat.
    npm run worker:kling:health
    ```
 
-7. Crear un único trabajo de prueba, revisar sus fuentes y autorizar un tope.
+7. En Agencia MOMOS → Integraciones, una persona Administradora prepara la
+   reanudación con la frase exacta y repite el health-check. Preparar no genera,
+   no cobra y no publica; la segunda comprobación confirma `Activa`.
+
+8. Crear un único trabajo de prueba, revisar sus fuentes y autorizar un tope.
    Solo entonces ejecutar un ciclo:
 
    ```powershell
    npm run worker:kling:once
    ```
 
-8. Después de revisar la salida y su costo, ejecutar
+9. Después de revisar la salida y su costo, ejecutar
    `npm run worker:kling` con un supervisor de procesos del servidor.
 
 ## Revisión humana de la salida
