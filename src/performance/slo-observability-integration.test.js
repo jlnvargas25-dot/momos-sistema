@@ -19,12 +19,15 @@ test("H95 agrega SLO sin conservar eventos, rutas ni PII", async () => {
 
 test("el monitor 1.2 reporta salud, base, conectores y evalúa alertas", async () => {
   const worker = await read("scripts/operational-health-worker.mjs");
-  assert.match(worker, /momos-operational-health-worker\/1\.2\.0/);
+  assert.match(worker, /momos-operational-health-worker\/1\.2\.1/);
   assert.match(worker, /registrar_telemetria_slo_v1/);
   assert.match(worker, /reportSlo\("HEALTH_MONITOR"/);
   assert.match(worker, /obtener_sonda_slo_servidor_v1/);
   assert.match(worker, /evaluar_alertas_slo_v1/);
   assert.match(worker, /idempotency_key: stableUuid\(/);
+  assert.match(worker, /PROCESS_RUN_ID = randomUUID\(\)/);
+  assert.match(worker, /receiptSequence = \+\+reportSequence/);
+  assert.doesNotMatch(worker, /WORKER_ID\}\|\$\{serviceCode\}\|\$\{bucketAt/);
   assert.match(worker, /Math\.floor\(Date\.now\(\) \/ 60_000\)/);
   assert.match(worker, /latency_buckets: latencyHistogram/);
   assert.doesNotMatch(worker, /p:\s*\{[^}]*message/s);

@@ -226,12 +226,15 @@ siete dominios sin guardar requests, rutas, actores, clientes, PII ni secretos.
 El monitor privado reportará su propia salud; los demás dominios quedan `Sin datos`
 hasta recibir evidencia real, en vez de presentarse como saludables por omisión.
 
-**H96 preparado:** conecta evidencia real sin capturar datos del negocio. El
+**H96 aplicado:** conecta evidencia real sin capturar datos del negocio. El
 navegador envía como máximo un lote agregado por minuto para Interfaz, RPC,
 Realtime y Storage; el worker privado mide Base de datos, Integraciones y el
 Monitor. Un evaluador idempotente abre o recupera alertas por presupuesto de
 error, p95, saturación, cola y telemetría vencida. Las alertas viven en una tabla
-privada y Configuración solo recibe el resumen necesario para actuar.
+privada y Configuración solo recibe el resumen necesario para actuar. La prueba
+real del monitor 1.2.1 confirmó dos ejecuciones consecutivas dentro del mismo
+minuto sin colisiones de recibos: 9 chequeos, 2 advertencias y 0 fallos, sin
+activar el modo de solo lectura.
 
 **Evidencia de cierre:** informe de carga firmado, SLO cumplidos y restauración/caos controlado aprobado.
 

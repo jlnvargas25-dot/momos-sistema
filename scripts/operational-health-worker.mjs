@@ -1,13 +1,19 @@
 import { hostname } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
-const VERSION = "momos-operational-health-worker/1.2.0";
+const VERSION = "momos-operational-health-worker/1.2.1";
 const ONCE = process.argv.includes("--once");
 const HEALTH_ONLY = process.argv.includes("--health-only");
 const POLL_MS = Math.max(60_000, Number(process.env.OPERATIONAL_HEALTH_POLL_MS || 300_000));
 const WORKER_ID = String(process.env.OPERATIONAL_HEALTH_WORKER_ID || `${hostname()}-health`)
   .replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 80);
+// Dos procesos pueden ejecutarse dentro del mismo minuto (reinicio, supervisor o
+// health-check manual). Cada proceso recibe un espacio idempotente propio y cada
+// reporte un recibo monotónico; un reintento del mismo payload conserva su clave,
+// pero otra ejecución nunca colisiona con un histograma de latencia diferente.
+const PROCESS_RUN_ID = randomUUID();
+let reportSequence = 0;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
 const SERVICE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -61,9 +67,10 @@ function isMissingRpc(error) {
 
 async function reportSlo(serviceCode, durationMs, succeeded, saturationPct = null, queueDepth = 0) {
   const bucketAt = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+  const receiptSequence = ++reportSequence;
   const { error } = await supabase.rpc("registrar_telemetria_slo_v1", {
     p: {
-      idempotency_key: stableUuid(`${WORKER_ID}|${serviceCode}|${bucketAt}|${succeeded ? "ok" : "error"}`),
+      idempotency_key: stableUuid(`${WORKER_ID}|${PROCESS_RUN_ID}|${receiptSequence}|${serviceCode}|${bucketAt}`),
       service_code: serviceCode,
       bucket_at: bucketAt,
       sample_count: 1,

@@ -365,7 +365,9 @@ Aplicar únicamente después de confirmar `20260721_95_observabilidad_slo`:
 3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
    01–96; siempre hace rollback.
 
-El worker `operational-health-worker` 1.2.0 reporta `HEALTH_MONITOR`, `DATABASE`
+El worker `operational-health-worker` 1.2.1 reporta `HEALTH_MONITOR`, `DATABASE`
 y `CONNECTORS`, y evalúa alertas. La interfaz agrega las cuatro señales cliente
 una vez por minuto y nunca bloquea una acción operativa si la observabilidad no
-está disponible.
+está disponible. Cada proceso abre su propio espacio idempotente para que un
+reinicio o una comprobación manual dentro del mismo minuto no choque con otra
+medición que tenga un histograma de latencia distinto.
