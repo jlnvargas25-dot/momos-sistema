@@ -97,7 +97,7 @@ begin
     (v_asset,'Producto','Frontal','Intacto','Ninguna','Ninguna','Cuchara MOMOS de 14 cm',
       'Original limpio','Aprobado','No aplica',true,'h108-momo-master-'||v_suffix,v_actor.id,v_actor.id),
     (v_quarter,'Producto','Tres cuartos','Intacto','Ninguna','Ninguna','Cuchara MOMOS de 14 cm',
-      'Original limpio','Aprobado','No aplica',false,'h108-momo-master-'||v_suffix,v_actor.id,v_actor.id);
+      'Original limpio','Aprobado','No aplica',true,'h108-momo-master-'||v_suffix,v_actor.id,v_actor.id);
   v_path:='test/h108-logo-'||v_suffix||'.png';
   insert into storage.objects(bucket_id,name,metadata)
   values('brand-assets',v_path,'{"mimetype":"image/png","size":4096}'::jsonb);
