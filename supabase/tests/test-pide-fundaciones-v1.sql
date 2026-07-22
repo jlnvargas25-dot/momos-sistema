@@ -53,6 +53,7 @@ declare
   v_sfx text:=pg_backend_pid()::text||'-'||(extract(epoch from clock_timestamp())::bigint%100000)::text;
   v_admin public.users%rowtype;
   v_tel text:='300'||lpad(((extract(epoch from clock_timestamp())::bigint)%10000000)::text,7,'0');
+  v_producto text;
 begin
   select * into v_admin from public.users where activo and auth_id is not null
     and coalesce(roles,array[rol]) @> array['Administrador']::text[] order by id limit 1;
@@ -61,17 +62,31 @@ begin
 
   insert into public.zonas(nombre,tarifa) values('P01 Zona '||v_sfx,6000);
   insert into public.franjas(nombre) values('P01 Franja '||v_sfx);
-  insert into public.product_cats(nombre) values('P01 Cat '||v_sfx);
-  insert into public.products(id,nombre,cat,tipo,especie,precio,costo,stock)
-  values('P01-PR-'||v_sfx,'P01 producto','P01 Cat '||v_sfx,'momo','gato',1000,500,5);
-  insert into public.production_batches(id,fecha,product_id,figura,sabor,prod,estado,stock_contabilizado,vencimiento)
-  values('P01-L-'||v_sfx,current_date,'P01-PR-'||v_sfx,'P01Figura','P01Sabor',5,'Listo',true,current_date+10);
-  insert into public.lote_figuras(batch_id,figura,cant,perfectas,imperfectas,descartadas)
-  values('P01-L-'||v_sfx,'P01Figura',5,5,0,0);
+  -- H90: el dominio canónico prohíbe inventar productos tipo momo en
+  -- categorías nuevas. El fixture usa un producto Signature EXISTENTE
+  -- (patrón del test H84) y crea SOLO un lote propio con figura de prueba;
+  -- los asserts de stock de los bloques 8/8b son por delta contra stock0.
+  select p.id into v_producto from public.products p
+    where p.tipo='momo' and p.activo
+    order by p.id limit 1;
+  assert v_producto is not null,'P01 necesita un producto momo activo (H90).';
+  -- Colchón de stock del fixture (se revierte con el rollback final): las
+  -- simulaciones de descuento de los bloques 8/8b jamás dejan stock negativo.
+  update public.products set stock=coalesce(stock,0)+5 where id=v_producto;
+  insert into public.production_batches(
+    id,fecha,product_id,figura,sabor,gramaje_g,prod,perfectas,imperfectas,
+    descartadas,estado,stock_contabilizado,desmoldado_en,vida_util_dias
+  ) values(
+    'P01-L-'||v_sfx,current_date,v_producto,'P01Figura','Prueba P01',180,5,5,0,0,
+    'Listo',true,clock_timestamp(),6
+  );
+  insert into public.lote_figuras(batch_id,figura,cant,perfectas,imperfectas,descartadas,consumidas)
+  values('P01-L-'||v_sfx,'P01Figura',5,5,0,0,0);
   insert into public.customers(id,nombre,telefono,canal)
   values('P01-C-'||v_sfx,'P01 cliente',v_tel,'Pide');   -- customers_canal_check + 'Pide'
   insert into p01_ids values('zona','P01 Zona '||v_sfx),('franja','P01 Franja '||v_sfx),
-    ('producto','P01-PR-'||v_sfx),('lote','P01-L-'||v_sfx),('cliente','P01-C-'||v_sfx);
+    ('producto',v_producto),('lote','P01-L-'||v_sfx),('cliente','P01-C-'||v_sfx),
+    ('stock0',coalesce((select stock from public.products where id=v_producto),0)::text);
 end $$;
 
 -- 1) CHECKs recreados: aceptan los valores nuevos y conservan los viejos;
@@ -439,7 +454,8 @@ begin
   assert (v_res->>'liberados')::integer=1
     and (v_res->>'irreconciliables')::integer=0,
     'La liberación no procesó el hold vencido.';
-  assert (select stock from public.products where id=v_producto)=5,
+  assert (select stock from public.products where id=v_producto)
+      =(select valor::numeric from p01_ids where clave='stock0'),
     'La liberación no devolvió el stock agregado.';
   assert (select consumidas from public.lote_figuras
     where batch_id=v_lote and figura='P01Figura')=0,
@@ -538,7 +554,8 @@ begin
   assert (v_res->>'liberados')::integer=1
     and (v_res->>'irreconciliables')::integer=0,
     'El hold reparado no se concilió en el ciclo siguiente.';
-  assert (select stock from public.products where id=v_producto)=5
+  assert (select stock from public.products where id=v_producto)
+      =(select valor::numeric from p01_ids where clave='stock0')
     and (select consumidas from public.lote_figuras
       where batch_id=v_lote and figura='P01Figura')=0,
     'La conciliación del hold reparado no devolvió stock/lote.';
@@ -681,7 +698,7 @@ declare
   v_franja text:=(select valor from p01_ids where clave='franja');
   v_q_vieja uuid; v_res jsonb; v_failed boolean:=false;
   v_q3 uuid:=(select valor::uuid from p01_ids where clave='q3');
-  v_q_veneno uuid; v_h_veneno uuid;
+  v_q_veneno uuid; v_h_veneno uuid; v_hace78 timestamptz;
 begin
   -- F1: la ventana de purga es 24-72 h (spec §1.2) — fuera de rango, cerrada.
   begin
@@ -709,10 +726,12 @@ begin
   values(1000,v_zona,v_franja,current_date+2,
     clock_timestamp()-interval '79 hours',clock_timestamp()-interval '80 hours')
   returning id into v_q_veneno;
+  -- Un solo clock_timestamp(): dos evaluaciones difieren en microsegundos y
+  -- el constraint expira_at=expira_original (sin sello) las rechaza.
+  v_hace78:=clock_timestamp()-interval '78 hours';
   insert into public.checkout_holds(quote_id,actor_hmac,expira_original,expira_at,creado_at)
   values(v_q_veneno,encode(sha256(('p01-actor-f')::bytea),'hex'),
-    clock_timestamp()-interval '78 hours',clock_timestamp()-interval '78 hours',
-    clock_timestamp()-interval '79 hours')
+    v_hace78,v_hace78,v_hace78-interval '1 hour')
   returning id into v_h_veneno;
   insert into public.checkout_hold_lotes(hold_id,product_id,batch_id,figura,cantidad)
   values(v_h_veneno,(select valor from p01_ids where clave='producto'),
