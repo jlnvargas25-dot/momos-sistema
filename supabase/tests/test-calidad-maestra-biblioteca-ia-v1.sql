@@ -13,6 +13,8 @@ begin
     'H110 no instaló la revisión maestra.';
   assert has_function_privilege('authenticated','public.revisar_calidad_activo_visual_v1(bigint,jsonb)','EXECUTE')
     and not has_function_privilege('service_role','public.revisar_calidad_activo_visual_v1(bigint,jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated','public.estado_calidad_set_visual_v1(text,text)','EXECUTE')
+    and not has_function_privilege('service_role','public.estado_calidad_paquete_visual_v1(bigint,text)','EXECUTE')
     and not has_table_privilege('authenticated','public.brand_visual_quality_assessments','INSERT')
     and not has_table_privilege('authenticated','public.brand_visual_quality_assessments','SELECT')
     and not has_table_privilege('service_role','public.brand_visual_quality_assessments','SELECT'),
@@ -99,11 +101,6 @@ begin
   perform public.revisar_calidad_activo_visual_v1((select quarter_id from h110_context),jsonb_build_object(
     'issues','[]'::jsonb,'checks_completed',v_checks,'review_notes','Vista tres cuartos limpia verificada.'));
 
-  assert (public.estado_calidad_set_visual_v1('max-master-h110','Generación de video')->>'ready')::boolean,
-    'H110 no reconoció la cobertura frontal+tres cuartos+escala.';
-  assert not (public.estado_calidad_set_visual_v1('max-master-h110','Element')->>'ready')::boolean,
-    'H110 declaró Element sin trasera ni detalle macro.';
-
   v_pack:=public.crear_paquete_produccion(jsonb_build_object(
     'name','H110 Max video master','purpose','Probar referencia maestra de Max en video',
     'product_id',(select product_id from h110_context),'figure','Max','channel','TikTok',
@@ -112,8 +109,6 @@ begin
       jsonb_build_object('asset_id',(select front_id from h110_context),'role','Producto','sequence',1,'required',true),
       jsonb_build_object('asset_id',(select quarter_id from h110_context),'role','Continuidad','sequence',2,'required',true))));
   update h110_context set pack_id=(v_pack->>'pack_id')::bigint;
-  assert (public.estado_calidad_paquete_visual_v1((v_pack->>'pack_id')::bigint,'Generación de video')->>'ready')::boolean,
-    'H110 no validó el paquete limpio para video.';
 
   begin
     insert into public.brand_visual_quality_assessments(asset_id,version,status,issues,checks_completed,
@@ -134,6 +129,13 @@ reset role;
 do $$
 declare v_failed boolean:=false;
 begin
+  assert (public.estado_calidad_set_visual_v1('max-master-h110','Generación de video')->>'ready')::boolean,
+    'H110 no reconoció la cobertura frontal+tres cuartos+escala.';
+  assert not (public.estado_calidad_set_visual_v1('max-master-h110','Element')->>'ready')::boolean,
+    'H110 declaró Element sin trasera ni detalle macro.';
+  assert (public.estado_calidad_paquete_visual_v1(
+      (select pack_id from h110_context),'Generación de video')->>'ready')::boolean,
+    'H110 no validó el paquete limpio para video.';
   begin
     update public.brand_visual_quality_assessments set status='Rechazado'
     where asset_id=(select front_id from h110_context);
