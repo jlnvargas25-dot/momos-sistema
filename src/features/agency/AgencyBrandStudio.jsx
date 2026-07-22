@@ -211,7 +211,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
       .sort((a, b) => b.canonical - a.canonical || a.name.localeCompare(b.name, "es"));
   }, [library.active]);
 
-  function openAssetUpload(collection = libraryCollection, brandRole = "", animationKind = "Personaje") {
+  function openAssetUpload(collection = libraryCollection, brandRole = "", animationKind = "Personaje", preset = {}) {
     const isBrand = collection === "Marca";
     const isAnimation = collection === "Animación";
     if (isAnimation && !animationReady) {
@@ -222,13 +222,35 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
     const role = brandRole || (isBrand ? "Referencia visual" : isAnimation ? "Diseño base" : "Producto");
     const productionComponent = isBrand ? "Marca" : isAnimation ? "Personaje" : "Producto";
     setLibraryCollection(collection);
-    setAssetForm({
+    const baseForm = {
       ...emptyAssetForm, collection, brandRole: isBrand ? role : "", shotType: role, animationKind,
       mediaType: /logo/i.test(role) ? "Logo" : isBrand || isAnimation ? "Foto" : "Video",
       productionEnabled: productionAssetsReady, ...defaultProductionProfile(productionComponent),
-    });
+    };
+    setAssetForm({ ...baseForm, ...preset });
     setFile(null);
     setUploadOpen(true);
+  }
+
+  function openFigureCapture(capture) {
+    const nextView = capture.nextView || "Frontal";
+    const slug = capture.figure.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    openAssetUpload("Productos", `${nextView} oficial`, "Personaje", {
+      name: `${capture.figure} · ${nextView} oficial`,
+      mediaType: "Foto",
+      productId: capture.productId,
+      figure: capture.figure,
+      shotType: `${nextView} oficial`,
+      orientation: nextView === "Detalle / macro" ? "Cuadrado" : "Vertical",
+      productionEnabled: true,
+      componentType: "Producto",
+      viewAngle: nextView,
+      physicalState: "Intacto",
+      sourceQuality: "Original limpio",
+      qaStatus: "Pendiente",
+      visualSetKey: `figura-${slug}`,
+      canonical: Boolean(isAdmin),
+    });
   }
 
   function openImprovedAssetUpload(asset) {
@@ -736,6 +758,10 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 mb-5">
           {[["Clasificados",productionLibrary.summary.profiled],["QA aprobado",productionLibrary.summary.approved],["Imagen IA",productionLibrary.summary.imageReady],["Video IA",productionLibrary.summary.videoReady],["Elements",productionLibrary.summary.elementReady],["Nueva toma",productionLibrary.summary.needsNewCapture],["Manos / UGC",productionLibrary.summary.humanComponents],["Locaciones",productionLibrary.summary.locations],["Ángulos",productionLibrary.summary.multiviewAngles],["Sets visuales",productionLibrary.summary.visualSets],["Frente + atrás",productionLibrary.summary.frontBackSets],["Packs aprobados",productionLibrary.summary.approvedPacks]].map(([label,value]) => <div key={label} className="rounded-2xl border p-3" style={{ borderColor: T.border, background: T.soft }}><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="display text-2xl font-semibold" style={{ color: T.coral }}>{value}</div></div>)}
         </div>
+        {productionLibrary.figureCapturePlan.rows.length > 0 && <div className="rounded-3xl border p-4 mb-5" style={{ borderColor: productionLibrary.figureCapturePlan.pendingFigures ? "#E7C078" : "#B8D3B2", background: productionLibrary.figureCapturePlan.pendingFigures ? "#FFFCF4" : "#F4FAF2" }}>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-3"><div><div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Plan de tomas oficial</div><div className="display text-xl font-semibold">Completá cada figura una sola vez</div><div className="text-xs max-w-2xl" style={{ color: T.choco2 }}>MOMO OPS compara las figuras activas con las fotos aprobadas y te dice la siguiente toma exacta. Así Higgsfield recibe identidad y proporciones consistentes.</div></div><div className="flex gap-2 shrink-0"><span className="rounded-xl px-3 py-2 text-center" style={{ background: "#fff" }}><b className="display text-lg block" style={{ color: "#3F6B42" }}>{productionLibrary.figureCapturePlan.complete}</b><span className="text-[8px] uppercase font-extrabold">completas</span></span><span className="rounded-xl px-3 py-2 text-center" style={{ background: "#fff" }}><b className="display text-lg block" style={{ color: T.coral }}>{productionLibrary.figureCapturePlan.pendingViews}</b><span className="text-[8px] uppercase font-extrabold">tomas faltan</span></span></div></div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">{productionLibrary.figureCapturePlan.rows.map((capture) => <article key={capture.figure} className="rounded-2xl border p-3" style={{ borderColor: capture.ready ? "#B8D3B2" : T.border, background: "#fff" }}><div className="flex items-start justify-between gap-2"><div><div className="font-extrabold text-sm">{capture.figure}</div><div className="text-[9px]" style={{ color: T.choco2 }}>{capture.gramajeG ? `${capture.gramajeG} g · ` : ""}{capture.status}</div></div><span className="display text-xl font-semibold" style={{ color: capture.ready ? "#3F6B42" : T.coral }}>{capture.coveragePercent}%</span></div><div className="h-1.5 rounded-full overflow-hidden my-2" style={{ background: T.vainilla }}><div className="h-full rounded-full" style={{ width: `${capture.coveragePercent}%`, background: capture.ready ? "#6B956D" : T.coral }} /></div><div className="flex flex-wrap gap-1">{capture.coveredViews.map((view) => <span key={view} className="rounded-full px-2 py-1 text-[8px] font-bold" style={{ background: "#DDEBD9", color: "#315B35" }}>✓ {view}</span>)}{capture.missingViews.slice(0, 2).map((view) => <span key={view} className="rounded-full px-2 py-1 text-[8px] font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Falta {view}</span>)}</div>{capture.nextView && canWrite && <button type="button" onClick={() => openFigureCapture(capture)} className="border-0 bg-transparent p-0 mt-3 text-[10px] font-extrabold underline" style={{ color: T.coral }}>Subir {capture.nextView.toLocaleLowerCase("es")} ›</button>}{capture.ready && !capture.optionalMacroReady && canWrite && <button type="button" onClick={() => openFigureCapture(capture)} className="border-0 bg-transparent p-0 mt-3 text-[10px] font-extrabold underline" style={{ color: T.coral }}>Agregar detalle / macro ›</button>}</article>)}</div>
+        </div>}
         {visualLibraryReady && productionLibrary.visualSets.length > 0 && <div className="mb-5"><div className="text-[9px] uppercase tracking-[.14em] font-extrabold mb-2" style={{ color: T.coral }}>Sets multivista reutilizables</div><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">{productionLibrary.visualSets.map((set) => <div key={set.key} className="rounded-2xl border p-3" style={{ borderColor: set.hasFrontAndBack ? "#B8D3B2" : T.border, background: set.hasFrontAndBack ? "#F4FAF2" : "#FFF9F2" }}><div className="flex justify-between gap-2"><span className="font-extrabold text-xs">{set.key}</span><span className="text-[9px] font-extrabold">{set.assets.length} activos</span></div><div className="text-[9px] mt-1" style={{ color: T.choco2 }}>{set.views.join(" · ") || "Sin vistas"}</div><div className="text-[9px] font-bold mt-2" style={{ color: set.hasFrontAndBack ? "#315B35" : "#7A5410" }}>{set.hasFrontAndBack ? "✓ Frente y vista trasera cubiertos" : "Falta completar frente o vista trasera"}</div></div>)}</div></div>}
         <div className="mb-5"><div className="flex items-end justify-between gap-3 mb-2"><div><div className="text-[9px] uppercase tracking-[.14em] font-extrabold" style={{ color: T.coral }}>Cobertura reutilizable</div><div className="font-extrabold">Qué puede pedir hoy un guion</div></div><button type="button" className="border-0 bg-transparent text-[10px] font-extrabold underline" style={{ color: T.coral }} onClick={() => setProductionComponentFilter("")}>Ver todos</button></div>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">{productionLibrary.componentCoverage.map((item) => <button type="button" key={item.componentType} onClick={() => setProductionComponentFilter(item.componentType)} className="rounded-2xl border p-3 text-left" style={{ borderColor: productionComponentFilter === item.componentType ? T.coral : item.ready ? "#B8D3B2" : T.border, background: item.ready ? "#F4FAF2" : "#FFF9F2" }}><span className="flex justify-between gap-2"><span className="text-xs font-extrabold">{item.componentType}</span><span className="display text-lg font-semibold" style={{ color: item.ready ? "#315B35" : T.coral }}>{item.approved}</span></span><span className="block text-[9px] mt-1" style={{ color: item.ready ? "#315B35" : T.choco2 }}>{item.ready ? `${item.count} clasificado(s)` : "Falta capturar y aprobar"}</span></button>)}</div>

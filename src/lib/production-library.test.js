@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildProductionLibrary, defaultProductionProfile, productionProfilePayload,
   productionProfileReadiness, visualQualityReadiness, visualQualityReviewPayload,
-  VISUAL_QUALITY_CHECKS,
+  VISUAL_QUALITY_CHECKS, OFFICIAL_FIGURE_CAPTURE_VIEWS,
 } from "./production-library.js";
 
 const baseAsset = {
@@ -111,4 +111,40 @@ test("el payload de revisión conserva taxonomía cerrada sin duplicados", () =>
   assert.deepEqual(payload.issues, ["Escarcha"]);
   assert.equal(payload.checks_completed.length, VISUAL_QUALITY_CHECKS.length);
   assert.equal(payload.review_notes, "Repetir la toma sin escarcha.");
+});
+
+test("el plan de tomas incluye todas las figuras activas aunque todavía no tengan fotos", () => {
+  const approvedProfile = { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado" };
+  const library = buildProductionLibrary({
+    brandProductionReady: true,
+    figuras: [
+      { nombre: "Lizi", productId: "PR01", gramajeG: 150, activo: true },
+      { nombre: "Max", productId: "PR02", gramajeG: 180, activo: true },
+      { nombre: "Horizontal", activo: true },
+    ],
+    brandMediaAssets: [
+      { ...baseAsset, figure: "Lizi", productionProfile: { ...approvedProfile, viewAngle: "Frontal" } },
+    ],
+  });
+  assert.deepEqual(library.figureCapturePlan.rows.map((row) => row.figure), ["Lizi", "Max"]);
+  assert.deepEqual(library.figureCapturePlan.rows[0].coveredViews, ["Frontal"]);
+  assert.equal(library.figureCapturePlan.rows[0].nextView, "Trasera");
+  assert.equal(library.figureCapturePlan.rows[1].missingViews.length, OFFICIAL_FIGURE_CAPTURE_VIEWS.length);
+  assert.equal(library.summary.figureViewsPending, OFFICIAL_FIGURE_CAPTURE_VIEWS.length * 2 - 1);
+});
+
+test("una figura queda completa solo con las cinco vistas oficiales", () => {
+  const approvedProfile = { ...defaultProductionProfile("Producto"), qaStatus: "Aprobado" };
+  const assets = OFFICIAL_FIGURE_CAPTURE_VIEWS.map((viewAngle, index) => ({
+    ...baseAsset, id: index + 1, figure: "Toby",
+    productionProfile: { ...approvedProfile, viewAngle },
+  }));
+  const library = buildProductionLibrary({
+    brandProductionReady: true,
+    figuras: [{ nombre: "Toby", productId: "PR01", gramajeG: 280, activo: true }],
+    brandMediaAssets: assets,
+  });
+  assert.equal(library.figureCapturePlan.complete, 1);
+  assert.equal(library.figureCapturePlan.rows[0].ready, true);
+  assert.equal(library.figureCapturePlan.rows[0].nextView, "Detalle / macro");
 });

@@ -76,6 +76,14 @@ export const VISUAL_TARGET_USES = Object.freeze({
   element: { key: "element", label: "Element" },
 });
 
+export const OFFICIAL_FIGURE_CAPTURE_VIEWS = Object.freeze([
+  "Frontal", "Trasera", "Perfil izquierdo", "Perfil derecho", "Tres cuartos",
+]);
+
+const FIGURE_CAPTURE_ORDER = Object.freeze([
+  "Lizi", "Momo", "Rocco", "Teo", "Toby", "Danna", "Max",
+]);
+
 const HUMAN_COMPONENTS = new Set(["Manos", "Presentador UGC"]);
 const VISUAL_MEDIA_TYPES = new Set(["Foto", "Video", "Logo"]);
 
@@ -188,6 +196,67 @@ function packReadiness(pack, assetsById, links) {
   return { ready: reasons.length === 0, reasons: [...new Set(reasons)], members };
 }
 
+function normalizedFigureName(value) {
+  return String(value || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+}
+
+function activeFigureSubjects(db = {}) {
+  const candidates = [
+    ...(Array.isArray(db.figuras) ? db.figuras : []),
+    ...(Array.isArray(db.settings?.figuras) ? db.settings.figuras : []),
+  ];
+  const byName = new Map();
+  candidates.forEach((figure) => {
+    const name = String(figure?.nombre || "").trim();
+    if (!name || figure?.activo === false || normalizedFigureName(name) === "horizontal") return;
+    const key = normalizedFigureName(name);
+    const current = byName.get(key);
+    if (!current || (!current.productId && figure?.productId)) byName.set(key, { ...figure, nombre: name });
+  });
+  return [...byName.values()].sort((a, b) => {
+    const ai = FIGURE_CAPTURE_ORDER.indexOf(a.nombre);
+    const bi = FIGURE_CAPTURE_ORDER.indexOf(b.nombre);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    return a.nombre.localeCompare(b.nombre, "es");
+  });
+}
+
+function buildFigureCapturePlan(db, generationReady) {
+  const figures = activeFigureSubjects(db);
+  const rows = figures.map((figure) => {
+    const key = normalizedFigureName(figure.nombre);
+    const assets = generationReady.filter((asset) => (
+      ["Producto", "Personaje"].includes(asset.productionProfile?.componentType)
+      && normalizedFigureName(asset.figure) === key
+    ));
+    const coveredViews = [...new Set(assets
+      .map((asset) => asset.productionProfile?.viewAngle)
+      .filter((view) => OFFICIAL_FIGURE_CAPTURE_VIEWS.includes(view)))];
+    const missingViews = OFFICIAL_FIGURE_CAPTURE_VIEWS.filter((view) => !coveredViews.includes(view));
+    const optionalMacroReady = assets.some((asset) => asset.productionProfile?.viewAngle === "Detalle / macro");
+    const coveragePercent = Math.round((coveredViews.length / OFFICIAL_FIGURE_CAPTURE_VIEWS.length) * 100);
+    return {
+      figure: figure.nombre,
+      productId: figure.productId || figure.product_id || "",
+      gramajeG: Number(figure.gramajeG ?? figure.gramaje_g ?? 0) || 0,
+      assets,
+      coveredViews,
+      missingViews,
+      optionalMacroReady,
+      nextView: missingViews[0] || (optionalMacroReady ? "" : "Detalle / macro"),
+      coveragePercent,
+      ready: missingViews.length === 0,
+      status: missingViews.length === 0 ? "Set oficial completo" : coveredViews.length ? "En progreso" : "Sin tomas oficiales",
+    };
+  });
+  return {
+    rows,
+    complete: rows.filter((row) => row.ready).length,
+    pendingFigures: rows.filter((row) => !row.ready).length,
+    pendingViews: rows.reduce((sum, row) => sum + row.missingViews.length, 0),
+  };
+}
+
 export function buildProductionLibrary(db = {}) {
   const assets = (db.brandMediaAssets || []).map((asset) => ({
     ...asset,
@@ -230,10 +299,11 @@ export function buildProductionLibrary(db = {}) {
     videoReadyAssets: set.assets.filter((asset) => asset.aiReadiness.videoGeneration.ready).length,
     elementReadyAssets: set.assets.filter((asset) => asset.aiReadiness.element.ready).length,
   })).sort((a, b) => a.key.localeCompare(b.key, "es"));
+  const figureCapturePlan = buildFigureCapturePlan(db, generationReady);
   return {
     ready: Boolean(db.brandProductionReady), expandedReady: Boolean(db.visualLibraryReady),
     qualityReady: qualityGateEnabled,
-    assets, active, approved, generationReady, componentCoverage, packs, visualSets,
+    assets, active, approved, generationReady, componentCoverage, packs, visualSets, figureCapturePlan,
     gaps: componentCoverage.filter((item) => !item.ready),
     summary: {
       profiled: active.length,
@@ -248,6 +318,9 @@ export function buildProductionLibrary(db = {}) {
       videoReady: approved.filter((asset) => asset.aiReadiness.videoGeneration.ready).length,
       elementReady: approved.filter((asset) => asset.aiReadiness.element.ready).length,
       needsNewCapture: approved.filter((asset) => asset.aiReadiness.status === "Requiere nueva toma").length,
+      figureSetsComplete: figureCapturePlan.complete,
+      figureSetsPending: figureCapturePlan.pendingFigures,
+      figureViewsPending: figureCapturePlan.pendingViews,
     },
   };
 }

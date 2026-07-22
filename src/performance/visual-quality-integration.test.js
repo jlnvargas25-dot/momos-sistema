@@ -57,6 +57,14 @@ test("la portada de Agencia muestra H110 y abre directamente la revisión visual
   assert.match(readModel, /const qualityResult = await supabase\.rpc\("biblioteca_calidad_ia_read_model_v1"\)/);
 });
 
+test("Agencia convierte la brecha visual en un plan de captura accionable", () => {
+  assert.match(panel, /Plan de tomas oficial/);
+  assert.match(panel, /Completá cada figura una sola vez/);
+  assert.match(panel, /Subir \{capture\.nextView\.toLocaleLowerCase\("es"\)\}/);
+  assert.match(panel, /openFigureCapture/);
+  assert.match(panel, /figura-\$\{slug\}/);
+});
+
 test("H110 pertenece a la cadena y al gate aislado de staging", () => {
   assert.match(ordered, /20260722_110_calidad_maestra_biblioteca_ia/);
   assert.match(ordered, /01-111 PASS/);
