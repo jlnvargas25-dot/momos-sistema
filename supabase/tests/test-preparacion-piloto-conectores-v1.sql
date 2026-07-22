@@ -13,16 +13,24 @@ begin
     and to_regprocedure('public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text)') is not null
     and to_regprocedure('public.momos_connector_pilot_readiness_v1()') is not null,
     'H109 no instaló el contrato completo.';
-  assert not has_table_privilege('authenticated','public.agency_connector_runtime_seal','SELECT')
-    and not has_table_privilege('service_role','public.agency_connector_runtime_seal','SELECT')
-    and not has_table_privilege('authenticated','public.agency_connector_resume_events','SELECT')
-    and not has_table_privilege('service_role','public.agency_connector_resume_events','SELECT')
-    and has_function_privilege('service_role','public.configurar_entorno_conectores_v1(jsonb)','EXECUTE')
-    and not has_function_privilege('authenticated','public.configurar_entorno_conectores_v1(jsonb)','EXECUTE')
-    and has_function_privilege('authenticated','public.preparar_reanudacion_integracion_agencia_v1(jsonb)','EXECUTE')
-    and not has_function_privilege('service_role','public.preparar_reanudacion_integracion_agencia_v1(jsonb)','EXECUTE')
-    and not has_function_privilege('service_role','public.reportar_worker_higgsfield(text,text,text,text,boolean)','EXECUTE'),
-    'H109 perdió aislamiento, RBAC o dejó habilitado el reporte sin entorno.';
+  assert not has_table_privilege('authenticated','public.agency_connector_runtime_seal','SELECT'),
+    'H109 expuso el sello a authenticated.';
+  assert not has_table_privilege('service_role','public.agency_connector_runtime_seal','SELECT'),
+    'H109 expuso el sello a service_role.';
+  assert not has_table_privilege('authenticated','public.agency_connector_resume_events','SELECT'),
+    'H109 expuso decisiones a authenticated.';
+  assert not has_table_privilege('service_role','public.agency_connector_resume_events','SELECT'),
+    'H109 expuso decisiones a service_role.';
+  assert has_function_privilege('service_role','public.configurar_entorno_conectores_v1(jsonb)','EXECUTE'),
+    'H109 no concedió el sello al runtime privado.';
+  assert not has_function_privilege('authenticated','public.configurar_entorno_conectores_v1(jsonb)','EXECUTE'),
+    'H109 permitió que authenticated selle el runtime.';
+  assert has_function_privilege('authenticated','public.preparar_reanudacion_integracion_agencia_v1(jsonb)','EXECUTE'),
+    'H109 no concedió la decisión humana a authenticated.';
+  assert not has_function_privilege('service_role','public.preparar_reanudacion_integracion_agencia_v1(jsonb)','EXECUTE'),
+    'H109 permitió que service_role fabrique la decisión humana.';
+  assert not has_function_privilege('service_role','public.reportar_worker_higgsfield(text,text,text,text,boolean)','EXECUTE'),
+    'H109 dejó habilitado el reporte Higgsfield sin entorno.';
 end $$;
 
 create temporary table h109_context(

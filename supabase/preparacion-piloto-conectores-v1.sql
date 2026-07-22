@@ -333,12 +333,12 @@ end $$;
 -- H109 invalida los reportes antiguos: no prueban project ref ni entorno.
 revoke execute on function public.reportar_worker_higgsfield(text,text,text,text,boolean) from service_role;
 revoke execute on function public.reportar_worker_kling(text,text,text,text,boolean) from service_role;
-revoke all on function public.preparacion_piloto_conectores_disponible() from public,anon;
-revoke all on function public.configurar_entorno_conectores_v1(jsonb) from public,anon,authenticated;
-revoke all on function public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text) from public,anon,authenticated;
-revoke all on function public.reportar_worker_kling_v2(text,text,text,text,boolean,text,text) from public,anon,authenticated;
-revoke all on function public.preparar_reanudacion_integracion_agencia_v1(jsonb) from public,anon;
-revoke all on function public.momos_connector_pilot_readiness_v1() from public,anon;
+revoke all on function public.preparacion_piloto_conectores_disponible() from public,anon,authenticated,service_role;
+revoke all on function public.configurar_entorno_conectores_v1(jsonb) from public,anon,authenticated,service_role;
+revoke all on function public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text) from public,anon,authenticated,service_role;
+revoke all on function public.reportar_worker_kling_v2(text,text,text,text,boolean,text,text) from public,anon,authenticated,service_role;
+revoke all on function public.preparar_reanudacion_integracion_agencia_v1(jsonb) from public,anon,authenticated,service_role;
+revoke all on function public.momos_connector_pilot_readiness_v1() from public,anon,authenticated,service_role;
 grant execute on function public.preparacion_piloto_conectores_disponible() to authenticated,service_role;
 grant execute on function public.configurar_entorno_conectores_v1(jsonb) to service_role;
 grant execute on function public.reportar_worker_higgsfield_v2(text,text,text,text,boolean,text,text) to service_role;
