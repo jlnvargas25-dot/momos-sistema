@@ -434,7 +434,13 @@ P01 NO toca funciones del core OPS: el cableado de
 `_pide_liberar_holds_vencidos` dentro de `_reserve_inventory` y de las RPC
 públicas llega en P03 — hacerlo en P01 cruzaría el carril OPS.
 
-Requisitos sellados para la revisión de P03:
+Requisitos sellados para la revisión de P03 (el punto 1 quedó CERRADO por
+`pide-checkout-v1`; el punto 2 quedó cerrado PARA LAS RUTAS P03 con un límite
+honesto — la función OPS viva `_atender_cola_produccion` bloquea en orden
+inverso y puede formar un deadlock ABBA pre-existente con cualquier ruta
+products→lote_figuras; P03 lo trata con resiliencia (`REINTENTAR` limpio) y el
+fix real queda sellado como pendiente del carril OPS; el punto 3 sigue sellado
+para P04):
 
 1. El FIFO del hold JAMÁS emite una fila con `batch_id` null habiendo
    consumido `lote_figuras`. El escape `batch_id` null existe solo para stock
@@ -471,6 +477,23 @@ Requisitos sellados para la revisión de P03:
 - Catálogo de adiciones con precio por canal: hoy NO existe verdad canónica de
   precio de adiciones (el flujo staff lo recibe de la UI), así que P02 las
   rechaza en Pide. Habilitarlas exige definir esa verdad primero.
+- `pide_pasarela_proveedor` (P03): el slug de la pasarela NO está sembrado a
+  propósito — `iniciar_pago_v1` falla cerrado (`PAGO_NO_DISPONIBLE`) hasta que
+  Jorge elija el proveedor y siembre el setting.
+- Seeds técnicos de P03 (`pide_rate_limit_checkout`, `pide_rate_limit_pago`,
+  `pide_intent_ttl_minutos`): valores de arranque, no aprobados como negocio.
+- RPC operativa para conciliar holds veneno (carril OPS): un hold Temporal
+  irreconciliable del propio actor hoy se aísla con warning y el checkout
+  responde `SIN_DISPONIBILIDAD`; destrabarlo requiere conciliación manual —
+  falta la herramienta operativa gobernada (principio 9).
+- Deadlock ABBA `_atender_cola_produccion` vs rutas products→lote_figuras:
+  pre-existe a P03; el fix real (alinear el orden de locks de la cola) es un
+  hito del carril OPS con su propia suite de concurrencia.
+- Drift stock vs lotes (verificado vivo 2026-07-22): hay momos con
+  `products.stock` mayor que la cobertura de `lote_figuras` (p.ej. stock sin
+  lote). Ese stock NO es apartable por figura exacta: en Pide el hold responde
+  `SIN_DISPONIBILIDAD` aunque el catálogo muestre "disponible". Antes de setear
+  `precio_pide` en un producto conviene lotear su stock real.
 
 60. `../pide-fundaciones-v1.sql` — §1 completo de la superficie pública: canal `Pide` en los CHECK vivos, retiro del gancho muerto `Temporal`/`expira`, tablas `quotes`, `checkout_sessions`, `checkout_holds` + `checkout_hold_lotes` (extensión exactly-once y terminales selladas por trigger), `payments` + `payment_events` (UNIQUE parcial Iniciado/Aprobado), `order_attributions`, demanda con snapshot sellado k≥3 por `creado_at`, tracking v4, `benefits.hold_quote_id`, techos anti-acaparamiento, RLS deny-all, perímetro H89 ampliado y purga en dos fases (DELETE 24–72 h).
 61. `../tests/test-pide-fundaciones-v1.sql` — adversarial: CHECKs nuevos y viejos, deny-all real por rol (4 verbos), UNIQUE parciales de idempotencia, extensión exactly-once, estados terminales, hold veneno aislado, liberación de holds vencidos con orden global de locks, payment_events idempotentes, anonimización con re-saneo de atribución, FK RESTRICT, guard H89 y k≥3 del snapshot de demanda; siempre hace rollback.
@@ -481,3 +504,40 @@ Aplicar P02 únicamente después de confirmar `20260721_p01_pide_fundaciones`:
 63. `../pide-cotizacion-v1.sql` — cotización autoritativa: `products.precio_pide` (NULL = no habilitado en Pide, decisión ratificada), `catalogo_publico_v1` (precio del canal + disponibilidad gruesa, sin verdad interna), `cotizar_pedido_v1` (entrada sin precios, dominio canónico de figuras/sabores/salsas vía `catalog_values`, capacidad `cupo − pedidos activos` con colchón, mínimo global con override, beneficio SOLO con posesión probada e indistinguible para anon, demanda insatisfecha PII-free, rate limit por IP+global con teléfono como señal), remediación del drift de grants de `shop_mis_pedidos`/`shop_mis_items` y quote inmutable con vencimiento.
 64. `../tests/test-pide-cotizacion-v1.sql` — adversarial: RBAC de superficie, precio del navegador rechazado, adiciones rechazadas, dominio canónico, combos con cajas exactas, disponibilidad gruesa sin números, demanda normalizada, Cancelado libera cupo, mínimo, anti-oráculo de beneficio, posesión probada, no-mutación comercial, rate limit y grants remediados; siempre hace rollback.
 65. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente (cadena OPS + P01 + P02); siempre hace rollback.
+
+Aplicar P03 únicamente después de confirmar `20260722_p02_pide_cotizacion`:
+
+66. `../pide-checkout-v1.sql` — checkout con hold real: `reservar_checkout_v1`
+    (hold TODO-O-NADA que corre el MISMO FIFO del pago VIVO por producto+
+    figura+sabor — incluido el filtro de vigencia de lote del paso 12: un lote
+    vencido jamás se aparta ni se cobra —, escribe la sesión del invitado,
+    reserva el beneficio de la quote y aplica los techos §1.5 — un checkout
+    vivo por actor, tope de fracción con `greatest(1,·)` para no perder la
+    última unidad, TTL corto), `iniciar_pago_v1` (quote vigente AL INICIAR el
+    cobro, intent idempotente por el UNIQUE parcial y extensión del hold
+    exactly-once), pasarela fail-closed sin `pide_pasarela_proveedor`, reaper
+    de intents Iniciado abandonados (`purgar_intents_pide_v1` solo
+    service_role, TTL `pide_intent_ttl_minutos` fail-closed entre la ventana
+    de pasarela y 1 día: intent → Expirado, checkout anonimizado vía
+    `_pide_anonimizar_checkout` verbatim, beneficio reactivado — la
+    liberación de holds NO reactiva un beneficio con intent vivo, anti doble
+    canje), errores de concurrencia reintentables (`REINTENTAR` para
+    deadlock/lock timeout) y hold veneno aislado con `SIN_DISPONIBILIDAD`
+    honesto, y cableado de `_pide_liberar_holds_interno` en
+    `_reserve_inventory` con el orden global de locks (products asc →
+    lote_figuras) tomado en un único pase. La firma P01
+    `_pide_liberar_holds_vencidos(text)` sobrevive como envoltura.
+67. `../tests/test-pide-checkout-v1.sql` — adversarial: RBAC de superficie,
+    hold feliz con lote exacto y cero `batch_id` null, idempotencia por quote,
+    un checkout vivo por actor con devolución exacta (incluido el teléfono
+    editado sobre la misma quote), fracción 0 apaga y última unidad apartable,
+    todo-o-nada sin residuos, lote VENCIDO jamás apartado (fixture tripwire +
+    cobertura vigente), hold veneno aislado con respuesta honesta, combo
+    end-to-end respaldado por lote, liberación perezosa en el camino público y
+    en `_reserve_inventory` (staff), beneficio sin doble canje bajo intent
+    vivo, intent idempotente con extensión única, pasarela fail-closed, reaper
+    de intents (gate service_role, TTL fail-closed, anonimización, frescos y
+    aprobados intactos) y rate limit con teléfono canónico; siempre hace
+    rollback.
+68. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+    (cadena OPS + P01 + P02 + P03); siempre hace rollback.

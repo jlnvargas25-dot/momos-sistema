@@ -1650,4 +1650,46 @@ end $$;
 
 select 'TESTS_OK — carril Pide P02 cotizacion PASS, rollback total' as resultado_p02;
 
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_p03_pide_checkout')
+    and to_regprocedure('public.reservar_checkout_v1(jsonb)') is not null
+    and to_regprocedure('public.iniciar_pago_v1(jsonb)') is not null
+    and to_regprocedure('public._pide_liberar_holds_interno(text[],uuid[],text[])') is not null
+    and to_regprocedure('public._pide_asignar_hold_fifo(uuid,text,text,text,integer)') is not null
+    and to_regprocedure('public._pide_setting_num(text,numeric)') is not null
+    and to_regprocedure('public._pide_error(text,text,text)') is not null
+    and to_regprocedure('public._pide_reaper_intents_v1(integer)') is not null
+    and to_regprocedure('public.purgar_intents_pide_v1(integer)') is not null,
+    'P03 no instaló el checkout de Pide';
+  -- La firma P01 sobrevive y delega; el cableado staff quedó instalado.
+  assert to_regprocedure('public._pide_liberar_holds_vencidos(text)') is not null
+    and position('_pide_liberar_holds_interno' in pg_get_functiondef(
+      'public._pide_liberar_holds_vencidos(text)'::regprocedure))>0
+    and position('_pide_liberar_holds_interno' in pg_get_functiondef(
+      'public._reserve_inventory(text)'::regprocedure))>0,
+    'P03 rompió la envoltura P01 o no cableó _reserve_inventory';
+  assert exists(select 1 from public.app_settings where clave='pide_rate_limit_checkout')
+    and exists(select 1 from public.app_settings where clave='pide_rate_limit_pago')
+    and exists(select 1 from public.app_settings where clave='pide_intent_ttl_minutos'),
+    'P03 no sembró sus settings de rate limit y TTL del reaper';
+  assert has_function_privilege('anon','public.reservar_checkout_v1(jsonb)','EXECUTE')
+    and has_function_privilege('anon','public.iniciar_pago_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public._pide_liberar_holds_interno(text[],uuid[],text[])','EXECUTE')
+    and not has_function_privilege('anon','public._pide_asignar_hold_fifo(uuid,text,text,text,integer)','EXECUTE')
+    and not has_function_privilege('service_role','public.reservar_checkout_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.iniciar_pago_v1(jsonb)','EXECUTE'),
+    'P03 perdió el RBAC de la superficie del checkout';
+  -- Reaper de intents: superficie solo del job privado; núcleo cerrado.
+  assert has_function_privilege('service_role','public.purgar_intents_pide_v1(integer)','EXECUTE')
+    and not has_function_privilege('anon','public.purgar_intents_pide_v1(integer)','EXECUTE')
+    and not has_function_privilege('authenticated','public.purgar_intents_pide_v1(integer)','EXECUTE')
+    and not has_function_privilege('anon','public._pide_reaper_intents_v1(integer)','EXECUTE')
+    and not has_function_privilege('service_role','public._pide_reaper_intents_v1(integer)','EXECUTE'),
+    'P03 perdió el RBAC del reaper de intents';
+end $$;
+
+select 'TESTS_OK — carril Pide P03 checkout PASS, rollback total' as resultado_p03;
+
 rollback;
