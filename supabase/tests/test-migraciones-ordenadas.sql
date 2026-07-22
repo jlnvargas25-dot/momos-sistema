@@ -114,7 +114,9 @@ begin
   assert not has_function_privilege('authenticated','public.marcar_despacho_kling(bigint,uuid,text,numeric,jsonb)','EXECUTE'), 'inicio de despacho Kling privado expuesto';
   assert not has_function_privilege('authenticated','public.conciliar_despacho_kling(bigint,uuid,text)','EXECUTE'), 'conciliación Kling privada expuesta';
   assert not has_function_privilege('authenticated','public.registrar_salida_kling(bigint,uuid,jsonb)','EXECUTE'), 'salida Kling privada expuesta';
-  assert has_function_privilege('service_role','public.reportar_worker_kling(text,text,text,text,boolean)','EXECUTE'), 'worker Kling sin permiso de salud';
+  assert not has_function_privilege('service_role','public.reportar_worker_kling(text,text,text,text,boolean)','EXECUTE')
+    and has_function_privilege('service_role','public.reportar_worker_kling_v2(text,text,text,text,boolean,text,text)','EXECUTE'),
+    'worker Kling no migró al heartbeat v2 con entorno sellado';
   assert has_function_privilege('service_role','public.reclamar_trabajo_kling(text,integer)','EXECUTE'), 'worker Kling sin permiso de cola';
   assert public.revision_creativa_disponible(), 'falta sonda de revisión creativa';
   assert has_function_privilege('authenticated','public.revisar_salida_creativa(bigint,text,text)','EXECUTE'), 'falta revisión humana de salidas IA';
