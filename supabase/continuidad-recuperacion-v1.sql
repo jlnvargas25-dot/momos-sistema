@@ -188,8 +188,13 @@ begin
     backup_key,source,status,completed_at,pitr_enabled,region_code,fingerprint
   ) values(v_key,v_source,v_status,v_completed,v_pitr,v_region,v_fp)
   on conflict(backup_key) do update set observed_at=clock_timestamp();
-  select continuity_certified_until>=clock_timestamp() into v_certified
-    from public.operational_health_state where singleton;
+  select coalesce(s.continuity_certified_until>=clock_timestamp(),false)
+      and exists(
+        select 1 from public.operational_recovery_drills d
+        where d.backup_key=v_key and d.status='Aprobado'
+      )
+    into v_certified
+    from public.operational_health_state s where s.singleton;
   update public.operational_health_state set
     last_managed_backup_at=case when v_status='Completado' then greatest(last_managed_backup_at,v_completed) else last_managed_backup_at end,
     last_backup_at=case when v_status='Completado' then greatest(last_backup_at,v_completed) else last_backup_at end,
