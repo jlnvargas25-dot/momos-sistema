@@ -379,6 +379,22 @@ El documento aportado por el usuario, **“Claude Skills para Meta Ads”**, con
 
 > Contratos técnicos: `20260722_105_humanizacion_comunidad` y `20260722_106_biblioteca_visual_ampliada`. La cadena canónica aplica H103 → H104 → H105 → H106.
 
+### Hito 107 — Orquestación de producción desde fórmulas (implementado)
+
+- Una fórmula H103 aprobada y un paquete visual H61/H106 aprobado se unen en un
+  preflight versionado e inmutable con canal, formato, motor, modelo, duración,
+  cantidad de salidas, costo estimado y tope máximo.
+- El servidor revalida producto, figura, canal, huellas, derechos y preparación
+  del paquete tanto al crear como al aprobar el preflight.
+- Codex dispone de lectura y propuesta MCP de lista cerrada. La propuesta queda
+  visible en el Laboratorio de fórmulas para revisión humana.
+- Guardas permanentes: cero créditos, cero trabajos creados, cero ejecución
+  externa y cero publicación durante preparación y aprobación del preflight.
+
+Siguiente fase: convertir únicamente un preflight aprobado y vigente en una
+solicitud de autorización de motor separada, sin saltar el costo, la salud del
+conector ni el consentimiento humano ya existentes.
+
 ### Programa transversal futuro — Pide MOMOS: trazabilidad, seguridad y escala
 
 **Objetivo:** lanzar Pide MOMOS como una interfaz pública rápida y resiliente sobre la misma verdad operativa de MOMO OPS, con trazabilidad auditable desde la primera visita hasta pago, producción, entrega, atribución y recompra. Este programa no se considerará listo por tener pantallas: exige contratos transaccionales, seguridad, observabilidad y carga verificadas.

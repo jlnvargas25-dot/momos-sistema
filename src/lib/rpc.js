@@ -825,6 +825,20 @@ export async function resolverMedicionFormulaCreativa(measurementId, outcome, no
   return data;
 }
 
+export async function prepararPlanProduccionFormula(payload) {
+  const { data, error } = await supabase.rpc("preparar_plan_produccion_formula_v1", { p: payload });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function revisarPlanProduccionFormula(planId, status, note) {
+  const { data, error } = await supabase.rpc("revisar_plan_produccion_formula_v1", {
+    p_plan_id: Number(planId), p_status: status, p_note: note,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function proponerSerieHumanizacion(payload) {
   const { data, error } = await supabase.rpc("proponer_serie_humanizacion_v1", { p: payload });
   if (error) throw new Error(error.message);

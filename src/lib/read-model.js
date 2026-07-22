@@ -7,6 +7,7 @@ import { agencyOperationalFactsReady as hasAgencyOperationalFacts, normalizeAgen
 import { normalizeOrderDeltaBatch } from "./order-delta.js";
 import { normalizeFinishedInventoryDeltaBatch } from "./finished-inventory-delta.js";
 import { normalizeProductionActivityDelta } from "./production-delta.js";
+import { normalizeProductionPreflight } from "./production-preflight.js";
 import { activeConfigurationFigureCatalog } from "./momos-domain-language.js";
 import { normalizeCreativeIntelligence } from "./creative-intelligence.js";
 import { normalizeHumanizationCommunity } from "./humanization-community.js";
@@ -1688,6 +1689,21 @@ export async function fetchCatalogos(options = {}) {
     agencyCreativeIntelligence = normalizeCreativeIntelligence(result.data);
   }
 
+  const productionPreflightProbe = await capabilityResult("orquestacion_produccion_formulas_disponible");
+  const productionPreflightProbeMissing = productionPreflightProbe.error
+    && (productionPreflightProbe.error.code === "PGRST202"
+      || /could not find the function|schema cache/i.test(productionPreflightProbe.error.message || ""));
+  if (productionPreflightProbe.error && !productionPreflightProbeMissing) {
+    throw new Error(productionPreflightProbe.error.message);
+  }
+  const agencyProductionPreflightReady = !productionPreflightProbeMissing && productionPreflightProbe.data === true;
+  let agencyProductionPreflight = null;
+  if (agencyProductionPreflightReady) {
+    const result = await supabase.rpc("momos_production_preflight_v1");
+    if (result.error) throw new Error(result.error.message);
+    agencyProductionPreflight = normalizeProductionPreflight(result.data);
+  }
+
   const humanizationProbe = await capabilityResult("humanizacion_comunidad_disponible");
   const humanizationProbeMissing = humanizationProbe.error
     && (humanizationProbe.error.code === "PGRST202"
@@ -2093,6 +2109,7 @@ export async function fetchCatalogos(options = {}) {
     agencyMetaAuthorizationReady, agencyMetaInvestmentAuthorizations, agencyMetaInvestmentExecutionJobs,
     agencyMetaConnectorReady, agencyMetaConnectorDryRuns,
     agencyCreativeIntelligenceReady, agencyCreativeIntelligence,
+    agencyProductionPreflightReady, agencyProductionPreflight,
     agencyHumanizationReady, agencyHumanization,
     distributionServerReady, content_distributions, distributionConnectorReady, distributionConnectorJobs, brandMediaReady, mundoAnimadoReady, officialLogoDeletionReady, brandProductionReady, visualLibraryReady, brandProductionPacks, brandProductionPackAssets, creativeProductionReady, creativeReviewReady, creativeIterationReady, mcpHumanApprovalReady, mcpHumanApprovals, brandMediaAssets, creativeGenerationJobs, brandMediaUsages,
     agencyIntegrationsReady, agencyIntegrations, higgsfieldConnectorReady, klingConnectorReady, creativeConnectorRuns,

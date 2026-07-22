@@ -22,6 +22,7 @@ test("el MCP publica una superficie pequeña y sin SQL libre", () => {
     "momos_creative_intelligence", "momos_propose_creative_formula",
     "momos_humanization_community", "momos_propose_humanization_series",
     "momos_propose_humanization_episode", "momos_visual_library",
+    "momos_production_preflight", "momos_prepare_production_plan",
     "momos_creative_context", "momos_search_brand_assets",
     "momos_get_brand_asset_reference", "momos_submit_proposals",
     "momos_request_human_approval", "momos_get_human_approval",
@@ -40,6 +41,8 @@ test("el MCP publica una superficie pequeña y sin SQL libre", () => {
   assert.match(runtime, /proponer_episodio_humanizacion_agente_v1/);
   assert.match(runtime, /Nunca recibe comentarios, perfiles o mensajes crudos/);
   assert.match(runtime, /momos_visual_library_v1/);
+  assert.match(runtime, /momos_production_preflight_v1/);
+  assert.match(runtime, /preparar_plan_produccion_formula_agente_v1/);
   assert.match(runtime, /mode: "Propuesta"/);
 });
 

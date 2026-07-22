@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
   medirFormulaCreativa, resolverMedicionFormulaCreativa, revisarFormulaCreativa,
+  revisarPlanProduccionFormula,
 } from "../../lib/rpc";
 
 const OUTCOMES = ["Ganadora", "Prometedora", "Inconclusa", "Agotada", "Descartada"];
@@ -24,6 +25,8 @@ export function createAgencyFormulaLab(shared) {
     const measurements = intelligence?.measurements || [];
     const formulaById = useMemo(() => new Map(formulas.map((formula) => [formula.id, formula])), [formulas]);
     const summary = intelligence?.summary || {};
+    const productionPreflight = db.agencyProductionPreflight;
+    const productionPlans = productionPreflight?.plans || [];
 
     async function review(formula, status) {
       const note = status === "En revisión"
@@ -56,6 +59,17 @@ export function createAgencyFormulaLab(shared) {
       await refrescar();
     }
 
+    async function reviewProductionPlan(plan, status) {
+      const defaultNote = status === "En revisión"
+        ? "El equipo revisará fórmula, activos, formato, derechos, motor y costo máximo antes de aprobar."
+        : "Fórmula, activos, canal, formato, derechos y costo máximo fueron revisados por el equipo.";
+      const note = window.prompt("Documentá el criterio humano de esta decisión:", defaultNote);
+      if (note == null) return;
+      await revisarPlanProduccionFormula(plan.id, status, note);
+      toast("ok", status === "Aprobado" ? "Preflight aprobado sin consumir créditos" : "Preflight enviado a revisión");
+      await refrescar();
+    }
+
     if (!db.agencyCreativeIntelligenceReady) return <div className="rounded-2xl border p-5 text-sm font-bold" style={{ borderColor: T.border, background: "#FFF2D8", color: "#7A5410" }}>
       Aplicá <code>inteligencia-creativa-publicitaria-v1.sql</code> para activar fórmulas ganadoras y memoria para Codex.
     </div>;
@@ -78,6 +92,16 @@ export function createAgencyFormulaLab(shared) {
         <div className="grid sm:grid-cols-2 gap-2 my-3 text-[10px]">{[["Hook",formula.formula.hook],["Estructura",formula.formula.narrative_structure],["Humanización",formula.formula.humanization],["Prueba",formula.formula.proof]].map(([label,value]) => <div key={label} className="rounded-xl p-2.5" style={{ background: "#F8EFE4" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>{label}</div><div className="font-semibold mt-0.5">{value || "—"}</div></div>)}</div>
         <div className="flex flex-wrap gap-2">{formula.status === "Propuesta" && <BtnAsync small onClick={() => review(formula,"En revisión")}>Enviar a revisión</BtnAsync>}{formula.status === "En revisión" && <BtnAsync small onClick={() => review(formula,"Aprobada")}>Aprobar fórmula</BtnAsync>}{formula.status === "Aprobada" && <BtnAsync small onClick={() => measure(formula)}>Medir últimos 7 días</BtnAsync>}</div>
       </article>)}</div> : <div className="mb-5"><Empty icon="✦" text="Codex puede proponer la primera fórmula desde el MCP; aparecerá aquí como propuesta, nunca aprobada automáticamente." /></div>}
+
+      {db.agencyProductionPreflightReady && <>
+        <div className="flex items-end justify-between gap-3 mb-2"><div><div className="display text-lg font-semibold">Listos para producir</div><div className="text-[10px]" style={{ color: T.choco2 }}>Cada tarjeta une una fórmula aprobada con referencias visuales verificadas. Aprobar no genera, no consume créditos y no publica.</div></div><span className="rounded-full px-3 py-1 text-[9px] font-extrabold" style={{ background: "#F8EFE4", color: T.choco2 }}>{productionPlans.length} preflight</span></div>
+        {productionPlans.length ? <div className="grid lg:grid-cols-2 gap-3 mb-5">{productionPlans.map((plan) => <article key={plan.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#fff" }}>
+          <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>{plan.provider} · {plan.operation} · v{plan.version}</div><div className="display text-base font-semibold">Fórmula #{plan.formulaId} + paquete #{plan.productionPackId}</div><div className="text-[10px]" style={{ color: T.choco2 }}>{plan.channel} · {plan.targetFormat} · {plan.durationSeconds ? `${plan.durationSeconds} s` : "imagen"}</div></div><span className="rounded-full px-2 py-1 text-[9px] font-extrabold" style={{ background: plan.status === "Aprobado" ? "#DDEBD9" : "#FFF2D8", color: plan.status === "Aprobado" ? "#315B35" : "#7A5410" }}>{plan.status}</span></div>
+          <div className="grid grid-cols-2 gap-2 my-3 text-[10px]"><div className="rounded-xl p-2.5" style={{ background: "#F8EFE4" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Motor</div><div className="font-semibold">{plan.modelLabel}</div></div><div className="rounded-xl p-2.5" style={{ background: "#F8EFE4" }}><div className="text-[8px] uppercase font-extrabold" style={{ color: T.choco2 }}>Tope protegido</div><div className="font-semibold">{money(plan.maxCostCop)}</div></div></div>
+          <div className="rounded-xl p-2.5 mb-3 text-[10px] font-bold" style={{ background: "#E4F0E1", color: "#315B35" }}>✓ 0 créditos consumidos · 0 trabajos creados · publicación bloqueada</div>
+          <div className="flex flex-wrap gap-2">{plan.status === "Preparado" && <BtnAsync small onClick={() => reviewProductionPlan(plan,"En revisión")}>Enviar a revisión</BtnAsync>}{plan.status === "En revisión" && <BtnAsync small onClick={() => reviewProductionPlan(plan,"Aprobado")}>Aprobar preflight</BtnAsync>}</div>
+        </article>)}</div> : <div className="mb-5"><Empty icon="🎬" text="Cuando Codex una una fórmula aprobada con un paquete visual aprobado, el preflight aparecerá aquí para decisión humana." /></div>}
+      </>}
 
       <div className="display text-lg font-semibold mb-2">Mediciones y decisión humana</div>
       {measurements.length ? <div className="space-y-3">{measurements.map((measurement) => { const formula = formulaById.get(measurement.formulaId); return <article key={measurement.id} className="rounded-2xl border p-4" style={{ borderColor: T.border, background: "#fff" }}>

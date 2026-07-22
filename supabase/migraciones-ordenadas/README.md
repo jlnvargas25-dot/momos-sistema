@@ -456,6 +456,25 @@ evidencia legal, PII, secretos, publicación o ejecución externa.
 
 Certificación real de staging: `../../docs/H106-STAGING-VISUAL-LIBRARY-2026-07-22.json`.
 
+## Hito 107 — Orquestación de producción desde fórmulas
+
+Aplicar únicamente después de confirmar `20260722_106_biblioteca_visual_ampliada`:
+
+1. `../orquestacion-produccion-formulas-v1.sql` — une una fórmula H103 aprobada
+   con un paquete H61/H106 aprobado y vigente; sella motor, modelo, formato,
+   duración, cantidad de salidas, costo estimado y tope. Preparar o aprobar el
+   preflight nunca crea un trabajo, consume créditos, publica o pauta.
+2. `../tests/test-orquestacion-produccion-formulas-v1.sql` — intenta usar
+   fórmulas sin aprobar, paquetes incompatibles, PII, colisiones idempotentes,
+   reescritura, ejecución implícita y bypass RBAC; siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+   01–107; verifica la cadena 103 → 104 → 105 → 106 → 107.
+
+Codex puede leer `momos_production_preflight` y, con propuestas MCP habilitadas,
+preparar `momos_prepare_production_plan`. La persona revisa y aprueba dentro de
+Agencia MOMOS. Una futura ejecución seguirá necesitando autorización separada,
+conector saludable y las guardas de costo existentes.
+
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:
