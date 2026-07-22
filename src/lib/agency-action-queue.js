@@ -35,6 +35,8 @@ const ANCHOR_BY_ACTION = Object.freeze({
   HUMAN_TRIAGE: "agency-approval-center",
 });
 
+export const AGENCY_ACTION_TARGET_IDS = Object.freeze([...new Set(Object.values(ANCHOR_BY_ACTION))]);
+
 function normalizeItem(raw, decisionById) {
   const decisionId = Number(raw?.decision_id ?? raw?.decisionId);
   const actionCode = text(raw?.next_action_code ?? raw?.nextActionCode);

@@ -13,6 +13,7 @@ import { projectAgencyDbWithOperationalFacts } from "../../lib/agency-operationa
 import { buildCreativePackage } from "../../lib/creative-package";
 import { buildProductionLibrary } from "../../lib/production-library";
 import { activeFigureCatalog, commercialFamilyLabel, figureProductId, isCommercialFamilyProduct } from "../../lib/momos-domain-language";
+import { agencyTargetRoute } from "../../lib/agency-route-map";
 import {
   registrarContactoCliente, crearCampana, editarCampana, setCampanaEstado, crearCreativo, crearPublicacion,
   guardarConfiguracionAgencia, crearBriefAgencia, registrarSnapshotMotorCrecimiento, seleccionarModoCrecimiento,
@@ -65,7 +66,7 @@ export function createAgencyPanel(shared) {
 
 
 
-function AgencyActionCenter({ db, go, refrescar }) {
+function AgencyActionCenter({ db, go, refrescar, onOpenTarget }) {
   const center = useMemo(() => buildAgencyActionQueue(db.agencyActionQueue, db.agencyDecisions || []), [db.agencyActionQueue, db.agencyDecisions]);
   const [selected, setSelected] = useState(null);
   const [outcomeForm, setOutcomeForm] = useState(() => agencyOutcomeDefaults(null));
@@ -84,7 +85,7 @@ function AgencyActionCenter({ db, go, refrescar }) {
     const destination = agencyActionDestination(item);
     setSelected(null);
     if (destination.module !== "Crecimiento") { go(destination.module); return; }
-    window.setTimeout(() => document.getElementById(destination.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    if (!onOpenTarget?.(destination.anchor)) toast("error", "La acción no tiene una pantalla disponible. MOMOS no cambió ningún dato.");
   }
 
   async function completeDecision() {
@@ -134,7 +135,7 @@ function AgencyActionCenter({ db, go, refrescar }) {
   </section>;
 }
 
-function AgencyCreativeFlightCenter({ db, go, refrescar }) {
+function AgencyCreativeFlightCenter({ db, go, refrescar, onOpenTarget }) {
   const center = useMemo(() => buildCreativeFlightCenter(db), [db]);
   const [showCompleted, setShowCompleted] = useState(false);
   const [relay, setRelay] = useState(null);
@@ -155,12 +156,8 @@ function AgencyCreativeFlightCenter({ db, go, refrescar }) {
       });
       return;
     }
-    if (["distribution", "observe"].includes(step) || flight.nextTarget === "agency-distribution-room") {
-      window.sessionStorage.setItem("momos:calendar-view", "Distribución");
-      go("Calendario");
-      return;
-    }
-    document.getElementById(flight.nextTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const target = ["distribution", "observe"].includes(step) ? "agency-distribution-room" : flight.nextTarget;
+    if (!onOpenTarget?.(target)) toast("error", "Este paso no tiene una ruta disponible. MOMOS no cambió ningún dato.");
   }
 
   async function completeRelay() {
@@ -364,6 +361,26 @@ function BrandIdentityPanel({ identity, loading, error, onRetry, onOpenLibrary }
   </div>;
 }
 
+function AgencyJourneyBar({ activePhase = "", onOpen }) {
+  const activeIndex = ({ idea: 0, design: 2, create: 2, review: 3, publish: 4, learn: 4 })[activePhase] ?? 0;
+  const steps = [
+    { id: "objective", label: "Objetivo", detail: "Qué queremos lograr", icon: "◎" },
+    { id: "references", label: "Referencias", detail: "Marca y material real", icon: "▣" },
+    { id: "create", label: "Crear", detail: "Guion, tomas y pieza", icon: "✦" },
+    { id: "review", label: "Revisar", detail: "Calidad y aprobación", icon: "✓" },
+    { id: "learn", label: "Publicar y aprender", detail: "Salida y resultados", icon: "↗" },
+  ];
+  return <section className="rounded-2xl border p-3 sm:p-4 mb-4" style={{ borderColor: T.border, background: "#FFF9F2" }} aria-label="Recorrido principal de Agencia MOMOS">
+    <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-[9px] uppercase tracking-[.16em] font-extrabold" style={{ color: T.coral }}>Tu recorrido</div><div className="display text-base font-semibold">De la intención al resultado</div></div><div className="text-[9px] hidden sm:block" style={{ color: T.choco2 }}>Entrá por cualquier paso; MOMOS conserva el contexto.</div></div>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      {steps.map((step, index) => { const current = index === activeIndex; const done = index < activeIndex; return <button key={step.id} type="button" onClick={() => onOpen(step.id)} className="rounded-xl border px-3 py-2.5 text-left transition hover:-translate-y-px hover:shadow-sm focus:outline-none focus:ring-2" style={{ borderColor: current ? "#E9A18F" : done ? "#B8D3B2" : T.border, background: current ? "#FFF1EA" : done ? "#F4FAF2" : T.surface, "--tw-ring-color": T.coral }}>
+        <span className="flex items-center gap-2"><span className="w-6 h-6 rounded-full grid place-items-center text-[10px] font-extrabold shrink-0" style={{ background: current ? T.coral : done ? "#DDEBD9" : T.vainilla, color: current ? "#fff" : done ? "#315B35" : T.choco }}>{done ? "✓" : step.icon}</span><span className="text-[8px] uppercase tracking-wider font-extrabold" style={{ color: current ? T.coral : T.choco2 }}>{String(index + 1).padStart(2, "0")}</span></span>
+        <span className="block text-[11px] font-extrabold mt-1.5">{step.label}</span><span className="block text-[8px] mt-0.5" style={{ color: T.choco2 }}>{step.detail}</span>
+      </button>; })}
+    </div>
+  </section>;
+}
+
 function AgencyFriendlyHome({ guide, selectedGoal, onSelectGoal, onContinue, onAdvanced, growthEngine, selectedGrowthModeId, onSelectGrowthMode, onUseGrowthMode, brandIdentity, brandIdentityLoading, brandIdentityError, onOpenIdentity }) {
   const goal = FRIENDLY_AGENCY_GOALS.find((item) => item.id === selectedGoal) || FRIENDLY_AGENCY_GOALS[0];
   const recommendation = guide.recommendations[selectedGoal] || null;
@@ -447,6 +464,7 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
   const [selectedGoal, setSelectedGoal] = useState("content");
   const [advancedArea, setAdvancedArea] = useState("overview");
   const [advancedDetail, setAdvancedDetail] = useState(null);
+  const [advancedAnchor, setAdvancedAnchor] = useState("");
   const [brandStudioIntent, setBrandStudioIntent] = useState(null);
   const [brandIdentityDto, setBrandIdentityDto] = useState(null);
   const [brandIdentityLoading, setBrandIdentityLoading] = useState(true);
@@ -509,35 +527,73 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
   // efecto y borraría las URLs firmadas mientras el modal sigue abierto.
   }, [db.agencySnapshotVersion]);
 
+  useEffect(() => {
+    if (!advancedAnchor || agencyView !== "advanced") return undefined;
+    let observer;
+    const revealTarget = () => {
+      const node = document.getElementById(advancedAnchor);
+      if (!node) return false;
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+      setAdvancedAnchor("");
+      return true;
+    };
+    if (revealTarget()) return undefined;
+    observer = new MutationObserver(() => {
+      if (revealTarget()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    const timeoutId = window.setTimeout(() => observer.disconnect(), 5000);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timeoutId);
+    };
+  }, [advancedAnchor, advancedDetail, agencyView]);
+
   function openBrandIdentity() {
     showAdvanced("agency-brand-identity");
     loadBrandIdentity({ signAssets: true });
   }
 
   function showAdvanced(target = "") {
-    const creativeTargets = new Set(["agency-collaboration-desk", "agency-retention-lab", "agency-scene-studio", "agency-motion-experience", "agency-scene-router", "agency-quality-control", "agency-approval-center"]);
-    const protectionTargets = new Set(["agency-action-center"]);
-    const identityTargets = new Set(["agency-brand-identity"]);
-    setAdvancedArea(identityTargets.has(target) ? "identity" : creativeTargets.has(target) ? "creative" : protectionTargets.has(target) ? "protection" : "overview");
-    const targetDetails = {
-      "agency-collaboration-desk": "creative-collaboration",
-      "agency-retention-lab": "creative-retention",
-      "agency-scene-studio": "creative-studio",
-      "agency-motion-experience": "creative-studio",
-      "agency-scene-router": "creative-studio",
-      "agency-quality-control": "creative-studio",
-      "agency-approval-center": "creative-library",
-      "agency-action-center": "protection-actions",
-      "agency-brand-identity": "identity-overview",
-    };
-    setAdvancedDetail(targetDetails[target] || null);
+    const route = agencyTargetRoute(target);
+    setAdvancedArea(route?.kind === "advanced" ? route.area : "overview");
+    setAdvancedDetail(route?.kind === "advanced" ? route.detail : null);
+    setAdvancedAnchor(route?.kind === "advanced" ? target : "");
     setAgencyView("advanced");
+  }
+
+  function openAgencyTarget(target = "") {
+    const route = agencyTargetRoute(target);
+    if (!route) return false;
+    if (route.kind === "module") {
+      if (route.sessionKey) window.sessionStorage.setItem(route.sessionKey, route.sessionValue);
+      go(route.module);
+      return true;
+    }
+    showAdvanced(target);
+    return true;
+  }
+
+  function openJourneyStep(step) {
+    if (step === "objective") {
+      setAdvancedDetail(null); setAdvancedAnchor(""); setAgencyView("simple");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (step === "references") { openBrandLibrary({ section: "Activos de producción" }); return; }
+    if (step === "create") {
+      openAgencyTarget(friendlyGuide.activeFlight?.current?.target || "agency-collaboration-desk");
+      return;
+    }
+    if (step === "review") { openAgencyTarget("agency-creative-flight"); return; }
+    setAdvancedArea("results"); setAdvancedDetail("results-learning"); setAdvancedAnchor(""); setAgencyView("advanced");
   }
 
   function openBrandLibrary(intent = {}) {
     setBrandStudioIntent({ key: Date.now(), collection: "Marca", ...intent });
     setAdvancedArea("identity");
     setAdvancedDetail("creative-library");
+    setAdvancedAnchor("");
     setAgencyView("advanced");
   }
 
@@ -548,8 +604,8 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
   }
 
   function continueFriendlyGoal() {
-    if (selectedGoal === "content" && friendlyGuide.activeFlight) { showAdvanced(friendlyGuide.activeFlight.current.target); return; }
-    if (selectedGoal === "results") { showAdvanced(); return; }
+    if (selectedGoal === "content" && friendlyGuide.activeFlight) { openAgencyTarget(friendlyGuide.activeFlight.current.target); return; }
+    if (selectedGoal === "results") { openJourneyStep("learn"); return; }
     if (selectedGoal === "sales" && activeGrowthMode) { openBrief(activeGrowthMode.recommendation); return; }
     openBrief(friendlyGuide.recommendations[selectedGoal] || manualGoalSource(selectedGoal));
   }
@@ -836,6 +892,8 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
         <div className="p-4 sm:p-5">
           {!serverReady && <div className="rounded-2xl px-4 py-3 mb-4 text-sm font-bold" style={{ background: "#FFF2D8", color: "#7A5410" }}>Vista inteligente activa · aplicá <code>agencia-comercial-v1.sql</code> para guardar briefs, aprobaciones y decisiones en el servidor.</div>}
 
+          <AgencyJourneyBar activePhase={friendlyGuide.activeFlight?.current?.id} onOpen={openJourneyStep} />
+
           {agencyView === "simple" ? <AgencyFriendlyHome guide={friendlyGuide} selectedGoal={selectedGoal} onSelectGoal={setSelectedGoal} onContinue={continueFriendlyGoal} onAdvanced={() => showAdvanced()} growthEngine={growthEngine} selectedGrowthModeId={activeGrowthMode?.id} onSelectGrowthMode={setSelectedGrowthModeId} onUseGrowthMode={useGrowthMode} brandIdentity={brandIdentity} brandIdentityLoading={brandIdentityLoading} brandIdentityError={brandIdentityError} onOpenIdentity={openBrandIdentity} /> : <>
           <div className="sticky top-2 z-20 rounded-2xl border p-3 mb-4 shadow-sm" style={{ borderColor: T.border, background: "rgba(255,253,250,.97)", backdropFilter: "blur(10px)" }}>
             <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-[9px] uppercase tracking-wider font-extrabold" style={{ color: T.coral }}>Centro de Agencia MOMOS</div><div className="text-xs font-bold">Elegí el área que quieres revisar</div></div><Btn small kind="ghost" onClick={() => { setAgencyView("simple"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Inicio sencillo</Btn></div>
@@ -864,9 +922,9 @@ function AgenciaControl({ db: sourceDb, user, refrescar, go }) {
           </div>
 
           </Modal>}
-          {advancedDetail === "overview-flight" && <Modal title="Producción creativa en curso" onClose={() => setAdvancedDetail(null)} extraWide><AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "overview-flight" && <Modal title="Producción creativa en curso" onClose={() => setAdvancedDetail(null)} extraWide><AgencyCreativeFlightCenter db={db} go={go} refrescar={refrescar} onOpenTarget={openAgencyTarget} /></Modal>}
           {advancedDetail === "identity-overview" && <Modal title="Identidad de marca MOMOS" onClose={() => setAdvancedDetail(null)} extraWide><BrandIdentityPanel identity={brandIdentity} loading={brandIdentityLoading} error={brandIdentityError} onRetry={() => loadBrandIdentity({ includeHistory: true, signAssets: true })} onOpenLibrary={openBrandLibrary} /></Modal>}
-          {advancedDetail === "protection-actions" && <Modal title="Acciones por aprobar" onClose={() => setAdvancedDetail(null)} extraWide><AgencyActionCenter db={db} go={go} refrescar={refrescar} /></Modal>}
+          {advancedDetail === "protection-actions" && <Modal title="Acciones por aprobar" onClose={() => setAdvancedDetail(null)} extraWide><AgencyActionCenter db={db} go={go} refrescar={refrescar} onOpenTarget={openAgencyTarget} /></Modal>}
           {advancedDetail === "protection-meta" && <Modal title="Permisos de inversión Meta" onClose={() => setAdvancedDetail(null)} extraWide><Suspense fallback={agencySectionFallback}><LazyAgencyMetaSuite module="authorization" db={db} refrescar={refrescar} /></Suspense></Modal>}
           {advancedDetail === "protection-guards" && <Modal title="Guardas de la agencia" onClose={() => setAdvancedDetail(null)}><div className="rounded-2xl p-4 mb-4 text-sm" style={{ background: T.vainilla }}>Definí límites claros. Ningún cambio publica, contacta ni gasta por sí solo.</div><Btn onClick={() => { setAdvancedDetail(null); setSettingsForm(settings); setSettingsOpen(true); }}>Revisar guardas</Btn></Modal>}
           {advancedDetail === "results-meta" && <Modal title="Resultados de Meta" onClose={() => setAdvancedDetail(null)} extraWide><Suspense fallback={agencySectionFallback}><LazyAgencyMetaSuite module="observatory" db={db} refrescar={refrescar} /></Suspense></Modal>}
