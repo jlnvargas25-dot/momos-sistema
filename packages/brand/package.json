@@ -1,0 +1,17 @@
+{
+  "name": "@momos/brand",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Biblioteca visual compartida de MOMOS: tokens de marca, tipografía y logo. Fuente de verdad para Pide y OPS.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./theme.css": "./theme.css",
+    "./Logo": "./src/Logo.jsx"
+  },
+  "files": [
+    "src",
+    "theme.css"
+  ]
+}

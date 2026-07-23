@@ -1,0 +1,44 @@
+/*
+  Biblioteca visual MOMOS — tokens canónicos.
+  Extraídos 1:1 del tema `T` de MOMO OPS (src/MomosOps.jsx) y de
+  src/lib/brand-identity.js. NO inventar colores nuevos: la paleta
+  calma de la marca es sagrada. Cualquier cambio arranca acá.
+
+  Tailwind v4 lee este bloque @theme y genera utilidades:
+    bg-crema, text-choco, border-line, font-display, rounded-momo, shadow-momo…
+*/
+@theme {
+  /* Superficies cálidas */
+  --color-crema: #FAF4EC;        /* fondo general */
+  --color-surface: #FFFFFF;      /* tarjetas */
+  --color-soft: #FFF9F1;         /* fondos de apoyo */
+  --color-line: #EEDFCE;         /* bordes suaves */
+
+  /* Texto */
+  --color-choco: #54382B;        /* títulos y texto */
+  --color-cocoa: #8A6C5B;        /* texto secundario */
+
+  /* Acentos emocionales */
+  --color-rosa: #F3D7DC;
+  --color-rosa-deep: #C4808E;
+  --color-vainilla: #F7ECD9;
+
+  /* Acción principal */
+  --color-coral: #E5714E;
+  --color-coral-soft: #FBE3DA;
+
+  /* Tipografía oficial (cargada por Google Fonts en el index.html del app) */
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body: "Nunito Sans", system-ui, -apple-system, Segoe UI, sans-serif;
+
+  /* Forma */
+  --radius-momo: 1.25rem;
+  --radius-momo-lg: 1.75rem;
+
+  /* Elevación calma (misma sombra que usa OPS) */
+  --shadow-soft: 0 6px 18px rgba(84, 56, 43, 0.08);
+  --shadow-momo: 0 10px 30px rgba(84, 56, 43, 0.10);
+
+  /* Movimiento */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+}

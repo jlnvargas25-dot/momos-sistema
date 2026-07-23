@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@import "@momos/brand/theme.css";
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-crema);
+  color: var(--color-choco);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Enfoque accesible y cálido, coherente con OPS */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(229, 113, 78, 0.25);
+  border-radius: 0.5rem;
+}
