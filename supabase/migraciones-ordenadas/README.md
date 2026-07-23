@@ -467,8 +467,52 @@ para P04):
   (`pide_hold_ttl_minutos`, `pide_hold_extension_minutos`,
   `pide_hold_stock_fraccion`, `pide_purga_checkout_horas`,
   `pide_tracking_expira_dias`): los actuales son técnicos, no aprobados.
-- Sumar `order_tracking_tokens` al guard H89 en P04 (requiere tocar la lista
-  cerrada de la spec §1.9).
+- `order_tracking_tokens` en el guard H89: P04 lo APLICÓ en la dirección
+  protectora (la tabla entró a la lista cerrada). Toca la lista sellada de la
+  spec §1.9: queda para RATIFICACIÓN de Jorge (revertirlo es un
+  `create or replace` del guard).
+- Password del rol `pide_service` (P04): se setea en el deploy
+  (`alter role pide_service password '…'`), jamás se comitea. Sin password el
+  worker no conecta y el canal queda cerrado (fail closed).
+- Secretos del webhook (P04): DOS claves vigentes + `key-id` viven SOLO en el
+  runtime privado del worker; la pasarela concreta sigue pendiente
+  (`pide_pasarela_proveedor` sin sembrar).
+- Seeds técnicos de P04 (`pide_rate_limit_tracking`,
+  `pide_webhook_futuro_max_minutos`): valores de arranque, no aprobados como
+  negocio.
+- Regla espejo sellada (P04): cualquier cambio a las patas de
+  empaque/insumos/adiciones de `_reserve_inventory` debe replicarse en
+  `_pide_reservar_pedido_patas` en el mismo hito (y viceversa); ídem el leg de
+  momo con `_pide_reservar_item_regalo`. El orden en el camino promovido es
+  regalo → patas (products → lote → inventory_items, igual que el staff).
+- Regalo tipo COMBO (hallazgo teórico del re-juicio de P04): el leg del regalo
+  solo cubre momos (los regalos reales son momos o bebidas tipo `pedido`, que
+  no apartan stock). Un `benefits.producto_gratis_id` que apunte a un COMBO
+  quedaría con empaque/insumos reservados pero SIN sus momos componentes en el
+  camino promovido. Decidir: prohibirlo con un CHECK/gate al crear beneficios,
+  o extender el espejo con el leg de combos. Hasta entonces, no crear
+  beneficios de regalo que apunten a combos.
+- Regalo tipo MOMO (verificado vivo en staging, 2026-07-22): la guarda de
+  dominio H90 exige figura+sabor exactos para `Momos Signature` en
+  `order_items`, y el insert del regalo (staff Y Pide, verbatim) no los lleva —
+  regalar un momo Signature REVIENTA hoy en TODOS los canales (en Pide degrada
+  a conciliación). El regalo operable es tipo `pedido` (malteadas/antojos, que
+  no apartan stock). Si el negocio quiere regalar momos, el core debe capturar
+  figura/sabor del regalo (hito futuro); `_pide_reservar_item_regalo` ya cubre
+  la reserva para ese día.
+- Descuento de beneficio en quotes solapadas (hallazgo del panel de P04,
+  tradeoff deliberado): si un cliente cotiza varias veces con el MISMO
+  beneficio Activo antes de reservarlo en checkout, cada quote congela el
+  descuento; al pagarlas todas, el descuento se honra en cada pedido pero el
+  beneficio se consume una sola vez — el resto queda con warning + audit
+  «Beneficio de la quote no consumible» para conciliación humana. Exige pagos
+  reales (no es plata gratis); revisar en la conciliación diaria.
+- `_release_reservations` (OPS, reusada verbatim) devuelve `products.stock`
+  pero NO decrementa `lote_figuras.consumidas`: cancelar un pedido con
+  reservas por lote deja el lote inflado (drift stock↔lote pre-existente del
+  carril OPS). Pide lo ejercita por una vía nueva (cancelación de pedido con
+  reserva promovida); el fix pertenece al carril OPS junto con el del deadlock
+  de `_atender_cola_produccion`.
 - `k=3` del snapshot de demanda y `franja` fuera de sus dimensiones.
 - Pasarela concreta: el slug de proveedor de `payments` queda abierto.
 - Seeds técnicos de P02 (`pide_quote_ttl_minutos`, `pide_max_items_quote`,
@@ -541,3 +585,61 @@ Aplicar P03 únicamente después de confirmar `20260722_p02_pide_cotizacion`:
     rollback.
 68. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
     (cadena OPS + P01 + P02 + P03); siempre hace rollback.
+
+Aplicar P04 únicamente después de confirmar `20260722_p03_pide_checkout`:
+
+69. `../pide-pedido-v1.sql` — el pedido público: evolución SELLADA de
+    `_crear_pedido_core`/`_set_order_status_core` (vía service por contexto
+    transaccional `momos.pide_ctx` que SOLO enciende `crear_pedido_publico_v1`;
+    canal Pide prohibido para staff y para cualquier otro canal del flujo
+    público; gate `[Pagado]` POR CANAL: Pide exige el `payment_event` firmado
+    con monto exacto en lugar de la foto de comprobante, y `Pasarela (web)`
+    queda prohibida fuera de Pide), `crear_pedido_publico_v1` (rol dedicado
+    `pide_service` LOGIN NOINHERIT patrón `claude_agent`, jamás service_role;
+    idempotency_key determinística `_pide_uuid5(payment_id)`; precios,
+    descuento y domicilio CONGELADOS de la quote con invariante de dinero —
+    el pedido reproduce EXACTO lo cobrado o revienta a conciliación; beneficio
+    resuelto por la RPC sin descarte silencioso; promoción de holds SIN
+    re-correr FIFO — `checkout_hold_lotes` → `inventory_reservations` con
+    batch exacto — más `_pide_reservar_pedido_patas` para empaque/insumos;
+    sello de `orders.fecha_entrega`+`orders.franja` desde la quote — requisito
+    3 cerrado con el constraint `orders_pide_entrega_check`; token de tracking
+    y anonimización del checkout al cierre), `registrar_evento_pago_v1`
+    (idempotente por `(payment_id, external_event_id)`; la firma raw-body con
+    dos secretos y key-id la verifica el WORKER privado y la base exige la
+    atestación `firma_ok` + key_id + evento_ts para todo efecto; Aprobado crea
+    el pedido en sub-bloque aislado — si falla, el evento y el pago Aprobado
+    sobreviven como cola de conciliación y el reintento lo recupera; Rechazado
+    devuelve el hold a su `expira_original`; Reembolso registra y deja el
+    pedido a conciliación humana) y `tracking_publico_v1` (token opaco anon,
+    mapping completo con Cancelado según payments y Reclamo conservando el
+    último estado logístico, degradación post-Entregado, expiración perezosa y
+    rate limit). El guard H89 suma `order_tracking_tokens` a la lista cerrada.
+70. `../tests/test-pide-pedido-v1.sql` — adversarial: RBAC estructural y
+    dinámico de la superficie (pide_service exclusivo, anon solo tracking),
+    E2E feliz con beneficio consumido de punta a punta y PII anonimizada,
+    idempotencia total (replay, re-notificación con evento nuevo y llamada
+    directa ⇒ un solo pedido), firma inválida sin efectos, monto distinto con
+    pedido bloqueado, rechazo con reversa exacta del hold, promoción de hold
+    vencido-no-liberado sin doble descuento, re-toma con FIFO vivo tras hold
+    liberado, canal Pide prohibido para staff con flujo staff intacto, gate
+    Pagado por canal, tracking completo con degradación y expiración, y
+    requisito 3 como invariante de datos; siempre hace rollback.
+71. `../tests/test-migraciones-ordenadas.sql` — aceptación completa vigente
+    (cadena OPS + P01 + P02 + P03 + P04); siempre hace rollback.
+
+Después de aplicar P04 y ANTES de abrir el canal: setear el password del rol
+worker (jamás comitearlo) — `alter role pide_service password '…'` — y montar
+el worker del webhook con los DOS secretos de la pasarela y su `key-id` en el
+runtime privado. Sin worker verificando la firma sobre el raw body, ningún
+evento debe llegar a `registrar_evento_pago_v1`.
+
+Contrato de CONEXIÓN del worker (sellado por el panel de P04): el worker entra
+como `pide_service` por conexión DIRECTA (login+password), o por PostgREST con
+un JWT cuyo claim `role` sea `pide_service` y SIN claim `sub`. Un JWT con `sub`
+haría `auth.uid()` no nulo y el guard de transiciones de `orders` dejaría de
+saltearse: cada pedido reventaría en la transición a Pagado (pago aprobado sin
+pedido → conciliación permanente). Verificar además, antes del primer pago
+real, que `auth.role()` de ESTA instancia devuelve NULL sin claims (supuesto
+del early-return de los guards; los tests lo ejercen vía claims, no vía
+conexión directa).

@@ -1692,4 +1692,61 @@ end $$;
 
 select 'TESTS_OK — carril Pide P03 checkout PASS, rollback total' as resultado_p03;
 
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations
+      where id='20260722_p04_pide_pedido')
+    and to_regprocedure('public.crear_pedido_publico_v1(jsonb)') is not null
+    and to_regprocedure('public.registrar_evento_pago_v1(jsonb)') is not null
+    and to_regprocedure('public.tracking_publico_v1(jsonb)') is not null
+    and to_regprocedure('public._pide_promover_holds(uuid,text)') is not null
+    and to_regprocedure('public._pide_reservar_pedido_patas(text)') is not null
+    and to_regprocedure('public._pide_reservar_item_regalo(text,text)') is not null
+    and to_regprocedure('public._pide_service_ctx()') is not null
+    and to_regprocedure('public._pide_uuid5(text)') is not null,
+    'P04 no instaló el pedido público de Pide';
+  -- Evolución sellada de los cores: la vía service existe por contexto y las
+  -- envolturas siguen delegando en los cores con matriz de roles.
+  assert position('_pide_service_ctx' in pg_get_functiondef(
+      'public._crear_pedido_core(jsonb)'::regprocedure))>0
+    and position('_pide_service_ctx' in pg_get_functiondef(
+      'public._set_order_status_core(text,text,boolean)'::regprocedure))>0
+    and position('_crear_pedido_core' in pg_get_functiondef(
+      'public.crear_pedido(jsonb)'::regprocedure))>0
+    and position('_set_order_status_core' in pg_get_functiondef(
+      'public.set_order_status(text,text,boolean)'::regprocedure))>0,
+    'P04 rompió la evolución sellada de los cores o las envolturas';
+  -- Gate [Pagado] por canal y requisito 3 como invariante de datos.
+  assert position('payment_events' in pg_get_functiondef(
+      'public._set_order_status_core(text,text,boolean)'::regprocedure))>0
+    and exists(select 1 from pg_constraint
+      where conrelid='public.orders'::regclass
+        and conname='orders_pide_entrega_check'),
+    'P04 no instaló el gate Pagado por canal o el constraint de entrega';
+  -- Rol dedicado y RBAC de lista cerrada.
+  assert exists(select 1 from pg_roles where rolname='pide_service')
+    and has_function_privilege('pide_service','public.crear_pedido_publico_v1(jsonb)','EXECUTE')
+    and has_function_privilege('pide_service','public.registrar_evento_pago_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.crear_pedido_publico_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('authenticated','public.crear_pedido_publico_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.crear_pedido_publico_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public.registrar_evento_pago_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('service_role','public.registrar_evento_pago_v1(jsonb)','EXECUTE')
+    and has_function_privilege('anon','public.tracking_publico_v1(jsonb)','EXECUTE')
+    and has_function_privilege('authenticated','public.tracking_publico_v1(jsonb)','EXECUTE')
+    and not has_function_privilege('anon','public._pide_promover_holds(uuid,text)','EXECUTE')
+    and not has_function_privilege('anon','public._pide_reservar_pedido_patas(text)','EXECUTE')
+    and not has_function_privilege('anon','public._pide_uuid5(text)','EXECUTE')
+    and not has_function_privilege('pide_service','public.reservar_checkout_v1(jsonb)','EXECUTE'),
+    'P04 perdió el RBAC del pedido público';
+  -- Guard H89 ampliado con order_tracking_tokens y seeds presentes.
+  assert position('order_tracking_tokens' in pg_get_functiondef(
+      'public.cierre_lecturas_pii_disponible()'::regprocedure))>0
+    and exists(select 1 from public.app_settings where clave='pide_rate_limit_tracking')
+    and exists(select 1 from public.app_settings where clave='pide_webhook_futuro_max_minutos'),
+    'P04 no amplió el guard H89 o no sembró sus settings';
+end $$;
+
+select 'TESTS_OK — carril Pide P04 pedido PASS, rollback total' as resultado_p04;
+
 rollback;
