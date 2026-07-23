@@ -355,6 +355,17 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
     } catch (error) { toast("error", error.message); }
   }
 
+  async function revalidateOfficialLogo(asset) {
+    try {
+      if (!canWrite) throw new Error("Solo Administración o Marketing/CRM pueden declarar el logo oficial.");
+      if (!isOfficialBrandLogo(asset)) throw new Error("Este archivo no está clasificado como logo principal.");
+      await declararLogoPrincipalMarca(asset.id);
+      await onIdentityChanged?.();
+      toast("ok", "Logo principal revalidado; MOMO OPS activó una nueva versión de identidad sin duplicar el archivo");
+      await refrescar();
+    } catch (error) { toast("error", error.message); }
+  }
+
   function openAssetDetail(asset) {
     setDetailAssetId(asset.id);
     setAssetEditForm(null);
@@ -542,8 +553,9 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
   }
 
   async function reviewProductionPack(pack, decision) {
-    const note = window.prompt(decision === "Aprobar" ? "¿Qué identidad, producto, permisos y continuidad verificaste?" : "Nota para la revisión del paquete:", decision === "Aprobar" ? "Identidad, producto, derechos, QA y continuidad verificados." : "Listo para revisión de Administración.");
-    if (note === null) return;
+    const note = decision === "Aprobar"
+      ? "Identidad oficial, producto exacto, derechos, QA y continuidad verificados por Administración."
+      : "Paquete completo enviado a revisión de Administración.";
     try {
       await revisarPaqueteProduccion(pack.id, decision, note);
       toast("ok", decision === "Aprobar" ? "Paquete aprobado; ya puede usarse como referencia controlada para Higgsfield" : "Paquete enviado a revisión sin ejecutar motores ni consumir créditos");
@@ -978,7 +990,7 @@ function AgencyBrandStudio({ db, user, refrescar, initialIntent = null, onIdenti
               {detailAsset.tags?.filter((tag) => !/^(momos:|animacion:tipo:|animacion:canon$)/i.test(String(tag))).length > 0 && <div className="mb-4"><div className="text-[9px] uppercase font-extrabold mb-1.5" style={{ color: T.choco2 }}>Etiquetas</div><div className="flex flex-wrap gap-1.5">{detailAsset.tags.filter((tag) => !/^(momos:|animacion:tipo:|animacion:canon$)/i.test(String(tag))).map((tag) => <span key={tag} className="rounded-full px-2 py-1 text-[9px] font-bold" style={{ background: T.vainilla }}>{tag}</span>)}</div></div>}
               <div className="rounded-2xl border p-3 mb-4" style={{ borderColor: T.border, background: "#fff" }}><div className="text-[9px] uppercase font-extrabold" style={{ color: T.choco2 }}>Notas y alcance del permiso</div><div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: detailAsset.notes ? T.choco : T.choco2 }}>{detailAsset.notes || "No se registraron notas adicionales."}</div>{detailAsset.rightsExpiresAt && <div className="text-[10px] mt-2 font-bold" style={{ color: T.coral }}>Permiso vigente hasta {detailAsset.rightsExpiresAt}</div>}</div>
               {semanticLocked && <div className="rounded-2xl px-3 py-2.5 mb-4 text-[11px]" style={{ background: "#FFF2D8", color: "#7A5410" }}><b>Clasificación protegida:</b> este original ya fue usado o pertenece a la identidad oficial. Se pueden corregir nombre, etiquetas y notas, pero no cambiar qué representa.</div>}
-              <div className="flex flex-wrap gap-2">{canWrite && <Btn onClick={() => beginAssetMetadataEdit(detailAsset)}>Editar y revisar</Btn>}{canWrite && detailAsset.status === "Activo" && <Btn kind="soft" onClick={() => openImprovedAssetUpload(detailAsset)}>Subir versión mejorada</Btn>}{detailDeletion.allowed && <Btn kind="ghost" onClick={() => openDeleteConfirmation(detailAsset)}>{isOfficialBrandLogo(detailAsset) ? "Eliminar logo" : "Eliminar definitivamente"}</Btn>}<Btn kind="ghost" onClick={() => { setDetailAssetId(null); setAssetEditForm(null); }}>Cerrar</Btn></div>
+              <div className="flex flex-wrap gap-2">{canWrite && <Btn onClick={() => beginAssetMetadataEdit(detailAsset)}>Editar y revisar</Btn>}{canWrite && isOfficialBrandLogo(detailAsset) && detailAsset.status === "Activo" && <BtnAsync kind="soft" onClick={() => revalidateOfficialLogo(detailAsset)} textoEnVuelo="Revalidando identidad…">Revalidar logo oficial</BtnAsync>}{canWrite && detailAsset.status === "Activo" && <Btn kind="soft" onClick={() => openImprovedAssetUpload(detailAsset)}>Subir versión mejorada</Btn>}{detailDeletion.allowed && <Btn kind="ghost" onClick={() => openDeleteConfirmation(detailAsset)}>{isOfficialBrandLogo(detailAsset) ? "Eliminar logo" : "Eliminar definitivamente"}</Btn>}<Btn kind="ghost" onClick={() => { setDetailAssetId(null); setAssetEditForm(null); }}>Cerrar</Btn></div>
             </div> : <div>
               <div className="rounded-2xl px-3 py-2.5 mb-4 text-[11px]" style={{ background: semanticLocked ? "#FFF2D8" : "#E5EEF7", color: semanticLocked ? "#7A5410" : "#315A7D" }}>{semanticLocked ? <><b>Este archivo ya tiene historia.</b> Solo nombre, etiquetas y notas están habilitados; la clasificación y los permisos permanecen sellados.</> : <><b>Corrección versionada.</b> MOMO OPS guardará la ficha anterior y registrará quién hizo este cambio.</>}</div>
               <Field label="Nombre descriptivo"><Input value={assetEditForm.name} onChange={(event) => setAssetEditForm({ ...assetEditForm, name: event.target.value })} /></Field>
