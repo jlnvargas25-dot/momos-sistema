@@ -145,19 +145,12 @@ jobs:
               --file=supabase/recetas-figuras-v4.sql
           fi
 
-      - name: Apply H113 canonical MCP audit to staging once
+      - name: Reapply H113 canonical MCP audit after controlled chain
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
-          h113_applied="$(psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
-            --tuples-only --no-align \
-            --command="select exists(select 1 from public.momos_ops_migrations where id='20260723_113_auditoria_mcp_modos_v2')")"
-          if [ "$h113_applied" = "t" ]; then
-            echo "H113 already applied; preserving the sealed MCP audit contract"
-          else
-            psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
-              --file=supabase/auditoria-mcp-modos-v2.sql
-          fi
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/auditoria-mcp-modos-v2.sql
 
       - name: Run ordered acceptance with rollback
         env:

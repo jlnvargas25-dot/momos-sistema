@@ -584,7 +584,9 @@ Aplicar unicamente despues de confirmar `20260723_112_recetas_figuras_v4`:
 1. `../auditoria-mcp-modos-v2.sql` - corrige la regresion introducida por H109
    sin reescribir el historial: restaura los modos cerrados `Referencia` y
    `Solicitud`, alinea estados y huellas con la tabla inmutable y exige
-   idempotencia exacta para cada `request_key`.
+   idempotencia exacta para cada `request_key`. El script es reejecutable:
+   vuelve a sellar la funcion despues de contratos historicos sin duplicar el
+   registro del hito.
 2. `../tests/test-auditoria-mcp-modos-v2.sql` - prueba los cuatro modos,
    duplicados exactos, cambio de contrato, PII, huellas y RBAC; siempre rollback.
 3. `../tests/test-migraciones-ordenadas.sql` - aceptacion vigente 01-113.

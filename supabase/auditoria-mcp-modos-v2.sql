@@ -120,6 +120,7 @@ insert into public.momos_ops_migrations(id,detalle)
 values(
   '20260723_113_auditoria_mcp_modos_v2',
   'Auditoria MCP compatible: modos cerrados, estados/huellas alineados, PII bloqueada e idempotencia exacta'
-);
+)
+on conflict(id) do nothing;
 
 commit;

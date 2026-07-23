@@ -10,11 +10,11 @@ test("H113 seals canonical MCP audit modes and staging certification", () => {
   const adversarial = read("supabase/tests/test-auditoria-mcp-modos-v2.sql");
   const ordered = read("supabase/tests/test-migraciones-ordenadas.sql");
 
-  assert.match(workflow, /20260723_113_auditoria_mcp_modos_v2/);
   assert.match(workflow, /--file=supabase\/auditoria-mcp-modos-v2\.sql/);
   assert.match(workflow, /--file=supabase\/tests\/test-auditoria-mcp-modos-v2\.sql/);
   assert.match(workflow, /01-113 PASS/);
-  assert.match(workflow, /if \[ "\$h113_applied" = "t" \]/);
+  assert.match(workflow, /Reapply H113 canonical MCP audit after controlled chain/);
+  assert.doesNotMatch(workflow, /h113_applied/);
 
   assert.match(migration, /'Lectura','Propuesta','Referencia','Solicitud'/);
   assert.match(migration, /'OK','Denegado','Fallido'/);
@@ -23,6 +23,7 @@ test("H113 seals canonical MCP audit modes and staging certification", () => {
   assert.match(migration, /on conflict\(request_key\) do nothing/);
   assert.match(migration, /is distinct from row/);
   assert.match(migration, /20260723_113_auditoria_mcp_modos_v2/);
+  assert.match(migration, /on conflict\(id\) do nothing/);
 
   assert.match(adversarial, /h113-wrong-mode/);
   assert.match(adversarial, /h113-invalid-status/);
