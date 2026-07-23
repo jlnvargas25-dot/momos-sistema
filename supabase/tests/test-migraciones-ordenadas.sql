@@ -1900,8 +1900,8 @@ begin
     select 1 from public.momos_ops_migrations
     where id='20260723_113_auditoria_mcp_modos_v2'
   ), 'H113 no instalo la auditoria MCP canonica';
-  assert position('''Lectura'',''Propuesta'',''Referencia'',''Solicitud''' in
-      pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0
+  assert pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure)
+      like all(array['%''Lectura''%','%''Propuesta''%','%''Referencia''%','%''Solicitud''%'])
     and position('momos_get_brand_asset_reference' in
       pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0
     and position('momos_request_human_approval' in
