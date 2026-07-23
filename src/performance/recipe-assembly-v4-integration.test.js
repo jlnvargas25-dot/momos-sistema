@@ -26,5 +26,5 @@ test("H112 remains single-apply and fully certified by the staging gate", () => 
   assert.match(adversarial, /chr\(65533\)/);
   assert.match(adversarial, /aplicar H112 como bytes UTF-8/);
   assert.match(adversarial, /rollback;/);
-  assert.match(ordered, /migraciones ordenadas 01-112 PASS, rollback total/);
+  assert.match(ordered, /migraciones ordenadas 01-112 PASS, continua H113/);
 });

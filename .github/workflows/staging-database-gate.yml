@@ -145,6 +145,20 @@ jobs:
               --file=supabase/recetas-figuras-v4.sql
           fi
 
+      - name: Apply H113 canonical MCP audit to staging once
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          h113_applied="$(psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --tuples-only --no-align \
+            --command="select exists(select 1 from public.momos_ops_migrations where id='20260723_113_auditoria_mcp_modos_v2')")"
+          if [ "$h113_applied" = "t" ]; then
+            echo "H113 already applied; preserving the sealed MCP audit contract"
+          else
+            psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+              --file=supabase/auditoria-mcp-modos-v2.sql
+          fi
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
@@ -153,6 +167,7 @@ jobs:
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
           grep -q "01-111 PASS" "$RUNNER_TEMP/migrations.log"
           grep -q "01-112 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-113 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -228,6 +243,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-recetas-figuras-v4.sql | tee "$RUNNER_TEMP/recipe-assembly-v4.log"
           grep -q "recetas/figuras V4/versiones/piloto/merma/RBAC PASS" "$RUNNER_TEMP/recipe-assembly-v4.log"
+
+      - name: Run H113 canonical MCP audit adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-auditoria-mcp-modos-v2.sql | tee "$RUNNER_TEMP/mcp-audit-modes-v2.log"
+          grep -q "H113 modos/idempotencia/PII/huellas/RBAC PASS" "$RUNNER_TEMP/mcp-audit-modes-v2.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:

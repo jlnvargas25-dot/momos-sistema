@@ -576,6 +576,21 @@ Los lotes existentes quedan sellados como V3 y las nuevas corridas nacen bajo
 V4. Dextrosa, inulina, Multigel y emulsionante se registran sin inventar stock,
 costo, proveedor ni ficha tecnica. El emulsionante continua como bloqueo hasta
 que Produccion incorpore su ficha oficial y las pruebas a 24/72 horas.
+
+## Hito 113 - Auditoria MCP canonica
+
+Aplicar unicamente despues de confirmar `20260723_112_recetas_figuras_v4`:
+
+1. `../auditoria-mcp-modos-v2.sql` - corrige la regresion introducida por H109
+   sin reescribir el historial: restaura los modos cerrados `Referencia` y
+   `Solicitud`, alinea estados y huellas con la tabla inmutable y exige
+   idempotencia exacta para cada `request_key`.
+2. `../tests/test-auditoria-mcp-modos-v2.sql` - prueba los cuatro modos,
+   duplicados exactos, cambio de contrato, PII, huellas y RBAC; siempre rollback.
+3. `../tests/test-migraciones-ordenadas.sql` - aceptacion vigente 01-113.
+
+H113 no crea decisiones ni autoriza ejecucion externa. Solo sella la bitacora
+privada que conecta Agencia MOMOS con sus herramientas MCP.
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

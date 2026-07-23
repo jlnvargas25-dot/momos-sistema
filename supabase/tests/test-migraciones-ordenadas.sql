@@ -1892,5 +1892,29 @@ begin
     'H112 perdio RBAC de sus datos gobernados';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-112 PASS, rollback total' as resultado_h112;
+select 'TESTS_OK - migraciones ordenadas 01-112 PASS, continua H113' as resultado_h112;
+
+do $$
+begin
+  assert exists(
+    select 1 from public.momos_ops_migrations
+    where id='20260723_113_auditoria_mcp_modos_v2'
+  ), 'H113 no instalo la auditoria MCP canonica';
+  assert position('''Lectura'',''Propuesta'',''Referencia'',''Solicitud''' in
+      pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0
+    and position('momos_get_brand_asset_reference' in
+      pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0
+    and position('momos_request_human_approval' in
+      pg_get_functiondef('public.registrar_acceso_mcp_agencia(jsonb)'::regprocedure))>0,
+    'H113 perdio modos o herramientas MCP canonicas';
+  assert has_function_privilege(
+      'service_role','public.registrar_acceso_mcp_agencia(jsonb)','EXECUTE'
+    )
+    and not has_function_privilege(
+      'authenticated','public.registrar_acceso_mcp_agencia(jsonb)','EXECUTE'
+    ),
+    'H113 perdio RBAC de auditoria MCP';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-113 PASS, rollback total' as resultado_h113;
 rollback;
