@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { approvedMediaForProduct } from "./catalog-media.js";
 
 // Lee el catálogo público autoritativo. Contrato: momos.pide.catalogo.v1
 // (RPC catalogo_publico_v1(), sin args, EXECUTE a anon). Los precios vienen del
@@ -8,7 +9,11 @@ export async function fetchCatalog() {
   if (error) return { ok: false, error: error.message };
   if (!data || data.ok !== true) return { ok: false, error: data?.error || "CATALOGO_NO_DISPONIBLE" };
 
-  const productos = Array.isArray(data.productos) ? data.productos : [];
+  const figuras = Array.isArray(data.figuras) ? data.figuras : [];
+  const productos = (Array.isArray(data.productos) ? data.productos : []).map((producto) => ({
+    ...producto,
+    media_variantes: approvedMediaForProduct(producto.product_id, figuras),
+  }));
   const grupos = [];
   const index = new Map();
   for (const p of productos) {
@@ -27,7 +32,7 @@ export async function fetchCatalog() {
     pedidoMinimo: Number(data.pedido_minimo || 0),
     grupos,
     categorias: grupos.map((g) => g.categoria),
-    figuras: Array.isArray(data.figuras) ? data.figuras : [],
+    figuras,
     sabores: Array.isArray(data.sabores) ? data.sabores : [],
     salsas: Array.isArray(data.salsas) ? data.salsas : [],
     zonas: Array.isArray(data.zonas) ? data.zonas : [],

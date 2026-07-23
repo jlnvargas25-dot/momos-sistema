@@ -104,9 +104,36 @@ function Notice({ tone = "info", icon, title, children }) {
 
 function ProductCard({ item }) {
   const disp = item.disponibilidad && !/dispon/i.test(item.disponibilidad) ? item.disponibilidad : null;
+  const variantMedia = Array.isArray(item.media_variantes) ? item.media_variantes[0] : null;
+  const genericPhoto = String(item.foto_path || "").trim();
+  const media = variantMedia || (genericPhoto ? {
+    url: genericPhoto,
+    alt: item.nombre,
+    figure: null,
+    width: 720,
+    height: 720,
+  } : null);
   return (
     <article className="flex items-center gap-3 rounded-momo bg-surface p-3 shadow-soft">
-      <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-coral-soft text-3xl">
+      <div className="relative grid h-24 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl bg-coral-soft text-3xl">
+        {media && (
+          <>
+            <img
+              src={media.url}
+              alt={media.alt}
+              width={media.width}
+              height={media.height}
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            {media.figure && (
+              <span className="absolute bottom-1 left-1 z-10 rounded-full bg-choco/85 px-2 py-0.5 text-[9px] font-extrabold text-white">
+                {media.figure}
+              </span>
+            )}
+          </>
+        )}
         <span aria-hidden="true">🍰</span>
       </div>
       <div className="min-w-0 flex-1">
