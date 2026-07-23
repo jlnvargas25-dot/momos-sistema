@@ -30,7 +30,7 @@ test("declara únicamente las siete figuras reales de Cocina", () => {
   assert.equal(isKitchenFigureName("Momo Gatito"), false);
   assert.equal(isKitchenFigureName("Horizontal"), false);
   assert.equal(isAuxiliaryFigureName("Horizontal"), true);
-  assert.deepEqual(KITCHEN_FIGURE_DEFAULTS.Toby, { species: "gato", grams: 280 });
+  assert.deepEqual(KITCHEN_FIGURE_DEFAULTS.Toby, { species: "gato", grams: 210 });
   assert.equal(expectedFigureProductId("Lizi"), "PR01");
   assert.equal(expectedFigureProductId("Toby"), "PR01");
   assert.equal(expectedFigureProductId("Max"), "PR02");

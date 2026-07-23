@@ -282,7 +282,7 @@ begin
   assert has_function_privilege('authenticated','public.confirmar_eliminacion_logo_oficial(bigint,text)','EXECUTE'), 'falta cerrar eliminación protegida del logo';
   assert not has_function_privilege('authenticated','public._motivos_bloqueo_eliminacion_logo_oficial(bigint)','EXECUTE'), 'helper privado del logo expuesto';
   assert exists(select 1 from public.figuras where nombre='Momo' and activo), 'Momo falta en el catálogo activo de figuras';
-  assert exists(select 1 from public.figuras where nombre='Toby' and activo and gramaje_g=280), 'Toby no está activo como figura de 280 g';
+  assert exists(select 1 from public.figuras where nombre='Toby' and especie='gato' and activo), 'Toby no está activo como figura gato; el gramaje vigente lo gobierna la especificación de armado más reciente';
   assert to_regclass('public.agency_growth_snapshots') is not null, 'falta motor de crecimiento multimodo';
   assert (select count(*) from public.agency_growth_mode_policies where active)=4, 'falta alguno de los cuatro modos de crecimiento';
   assert has_function_privilege('authenticated','public.registrar_snapshot_motor_crecimiento(jsonb)','EXECUTE'), 'falta RPC del motor de crecimiento';
@@ -1867,5 +1867,30 @@ begin
     'H111 perdió bloqueo de reintento o huella de conciliación';
 end $$;
 
-select 'TESTS_OK - migraciones ordenadas 01-111 PASS, rollback total' as resultado_h111;
+select 'TESTS_OK - migraciones ordenadas 01-111 PASS, continua H112' as resultado_h111;
+
+do $$
+begin
+  assert exists(select 1 from public.momos_ops_migrations where id='20260723_112_recetas_figuras_v4')
+    and to_regclass('public.figure_assembly_specs') is not null
+    and to_regclass('public.kitchen_recipe_pilot_controls') is not null
+    and to_regclass('public.fruit_yield_profiles') is not null,
+    'H112 no instalo recetas y ensamblaje V4';
+  assert (select count(*) from public.figuras
+      where activo and assembly_spec_version='V4'
+        and nombre in ('Lizi','Momo','Toby','Teo','Max','Rocco','Danna'))=7
+    and (select count(*) from public.figure_assembly_specs
+      where spec_version='V4' and ganache_g=30 and cheesecake_g=40)=7,
+    'H112 perdio gramajes o rellenos canonicos';
+  assert (select count(*) from public.kitchen_recipe_pilot_controls
+      where spec_version='4.0' and validation_status='VALIDACION_PILOTO' and not contains_maltodextrin)=13
+    and (select count(*) from public.fruit_yield_profiles
+      where expected_yield_pct=50 and conversion_factor=2)=6,
+    'H112 perdio recetas piloto o rendimiento de fruta';
+  assert not has_table_privilege('authenticated','public.kitchen_recipe_pilot_controls','INSERT')
+    and not has_table_privilege('authenticated','public.figure_assembly_specs','UPDATE'),
+    'H112 perdio RBAC de sus datos gobernados';
+end $$;
+
+select 'TESTS_OK - migraciones ordenadas 01-112 PASS, rollback total' as resultado_h112;
 rollback;

@@ -67,18 +67,33 @@ test("vencimientos nunca presentan Gatito o Horizontal como producto físico ter
 
 test("marca gramaje o familia históricos incompatibles sin reescribir el lote", () => {
   const result = buildProductionExpiryControl({
-    today: "2026-07-19",
+    today: "2026-07-23",
     productionBatches: [{
-      id: "L-toby-legacy", producto: "Momo Perrito", sabor: "Coco", gramaje: "180 g", vence: "2026-07-20", stockContabilizado: true,
+      id: "L-toby-v4", fecha: "2026-07-23", assemblySpecVersion: "V4", producto: "Momo Perrito", sabor: "Coco", gramaje: "180 g", vence: "2026-07-26", stockContabilizado: true,
       resultadosFiguras: [{ figura: "Toby", perfectas: 1, consumidas: 0 }],
     }],
   });
   const [row] = result.byKind.finished;
   assert.equal(row.figure, "Toby");
-  assert.equal(row.expectedGrams, 280);
+  assert.equal(row.expectedGrams, 210);
   assert.equal(row.expectedFamilyName, "Momo Gatito");
-  assert.match(row.integrityWarning, /Toby requiere 280 g; el lote registra 180 g/);
+  assert.match(row.integrityWarning, /Toby requiere 210 g; el lote registra 180 g/);
   assert.match(row.integrityWarning, /Toby pertenece a Momo Gatito; el lote registra Momo Perrito/);
   assert.equal(row.grams, "180 g");
   assert.equal(row.name, "Momo Perrito");
+});
+
+test("conserva el gramaje V3 de un lote historico sin reinterpretarlo como V4", () => {
+  const result = buildProductionExpiryControl({
+    today: "2026-07-23",
+    productionBatches: [{
+      id: "L-toby-v3", fecha: "2026-07-20", assemblySpecVersion: "V3", producto: "Momo Gatito",
+      sabor: "Coco", gramaje: "280 g", vence: "2026-07-24", stockContabilizado: true,
+      resultadosFiguras: [{ figura: "Toby", perfectas: 1, consumidas: 0 }],
+    }],
+  });
+  const [row] = result.byKind.finished;
+  assert.equal(row.expectedGrams, 210);
+  assert.equal(row.grams, "280 g");
+  assert.equal(row.integrityWarning, "");
 });

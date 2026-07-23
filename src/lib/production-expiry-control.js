@@ -117,9 +117,12 @@ function buildFinishedRows(productionBatches, today) {
       const expectedGrams = KITCHEN_FIGURE_DEFAULTS[result.figura]?.grams || 0;
       const recordedGrams = gramNumber(batch.gramaje);
       const expectedFamilyName = COMMERCIAL_FAMILY_NAMES_BY_ID[expectedFigureProductId(result.figura)] || "";
+      const assemblySpecVersion = String(batch.assemblySpecVersion || "").trim().toUpperCase();
+      const isHistoricalAssembly = assemblySpecVersion === "V3"
+        || (!assemblySpecVersion && String(batch.fecha || "") < "2026-07-23");
       const recordedFamilyName = commercialFamilyLabel(batch.producto || "");
       const issues = [];
-      if (expectedGrams && recordedGrams && expectedGrams !== recordedGrams) {
+      if (!isHistoricalAssembly && expectedGrams && recordedGrams && expectedGrams !== recordedGrams) {
         issues.push(`${result.figura} requiere ${expectedGrams} g; el lote registra ${recordedGrams} g`);
       }
       if (expectedFamilyName && recordedFamilyName && normalizeDomainText(expectedFamilyName) !== normalizeDomainText(recordedFamilyName)) {

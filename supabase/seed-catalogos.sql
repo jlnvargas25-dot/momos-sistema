@@ -78,12 +78,12 @@ on conflict (clave) do nothing;
 -- ---------------------------------------------------------------------------
 insert into figuras (nombre, especie, gramaje_g, activo) values
   ('Lizi',  'gato',  150, true),
-  ('Momo',  'gato',  180, true),
-  ('Toby',  'gato',  280, true),
-  ('Teo',   'gato',  250, true),
-  ('Max',   'perro', 180, true),
-  ('Rocco', 'perro', 180, true),
-  ('Danna', 'perro', 180, true)
+  ('Momo',  'gato',  210, true),
+  ('Toby',  'gato',  210, true),
+  ('Teo',   'gato',  320, true),
+  ('Max',   'perro', 210, true),
+  ('Rocco', 'perro', 210, true),
+  ('Danna', 'perro', 210, true)
 on conflict (nombre) do nothing;
 
 -- ---------------------------------------------------------------------------

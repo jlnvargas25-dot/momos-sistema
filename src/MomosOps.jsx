@@ -439,12 +439,12 @@ function seedDb() {
     // El sabor es ortogonal: cualquier figura se ofrece en los 11 sabores. No se acoplan.
     figuras: [
       { nombre: "Lizi",  especie: "gato",  gramaje: "150 g", productId: "PR01" },
-      { nombre: "Momo",  especie: "gato",  gramaje: "180 g", productId: "PR01" },
-      { nombre: "Toby",  especie: "gato",  gramaje: "280 g", productId: "PR01" },
-      { nombre: "Teo",   especie: "gato",  gramaje: "250 g", productId: "PR04" },
-      { nombre: "Max",   especie: "perro", gramaje: "180 g", productId: "PR02" },
-      { nombre: "Rocco", especie: "perro", gramaje: "180 g", productId: "PR02" },
-      { nombre: "Danna", especie: "perro", gramaje: "180 g", productId: "PR02" },
+      { nombre: "Momo",  especie: "gato",  gramaje: "210 g", productId: "PR01" },
+      { nombre: "Toby",  especie: "gato",  gramaje: "210 g", productId: "PR01" },
+      { nombre: "Teo",   especie: "gato",  gramaje: "320 g", productId: "PR04" },
+      { nombre: "Max",   especie: "perro", gramaje: "210 g", productId: "PR02" },
+      { nombre: "Rocco", especie: "perro", gramaje: "210 g", productId: "PR02" },
+      { nombre: "Danna", especie: "perro", gramaje: "210 g", productId: "PR02" },
     ],
     pagos: ["Nequi","Daviplata","Bancolombia","Rappi (app)"],
     proveedores: ["Picap","Pibox","Mensajeros Urbanos","Propio","Rappi"],
@@ -3794,7 +3794,7 @@ export default function MomosOps() {
       d.figuras = activeFigureCatalog({ figuras: cat.figuras || [], products: d.products || [] });
       d.subrecetas = cat.subrecetas || []; // Componentes+BOM: bases (mousses/cheesecake/ganache/salsas/crocante)
       d.subreceta_ingredientes = cat.subreceta_ingredientes || []; // receta maestra por 1000 g
-      d.figura_relleno = cat.figura_relleno || []; // relleno configurable de figuras (20/15 g editables)
+      d.figura_relleno = cat.figura_relleno || []; // componentes configurables del armado fisico de cada figura
       d.kitchen_procedures = cat.kitchen_procedures || [];
       d.kitchenProceduresReady = Boolean(cat.kitchenProceduresReady);
       d.kitchenProcedureManagementReady = Boolean(cat.kitchenProcedureManagementReady);

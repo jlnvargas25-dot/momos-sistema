@@ -558,6 +558,24 @@ Los workers usan exclusivamente los heartbeats v2 sellados por proyecto y
 entorno; H111 no vuelve a exponer los RPC heredados. Ni H110 ni H111 generan,
 publican o consumen créditos.
 
+
+## Hito 112 - Recetas y ensamblaje de figuras V4
+
+Aplicar Unicamente despues de confirmar `20260722_111_conciliacion_higgsfield`:
+
+1. `../recetas-figuras-v4.sql` - versiona gramajes, rellenos, merma de proceso,
+   rendimiento provisional de fruta, formulas fuente y procedimientos reales V4.
+   Las trece recetas entran como `VALIDACION_PILOTO`: no reemplazan la formula
+   vigente hasta resolver sus bloqueos tecnicos y aprobarlas expresamente.
+2. `../tests/test-recetas-figuras-v4.sql` - prueba pesos, BOM fisico, 85/15,
+   ausencia de maltodextrina, transformacion 2:1, bloqueo de publicacion y RBAC;
+   siempre hace rollback.
+3. `../tests/test-migraciones-ordenadas.sql` - aceptacion vigente 01-112.
+
+Los lotes existentes quedan sellados como V3 y las nuevas corridas nacen bajo
+V4. Dextrosa, inulina, Multigel y emulsionante se registran sin inventar stock,
+costo, proveedor ni ficha tecnica. El emulsionante continua como bloqueo hasta
+que Produccion incorpore su ficha oficial y las pruebas a 24/72 horas.
 ## Hito 95 — observabilidad y SLO agregados
 
 Aplicar únicamente después de confirmar `20260721_94_certificacion_concurrencia_caos`:

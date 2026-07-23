@@ -3,12 +3,12 @@ export const AUXILIARY_FIGURE_NAMES = Object.freeze(["Horizontal"]);
 
 export const KITCHEN_FIGURE_DEFAULTS = Object.freeze({
   Lizi: Object.freeze({ species: "gato", grams: 150 }),
-  Momo: Object.freeze({ species: "gato", grams: 180 }),
-  Rocco: Object.freeze({ species: "perro", grams: 180 }),
-  Teo: Object.freeze({ species: "gato", grams: 250 }),
-  Toby: Object.freeze({ species: "gato", grams: 280 }),
-  Danna: Object.freeze({ species: "perro", grams: 180 }),
-  Max: Object.freeze({ species: "perro", grams: 180 }),
+  Momo: Object.freeze({ species: "gato", grams: 210 }),
+  Rocco: Object.freeze({ species: "perro", grams: 210 }),
+  Teo: Object.freeze({ species: "gato", grams: 320 }),
+  Toby: Object.freeze({ species: "gato", grams: 210 }),
+  Danna: Object.freeze({ species: "perro", grams: 210 }),
+  Max: Object.freeze({ species: "perro", grams: 210 }),
 });
 
 export const KITCHEN_FIGURE_PRODUCT_IDS = Object.freeze({

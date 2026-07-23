@@ -2326,7 +2326,7 @@ export async function fetchOperativo() {
     supabase.from("users").select("id,rol,nombre"),
     supabase.from("inventory_items").select("id,nombre,unidad"),
     supabase.from("products").select("id,nombre"),
-    supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras").order("id", { ascending: false }).limit(100),
+    supabase.from("production_batches").select("id,fecha,product_id,figura,sabor,relleno,salsa,gramaje_g,prod,perfectas,imperfectas,descartadas,destino,resp_user_id,vence,estado,stock_contabilizado,horas_congelacion,inicio_congelacion,molde,ubicacion,obs,corrida_id,figuras,assembly_spec_version").order("id", { ascending: false }).limit(100),
     supabase.from("lote_figuras").select("batch_id,figura,cant,perfectas,imperfectas,descartadas,consumidas").order("batch_id", { ascending: false }),
     supabase.from("subreceta_producciones").select("id,fecha,subreceta_id,gramos_nominales,gramos_obtenidos,costo_batch,faltantes,resp_user_id,obs,created_at").order("created_at", { ascending: false }).limit(50),
     supabase.from("v_variantes_disponibles").select("product_id,producto,figura,sabor,gramaje_g,disponibles,vencimiento_proximo").order("producto").order("figura").order("sabor"),
@@ -2597,6 +2597,7 @@ export async function fetchOperativo() {
     molde: nz(b.molde), ubicacion: nz(b.ubicacion), obs: nz(b.obs),
     corridaId: b.corrida_id || "", figuras: Array.isArray(b.figuras) ? b.figuras : [],
     resultadosFiguras: resultadosFiguraPorLote[b.id] || [],
+    assemblySpecVersion: nz(b.assembly_spec_version),
   }));
 
   // Componentes + BOM (hito 2): historial de preparaciones de bases (últimas 50).
