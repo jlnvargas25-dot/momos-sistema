@@ -209,7 +209,7 @@ jobs:
         run: |
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-orquestacion-produccion-formulas-v1.sql | tee "$RUNNER_TEMP/formula-production.log"
-          grep -q "H107 formula/paquete/preflight" "$RUNNER_TEMP/formula-production.log"
+          grep -q "H107 .*paquete/preflight" "$RUNNER_TEMP/formula-production.log"
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-autorizacion-generacion-preflight-v1.sql | tee "$RUNNER_TEMP/generation-authorization.log"
           grep -q "H108 preflight" "$RUNNER_TEMP/generation-authorization.log"

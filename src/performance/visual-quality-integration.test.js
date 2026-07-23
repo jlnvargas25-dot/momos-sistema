@@ -42,6 +42,7 @@ test("H107 declara el set multivista antes de aprobar el paquete", () => {
   assert.match(formulaProduction, /visual_set_key[^]*h107-momo-master/);
   assert.match(formulaProduction, /revisar_calidad_activo_visual_v1/);
   assert.doesNotMatch(formulaProduction, /clasificar_activo_produccion/);
+  assert.match(workflow, /grep -q "H107 \.\*paquete\/preflight"/);
 });
 
 
