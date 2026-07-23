@@ -215,7 +215,7 @@ jobs:
           grep -q "H108 preflight" "$RUNNER_TEMP/generation-authorization.log"
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-preparacion-piloto-conectores-v1.sql | tee "$RUNNER_TEMP/connector-runtime-seal.log"
-          grep -q "aislamiento/proyecto/entorno/reanudación/health" "$RUNNER_TEMP/connector-runtime-seal.log"
+          grep -q "H109 project-ref/entorno/RBAC/pausa.*health-only" "$RUNNER_TEMP/connector-runtime-seal.log"
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-piloto-generacion-controlado-v1.sql | tee "$RUNNER_TEMP/generation-pilot.log"
           grep -q "H109 permiso temporal" "$RUNNER_TEMP/generation-pilot.log"
