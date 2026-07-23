@@ -95,14 +95,16 @@ begin
     false,'Propio',true,'["Instagram"]','Activo',v_support_path,md5(random()::text)||md5(random()::text),
     'image/png',250000,1080,1920,'[]','Rollback H107',v_actor.id) returning id into v_support_asset;
   insert into public.brand_asset_production_profiles(asset_id,component_type,view_angle,physical_state,
-    interaction_type,hand_assignment,source_quality,qa_status,consent_status,canonical,created_by,updated_by)
+    interaction_type,hand_assignment,source_quality,qa_status,consent_status,canonical,visual_set_key,
+    variant_label,scale_reference,created_by,updated_by)
   values(v_asset,'Producto','Frontal','Intacto','Ninguna','Ninguna','Original limpio','Aprobado',
-    'No aplica',true,v_actor.id,v_actor.id);
+    'No aplica',true,'h107-momo-master','base','Cuchara MOMOS de 14 cm',v_actor.id,v_actor.id);
   v_pack_fp:=md5(jsonb_build_object('h107',v_suffix,'asset_id',v_asset)::text);
   insert into public.brand_asset_production_profiles(asset_id,component_type,view_angle,physical_state,
-    interaction_type,hand_assignment,source_quality,qa_status,consent_status,canonical,created_by,updated_by)
+    interaction_type,hand_assignment,source_quality,qa_status,consent_status,canonical,visual_set_key,
+    variant_label,scale_reference,created_by,updated_by)
   values(v_support_asset,'Producto','Tres cuartos','Intacto','Ninguna','Ninguna','Original limpio','Aprobado',
-    'No aplica',true,v_actor.id,v_actor.id);
+    'No aplica',true,'h107-momo-master','continuidad','Cuchara MOMOS de 14 cm',v_actor.id,v_actor.id);
   insert into public.brand_production_packs(name,purpose,status,product_id,figure,channel,target_format,
     requirements,fingerprint,created_by,reviewed_by,reviewed_at,review_note)
   values('H107 paquete '||v_suffix,'Referencias exactas para validar el preflight H107.','Aprobado',
@@ -122,17 +124,8 @@ do $$
 declare
   v_payload jsonb; v_result jsonb; v_state jsonb; v_plan bigint; v_next_plan bigint; v_failed boolean:=false;
   v_checks jsonb:='["Enfoque y exposici\u00f3n","Identidad y geometr\u00eda","Color y textura","Recorte y oclusiones","Logo y texto","Fondo y reflejos"]'::jsonb;
-  v_profile jsonb;
 begin
   if to_regprocedure('public.revisar_calidad_activo_visual_v1(bigint,jsonb)') is not null then
-    v_profile:=jsonb_build_object('component_type','Producto','physical_state','Intacto',
-      'interaction_type','Ninguna','hand_assignment','Ninguna','source_quality','Original limpio',
-      'qa_status','Aprobado','consent_status','No aplica','visual_set_key','h107-momo-master',
-      'variant_label','base','scale_reference','Cuchara MOMOS de 14 cm','canonical',true);
-    perform public.clasificar_activo_produccion((select asset_id from h107_context),
-      v_profile||jsonb_build_object('view_angle','Frontal'));
-    perform public.clasificar_activo_produccion((select support_asset_id from h107_context),
-      v_profile||jsonb_build_object('view_angle','Tres cuartos'));
     v_result:=public.revisar_calidad_activo_visual_v1((select asset_id from h107_context),
       jsonb_build_object('issues','[]'::jsonb,'checks_completed',v_checks,
         'review_notes','Referencia frontal limpia verificada para el contrato H107.'));

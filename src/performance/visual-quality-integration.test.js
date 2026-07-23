@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const migration = read("../../supabase/calidad-maestra-biblioteca-ia-v1.sql");
 const adversarial = read("../../supabase/tests/test-calidad-maestra-biblioteca-ia-v1.sql");
 const ordered = read("../../supabase/tests/test-migraciones-ordenadas.sql");
+const formulaProduction = read("../../supabase/tests/test-orquestacion-produccion-formulas-v1.sql");
 const workflow = read("../../.github/workflows/staging-database-gate.yml");
 const runtime = read("../../scripts/momos-agency-mcp.mjs");
 const panel = read("../features/agency/AgencyBrandStudio.jsx");
@@ -37,6 +38,12 @@ test("la calidad se revalida en preflight, autorización y reclamo del worker", 
   assert.match(migration, /credits_consumed',false/);
   assert.match(migration, /external_execution_allowed',false/);
 });
+test("H107 declara el set multivista antes de aprobar el paquete", () => {
+  assert.match(formulaProduction, /visual_set_key[^]*h107-momo-master/);
+  assert.match(formulaProduction, /revisar_calidad_activo_visual_v1/);
+  assert.doesNotMatch(formulaProduction, /clasificar_activo_produccion/);
+});
+
 
 test("MCP y Agencia exponen aptitud sin confundirla con derechos", () => {
   assert.match(runtime, /targetUse/);
