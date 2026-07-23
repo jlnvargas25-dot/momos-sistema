@@ -54,7 +54,8 @@ test("la portada de Agencia muestra H110 y abre directamente la revisión visual
   assert.match(agencyPanel, /Activos de producción/);
   assert.match(panel, /setSection\(initialIntent\.section \|\| "Biblioteca"\)/);
   assert.match(app, /d\.visualQualityReady = Boolean\(cat\.visualQualityReady\)/);
-  assert.match(readModel, /const qualityResult = await supabase\.rpc\("biblioteca_calidad_ia_read_model_v1"\)/);
+  assert.match(readModel, /optionalAgencyProjection\("biblioteca_calidad_ia_read_model_v1"/);
+  assert.match(readModel, /Promise\.all\(\[/);
 });
 
 test("Agencia convierte la brecha visual en un plan de captura accionable", () => {

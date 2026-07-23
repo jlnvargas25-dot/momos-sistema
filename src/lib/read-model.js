@@ -149,6 +149,72 @@ function adaptVisualQualityAssessment(row = {}) {
   };
 }
 
+function rpcIsMissing(error) {
+  return Boolean(error) && (error.code === "PGRST202"
+    || /could not find (?:the )?function|function\b.+\bdoes not exist|schema cache/i.test(error.message || ""));
+}
+
+async function optionalAgencyProjection(name, normalize = (value) => value) {
+  try {
+    const result = await supabase.rpc(name);
+    if (rpcIsMissing(result.error)) return { ready: false, value: null, state: "missing" };
+    if (result.error) return { ready: false, value: null, state: "unavailable" };
+    try {
+      return { ready: true, value: normalize(result.data), state: "ready" };
+    } catch {
+      return { ready: false, value: null, state: "invalid-contract" };
+    }
+  } catch {
+    return { ready: false, value: null, state: "unavailable" };
+  }
+}
+
+// H67 conserva la fotografía transaccional y liviana de Agencia. Las
+// capacidades instaladas después de ese contrato se leen en paralelo mediante
+// sus read models protegidos; ningún probe concede permisos ni ejecuta acciones.
+async function fetchAgencyModernProjection() {
+  const [creative, production, authorizations, pilots, humanization, visualQuality, cleanMaster, connectorPilot] = await Promise.all([
+    optionalAgencyProjection("momos_creative_intelligence_v1", normalizeCreativeIntelligence),
+    optionalAgencyProjection("momos_production_preflight_v1", normalizeProductionPreflight),
+    optionalAgencyProjection("momos_generation_authorizations_v1", normalizeGenerationAuthorizations),
+    optionalAgencyProjection("momos_generation_pilots_v1", normalizeGenerationPilots),
+    optionalAgencyProjection("momos_humanization_community_v1", normalizeHumanizationCommunity),
+    optionalAgencyProjection("biblioteca_calidad_ia_read_model_v1", (rows) => (
+      Array.isArray(rows) ? rows.map(adaptVisualQualityAssessment) : []
+    )),
+    optionalAgencyProjection("biblioteca_maestro_limpio_disponible", (value) => value === true),
+    optionalAgencyProjection("momos_connector_pilot_readiness_v1"),
+  ]);
+
+  return {
+    agencyCreativeIntelligenceReady: creative.ready,
+    agencyCreativeIntelligence: creative.value,
+    agencyProductionPreflightReady: production.ready,
+    agencyProductionPreflight: production.value,
+    agencyGenerationAuthorizationReady: authorizations.ready,
+    agencyGenerationAuthorizations: authorizations.value,
+    agencyGenerationPilotReady: pilots.ready,
+    agencyGenerationPilots: pilots.value,
+    agencyHumanizationReady: humanization.ready,
+    agencyHumanization: humanization.value,
+    visualQualityReady: visualQuality.ready,
+    visualQualityAssessments: visualQuality.value || [],
+    visualCleanMasterReady: cleanMaster.ready && cleanMaster.value === true,
+    connectorPilotReady: connectorPilot.ready,
+    connectorPilotReadiness: connectorPilot.value,
+    agencyModernProjectionStatus: {
+      creative: creative.state,
+      production: production.state,
+      authorizations: authorizations.state,
+      pilots: pilots.state,
+      humanization: humanization.state,
+      visualQuality: visualQuality.state,
+      cleanMaster: cleanMaster.state,
+      connectorPilot: connectorPilot.state,
+    },
+  };
+}
+
 export function adaptAgencySnapshotEnvelope(snapshot) {
   if (!snapshot || typeof snapshot !== "object" || Number(snapshot.version) !== 1) {
     throw new Error("El snapshot de Agencia no tiene una versión compatible.");
@@ -409,24 +475,11 @@ export async function fetchAgencySnapshots(scopes = AGENCY_SNAPSHOT_SCOPES) {
 export async function fetchAgencyCatalogos() {
   const agency = await fetchAgencySnapshots();
   if (!agency) return null;
-  // H110 es un contrato compacto y sin rutas, PII ni secretos. H66/H67 no
-  // incluían todavía esta proyección; leerla únicamente al abrir Agencia
-  // mantiene el arranque operativo liviano y hace visible la calidad real de
-  // cada original sin volver a hidratar la Biblioteca completa.
-  let qualityReady = Boolean(agency.visualQualityReady);
-  let qualityAssessments = [];
-  if (!qualityReady) {
-    const qualityResult = await supabase.rpc("biblioteca_calidad_ia_read_model_v1");
-    const qualityMissing = qualityResult.error && (qualityResult.error.code === "PGRST202"
-      || /could not find the function|schema cache/i.test(qualityResult.error.message || ""));
-    if (qualityResult.error && !qualityMissing) throw new Error(qualityResult.error.message);
-    qualityReady = !qualityMissing;
-    if (qualityReady) {
-      if (!Array.isArray(qualityResult.data)) throw new Error("La calidad visual de Agencia devolvió un contrato incompatible.");
-      qualityAssessments = qualityResult.data.map(adaptVisualQualityAssessment);
-    }
-  }
-  const qualityByAsset = new Map(qualityAssessments.map((assessment) => [String(assessment.assetId), assessment]));
+  // Los contratos modernos son compactos, sin rutas, PII ni secretos. Se
+  // consultan solo al abrir Agencia y en paralelo, sin rehidratar catálogos.
+  const modern = await fetchAgencyModernProjection();
+  const qualityByAsset = new Map(modern.visualQualityAssessments
+    .map((assessment) => [String(assessment.assetId), assessment]));
   const brandMediaAssets = (agency.brandMediaAssets || []).map((asset) => ({
     ...asset,
     qualityAssessment: qualityByAsset.get(String(asset.id)) || asset.qualityAssessment || null,
@@ -435,9 +488,9 @@ export async function fetchAgencyCatalogos() {
   const serverTimes = scopeMeta.map((item) => String(item?.serverTime || "")).filter(Boolean).sort();
   return {
     ...agency,
+    ...modern,
     brandMediaAssets,
-    visualLibraryReady: Boolean(agency.visualLibraryReady || qualityReady),
-    visualQualityReady: qualityReady,
+    visualLibraryReady: Boolean(agency.visualLibraryReady || modern.visualQualityReady),
     agencySnapshotReady: true,
     agencyOperationalFactsReady: hasAgencyOperationalFacts(agency.agencyOperationalFacts),
     // runtime-telemetry clasifica por prefijo para no acoplarse a cada
@@ -459,7 +512,19 @@ export async function fetchAgencyCatalogosConFallback(
   if (await piiReadClosureCapability()) {
     throw new Error("Los snapshots protegidos de Agencia no están disponibles; H89 impide degradar a lecturas directas.");
   }
-  return legacyLoader();
+  const legacy = await legacyLoader();
+  const modern = await fetchAgencyModernProjection();
+  const qualityByAsset = new Map(modern.visualQualityAssessments
+    .map((assessment) => [String(assessment.assetId), assessment]));
+  return {
+    ...legacy,
+    ...modern,
+    visualLibraryReady: legacy?.visualLibraryReady === true || modern.visualQualityReady,
+    brandMediaAssets: (legacy?.brandMediaAssets || []).map((asset) => ({
+      ...asset,
+      qualityAssessment: qualityByAsset.get(String(asset.id)) || asset.qualityAssessment || null,
+    })),
+  };
 }
 
 export async function fetchAgencySnapshotEventVersion() {

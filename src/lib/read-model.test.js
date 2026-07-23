@@ -70,6 +70,22 @@ const factsEnvelope = (overrides = {}) => ({
   ...overrides,
 });
 
+const MODERN_AGENCY_READ_MODELS = [
+  "momos_creative_intelligence_v1",
+  "momos_production_preflight_v1",
+  "momos_generation_authorizations_v1",
+  "momos_generation_pilots_v1",
+  "momos_humanization_community_v1",
+  "biblioteca_calidad_ia_read_model_v1",
+  "biblioteca_maestro_limpio_disponible",
+  "momos_connector_pilot_readiness_v1",
+];
+
+const missingRpc = () => ({
+  data: null,
+  error: { code: "PGRST202", message: "Function is not in schema cache" },
+});
+
 test("H75 consulta un solo resumen financiero compacto por rango", async () => {
   const originalRpc = supabase.rpc;
   const calls = [];
@@ -447,15 +463,18 @@ test("H67 carga Agencia y H110 compacto sin rehidratar catálogos core", async (
   supabase.rpc = async (name, args) => {
     calls.push([name, args]);
     if (name === "biblioteca_calidad_ia_read_model_v1") return { data: [], error: null };
-    const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, { [`scope_${scope}`]: true }));
-    return { data: {
-      version: 2,
-      contract: "momos-agency-snapshots/v2",
-      source_version: 7,
-      server_time: "2026-07-18T15:00:00Z",
-      snapshots,
-      agency_operational_facts: factsEnvelope(),
-    }, error: null };
+    if (name === "momos_agency_snapshots_v2") {
+      const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, { [`scope_${scope}`]: true }));
+      return { data: {
+        version: 2,
+        contract: "momos-agency-snapshots/v2",
+        source_version: 7,
+        server_time: "2026-07-18T15:00:00Z",
+        snapshots,
+        agency_operational_facts: factsEnvelope(),
+      }, error: null };
+    }
+    return missingRpc();
   };
   try {
     const result = await fetchAgencyCatalogos();
@@ -464,10 +483,8 @@ test("H67 carga Agencia y H110 compacto sin rehidratar catálogos core", async (
     assert.equal(result.syncSource, "snapshot-agency-v1");
     assert.equal(result.agencySnapshotVersion, "7");
     assert.equal(result.syncServerTime, "2026-07-18T15:00:00Z");
-    assert.deepEqual(calls, [
-      ["momos_agency_snapshots_v2", undefined],
-      ["biblioteca_calidad_ia_read_model_v1", undefined],
-    ]);
+    assert.deepEqual(calls[0], ["momos_agency_snapshots_v2", undefined]);
+    assert.deepEqual(new Set(calls.slice(1).map(([name]) => name)), new Set(MODERN_AGENCY_READ_MODELS));
     assert.equal(result.scopeOverview, true);
     assert.equal(result.scopeMeasurement, true);
     assert.equal(Object.keys(result.agencySnapshotScopes).length, 4);
@@ -499,15 +516,19 @@ test("H67 ausente conserva el bundle H66 sin hechos operativos", async () => {
     if (name === "momos_agency_snapshots_v2") {
       return { data: null, error: { code: "PGRST202", message: "Function is not in schema cache" } };
     }
+    if (name === "momos_agency_snapshots_v1") {
+      const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {}));
+      return { data: { version: 1, source_version: 7, server_time: "2026-07-18T15:00:00Z", snapshots }, error: null };
+    }
     if (name === "biblioteca_calidad_ia_read_model_v1") return { data: [], error: null };
-    const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {}));
-    return { data: { version: 1, source_version: 7, server_time: "2026-07-18T15:00:00Z", snapshots }, error: null };
+    return missingRpc();
   };
   try {
     const result = await fetchAgencyCatalogos();
     assert.equal(result.agencySnapshotReady, true);
     assert.equal(result.agencyOperationalFactsReady, false);
-    assert.deepEqual(calls, ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1", "biblioteca_calidad_ia_read_model_v1"]);
+    assert.deepEqual(calls.slice(0, 2), ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1"]);
+    assert.deepEqual(new Set(calls.slice(2)), new Set(MODERN_AGENCY_READ_MODELS));
   } finally {
     supabase.rpc = originalRpc;
   }
@@ -527,13 +548,17 @@ test("H66 y H67 ausentes ejecutan una sola vez el fallback legado", async () => 
       legacyCalls += 1;
       return legacy;
     });
-    assert.equal(result, legacy);
+    assert.notEqual(result, legacy);
+    assert.equal(result.agencyServerReady, true);
+    assert.deepEqual(result.campaigns, legacy.campaigns);
+    assert.equal(result.agencyModernProjectionStatus.creative, "missing");
     assert.equal(legacyCalls, 1);
-    assert.deepEqual(calls, [
+    assert.deepEqual(calls.slice(0, 3), [
       "momos_agency_snapshots_v2",
       "momos_agency_snapshots_v1",
       "cierre_lecturas_pii_disponible",
     ]);
+    assert.deepEqual(new Set(calls.slice(3)), new Set(MODERN_AGENCY_READ_MODELS));
   } finally {
     supabase.rpc = originalRpc;
   }
@@ -556,9 +581,12 @@ test("H67 usa un solo respaldo H66 ante timeout, 5xx o PGRST transitorio", async
           if (transient.thrown) throw transient.error;
           return { data: null, error: transient.error, status: transient.status };
         }
+        if (name === "momos_agency_snapshots_v1") {
+          const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {}));
+          return { data: { version: 1, source_version: 7, server_time: "2026-07-18T15:00:00Z", snapshots }, error: null };
+        }
         if (name === "biblioteca_calidad_ia_read_model_v1") return { data: [], error: null };
-        const snapshots = AGENCY_SNAPSHOT_SCOPES.map((scope) => envelope(scope, {}));
-        return { data: { version: 1, source_version: 7, server_time: "2026-07-18T15:00:00Z", snapshots }, error: null };
+        return missingRpc();
       };
       const result = await fetchAgencyCatalogosConFallback(async () => {
         legacyCalls += 1;
@@ -568,7 +596,8 @@ test("H67 usa un solo respaldo H66 ante timeout, 5xx o PGRST transitorio", async
       assert.equal(result.agencyOperationalFactsReady, false);
       assert.equal(result.agencySnapshotFallback, "h67-transient");
       assert.equal(legacyCalls, 0);
-      assert.deepEqual(calls, ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1", "biblioteca_calidad_ia_read_model_v1"]);
+      assert.deepEqual(calls.slice(0, 2), ["momos_agency_snapshots_v2", "momos_agency_snapshots_v1"]);
+      assert.deepEqual(new Set(calls.slice(2)), new Set(MODERN_AGENCY_READ_MODELS));
     }
   } finally {
     supabase.rpc = originalRpc;

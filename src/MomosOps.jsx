@@ -743,7 +743,7 @@ function seedDb() {
     { id: "TAR-08", tarea: "Registrar los resultados del contenido publicado ayer", fecha: hoyISO(), estado: "Pendiente", responsable: "Marketing" },
   ];
 
-  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, deliveryMutationDeltaReady: false, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, financeSnapshotReady: false, financeSnapshot: null, financeSnapshotKey: "", financeSnapshotVersion: "", configurationSnapshotReady: false, configurationSnapshotVersion: "", configurationInventoryChoices: [], configurationFigureProductChoices: [], agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
+  return { version: DB_VERSION, settings, products, customers, orders, order_items, production_batches, variantes: [], variantesCuarentena: [], inventory_items, inventory_movements, deliveries, evidences, claims, benefits, audit_logs, production_suggestions, recipes, inventory_reservations: [], users: seedUsers(), campaigns, creatives, content_calendar, creative_results, inventoryMutationDeltaReady: false, inventoryMutationEventVersion: "", inventoryMutationFullSnapshotRequired: true, orderDeltaReady: false, orderDeltaVersions: {}, deliveryMutationDeltaReady: false, finishedInventoryDeltaReady: false, finishedInventoryDeltaVersions: {}, productionMutationDeltaReady: false, productionActivityDeltaVersion: "", catalogCrmDeltaReady: false, productCatalogDeltaVersions: {}, customerCrmDeltaVersions: {}, financeSnapshotReady: false, financeSnapshot: null, financeSnapshotKey: "", financeSnapshotVersion: "", configurationSnapshotReady: false, configurationSnapshotVersion: "", configurationInventoryChoices: [], configurationFigureProductChoices: [], agencySnapshotReady: false, agencySnapshotVersion: "", agencyOperationalFactsReady: false, agencyOperationalFacts: null, agencyBrandIdentity: null, agencyCreativeIntelligenceReady: false, agencyCreativeIntelligence: null, agencyProductionPreflightReady: false, agencyProductionPreflight: null, agencyGenerationAuthorizationReady: false, agencyGenerationAuthorizations: null, agencyGenerationPilotReady: false, agencyGenerationPilots: null, agencyHumanizationReady: false, agencyHumanization: null, visualQualityReady: false, visualCleanMasterReady: false, connectorPilotReady: false, connectorPilotReadiness: null, content_distributions: [], distributionConnectorReady: false, distributionConnectorJobs: [], brandMediaReady: false, mundoAnimadoReady: false, officialLogoDeletionReady: false, mcpHumanApprovalReady: false, mcpHumanApprovals: [], brandMediaAssets: [], creativeGenerationJobs: [], brandMediaUsages: [], agencyIntegrationsReady: false, agencyIntegrations: [], creativeConnectorRuns: [], higgsfieldConnectorReady: false, klingConnectorReady: false, agencyMetaConnectorReady: false, agencyMetaConnectorDryRuns: [], agencyCollaborationReady: false, agencyCollaborationRooms: [], agencyCollaborationEntries: [], agencyCreativeContracts: [], agencySceneStudioReady: false, agencyStoryboards: [], agencyStoryboardShots: [], agencyMotionReady: false, agencyMotionPlans: [], agencyMotionRecipes: [], agencyMotionObservations: [], agencySceneRouterReady: false, agencySceneRoutingPlans: [], agencyQualityReady: false, agencySceneQualityReviews: [], agencyPostproductionPackages: [], agencyPostproductionExportReady: false, agencyPostproductionExports: [], agencyPostproductionWorkers: [], agencyPostproductionAudioReady: false, agencyPostproductionAudioBindings: [], agencyRetentionReady: false, agencyRetentionScripts: [], agencyRetentionHooks: [], agencyRetentionLoops: [], agencyRetentionExperiments: [], agencyRetentionMeasurements: [], agencyLoopLearningReady: false, agencyRetentionDiagnostics: [], agencyRetentionLearnings: [], agencyMetaReady: false, agencyMetaPolicies: [], agencyMetaSnapshots: [], agencyMetaDiagnostics: [], agencyMetaIncrementalityReady: false, agencyMetaLiftStudies: [], agencyMetaLiftMeasurements: [], agencyMetaInvestmentReady: false, agencyMetaInvestmentScenarios: [], agencyMetaAuthorizationReady: false, agencyMetaInvestmentAuthorizations: [], agencyMetaInvestmentExecutionJobs: [], agencyBrandGovernanceReady: false, agencyBrandProfile: null, agencyBrandGateBindings: [], agencyGrowthReady: false, agencyGrowthPolicies: [], agencyGrowthSnapshots: [], agencyGrowthSelections: [], agencyCreativeFlowReady: false, agencyMasterReleases: [], agencyMasterReleaseEvents: [], marketing_ideas, marketing_guiones, marketing_mensajes, brand_library, marketing_tasks };
 }
 
 /* ---- Atributos derivados del dominio comercial (ÚNICA fuente de verdad) ----
@@ -3918,6 +3918,21 @@ export default function MomosOps() {
       d.agencyCreativeFlowReady = Boolean(cat.agencyCreativeFlowReady);
       d.agencyMasterReleases = cat.agencyMasterReleases || [];
       d.agencyMasterReleaseEvents = cat.agencyMasterReleaseEvents || [];
+      d.agencyCreativeIntelligenceReady = Boolean(cat.agencyCreativeIntelligenceReady);
+      d.agencyCreativeIntelligence = cat.agencyCreativeIntelligence || null;
+      d.agencyProductionPreflightReady = Boolean(cat.agencyProductionPreflightReady);
+      d.agencyProductionPreflight = cat.agencyProductionPreflight || null;
+      d.agencyGenerationAuthorizationReady = Boolean(cat.agencyGenerationAuthorizationReady);
+      d.agencyGenerationAuthorizations = cat.agencyGenerationAuthorizations || null;
+      d.agencyGenerationPilotReady = Boolean(cat.agencyGenerationPilotReady);
+      d.agencyGenerationPilots = cat.agencyGenerationPilots || null;
+      d.agencyHumanizationReady = Boolean(cat.agencyHumanizationReady);
+      d.agencyHumanization = cat.agencyHumanization || null;
+      d.visualQualityReady = Boolean(cat.visualQualityReady);
+      d.visualCleanMasterReady = Boolean(cat.visualCleanMasterReady);
+      d.connectorPilotReady = Boolean(cat.connectorPilotReady);
+      d.connectorPilotReadiness = cat.connectorPilotReadiness || null;
+      d.agencyModernProjectionStatus = cat.agencyModernProjectionStatus || {};
       if (cat.marketingIdeas) d.marketing_ideas = cat.marketingIdeas;
       if (cat.marketingGuiones) d.marketing_guiones = cat.marketingGuiones;
       if (cat.marketingMensajes) d.marketing_mensajes = cat.marketingMensajes;
@@ -4136,6 +4151,14 @@ export default function MomosOps() {
               domains: state.domains || [],
               source: state.source || "",
             }));
+            if (["synced", "partial"].includes(state.status)) {
+              document.documentElement?.setAttribute("data-momos-sync-last", JSON.stringify({
+                status: state.status,
+                domains: state.domains || [],
+                loads: Number(state.counters?.loads || 0),
+                requests: Number(state.counters?.requests || 0),
+              }));
+            }
           }
         },
       });
@@ -4214,7 +4237,9 @@ export default function MomosOps() {
       [SYNC_DOMAINS.DASHBOARD]: 30_000,
       [SYNC_DOMAINS.LOGISTICS]: 30_000,
     }).filter((domain) => visibles.has(domain));
-    if (vencidos.length) hidratarDesdeServidor(vencidos, { reason: "view-enter" }).catch(() => {});
+    if (vencidos.length) hidratarDesdeServidor(vencidos, { reason: "view-enter" }).catch((error) => {
+      if (import.meta.env.DEV) console.warn("Sincronización de vista: se conserva la caché local.", error);
+    });
   }, [vista, catalogosDe]);
 
   // Advertencia al cerrar la página si hay cambios pendientes + intento de guardado síncrono

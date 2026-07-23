@@ -56,6 +56,16 @@ test("proyecta solo facts y catÃ¡logos de Agencia sin alterar ni leer la opera
     agencyBriefs: [{ id: 3, status: "Aprobado" }],
     creatives: [{ id: "CR01", estado: "Aprobado" }],
     agencyPostproductionExports: [{ id: 8, status: "Aprobado" }],
+    agencyCreativeIntelligenceReady: true,
+    agencyCreativeIntelligence: { summary: { winners: 0 }, externalExecutionAllowed: false },
+    agencyProductionPreflightReady: true,
+    agencyGenerationAuthorizationReady: true,
+    agencyGenerationPilotReady: false,
+    agencyHumanizationReady: true,
+    visualQualityReady: true,
+    visualCleanMasterReady: true,
+    connectorPilotReady: true,
+    agencyModernProjectionStatus: { creative: "ready", visualQuality: "ready" },
   };
   for (const key of ["orders", "order_items", "customers", "customer_crm_profiles", "inventory_items", "inventory_lots", "recipes", "variantes", "production_batches"]) {
     Object.defineProperty(db, key, { enumerable: true, get() { throw new Error(`PII/operaciÃ³n leÃ­da: ${key}`); } });
@@ -70,6 +80,11 @@ test("proyecta solo facts y catÃ¡logos de Agencia sin alterar ni leer la opera
   }]);
   assert.deepEqual(projected.agencyBriefs, db.agencyBriefs);
   assert.deepEqual(projected.agencyPostproductionExports, db.agencyPostproductionExports);
+  assert.equal(projected.agencyCreativeIntelligenceReady, true);
+  assert.deepEqual(projected.agencyCreativeIntelligence, db.agencyCreativeIntelligence);
+  assert.equal(projected.visualQualityReady, true);
+  assert.equal(projected.visualCleanMasterReady, true);
+  assert.deepEqual(projected.agencyModernProjectionStatus, db.agencyModernProjectionStatus);
   assert.equal(db.products[0].nombre, "Anterior");
   for (const key of ["orders", "order_items", "customers", "customer_crm_profiles", "inventory_items", "inventory_lots", "recipes", "variantes", "production_batches"]) {
     assert.equal(Object.hasOwn(projected, key), false);
