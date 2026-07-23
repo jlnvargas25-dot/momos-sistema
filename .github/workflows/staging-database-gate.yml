@@ -131,6 +131,20 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/higgsfield-conciliacion-v1.sql
 
+      - name: Apply H112 recipe assembly V4 to staging once
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          h112_applied="$(psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --tuples-only --no-align \
+            --command="select exists(select 1 from public.momos_ops_migrations where id='20260723_112_recetas_figuras_v4')")"
+          if [ "$h112_applied" = "t" ]; then
+            echo "H112 already applied; preserving the sealed recipe versions"
+          else
+            psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+              --file=supabase/recetas-figuras-v4.sql
+          fi
+
       - name: Run ordered acceptance with rollback
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
@@ -138,6 +152,7 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-migraciones-ordenadas.sql | tee "$RUNNER_TEMP/migrations.log"
           grep -q "01-111 PASS" "$RUNNER_TEMP/migrations.log"
+          grep -q "01-112 PASS" "$RUNNER_TEMP/migrations.log"
 
       - name: Run H102 closed commercial pilot adversarial contracts
         env:
@@ -205,6 +220,14 @@ jobs:
           psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
             --file=supabase/tests/test-higgsfield-conciliacion-v1.sql | tee "$RUNNER_TEMP/higgsfield-reconciliation.log"
           grep -q "Higgsfield costo/huella/incierto/conciliación" "$RUNNER_TEMP/higgsfield-reconciliation.log"
+
+      - name: Run H112 recipe assembly V4 adversarial contracts
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "$STAGING_DATABASE_URL" -X --set=ON_ERROR_STOP=1 \
+            --file=supabase/tests/test-recetas-figuras-v4.sql | tee "$RUNNER_TEMP/recipe-assembly-v4.log"
+          grep -q "recetas/figuras V4/versiones/piloto/merma/RBAC PASS" "$RUNNER_TEMP/recipe-assembly-v4.log"
 
       - name: Run H100 internal operational pilot with rollback
         env:
